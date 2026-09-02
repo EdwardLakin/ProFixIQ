@@ -224,6 +224,27 @@ as $function$
     );
 $function$;
 
+-- Mutation authority is intentionally narrower than read authority. Fleet and
+-- Portal relationships can read their linked Work Orders, but only entitled
+-- Shop staff or an assigned/manager Field actor may enter privileged Work
+-- Order mutation cores.
+create or replace function private.profixiq_current_actor_can_mutate_work_order_product(
+  p_shop_id uuid,
+  p_work_order_id uuid
+) returns boolean
+language sql
+stable
+security definer
+set search_path = ''
+as $function$
+  select
+    public.profixiq_current_actor_has_shop_product_access(p_shop_id)
+    or private.profixiq_current_actor_has_field_work_order_access(
+      p_shop_id,
+      p_work_order_id
+    );
+$function$;
+
 -- Work Orders are shared records, but product access is contextual:
 --   * Shop staff require the Shop entitlement;
 --   * Field operators can read only mobile visits they manage or own;
@@ -303,6 +324,8 @@ revoke all on function public.profixiq_current_actor_has_shop_product_access(uui
 revoke all on function private.profixiq_current_actor_has_field_work_order_access(uuid, uuid)
   from public, anon, authenticated, service_role;
 revoke all on function private.profixiq_current_actor_has_fleet_work_order_access(uuid, uuid)
+  from public, anon, authenticated, service_role;
+revoke all on function private.profixiq_current_actor_can_mutate_work_order_product(uuid, uuid)
   from public, anon, authenticated, service_role;
 revoke all on function public.profixiq_current_actor_can_read_work_order_product(uuid, uuid)
   from public, anon, authenticated, service_role;
@@ -1904,7 +1927,7 @@ begin
   if coalesce(auth.role(), '') <> 'service_role'
      and not public.profixiq_current_actor_has_shop_product_access(v_shop_id) then
     raise exception using
-      errcode = '42501',
+      errcode = 'P0002',
       message = 'Fleet service request is unavailable.';
   end if;
 
@@ -1947,7 +1970,7 @@ begin
   if coalesce(auth.role(), '') <> 'service_role'
      and not public.profixiq_current_actor_has_shop_product_access(v_shop_id) then
     raise exception using
-      errcode = '42501',
+      errcode = 'P0002',
       message = 'Fleet service request is unavailable.';
   end if;
 
@@ -2229,7 +2252,7 @@ begin
   end if;
 
   if coalesce(auth.role(), '') <> 'service_role'
-     and not public.profixiq_current_actor_can_read_work_order_product(
+     and not private.profixiq_current_actor_can_mutate_work_order_product(
        p_shop_id,
        p_work_order_id
      ) then
@@ -2336,7 +2359,7 @@ begin
   end if;
 
   if coalesce(auth.role(), '') <> 'service_role'
-     and not public.profixiq_current_actor_can_read_work_order_product(
+     and not private.profixiq_current_actor_can_mutate_work_order_product(
        p_shop_id,
        v_work_order_id
      ) then
@@ -2368,6 +2391,274 @@ grant execute on function public.parts_void_work_order_line_atomic(
   uuid, uuid, text, text, text, text, text, text, text, text, uuid
 ) to authenticated, service_role;
 
+-- These mature mutation functions predate the product-package boundary and
+-- run as SECURITY DEFINER. Keep their public signatures and existing business
+-- logic intact, but place the implementations in the private schema so every
+-- authenticated call must first prove Shop or linked Field mutation authority.
+alter function public.apply_job_punch_transition_atomic(
+  uuid, uuid, text, uuid, uuid, text, boolean, timestamptz, text, text,
+  text, boolean, boolean, text, text, text, jsonb
+) rename to apply_job_punch_transition_product_core;
+alter function public.apply_job_punch_transition_product_core(
+  uuid, uuid, text, uuid, uuid, text, boolean, timestamptz, text, text,
+  text, boolean, boolean, text, text, text, jsonb
+) set schema private;
+revoke all on function private.apply_job_punch_transition_product_core(
+  uuid, uuid, text, uuid, uuid, text, boolean, timestamptz, text, text,
+  text, boolean, boolean, text, text, text, jsonb
+) from public, anon, authenticated, service_role;
+
+create function public.apply_job_punch_transition_atomic(
+  p_shop_id uuid,
+  p_work_order_line_id uuid,
+  p_action text,
+  p_technician_id uuid,
+  p_actor_user_id uuid,
+  p_operation_key text,
+  p_allow_concurrent boolean default false,
+  p_at timestamptz default now(),
+  p_start_source text default null,
+  p_hold_reason text default null,
+  p_notes text default null,
+  p_preserve_line_status boolean default false,
+  p_release_to_awaiting boolean default false,
+  p_cause text default null,
+  p_correction text default null,
+  p_event text default null,
+  p_details jsonb default '{}'::jsonb
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_work_order_id uuid;
+begin
+  if coalesce(auth.role(), '') = 'service_role'
+     or public.profixiq_current_actor_has_shop_product_access(p_shop_id) then
+    return private.apply_job_punch_transition_product_core(
+      p_shop_id, p_work_order_line_id, p_action, p_technician_id,
+      p_actor_user_id, p_operation_key, p_allow_concurrent, p_at,
+      p_start_source, p_hold_reason, p_notes, p_preserve_line_status,
+      p_release_to_awaiting, p_cause, p_correction, p_event, p_details
+    );
+  end if;
+
+  select line.work_order_id
+    into v_work_order_id
+  from public.work_order_lines line
+  where line.id = p_work_order_line_id
+    and line.shop_id = p_shop_id;
+
+  if v_work_order_id is null
+     or not private.profixiq_current_actor_can_mutate_work_order_product(
+       p_shop_id,
+       v_work_order_id
+     ) then
+    raise exception using
+      errcode = '42501',
+      message = 'Work Order product access is required.';
+  end if;
+
+  return private.apply_job_punch_transition_product_core(
+    p_shop_id, p_work_order_line_id, p_action, p_technician_id,
+    p_actor_user_id, p_operation_key, p_allow_concurrent, p_at,
+    p_start_source, p_hold_reason, p_notes, p_preserve_line_status,
+    p_release_to_awaiting, p_cause, p_correction, p_event, p_details
+  );
+end;
+$function$;
+
+revoke all on function public.apply_job_punch_transition_atomic(
+  uuid, uuid, text, uuid, uuid, text, boolean, timestamptz, text, text,
+  text, boolean, boolean, text, text, text, jsonb
+) from public, anon, authenticated, service_role;
+grant execute on function public.apply_job_punch_transition_atomic(
+  uuid, uuid, text, uuid, uuid, text, boolean, timestamptz, text, text,
+  text, boolean, boolean, text, text, text, jsonb
+) to authenticated, service_role;
+
+alter function public.apply_offline_line_mutation_atomic(
+  uuid, uuid, text, text, uuid, jsonb
+) rename to apply_offline_line_mutation_product_core;
+alter function public.apply_offline_line_mutation_product_core(
+  uuid, uuid, text, text, uuid, jsonb
+) set schema private;
+revoke all on function private.apply_offline_line_mutation_product_core(
+  uuid, uuid, text, text, uuid, jsonb
+) from public, anon, authenticated, service_role;
+
+create function public.apply_offline_line_mutation_atomic(
+  p_shop_id uuid,
+  p_actor_user_id uuid,
+  p_operation_key text,
+  p_action_type text,
+  p_work_order_line_id uuid,
+  p_payload jsonb
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_work_order_id uuid;
+begin
+  if coalesce(auth.role(), '') = 'service_role'
+     or public.profixiq_current_actor_has_shop_product_access(p_shop_id) then
+    return private.apply_offline_line_mutation_product_core(
+      p_shop_id, p_actor_user_id, p_operation_key, p_action_type,
+      p_work_order_line_id, p_payload
+    );
+  end if;
+
+  select line.work_order_id
+    into v_work_order_id
+  from public.work_order_lines line
+  where line.id = p_work_order_line_id
+    and line.shop_id = p_shop_id;
+
+  if v_work_order_id is null
+     or not private.profixiq_current_actor_can_mutate_work_order_product(
+       p_shop_id,
+       v_work_order_id
+     ) then
+    raise exception using
+      errcode = '42501',
+      message = 'Work Order product access is required.';
+  end if;
+
+  return private.apply_offline_line_mutation_product_core(
+    p_shop_id, p_actor_user_id, p_operation_key, p_action_type,
+    p_work_order_line_id, p_payload
+  );
+end;
+$function$;
+
+revoke all on function public.apply_offline_line_mutation_atomic(
+  uuid, uuid, text, text, uuid, jsonb
+) from public, anon, authenticated, service_role;
+grant execute on function public.apply_offline_line_mutation_atomic(
+  uuid, uuid, text, text, uuid, jsonb
+) to authenticated, service_role;
+
+alter function public.parts_attach_inventory_to_request_item_atomic(uuid, uuid)
+  rename to parts_attach_inventory_to_request_item_product_core;
+alter function public.parts_attach_inventory_to_request_item_product_core(uuid, uuid)
+  set schema private;
+revoke all on function private.parts_attach_inventory_to_request_item_product_core(uuid, uuid)
+  from public, anon, authenticated, service_role;
+
+create function public.parts_attach_inventory_to_request_item_atomic(
+  p_item_id uuid,
+  p_part_id uuid
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_shop_id uuid;
+  v_work_order_id uuid;
+begin
+  select item.shop_id, item.work_order_id
+    into v_shop_id, v_work_order_id
+  from public.part_request_items item
+  where item.id = p_item_id;
+
+  if coalesce(auth.role(), '') <> 'service_role'
+     and not public.profixiq_current_actor_has_shop_product_access(v_shop_id)
+     and (
+       v_shop_id is null
+       or v_work_order_id is null
+       or not private.profixiq_current_actor_can_mutate_work_order_product(
+         v_shop_id,
+         v_work_order_id
+       )
+     ) then
+    raise exception using
+      errcode = '42501',
+      message = 'Parts request item product access is required.';
+  end if;
+
+  return private.parts_attach_inventory_to_request_item_product_core(
+    p_item_id,
+    p_part_id
+  );
+end;
+$function$;
+
+revoke all on function public.parts_attach_inventory_to_request_item_atomic(uuid, uuid)
+  from public, anon, authenticated, service_role;
+grant execute on function public.parts_attach_inventory_to_request_item_atomic(uuid, uuid)
+  to authenticated, service_role;
+
+alter function public.parts_create_and_attach_inventory_atomic(
+  uuid, text, text, text, text, text, text, numeric, numeric, numeric, uuid, text
+) rename to parts_create_and_attach_inventory_product_core;
+alter function public.parts_create_and_attach_inventory_product_core(
+  uuid, text, text, text, text, text, text, numeric, numeric, numeric, uuid, text
+) set schema private;
+revoke all on function private.parts_create_and_attach_inventory_product_core(
+  uuid, text, text, text, text, text, text, numeric, numeric, numeric, uuid, text
+) from public, anon, authenticated, service_role;
+
+create function public.parts_create_and_attach_inventory_atomic(
+  p_item_id uuid,
+  p_name text,
+  p_part_number text,
+  p_manufacturer text,
+  p_supplier text,
+  p_sku text,
+  p_category text,
+  p_cost numeric,
+  p_sell_price numeric,
+  p_initial_qty numeric,
+  p_location_id uuid,
+  p_operation_key text
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_shop_id uuid;
+  v_work_order_id uuid;
+begin
+  select item.shop_id, item.work_order_id
+    into v_shop_id, v_work_order_id
+  from public.part_request_items item
+  where item.id = p_item_id;
+
+  if coalesce(auth.role(), '') <> 'service_role'
+     and not public.profixiq_current_actor_has_shop_product_access(v_shop_id)
+     and (
+       v_shop_id is null
+       or v_work_order_id is null
+       or not private.profixiq_current_actor_can_mutate_work_order_product(
+         v_shop_id,
+         v_work_order_id
+       )
+     ) then
+    raise exception using
+      errcode = '42501',
+      message = 'Parts request item product access is required.';
+  end if;
+
+  return private.parts_create_and_attach_inventory_product_core(
+    p_item_id, p_name, p_part_number, p_manufacturer, p_supplier, p_sku,
+    p_category, p_cost, p_sell_price, p_initial_qty, p_location_id,
+    p_operation_key
+  );
+end;
+$function$;
+
+revoke all on function public.parts_create_and_attach_inventory_atomic(
+  uuid, text, text, text, text, text, text, numeric, numeric, numeric, uuid, text
+) from public, anon, authenticated, service_role;
+grant execute on function public.parts_create_and_attach_inventory_atomic(
+  uuid, text, text, text, text, text, text, numeric, numeric, numeric, uuid, text
+) to authenticated, service_role;
+
 do $product_boundary_acl_postcheck$
 declare
   v_signature regprocedure;
@@ -2389,7 +2680,12 @@ begin
     'private.mobile_materialize_visit_wo_v1_core(uuid,uuid,uuid,text)'::regprocedure,
     'private.mobile_materialize_visit_work_order_mode_core(uuid,uuid,uuid,text)'::regprocedure,
     'private.apply_shop_quote_decision_product_core(uuid,uuid,uuid[],text,uuid,text,text,text,timestamptz)'::regprocedure,
-    'private.parts_void_work_order_line_product_core(uuid,uuid,text,text,text,text,text,text,text,text,uuid)'::regprocedure
+    'private.parts_void_work_order_line_product_core(uuid,uuid,text,text,text,text,text,text,text,text,uuid)'::regprocedure,
+    'private.profixiq_current_actor_can_mutate_work_order_product(uuid,uuid)'::regprocedure,
+    'private.apply_job_punch_transition_product_core(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)'::regprocedure,
+    'private.apply_offline_line_mutation_product_core(uuid,uuid,text,text,uuid,jsonb)'::regprocedure,
+    'private.parts_attach_inventory_to_request_item_product_core(uuid,uuid)'::regprocedure,
+    'private.parts_create_and_attach_inventory_product_core(uuid,text,text,text,text,text,text,numeric,numeric,numeric,uuid,text)'::regprocedure
   ]
   loop
     foreach v_role in array array['anon', 'authenticated', 'service_role']::name[]
@@ -2400,6 +2696,21 @@ begin
           v_role;
       end if;
     end loop;
+  end loop;
+
+  foreach v_signature in array array[
+    'public.apply_job_punch_transition_atomic(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)'::regprocedure,
+    'public.apply_offline_line_mutation_atomic(uuid,uuid,text,text,uuid,jsonb)'::regprocedure,
+    'public.parts_attach_inventory_to_request_item_atomic(uuid,uuid)'::regprocedure,
+    'public.parts_create_and_attach_inventory_atomic(uuid,text,text,text,text,text,text,numeric,numeric,numeric,uuid,text)'::regprocedure
+  ]
+  loop
+    if has_function_privilege('anon', v_signature, 'EXECUTE')
+       or not has_function_privilege('authenticated', v_signature, 'EXECUTE')
+       or not has_function_privilege('service_role', v_signature, 'EXECUTE') then
+      raise exception 'Public Work Order mutation wrapper ACL drifted for %',
+        v_signature;
+    end if;
   end loop;
 
   v_delete_core_definition := pg_catalog.pg_get_functiondef(

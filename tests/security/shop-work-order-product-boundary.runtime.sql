@@ -197,6 +197,89 @@ from public.work_order_lines line
 join public.shops shop on shop.id = line.shop_id
 where line.id::text like '59600000-0000-4000-8000-%';
 
+-- Direct Parts RPC fixtures cover both a linked Field Work Order and an
+-- unrelated same-shop Work Order. The public wrappers must distinguish them
+-- before their SECURITY DEFINER implementations can mutate inventory.
+insert into public.parts (id, shop_id, name, part_number, sku)
+values (
+  '5a100000-0000-4000-8000-000000000003',
+  '59200000-0000-4000-8000-000000000003',
+  'Product Field Existing Part',
+  'PRODUCT-FIELD-EXISTING',
+  'PRODUCT-FIELD-EXISTING'
+);
+
+insert into public.part_requests (
+  id, shop_id, work_order_id, job_id, status, notes
+)
+values
+  (
+    '5a200000-0000-4000-8000-000000000003',
+    '59200000-0000-4000-8000-000000000003',
+    '59500000-0000-4000-8000-000000000003',
+    '59600000-0000-4000-8000-000000000003',
+    'requested',
+    'Linked Field product boundary request'
+  ),
+  (
+    '5a200000-0000-4000-8000-000000000013',
+    '59200000-0000-4000-8000-000000000003',
+    '59500000-0000-4000-8000-000000000013',
+    '59600000-0000-4000-8000-000000000013',
+    'requested',
+    'Unlinked Field product boundary request'
+  );
+
+insert into public.part_request_items (
+  id, request_id, shop_id, work_order_id, work_order_line_id,
+  description, qty, qty_requested, status
+)
+values
+  (
+    '5a300000-0000-4000-8000-000000000103',
+    '5a200000-0000-4000-8000-000000000003',
+    '59200000-0000-4000-8000-000000000003',
+    '59500000-0000-4000-8000-000000000003',
+    '59600000-0000-4000-8000-000000000003',
+    'Linked Field attach item',
+    1,
+    1,
+    'requested'
+  ),
+  (
+    '5a300000-0000-4000-8000-000000000203',
+    '5a200000-0000-4000-8000-000000000003',
+    '59200000-0000-4000-8000-000000000003',
+    '59500000-0000-4000-8000-000000000003',
+    '59600000-0000-4000-8000-000000000003',
+    'Linked Field create item',
+    1,
+    1,
+    'requested'
+  ),
+  (
+    '5a300000-0000-4000-8000-000000000113',
+    '5a200000-0000-4000-8000-000000000013',
+    '59200000-0000-4000-8000-000000000003',
+    '59500000-0000-4000-8000-000000000013',
+    '59600000-0000-4000-8000-000000000013',
+    'Unlinked Field attach item',
+    1,
+    1,
+    'requested'
+  ),
+  (
+    '5a300000-0000-4000-8000-000000000213',
+    '5a200000-0000-4000-8000-000000000013',
+    '59200000-0000-4000-8000-000000000003',
+    '59500000-0000-4000-8000-000000000013',
+    '59600000-0000-4000-8000-000000000013',
+    'Unlinked Field create item',
+    1,
+    1,
+    'requested'
+  );
+
 -- Canonical standalone Field setup: one owner/operator and one active truck.
 insert into public.mobile_service_settings (
   shop_id, service_model, solo_mode, dispatch_enabled,
@@ -512,8 +595,76 @@ begin
        'authenticated',
        'private.convert_fleet_request_work_order_product_core(uuid)',
        'EXECUTE'
+     )
+     or has_function_privilege(
+       'authenticated',
+       'private.profixiq_current_actor_can_mutate_work_order_product(uuid,uuid)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'authenticated',
+       'private.apply_job_punch_transition_product_core(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'authenticated',
+       'private.apply_offline_line_mutation_product_core(uuid,uuid,text,text,uuid,jsonb)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'authenticated',
+       'private.parts_attach_inventory_to_request_item_product_core(uuid,uuid)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'authenticated',
+       'private.parts_create_and_attach_inventory_product_core(uuid,text,text,text,text,text,text,numeric,numeric,numeric,uuid,text)',
+       'EXECUTE'
      ) then
     raise exception 'A private Work Order product core is directly executable.';
+  end if;
+
+  if has_function_privilege(
+       'anon',
+       'public.apply_job_punch_transition_atomic(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
+       'EXECUTE'
+     )
+     or not has_function_privilege(
+       'authenticated',
+       'public.apply_job_punch_transition_atomic(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'anon',
+       'public.apply_offline_line_mutation_atomic(uuid,uuid,text,text,uuid,jsonb)',
+       'EXECUTE'
+     )
+     or not has_function_privilege(
+       'authenticated',
+       'public.apply_offline_line_mutation_atomic(uuid,uuid,text,text,uuid,jsonb)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'anon',
+       'public.parts_attach_inventory_to_request_item_atomic(uuid,uuid)',
+       'EXECUTE'
+     )
+     or not has_function_privilege(
+       'authenticated',
+       'public.parts_attach_inventory_to_request_item_atomic(uuid,uuid)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'anon',
+       'public.parts_create_and_attach_inventory_atomic(uuid,text,text,text,text,text,text,numeric,numeric,numeric,uuid,text)',
+       'EXECUTE'
+     )
+     or not has_function_privilege(
+       'authenticated',
+       'public.parts_create_and_attach_inventory_atomic(uuid,text,text,text,text,text,text,numeric,numeric,numeric,uuid,text)',
+       'EXECUTE'
+     ) then
+    raise exception 'A public Work Order mutation wrapper ACL drifted.';
   end if;
 end
 $product_boundary_acl_contract$;
@@ -778,6 +929,148 @@ begin
     raise exception 'Field job-photo storage escaped its linked mobile visit.';
   end if;
 
+  -- Linked Field work can enter each privileged mutation core. Unsupported
+  -- action values intentionally prove the wrapper delegated to the mature
+  -- validation logic without creating labor or offline mutation records.
+  v_denied := false;
+  begin
+    perform public.apply_job_punch_transition_atomic(
+      p_shop_id => '59200000-0000-4000-8000-000000000003',
+      p_work_order_line_id => '59600000-0000-4000-8000-000000000003',
+      p_action => 'product-boundary-unsupported',
+      p_technician_id => '59100000-0000-4000-8000-000000000003',
+      p_actor_user_id => '59100000-0000-4000-8000-000000000003',
+      p_operation_key => 'product-boundary:field-job-core'
+    );
+  exception when raise_exception then
+    if sqlerrm = 'Unsupported job punch action.' then
+      v_denied := true;
+    else
+      raise;
+    end if;
+  end;
+  if not v_denied then
+    raise exception 'Field actor reached the job-punch product core without its mature validation.';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.apply_job_punch_transition_atomic(
+      p_shop_id => '59200000-0000-4000-8000-000000000003',
+      p_work_order_line_id => '59600000-0000-4000-8000-000000000013',
+      p_action => 'product-boundary-unsupported',
+      p_technician_id => '59100000-0000-4000-8000-000000000003',
+      p_actor_user_id => '59100000-0000-4000-8000-000000000003',
+      p_operation_key => 'product-boundary:field-job-unlinked'
+    );
+  exception when insufficient_privilege then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Field actor punched an unrelated same-shop Work Order.';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.apply_offline_line_mutation_atomic(
+      p_shop_id => '59200000-0000-4000-8000-000000000003',
+      p_actor_user_id => '59100000-0000-4000-8000-000000000003',
+      p_operation_key => 'product-boundary:field-offline-core',
+      p_action_type => 'product-boundary-unsupported',
+      p_work_order_line_id => '59600000-0000-4000-8000-000000000003',
+      p_payload => '{}'::jsonb
+    );
+  exception when raise_exception then
+    if sqlerrm = 'Unsupported offline line mutation.' then
+      v_denied := true;
+    else
+      raise;
+    end if;
+  end;
+  if not v_denied then
+    raise exception 'Field actor reached the offline mutation product core without its mature validation.';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.apply_offline_line_mutation_atomic(
+      p_shop_id => '59200000-0000-4000-8000-000000000003',
+      p_actor_user_id => '59100000-0000-4000-8000-000000000003',
+      p_operation_key => 'product-boundary:field-offline-unlinked',
+      p_action_type => 'product-boundary-unsupported',
+      p_work_order_line_id => '59600000-0000-4000-8000-000000000013',
+      p_payload => '{}'::jsonb
+    );
+  exception when insufficient_privilege then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Field actor applied an offline mutation to an unrelated Work Order.';
+  end if;
+
+  select public.parts_attach_inventory_to_request_item_atomic(
+    '5a300000-0000-4000-8000-000000000103',
+    '5a100000-0000-4000-8000-000000000003'
+  ) into v_result;
+  if v_result ->> 'part_id' is distinct from
+       '5a100000-0000-4000-8000-000000000003' then
+    raise exception 'Field actor attached inventory to its linked Work Order incorrectly.';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.parts_attach_inventory_to_request_item_atomic(
+      '5a300000-0000-4000-8000-000000000113',
+      '5a100000-0000-4000-8000-000000000003'
+    );
+  exception when insufficient_privilege then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Field actor attached inventory to an unrelated Work Order.';
+  end if;
+
+  select public.parts_create_and_attach_inventory_atomic(
+    p_item_id => '5a300000-0000-4000-8000-000000000203',
+    p_name => 'Product Field Created Part',
+    p_part_number => 'PRODUCT-FIELD-CREATED',
+    p_manufacturer => 'Product Boundary',
+    p_supplier => 'Product Boundary Supplier',
+    p_sku => 'PRODUCT-FIELD-CREATED',
+    p_category => 'runtime',
+    p_cost => 10,
+    p_sell_price => 20,
+    p_initial_qty => 0,
+    p_location_id => null,
+    p_operation_key => 'product-boundary:field-parts-create'
+  ) into v_result;
+  if nullif(v_result ->> 'part_id', '') is null then
+    raise exception 'Field actor created inventory for its linked Work Order incorrectly.';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.parts_create_and_attach_inventory_atomic(
+      p_item_id => '5a300000-0000-4000-8000-000000000213',
+      p_name => 'Denied Product Field Part',
+      p_part_number => 'PRODUCT-FIELD-DENIED',
+      p_manufacturer => null,
+      p_supplier => null,
+      p_sku => 'PRODUCT-FIELD-DENIED',
+      p_category => 'runtime',
+      p_cost => 10,
+      p_sell_price => 20,
+      p_initial_qty => 0,
+      p_location_id => null,
+      p_operation_key => 'product-boundary:field-parts-create-unlinked'
+    );
+  exception when insufficient_privilege then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Field actor created inventory for an unrelated Work Order.';
+  end if;
+
   insert into storage.objects (id, bucket_id, name, owner, owner_id, metadata)
   values (
     '59c00000-0000-4000-8000-000000000023',
@@ -934,6 +1227,24 @@ begin
   if v_count <> 1 then
     raise exception 'Fleet assignment relationship was not preserved.';
   end if;
+
+  v_denied := false;
+  begin
+    perform public.apply_job_punch_transition_atomic(
+      p_shop_id => '59200000-0000-4000-8000-000000000004',
+      p_work_order_line_id => '59600000-0000-4000-8000-000000000004',
+      p_action => 'product-boundary-unsupported',
+      p_technician_id => '59110000-0000-4000-8000-000000000004',
+      p_actor_user_id => '59100000-0000-4000-8000-000000000004',
+      p_operation_key => 'product-boundary:fleet-job-denied'
+    );
+  exception when insufficient_privilege then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Fleet read authority became job-punch write authority.';
+  end if;
+
   if (
     select count(*)
     from public.work_order_media

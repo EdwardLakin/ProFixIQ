@@ -168,6 +168,10 @@ describe("Shop Work Order product boundary", () => {
       "convert_fleet_request_work_order_product_core",
       "apply_shop_quote_decision_product_core",
       "parts_void_work_order_line_product_core",
+      "apply_job_punch_transition_product_core",
+      "apply_offline_line_mutation_product_core",
+      "parts_attach_inventory_to_request_item_product_core",
+      "parts_create_and_attach_inventory_product_core",
     ]) {
       expect(source).toContain(`set schema private`);
       expect(source).toContain(`private.${core}`);
@@ -229,6 +233,55 @@ describe("Shop Work Order product boundary", () => {
     const cleanReplay = await readFile(CLEAN_REPLAY, "utf8");
     expect(cleanReplay).toContain(
       "-f tests/security/shop-work-order-product-boundary.runtime.sql",
+    );
+  });
+
+  it("keeps privileged mutation RPCs behind Shop or linked Field authority", async () => {
+    const source = await readFile(MIGRATION, "utf8");
+    const runtime = await readFile(RUNTIME, "utf8");
+
+    expect(source).toContain(
+      "create or replace function private.profixiq_current_actor_can_mutate_work_order_product",
+    );
+    expect(source).toContain(
+      "public.profixiq_current_actor_has_shop_product_access(p_shop_id)",
+    );
+    expect(source).toContain(
+      "private.profixiq_current_actor_has_field_work_order_access(\n      p_shop_id,",
+    );
+    expect(source).not.toContain(
+      "grant execute on function private.profixiq_current_actor_can_mutate_work_order_product",
+    );
+    expect(
+      source.match(
+        /errcode = 'P0002',\n\s+message = 'Fleet service request is unavailable\.'/g,
+      ),
+    ).toHaveLength(2);
+
+    for (const rpc of [
+      "apply_job_punch_transition_atomic",
+      "apply_offline_line_mutation_atomic",
+      "parts_attach_inventory_to_request_item_atomic",
+      "parts_create_and_attach_inventory_atomic",
+    ]) {
+      expect(source).toContain(`create function public.${rpc}`);
+      expect(runtime).toContain(`public.${rpc}`);
+    }
+
+    expect(runtime).toContain(
+      "Field actor reached the job-punch product core without its mature validation.",
+    );
+    expect(runtime).toContain(
+      "Field actor reached the offline mutation product core without its mature validation.",
+    );
+    expect(runtime).toContain(
+      "Field actor attached inventory to its linked Work Order incorrectly.",
+    );
+    expect(runtime).toContain(
+      "Field actor created inventory for its linked Work Order incorrectly.",
+    );
+    expect(runtime).toContain(
+      "Fleet read authority became job-punch write authority.",
     );
   });
 
