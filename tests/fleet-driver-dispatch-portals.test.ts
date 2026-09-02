@@ -59,7 +59,8 @@ describe("Fleet driver and dispatcher portals", () => {
     const defectsApi = read("app/api/fleet/defects/route.ts");
 
     expect(queue).toContain("Nothing reaches the Shop until");
-    expect(queue).toContain("payload?.missed.map");
+    expect(queue).toContain("visibleMissed.map");
+    expect(queue).toContain("MISSED_PRETRIP_PAGE_SIZE");
     expect(queue).not.toContain("missed.slice(0, 6)");
     expect(queue).toContain('act("request_info")');
     expect(queue).toContain('act("monitor")');

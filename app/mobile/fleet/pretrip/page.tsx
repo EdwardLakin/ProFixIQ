@@ -9,6 +9,7 @@ import {
   Truck,
 } from "lucide-react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -17,6 +18,8 @@ import {
 } from "@/features/mobile/fleet/client";
 
 export default function MobilePretripIndexPage() {
+  const searchParams = useSearchParams();
+  const fleetId = searchParams.get("fleetId");
   const [units, setUnits] = useState<MobileFleetUnit[]>([]);
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -26,9 +29,6 @@ export default function MobilePretripIndexPage() {
     setLoading(true);
     setError(null);
     try {
-      const fleetId = new URLSearchParams(window.location.search).get(
-        "fleetId",
-      );
       setUnits(await fetchMobileFleetUnits(fleetId));
     } catch (caught) {
       setError(
@@ -40,7 +40,7 @@ export default function MobilePretripIndexPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fleetId]);
 
   useEffect(() => {
     void load();
@@ -151,7 +151,9 @@ export default function MobilePretripIndexPage() {
           visibleUnits.map((unit) => (
             <Link
               key={unit.id}
-              href={`/mobile/fleet/pretrip/${unit.id}`}
+              href={`/mobile/fleet/pretrip/${unit.id}${
+                fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ""
+              }`}
               className="mobile-command-row flex min-h-[5.5rem] items-center gap-3 border p-4 active:scale-[0.992]"
             >
               <span className="inline-grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-blue-500/10 text-blue-600 dark:text-blue-300">

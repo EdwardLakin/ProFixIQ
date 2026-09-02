@@ -107,6 +107,9 @@ describe("Phase 13 Fleet navigation performance contract", () => {
     const requestBuilder = read("app/portal/fleet/request/build/page.tsx");
     const units = read("features/fleet/components/FleetUnitsPage.tsx");
     const mobilePretrip = read("app/mobile/fleet/pretrip/page.tsx");
+    const mobilePretripDetail = read(
+      "app/mobile/fleet/pretrip/[unitId]/page.tsx",
+    );
     const mobileFleetClient = read("features/mobile/fleet/client.ts");
     const reports = read("features/fleet/components/FleetReportsWorkspace.tsx");
     const issueTables = read("features/fleet/components/FleetIssueTables.tsx");
@@ -182,10 +185,15 @@ describe("Phase 13 Fleet navigation performance contract", () => {
     expect(calendar).toContain("!initialFleetId ? (");
     expect(calendar).toContain('<option value="all">All fleets</option>');
     expect(units).toContain("href={withFleetId(");
-    expect(mobilePretrip).toContain(
-      "new URLSearchParams(window.location.search).get(",
-    );
+    expect(mobilePretrip).toContain('searchParams.get("fleetId")');
     expect(mobileFleetClient).toContain("JSON.stringify({ fleetId })");
+    expect(mobilePretrip).toContain(
+      "`?fleetId=${encodeURIComponent(fleetId)}`",
+    );
+    expect(mobilePretripDetail).toContain("fleetId={fleetId}");
+    expect(mobilePretripDetail).toContain(
+      "`?fleetId=${encodeURIComponent(fleetId)}`",
+    );
     expect(reports).toContain("withFleetId(href, fleetId)");
     expect(issueTables).toContain("const withFleetId = (href: string)");
     expect(aiSummary).toContain("href={withFleetId(");
