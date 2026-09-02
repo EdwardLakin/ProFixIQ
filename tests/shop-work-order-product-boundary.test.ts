@@ -252,6 +252,10 @@ describe("Shop Work Order product boundary", () => {
     expect(source).not.toContain(
       "grant execute on function private.profixiq_current_actor_can_mutate_work_order_product",
     );
+    expect(source).toContain("operation.actor_user_id = auth.uid()");
+    expect(source).toContain(
+      "operation.work_order_line_id = p_work_order_line_id",
+    );
     expect(
       source.match(
         /errcode = 'P0002',\n\s+message = 'Fleet service request is unavailable\.'/g,
@@ -272,6 +276,9 @@ describe("Shop Work Order product boundary", () => {
       "Field actor reached the job-punch product core without its mature validation.",
     );
     expect(runtime).toContain(
+      "Committed Field job punch was not replayable after reassignment.",
+    );
+    expect(runtime).toContain(
       "Field actor reached the offline mutation product core without its mature validation.",
     );
     expect(runtime).toContain(
@@ -283,6 +290,7 @@ describe("Shop Work Order product boundary", () => {
     expect(runtime).toContain(
       "Fleet read authority became job-punch write authority.",
     );
+    expect(runtime.match(/exception when no_data_found then/g)).toHaveLength(2);
   });
 
   it("keeps the actor-bound helpers represented in generated database types", async () => {

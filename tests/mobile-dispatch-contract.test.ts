@@ -34,8 +34,12 @@ describe("Mobile dispatch operations", () => {
     expect(migration).toContain(
       "revoke insert, update, delete on table public.service_visits from authenticated",
     );
-    expect(migration).toContain("create table if not exists public.service_visit_events");
-    expect(migration).toContain("grant select on table public.service_visit_events to authenticated");
+    expect(migration).toContain(
+      "create table if not exists public.service_visit_events",
+    );
+    expect(migration).toContain(
+      "grant select on table public.service_visit_events to authenticated",
+    );
     expect(migration).toContain("service_visit_events_shop_select");
   });
 
@@ -59,7 +63,9 @@ describe("Mobile dispatch operations", () => {
     expect(mobileProjection).toContain("sync_mobile_booking_to_dispatch_visit");
     expect(mobileProjection).toContain("mobile_booking_projection");
     expect(triggerOrder).toContain("bookings_zz_sync_mobile_dispatch_visit");
-    expect(triggerOrder).toContain("Universal Scheduler must project a booking first");
+    expect(triggerOrder).toContain(
+      "Universal Scheduler must project a booking first",
+    );
   });
 
   it("persists booking ownership at dispatch so legacy booking writers cannot move it", () => {
@@ -82,7 +88,9 @@ describe("Mobile dispatch operations", () => {
   });
 
   it("requires technician ownership before a visit becomes active dispatch", () => {
-    expect(assignmentGuard).toContain("guard_service_visit_dispatch_assignment");
+    expect(assignmentGuard).toContain(
+      "guard_service_visit_dispatch_assignment",
+    );
     expect(assignmentGuard).toContain(
       "new.status in ('dispatched','en_route','arrived','working','paused','completed')",
     );
@@ -108,7 +116,9 @@ describe("Mobile dispatch operations", () => {
     expect(contract).toContain('en_route: ["arrived", "cancelled"]');
     expect(contract).toContain('arrived: ["working", "cancelled"]');
     expect(contract).toContain('working: ["paused", "completed"]');
-    expect(migration).not.toContain("update public.work_order_lines\n  set status");
+    expect(migration).not.toContain(
+      "update public.work_order_lines\n  set status",
+    );
     expect(migration).not.toContain("update public.work_orders\n  set status");
   });
 
@@ -123,6 +133,14 @@ describe("Mobile dispatch operations", () => {
     expect(migration).toContain("dispatch_record_visit_event");
     expect(visitsApi).not.toContain('.from("service_visits")\n      .update');
     expect(createVisitApi).not.toContain('.from("service_visits")');
+  });
+
+  it("prevents Field dispatch edits from attaching arbitrary Work Orders", () => {
+    expect(visitsApi).toContain('productScope === "field"');
+    expect(visitsApi).toContain('hasOwn(input, "workOrderId")');
+    expect(visitsApi).toContain(
+      "Field visits must use the canonical Work Order materialization flow.",
+    );
   });
 
   it("exposes one staff board and one technician active-job contract", () => {

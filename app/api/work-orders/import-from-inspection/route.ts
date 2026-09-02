@@ -4,7 +4,10 @@ export const dynamic = "force-dynamic";
 import "server-only";
 
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  requireCanonicalShopOrFieldApiAccess,
+  resolveWorkOrderProductAuthority,
+} from "@/features/mobile/service/server/access";
 import { insertPrioritizedJobsFromInspection } from "@/features/work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
 
 type ImportBody = {
@@ -67,8 +70,6 @@ function parseFindingSelection(
 }
 
 export async function POST(req: Request) {
-  const supabase = createServerSupabaseRoute();
-
   try {
     const body = (await req.json().catch(() => null)) as ImportBody | null;
     const workOrderId = clean(body?.workOrderId);
@@ -114,23 +115,18 @@ export async function POST(req: Request) {
       );
     }
 
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
+    const access = await requireCanonicalShopOrFieldApiAccess();
+    if (!access.ok) return access.response;
+    const supabase = access.supabase;
 
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("shop_id")
-      .eq("id", user.id)
-      .maybeSingle<{ shop_id: string | null }>();
-    if (profileError || !profile?.shop_id) {
+    const productAuthority = await resolveWorkOrderProductAuthority(
+      access,
+      workOrderId,
+    );
+    if (!productAuthority.authorized) {
       return NextResponse.json(
-        { error: "Profile for current user not found." },
-        { status: 403 },
+        { error: "Work order not found." },
+        { status: 404 },
       );
     }
 
@@ -138,7 +134,7 @@ export async function POST(req: Request) {
       .from("work_orders")
       .select("id, shop_id, vehicle_id, status")
       .eq("id", workOrderId)
-      .eq("shop_id", profile.shop_id)
+      .eq("shop_id", access.profile.shop_id)
       .maybeSingle<{
         id: string;
         shop_id: string | null;
@@ -164,7 +160,7 @@ export async function POST(req: Request) {
         "id, shop_id, work_order_id, work_order_line_id, sync_revision, summary",
       )
       .eq("id", inspectionId)
-      .eq("shop_id", profile.shop_id)
+      .eq("shop_id", access.profile.shop_id)
       .eq("is_canonical", true)
       .maybeSingle<{
         id: string;
@@ -256,7 +252,7 @@ export async function POST(req: Request) {
       inspectionId,
       workOrderId,
       vehicleId: requestedVehicleId,
-      userId: user.id,
+      userId: access.authUserId,
       operationKey,
       findingSelection: findingSelection ?? undefined,
       expectedSyncRevision: findingSelection

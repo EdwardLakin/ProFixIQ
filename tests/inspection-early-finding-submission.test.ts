@@ -16,6 +16,8 @@ describe("inspection early finding submission", () => {
     expect(screen).not.toContain("autoGenerateParts");
     expect(route).toContain("findingSelection");
     expect(route).toContain("inspection.sync_revision");
+    expect(route).toContain("requireCanonicalShopOrFieldApiAccess");
+    expect(route).toContain("resolveWorkOrderProductAuthority");
     expect(route).toContain("insertPrioritizedJobsFromInspection({");
     expect(route).toContain("expectedSyncRevision: findingSelection");
   });

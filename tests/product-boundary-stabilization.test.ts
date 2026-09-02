@@ -75,6 +75,9 @@ describe("product boundary stabilization", () => {
     expect(access).toContain("resolveWorkOrderProductAuthority");
     expect(detail).toContain("resolveWorkOrderProductAuthority");
     expect(punches).toContain("resolveWorkOrderProductAuthority");
+    expect(punches).toContain(
+      "`${line.shop_id}:job-punch:${input.operationKey}`",
+    );
     expect(queue).toContain('"/api/mobile/work-orders/scope"');
     expect(queue).toContain('query.in("id", fieldWorkOrderIds)');
     expect(queue).toContain("getCachedMobileProductScope");
@@ -175,6 +178,12 @@ describe("product boundary stabilization", () => {
       capabilities: ["shop", "field_service"],
     });
     expect(resolveApiProductBoundary("/api/ai/interpret")).toEqual({
+      kind: "product",
+      capabilities: ["shop", "field_service"],
+    });
+    expect(
+      resolveApiProductBoundary("/api/work-orders/import-from-inspection"),
+    ).toEqual({
       kind: "product",
       capabilities: ["shop", "field_service"],
     });

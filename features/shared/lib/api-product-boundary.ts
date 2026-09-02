@@ -122,6 +122,7 @@ function isShopOrFieldApi(pathname: string): boolean {
       "/api/parts/vendors",
       "/api/payments/manual",
       "/api/receive-scan",
+      "/api/work-orders/import-from-inspection",
       "/api/work-orders/quotes/add",
       "/api/work-orders/quotes/add-from-menu-repair",
       "/api/work-order-lines/operational",

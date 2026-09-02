@@ -77,7 +77,7 @@ export async function requireJobPunchActorAccess(input: {
     .select("actor_user_id,work_order_line_id")
     .eq("shop_id", line.shop_id)
     .eq("operation_name", `job_punch:${input.action}`)
-    .eq("operation_key", input.operationKey)
+    .eq("operation_key", `${line.shop_id}:job-punch:${input.operationKey}`)
     .maybeSingle<{
       actor_user_id: string | null;
       work_order_line_id: string | null;

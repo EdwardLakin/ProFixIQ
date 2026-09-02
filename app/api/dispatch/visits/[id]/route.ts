@@ -115,8 +115,9 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
+  let productScope: Awaited<ReturnType<typeof resolveDispatchProductScope>>;
   try {
-    const productScope = await resolveDispatchProductScope(access);
+    productScope = await resolveDispatchProductScope(access);
     if (
       !(await canAccessDispatchVisit({
         access,
@@ -204,6 +205,20 @@ export async function PATCH(
       return NextResponse.json(
         { error: "Service visit not found." },
         { status: 404 },
+      );
+    }
+
+    if (
+      productScope === "field" &&
+      hasOwn(input, "workOrderId") &&
+      input.workOrderId !== current.work_order_id
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Field visits must use the canonical Work Order materialization flow.",
+        },
+        { status: 403 },
       );
     }
 

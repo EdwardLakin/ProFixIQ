@@ -2444,6 +2444,28 @@ begin
     );
   end if;
 
+  -- A committed actor/line/action-bound receipt remains replayable after a
+  -- Field visit is reassigned. The private core repeats its canonical actor
+  -- validation and returns the durable result before touching live line state.
+  if auth.uid() is not null
+     and exists (
+       select 1
+       from public.workforce_operation_keys operation
+       where operation.shop_id = p_shop_id
+         and operation.operation_name =
+           'job_punch:' || lower(trim(coalesce(p_action, '')))
+         and operation.operation_key = p_operation_key
+         and operation.actor_user_id = auth.uid()
+         and operation.work_order_line_id = p_work_order_line_id
+     ) then
+    return private.apply_job_punch_transition_product_core(
+      p_shop_id, p_work_order_line_id, p_action, p_technician_id,
+      p_actor_user_id, p_operation_key, p_allow_concurrent, p_at,
+      p_start_source, p_hold_reason, p_notes, p_preserve_line_status,
+      p_release_to_awaiting, p_cause, p_correction, p_event, p_details
+    );
+  end if;
+
   select line.work_order_id
     into v_work_order_id
   from public.work_order_lines line

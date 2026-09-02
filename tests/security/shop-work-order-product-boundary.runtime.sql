@@ -197,6 +197,23 @@ from public.work_order_lines line
 join public.shops shop on shop.id = line.shop_id
 where line.id::text like '59600000-0000-4000-8000-%';
 
+-- Seed a previously committed Field punch on the currently unlinked Work
+-- Order. The actor-owned receipt must remain replayable after reassignment,
+-- while a fresh mutation against the same line remains denied below.
+insert into public.workforce_operation_keys (
+  shop_id, operation_name, operation_key, actor_user_id,
+  work_order_id, work_order_line_id, result
+)
+values (
+  '59200000-0000-4000-8000-000000000003',
+  'job_punch:pause',
+  '59200000-0000-4000-8000-000000000003:job-punch:product-boundary:field-job-replay',
+  '59100000-0000-4000-8000-000000000003',
+  '59500000-0000-4000-8000-000000000013',
+  '59600000-0000-4000-8000-000000000013',
+  '{"ok":true,"action":"pause","work_order_line_id":"59600000-0000-4000-8000-000000000013"}'::jsonb
+);
+
 -- Direct Parts RPC fixtures cover both a linked Field Work Order and an
 -- unrelated same-shop Work Order. The public wrappers must distinguish them
 -- before their SECURITY DEFINER implementations can mutate inventory.
@@ -953,6 +970,19 @@ begin
     raise exception 'Field actor reached the job-punch product core without its mature validation.';
   end if;
 
+  select public.apply_job_punch_transition_atomic(
+    p_shop_id => '59200000-0000-4000-8000-000000000003',
+    p_work_order_line_id => '59600000-0000-4000-8000-000000000013',
+    p_action => 'pause',
+    p_technician_id => '59100000-0000-4000-8000-000000000003',
+    p_actor_user_id => '59100000-0000-4000-8000-000000000003',
+    p_operation_key => '59200000-0000-4000-8000-000000000003:job-punch:product-boundary:field-job-replay'
+  ) into v_result;
+  if coalesce((v_result ->> 'idempotent')::boolean, false) is not true
+     or v_result ->> 'action' is distinct from 'pause' then
+    raise exception 'Committed Field job punch was not replayable after reassignment.';
+  end if;
+
   v_denied := false;
   begin
     perform public.apply_job_punch_transition_atomic(
@@ -1299,7 +1329,7 @@ begin
     perform public.convert_owned_fleet_service_request_to_work_order_atomic(
       '59b00000-0000-4000-8000-000000000004'
     );
-  exception when insufficient_privilege then
+  exception when no_data_found then
     v_denied := true;
   end;
   if not v_denied then
@@ -1311,7 +1341,7 @@ begin
     perform public.convert_fleet_service_request_to_work_order_atomic(
       '59b00000-0000-4000-8000-000000000004'
     );
-  exception when insufficient_privilege then
+  exception when no_data_found then
     v_denied := true;
   end;
   if not v_denied then
