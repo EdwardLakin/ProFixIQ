@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import FleetMaintenanceCalendar from "@/features/fleet/components/FleetMaintenanceCalendar";
@@ -174,8 +174,8 @@ describe("selected Fleet workspace requests", () => {
     });
   });
 
-  it("keeps every missed pre-trip reachable in the queue", async () => {
-    const missed = Array.from({ length: 7 }, (_, index) => ({
+  it("bounds missed pre-trip rendering while keeping every row reachable", async () => {
+    const missed = Array.from({ length: 30 }, (_, index) => ({
       id: `missed-${index}`,
       unitLabel: `Unit ${index}`,
       driverName: `Driver ${index}`,
@@ -204,7 +204,11 @@ describe("selected Fleet workspace requests", () => {
     render(<FleetDefectQueue fleetId={FLEET_B} />);
 
     await waitFor(() =>
-      expect(screen.getAllByText("Missed daily pre-trip")).toHaveLength(7),
+      expect(screen.getAllByText("Missed daily pre-trip")).toHaveLength(25),
     );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Load more missed pre-trips" }),
+    );
+    expect(screen.getAllByText("Missed daily pre-trip")).toHaveLength(30);
   });
 });

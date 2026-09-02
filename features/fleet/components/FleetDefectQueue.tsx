@@ -56,6 +56,8 @@ type Payload = {
   missed: Missed[];
 };
 
+const MISSED_PRETRIP_PAGE_SIZE = 25;
+
 function dateLabel(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
@@ -89,6 +91,9 @@ export default function FleetDefectQueue({
   >("not_issue");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [visibleMissedCount, setVisibleMissedCount] = useState(
+    MISSED_PRETRIP_PAGE_SIZE,
+  );
 
   const load = useCallback(async () => {
     setError(null);
@@ -104,6 +109,7 @@ export default function FleetDefectQueue({
     if (!response.ok)
       throw new Error(body.error || "Unable to load the defect queue");
     setPayload(body);
+    setVisibleMissedCount(MISSED_PRETRIP_PAGE_SIZE);
   }, [fleetId]);
 
   useEffect(() => {
@@ -122,6 +128,7 @@ export default function FleetDefectQueue({
   }, [load]);
 
   const selectedIds = useMemo(() => Array.from(selected), [selected]);
+  const visibleMissed = payload?.missed.slice(0, visibleMissedCount) ?? [];
 
   async function act(
     action:
@@ -243,7 +250,7 @@ export default function FleetDefectQueue({
 
       {(payload?.missed.length ?? 0) > 0 ? (
         <div className="mt-4 grid gap-2 md:grid-cols-2">
-          {payload?.missed.map((item) => (
+          {visibleMissed.map((item) => (
             <div
               key={item.id}
               className="rounded-xl border border-red-500/25 bg-red-500/10 p-3 text-xs"
@@ -256,6 +263,19 @@ export default function FleetDefectQueue({
               </div>
             </div>
           ))}
+          {visibleMissed.length < (payload?.missed.length ?? 0) ? (
+            <button
+              type="button"
+              onClick={() =>
+                setVisibleMissedCount(
+                  (current) => current + MISSED_PRETRIP_PAGE_SIZE,
+                )
+              }
+              className="min-h-12 rounded-xl border border-[color:var(--theme-border-soft)] px-4 text-xs font-semibold"
+            >
+              Load more missed pre-trips
+            </button>
+          ) : null}
         </div>
       ) : null}
 

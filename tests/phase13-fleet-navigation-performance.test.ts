@@ -108,6 +108,15 @@ describe("Phase 13 Fleet navigation performance contract", () => {
     const units = read("features/fleet/components/FleetUnitsPage.tsx");
     const mobilePretrip = read("app/mobile/fleet/pretrip/page.tsx");
     const mobileFleetClient = read("features/mobile/fleet/client.ts");
+    const reports = read("features/fleet/components/FleetReportsWorkspace.tsx");
+    const issueTables = read("features/fleet/components/FleetIssueTables.tsx");
+    const aiSummary = read("features/fleet/components/FleetAISummary.tsx");
+    const economics = read(
+      "features/fleet/components/FleetUnitEconomicsPanel.tsx",
+    );
+    const templatesPage = read(
+      "app/portal/fleet/inspection-templates/page.tsx",
+    );
     expect(maintenancePage).toContain("initialFleetId={selectedFleetId}");
     expect(maintenanceRoute).toContain(
       "requestedFleetId = clean(body.fleetId)",
@@ -177,6 +186,13 @@ describe("Phase 13 Fleet navigation performance contract", () => {
       "new URLSearchParams(window.location.search).get(",
     );
     expect(mobileFleetClient).toContain("JSON.stringify({ fleetId })");
+    expect(reports).toContain("withFleetId(href, fleetId)");
+    expect(issueTables).toContain("const withFleetId = (href: string)");
+    expect(aiSummary).toContain("href={withFleetId(");
+    expect(economics).toContain("href={withFleetId(");
+    expect(templatesPage).toContain(
+      "canAdministerFleetForActor(actor, actor.primaryFleetId)",
+    );
     expect(requestsPage).toContain("fleetId={selectedFleetId}");
     expect(requests).toContain(
       "body: JSON.stringify({ fleetId: fleetId ?? null })",

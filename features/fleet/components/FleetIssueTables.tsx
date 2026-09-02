@@ -27,15 +27,23 @@ export default function FleetIssueTables({
   const productHostRoute =
     routePrefix === "/portal/fleet" && !pathname.startsWith("/portal/fleet");
   const openIssues = issues.filter((i) => i.status !== "completed");
-  const requestHref = productHostRoute
-    ? "/requests/new"
-    : routePrefix === "/portal/fleet"
-      ? "/portal/fleet/request/build"
-      : "/work-orders/fleet-requests";
-  const unitHref = (unitId: string) =>
+  const withFleetId = (href: string) =>
+    fleetId
+      ? `${href}${href.includes("?") ? "&" : "?"}fleetId=${encodeURIComponent(fleetId)}`
+      : href;
+  const requestHref = withFleetId(
     productHostRoute
-      ? `/assets/${encodeURIComponent(unitId)}`
-      : `${routePrefix}/units/${encodeURIComponent(unitId)}`;
+      ? "/requests/new"
+      : routePrefix === "/portal/fleet"
+        ? "/portal/fleet/request/build"
+        : "/work-orders/fleet-requests",
+  );
+  const unitHref = (unitId: string) =>
+    withFleetId(
+      productHostRoute
+        ? `/assets/${encodeURIComponent(unitId)}`
+        : `${routePrefix}/units/${encodeURIComponent(unitId)}`,
+    );
   const pretripHref = (unitId: string) => {
     const encodedUnitId = encodeURIComponent(unitId);
     const base = productHostRoute
@@ -43,7 +51,7 @@ export default function FleetIssueTables({
       : routePrefix === "/portal/fleet"
         ? `/portal/fleet/pretrip/${encodedUnitId}`
         : `/mobile/fleet/pretrip/${encodedUnitId}`;
-    return fleetId ? `${base}?fleetId=${encodeURIComponent(fleetId)}` : base;
+    return withFleetId(base);
   };
 
   return (
