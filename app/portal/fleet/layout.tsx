@@ -57,6 +57,20 @@ export default async function PortalFleetLayout({
       actorLabel={actor.actorLabel}
       experience={actor.experience}
       canAccessManagerWorkspaces={actor.capabilities.canManageUnits}
+      fleetContexts={Object.fromEntries(
+        Object.entries(actor.fleetShellContexts).map(([fleetId, context]) => [
+          fleetId,
+          {
+            ...context,
+            subtitle:
+              context.experience === "external_driver"
+                ? "Today’s inspections, reported issues and updates"
+                : context.experience === "external_dispatcher"
+                  ? "Driver intake, asset readiness and maintenance coordination"
+                  : "Asset readiness, preventive maintenance and repair decisions",
+          },
+        ]),
+      )}
       userId={actor.userId}
       productHost={productHost}
     >

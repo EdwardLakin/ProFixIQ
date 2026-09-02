@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
+import { resolveFleetRoleTier } from "@/features/shared/lib/rbac";
 import {
   resolveFleetActorContext,
   type FleetActorContext,
@@ -30,6 +31,13 @@ export type FleetUiContext = {
     | "external_driver";
   isInternal: boolean;
   capabilities: FleetUiCapabilities;
+};
+
+export type FleetShellContext = Pick<
+  FleetUiContext,
+  "actorLabel" | "experience"
+> & {
+  canAccessManagerWorkspaces: boolean;
 };
 
 function resolveActorLabel(actor: FleetActorContext): string {
@@ -81,6 +89,46 @@ export function getFleetUiContext(actor: FleetActorContext): FleetUiContext {
         actor.actorType === "internal_staff" ||
         actor.actorType === "fleet_manager",
     },
+  };
+}
+
+export function getFleetShellContext(
+  actor: FleetActorContext,
+  fleetId?: string | null,
+): FleetShellContext {
+  const base = getFleetUiContext(actor);
+  const membership =
+    !actor.isInternal && fleetId
+      ? actor.fleetMemberships.find((item) => item.fleetId === fleetId)
+      : null;
+
+  if (!membership) {
+    return {
+      actorLabel: base.actorLabel,
+      experience: base.experience,
+      canAccessManagerWorkspaces: base.capabilities.canManageUnits,
+    };
+  }
+
+  const tier = resolveFleetRoleTier(membership.role);
+  if (tier === "manager") {
+    return {
+      actorLabel: "Fleet Manager",
+      experience: "external_manager",
+      canAccessManagerWorkspaces: true,
+    };
+  }
+  if (tier === "approver") {
+    return {
+      actorLabel: "Fleet Dispatcher",
+      experience: "external_dispatcher",
+      canAccessManagerWorkspaces: false,
+    };
+  }
+  return {
+    actorLabel: "Fleet Driver",
+    experience: "external_driver",
+    canAccessManagerWorkspaces: false,
   };
 }
 

@@ -125,7 +125,7 @@ describe("premier fleet workspaces", () => {
     const route = source("app/api/fleet/units/route.ts");
     const units = source("features/fleet/components/FleetUnitsPage.tsx");
 
-    expect(route).toContain("resolveFleetActorScope(actor, {");
+    expect(route).toContain("resolveSelectedFleetRequestScope(actor, {");
     expect(route).toContain("preferMembershipFleet: !actor.isInternal");
     expect(route).not.toContain("explicitShopId");
     expect(units).not.toContain("shopId");
@@ -221,14 +221,15 @@ describe("premier fleet workspaces", () => {
     );
     const pretrips = source("features/fleet/components/PretripReportsPage.tsx");
 
-    expect(issues).toContain("requestHref = productHostRoute");
+    expect(issues).toContain("requestHref = withFleetId");
+    expect(issues).toContain('fleetId=${encodeURIComponent(fleetId)}');
     expect(issues).toContain('"/requests/new"');
     expect(issues).toContain("`/pre-trips/start/${encodedUnitId}`");
     expect(issues).toContain("href={pretripHref(a.unitId)}");
     expect(detail).toContain('"/pre-trips/start"');
     expect(detail).toContain('"/requests/new"');
     expect(economics).toContain("`/assets/${encodeURIComponent(unit.unitId)}`");
-    expect(requests).toContain("const buildHref = productRoutes");
+    expect(requests).toContain("const buildPath = productRoutes");
     expect(requests).toContain('? "/requests/new"');
     expect(requests).toContain('productRoutes ? "/history"');
     expect(pretrips).toContain('"/pre-trips/start"');

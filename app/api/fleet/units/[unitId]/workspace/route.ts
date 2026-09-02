@@ -5,8 +5,8 @@ import {
 } from "@/features/shared/lib/supabase/server";
 import {
   resolveFleetActorContext,
-  resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 import type {
   FleetInvoiceSummary,
   FleetPriority,
@@ -124,7 +124,7 @@ export async function GET(request: Request, { params }: Props) {
     const actor = await resolveFleetActorContext(supabase, {
       requestedFleetId,
     });
-    const scope = resolveFleetActorScope(actor, {
+    const scope = resolveSelectedFleetRequestScope(actor, {
       explicitFleetId: requestedFleetId,
       preferMembershipFleet: true,
     });

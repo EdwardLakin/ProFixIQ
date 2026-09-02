@@ -3,8 +3,13 @@ import { redirect } from "next/navigation";
 import { requireFleetPortalActor } from "../_lib/requireFleetPortalActor";
 import FleetDefectQueue from "@/features/fleet/components/FleetDefectQueue";
 
-export default async function FleetDispatcherIntakePage() {
-  const actor = await requireFleetPortalActor();
+type Props = { searchParams: Promise<{ fleetId?: string }> };
+
+export default async function FleetDispatcherIntakePage({
+  searchParams,
+}: Props) {
+  const { fleetId } = await searchParams;
+  const actor = await requireFleetPortalActor(fleetId ?? null);
   if (!actor.capabilities.canViewDispatch) redirect("/portal/fleet");
 
   return (

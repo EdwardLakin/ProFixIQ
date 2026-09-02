@@ -5,8 +5,8 @@ import {
 } from "@/features/shared/lib/supabase/server";
 import {
   resolveFleetActorContext,
-  resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 import type { Database } from "@shared/types/types/supabase";
 
 type InvoiceCurrencyRow = Pick<
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   const actor = await resolveFleetActorContext(supabase, {
     requestedFleetId: body.fleetId,
   });
-  const scope = resolveFleetActorScope(actor, {
+  const scope = resolveSelectedFleetRequestScope(actor, {
     explicitShopId: body.shopId,
     explicitFleetId: body.fleetId,
   });

@@ -29,9 +29,11 @@ type PretripReport = {
 export default function PretripReportsPage({
   uiContext,
   routePrefix = "/portal/fleet",
+  fleetId = null,
 }: {
   uiContext: FleetUiContext;
   routePrefix?: "/fleet" | "/portal/fleet";
+  fleetId?: string | null;
 }) {
   const pathname = usePathname() ?? "";
   const productRoutes =
@@ -60,7 +62,7 @@ export default function PretripReportsPage({
         const res = await fetch("/api/fleet/pretrip", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ shopId: null }), // server infers from auth
+          body: JSON.stringify({ shopId: null, fleetId }),
         });
 
         if (!res.ok) {
@@ -90,7 +92,13 @@ export default function PretripReportsPage({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [fleetId]);
+
+  const withFleetId = (href: string) => {
+    if (!fleetId) return href;
+    const separator = href.includes("?") ? "&" : "?";
+    return `${href}${separator}fleetId=${encodeURIComponent(fleetId)}`;
+  };
 
   const filteredReports = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -161,15 +169,15 @@ export default function PretripReportsPage({
                 ? "Start the next inspection from "
                 : "Drivers submit pre-trips from the "}
               <Link
-                href={
+                href={withFleetId(
                   isDriver
                     ? productRoutes
                       ? "/pre-trips/start"
                       : "/portal/fleet/pretrip"
                     : productRoutes
                       ? "/assets"
-                      : "/mobile/fleet/pretrip"
-                }
+                      : "/mobile/fleet/pretrip",
+                )}
                 className="underline decoration-dotted underline-offset-4"
               >
                 {isDriver
@@ -320,7 +328,9 @@ export default function PretripReportsPage({
                           uiContext.capabilities
                             .canViewUnitMaintenanceRecord && (
                             <Link
-                              href={`${routePrefix}/units/${encodeURIComponent(r.unit_id)}`}
+                              href={withFleetId(
+                                `${routePrefix}/units/${encodeURIComponent(r.unit_id)}`,
+                              )}
                               className="mr-2 text-[color:var(--accent-copper)] underline-offset-4 hover:underline"
                             >
                               Open unit
@@ -330,13 +340,13 @@ export default function PretripReportsPage({
                         {(uiContext.capabilities.canCreateServiceRequests ||
                           uiContext.experience === "external_dispatcher") && (
                           <Link
-                            href={
+                            href={withFleetId(
                               uiContext.experience === "external_dispatcher"
                                 ? productRoutes
                                   ? "/intake"
                                   : "/portal/fleet/intake"
-                                : `${routePrefix}/service-requests?pretripId=${encodeURIComponent(r.id)}`
-                            }
+                                : `${routePrefix}/service-requests?pretripId=${encodeURIComponent(r.id)}`,
+                            )}
                             className="rounded-full border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
                           >
                             {uiContext.experience === "external_dispatcher"

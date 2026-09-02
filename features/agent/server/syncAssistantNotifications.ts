@@ -1,7 +1,16 @@
 
-import { canonicalizeRole } from "@/features/shared/lib/rbac";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
+import {
+  canAccessAssistantNotifications,
+  canonicalizeRole,
+} from "@/features/shared/lib/rbac";
 import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
-import { getServerSupabase } from "./supabase";
+import {
+  getAssistantNotificationWriter,
+  getServerSupabase,
+  markAssistantNotificationTrustedWriterRollout,
+} from "./supabase";
 import { getOpsNotifications, type OpsNotification } from "./getOpsNotifications";
 
 export type PersistedAssistantNotification = {
@@ -36,6 +45,37 @@ type AssistantNotificationQueryError = {
   code?: string | null;
   message?: string | null;
   details?: string | null;
+};
+
+export type AssistantNotificationReadScope = {
+  shopId: string;
+  fleetIds: string[] | null;
+};
+
+export type AssistantNotificationPageRow = {
+  id: string;
+  level: "info" | "warning" | "critical";
+  code: string;
+  title: string;
+  message: string;
+  href: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  status: "active" | "acknowledged" | "resolved";
+  metadata: Record<string, unknown> | null;
+  last_seen_at: string;
+};
+
+export type AssistantNotificationPageCursor = {
+  lastSeenAt: string;
+  id: string;
+};
+
+export type AssistantNotificationPageResult = {
+  available: boolean;
+  rows: AssistantNotificationPageRow[];
+  total: number | null;
+  nextCursor: AssistantNotificationPageCursor | null;
 };
 
 const LEGACY_NOTIFICATION_STATUS_ALIASES: Record<string, AssistantNotificationStatus> = {
@@ -93,6 +133,122 @@ function isMissingAssistantNotificationsError(
   );
 }
 
+function normalizedAssistantNotificationReadScopes(
+  scopes: AssistantNotificationReadScope[],
+): AssistantNotificationReadScope[] {
+  const byShop = new Map<string, Set<string> | null>();
+
+  for (const scope of scopes) {
+    if (!scope.shopId || scope.fleetIds?.length === 0) continue;
+    const existing = byShop.get(scope.shopId);
+    if (existing === null) continue;
+    if (scope.fleetIds === null) {
+      byShop.set(scope.shopId, null);
+      continue;
+    }
+    const fleetIds = existing ?? new Set<string>();
+    for (const fleetId of scope.fleetIds) fleetIds.add(fleetId);
+    byShop.set(scope.shopId, fleetIds);
+  }
+
+  return Array.from(byShop, ([shopId, fleetIds]) => ({
+    shopId,
+    fleetIds: fleetIds === null ? null : Array.from(fleetIds),
+  }));
+}
+
+function compareAssistantNotificationRows(
+  left: AssistantNotificationPageRow,
+  right: AssistantNotificationPageRow,
+): number {
+  const leftSeenAt = Date.parse(left.last_seen_at);
+  const rightSeenAt = Date.parse(right.last_seen_at);
+  if (leftSeenAt !== rightSeenAt) return rightSeenAt - leftSeenAt;
+  return right.id.localeCompare(left.id);
+}
+
+/**
+ * Read the production-backed assistant notification relation through its
+ * established persistence boundary. The relation predates clean replay, so a
+ * missing-table response remains explicit instead of making a Fleet feature
+ * redefine the shared table, grants, policies, or triggers.
+ */
+export async function readAssistantNotificationPage(params: {
+  supabase: SupabaseClient<Database>;
+  scopes: AssistantNotificationReadScope[];
+  source: string;
+  statuses: Array<"active" | "acknowledged" | "resolved">;
+  cursor: AssistantNotificationPageCursor | null;
+  pageSize: number;
+}): Promise<AssistantNotificationPageResult> {
+  const scopes = normalizedAssistantNotificationReadScopes(params.scopes);
+  if (scopes.length === 0) {
+    return { available: true, rows: [], total: 0, nextCursor: null };
+  }
+
+  const results = await Promise.all(
+    scopes.map(async (scope) => {
+      let pageQuery = params.supabase
+        .from("assistant_notifications")
+        .select(
+          "id, level, code, title, message, href, entity_type, entity_id, status, metadata, last_seen_at",
+          params.cursor ? undefined : { count: "exact" },
+        )
+        .eq("shop_id", scope.shopId)
+        .eq("source", params.source)
+        .in("status", params.statuses)
+        .order("last_seen_at", { ascending: false })
+        .order("id", { ascending: false })
+        .limit(params.pageSize + 1);
+      if (scope.fleetIds !== null) {
+        pageQuery = pageQuery.in("metadata->>fleet_id", scope.fleetIds);
+      }
+
+      if (params.cursor) {
+        pageQuery = pageQuery.or(
+          `last_seen_at.lt.${params.cursor.lastSeenAt},and(last_seen_at.eq.${params.cursor.lastSeenAt},id.lt.${params.cursor.id})`,
+        );
+      }
+
+      return await pageQuery;
+    }),
+  );
+
+  const missingRelation = results.some(({ error }) =>
+    isMissingAssistantNotificationsError(error),
+  );
+  if (missingRelation) {
+    return { available: false, rows: [], total: 0, nextCursor: null };
+  }
+
+  const failed = results.find(({ error }) => error);
+  if (failed?.error) throw new Error(failed.error.message);
+
+  const rowsById = new Map<string, AssistantNotificationPageRow>();
+  let total: number | null = params.cursor ? null : 0;
+  for (const result of results) {
+    const rows = (result.data ?? []) as AssistantNotificationPageRow[];
+    if (total !== null) total += result.count ?? rows.length;
+    for (const row of rows) rowsById.set(row.id, row);
+  }
+
+  const candidates = Array.from(rowsById.values()).sort(
+    compareAssistantNotificationRows,
+  );
+  const rows = candidates.slice(0, params.pageSize);
+  const lastRow = rows.at(-1) ?? null;
+
+  return {
+    available: true,
+    rows,
+    total,
+    nextCursor:
+      candidates.length > params.pageSize && lastRow
+        ? { lastSeenAt: lastRow.last_seen_at, id: lastRow.id }
+        : null,
+  };
+}
+
 function buildFingerprint(
   item: {
     code: string;
@@ -118,10 +274,14 @@ function isUserScopedRole(role: string | null | undefined): boolean {
 
 async function filterComputedNotificationsForUser(params: {
   shopId: string;
-  userId: string;
+  userIds: string[];
   computed: OpsNotification[];
 }): Promise<OpsNotification[]> {
   const supabase = getServerSupabase();
+  const userIds = Array.from(
+    new Set(params.userIds.map((value) => value.trim()).filter(Boolean)),
+  );
+  if (userIds.length === 0) return [];
 
   const activeStatuses = ["awaiting", "awaiting_approval", "queued", "in_progress", "on_hold"];
 
@@ -136,26 +296,26 @@ async function filterComputedNotificationsForUser(params: {
         .from("work_order_lines")
         .select("id")
         .eq("shop_id", params.shopId)
-        .eq("assigned_tech_id", params.userId)
+        .in("assigned_tech_id", userIds)
         .in("status", activeStatuses)
         .limit(200),
       supabase
         .from("work_order_lines")
         .select("id")
         .eq("shop_id", params.shopId)
-        .eq("assigned_to", params.userId)
+        .in("assigned_to", userIds)
         .in("status", activeStatuses)
         .limit(200),
       supabase
         .from("work_order_line_technicians")
         .select("work_order_line_id")
-        .eq("technician_id", params.userId)
+        .in("technician_id", userIds)
         .limit(200),
       supabase
         .from("work_order_line_labor_segments")
         .select("work_order_line_id")
         .eq("shop_id", params.shopId)
-        .eq("technician_id", params.userId)
+        .in("technician_id", userIds)
         .is("ended_at", null)
         .limit(50),
     ]);
@@ -216,11 +376,14 @@ async function filterComputedNotificationsForUser(params: {
     }
 
     for (const row of activeLineRows ?? []) {
-      const isAssigned = resolveTechnicianAssignmentContract({
+      const assignment = resolveTechnicianAssignmentContract({
         primaryTechnicianId: row.assigned_tech_id,
         legacyAssignedTo: row.assigned_to,
         canonicalTechnicianIds: technicianIdsByLine.get(row.id),
-      }).technicianIds.includes(params.userId);
+      });
+      const isAssigned = userIds.some((userId) =>
+        assignment.technicianIds.includes(userId),
+      );
       if (!isAssigned && !activeLaborLineIds.has(row.id)) continue;
       if (row.id) lineIds.add(row.id);
       if (row.work_order_id) workOrderIds.add(row.work_order_id);
@@ -388,10 +551,22 @@ async function getDurablePartsPickNotifications(params: {
 export async function syncAssistantNotifications(params: {
   shopId: string;
   userId?: string | null;
+  assignmentUserIds?: string[];
   role?: string | null;
 }): Promise<PersistedAssistantNotification[]> {
-  const { shopId, userId = null, role = null } = params;
+  const {
+    shopId,
+    userId = null,
+    assignmentUserIds = userId ? [userId] : [],
+    role = null,
+  } = params;
+  if (!canAccessAssistantNotifications(role)) {
+    throw new Error("A shop workforce role is required for notifications");
+  }
+
   const supabase = getServerSupabase();
+  const notificationWriter = getAssistantNotificationWriter();
+  await markAssistantNotificationTrustedWriterRollout(notificationWriter);
   const now = new Date().toISOString();
 
   const userScoped = !!userId && isUserScopedRole(role);
@@ -420,7 +595,7 @@ export async function syncAssistantNotifications(params: {
   if (userScoped && userId) {
     computed = await filterComputedNotificationsForUser({
       shopId,
-      userId,
+      userIds: assignmentUserIds,
       computed,
     });
   }
@@ -526,7 +701,7 @@ export async function syncAssistantNotifications(params: {
   });
 
   if (assistantNotificationsAvailable && upsertRows.length > 0) {
-    const { error: upsertError } = await supabase
+    const { error: upsertError } = await notificationWriter
       .from("assistant_notifications")
       .upsert(upsertRows, {
         onConflict: "shop_id,fingerprint",
@@ -545,14 +720,22 @@ export async function syncAssistantNotifications(params: {
     .map((row) => row.id);
 
   if (assistantNotificationsAvailable && toResolve.length > 0) {
-    const { error: resolveError } = await supabase
+    let resolveQuery = notificationWriter
       .from("assistant_notifications")
       .update({
         status: "resolved",
         resolved_at: now,
         updated_at: now,
       })
+      .eq("shop_id", shopId)
+      .eq("source", source)
       .in("id", toResolve);
+
+    if (userScoped) {
+      resolveQuery = resolveQuery.eq("user_id", userId);
+    }
+
+    const { error: resolveError } = await resolveQuery;
 
     if (resolveError) {
       throw new Error(resolveError.message);

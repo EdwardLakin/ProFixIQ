@@ -181,16 +181,21 @@ export async function POST(req: Request) {
   }
 
   if (surface === "customer") {
-    const { data: customer } = await supabase
+    // Password authentication has already established the caller's auth subject.
+    // Resolve the linked customer and accepted invite with the service-role
+    // client, explicitly pinned to that verified subject. This keeps portal
+    // bootstrap independent of customer-table RLS and of production-only policy
+    // drift such as `customer_select_own`.
+    const admin = createAdminSupabase();
+    const { data: customer, error: customerError } = await admin
       .from("customers")
       .select("id")
       .eq("user_id", signedInUser.id)
       .limit(1)
       .maybeSingle();
-    if (!customer?.id) return deny();
+    if (customerError || !customer?.id) return deny();
 
-    const admin = createAdminSupabase();
-    const { data: invite } = await admin
+    const { data: invite, error: inviteError } = await admin
       .from("customer_portal_invites")
       .select("id")
       .eq("customer_id", customer.id)
@@ -199,7 +204,7 @@ export async function POST(req: Request) {
       .is("revoked_at", null)
       .limit(1)
       .maybeSingle();
-    if (!invite?.id) return deny();
+    if (inviteError || !invite?.id) return deny();
     return NextResponse.json({ ok: true, destination: "/portal" });
   }
 

@@ -334,6 +334,12 @@ export function canAccessShopAssistant(
   );
 }
 
+export function canAccessAssistantNotifications(
+  role: string | null | undefined,
+): boolean {
+  return hasAnyRole(role, [...ROLE_GROUPS.shopWideOperators, "mechanic"]);
+}
+
 export function resolveFleetRoleTier(
   role: string | null | undefined,
 ): FleetRoleTier {

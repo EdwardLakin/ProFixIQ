@@ -15,8 +15,10 @@
 --
 -- fleet_pm_policies.created_by is NOT NULL, so the unattended path evaluates
 -- existing active policies and never provisions new ones.
+-- Scheduler-only helpers live in the existing private schema and remain
+-- unavailable to API roles; only the preserved actor entrypoint is public.
 
-create or replace function public.evaluate_fleet_pm_due_events_core(
+create or replace function private.evaluate_fleet_pm_due_events_core(
   p_fleet_id uuid,
   p_vehicle_id uuid,
   p_actor_id uuid,
@@ -298,7 +300,18 @@ begin
           p_actor_id,
           jsonb_build_object('fleet_id', v_policy.fleet_id, 'policy_id', v_policy.id, 'due_event_id', v_event_id)
         );
+      end if;
 
+      -- A due event may predate this alert integration. Upsert the notification
+      -- for every still-open event, not only for rows created by this run, so
+      -- the first hourly sweep backfills the Fleet feed without duplicating the
+      -- evidence and recommendation ledgers above.
+      if exists (
+        select 1
+        from public.fleet_pm_due_events e
+        where e.id = v_event_id
+          and e.status in ('pending', 'deferred')
+      ) then
         select coalesce(nullif(v.unit_number,''), nullif(v.license_plate,''), nullif(v.vin,''), 'Unit')
         into v_unit_label
         from public.vehicles v
@@ -315,7 +328,7 @@ begin
           'fleet_pm_due', 'warning',
           coalesce(v_unit_label, 'Unit') || ' is due for ' || v_policy.name,
           'Due by ' || array_to_string(v_due_reasons, ', ') || '. Review the evidence before creating work.',
-          '/fleet/maintenance', 'fleet_pm_due_event', v_event_id, 'active',
+          '/fleet/maintenance', 'fleet_pm_due_event', v_event_id::text, 'active',
           jsonb_build_object(
             'fleet_id', v_policy.fleet_id,
             'vehicle_id', v_vehicle_id,
@@ -326,7 +339,11 @@ begin
           now(), now(), now(), now()
         )
         on conflict (shop_id, fingerprint) do update
-          set status = 'active',
+          set status = case
+                when public.assistant_notifications.status = 'acknowledged'
+                  then 'acknowledged'
+                else 'active'
+              end,
               level = excluded.level,
               title = excluded.title,
               message = excluded.message,
@@ -380,7 +397,7 @@ begin
 
   return query
   select *
-  from public.evaluate_fleet_pm_due_events_core(
+  from private.evaluate_fleet_pm_due_events_core(
     p_fleet_id, p_vehicle_id, v_user_id, true
   );
 end;
@@ -388,7 +405,7 @@ $$;
 
 -- System path: no auth.uid(). Never provisions policies, because their
 -- created_by is NOT NULL and an unattended run has no actor to attribute.
-create or replace function public.evaluate_fleet_pm_due_events_system(
+create or replace function private.evaluate_fleet_pm_due_events_system(
   p_fleet_id uuid,
   p_vehicle_id uuid default null
 )
@@ -400,7 +417,7 @@ as $$
 begin
   return query
   select *
-  from public.evaluate_fleet_pm_due_events_core(
+  from private.evaluate_fleet_pm_due_events_core(
     p_fleet_id, p_vehicle_id, null, false
   );
 end;
@@ -409,7 +426,7 @@ $$;
 -- Hourly sweep: evaluate every fleet, then retire alerts whose due event is no
 -- longer outstanding. Resolution lives here rather than in a trigger on the
 -- pre-existing fleet_pm_due_events table.
-create or replace function public.evaluate_fleet_pm_due_calendar()
+create or replace function private.evaluate_fleet_pm_due_calendar()
 returns integer
 language plpgsql
 security definer
@@ -421,7 +438,7 @@ declare
 begin
   for v_fleet in select id from public.fleets loop
     begin
-      perform public.evaluate_fleet_pm_due_events_system(v_fleet.id, null);
+      perform private.evaluate_fleet_pm_due_events_system(v_fleet.id, null);
       v_evaluated := v_evaluated + 1;
     exception when others then
       -- One unhealthy fleet must not stop the sweep.
@@ -436,23 +453,21 @@ begin
   where n.source = 'fleet'
     and n.code = 'fleet_pm_due'
     and n.status in ('active', 'acknowledged')
-    and exists (
+    -- Resolve both closed events and alerts whose event was cascade-deleted.
+    and not exists (
       select 1
       from public.fleet_pm_due_events e
-      where e.id = n.entity_id
-        and e.status not in ('pending', 'deferred')
+      where e.id::text = n.entity_id
+        and e.status in ('pending', 'deferred')
     );
 
   return v_evaluated;
 end;
 $$;
 
-revoke all on function public.evaluate_fleet_pm_due_events_core(uuid, uuid, uuid, boolean) from public, anon, authenticated;
-revoke all on function public.evaluate_fleet_pm_due_events_system(uuid, uuid) from public, anon, authenticated;
-revoke all on function public.evaluate_fleet_pm_due_calendar() from public, anon, authenticated;
-grant execute on function public.evaluate_fleet_pm_due_events_core(uuid, uuid, uuid, boolean) to service_role;
-grant execute on function public.evaluate_fleet_pm_due_events_system(uuid, uuid) to service_role;
-grant execute on function public.evaluate_fleet_pm_due_calendar() to service_role;
+revoke all on function private.evaluate_fleet_pm_due_events_core(uuid, uuid, uuid, boolean) from public, anon, authenticated, service_role;
+revoke all on function private.evaluate_fleet_pm_due_events_system(uuid, uuid) from public, anon, authenticated, service_role;
+revoke all on function private.evaluate_fleet_pm_due_calendar() from public, anon, authenticated, service_role;
 
 -- The public actor entrypoint keeps its existing grants.
 revoke all on function public.evaluate_fleet_pm_due_events(uuid, uuid) from public, anon;
@@ -482,7 +497,7 @@ begin
   perform cron.schedule(
     'fleet-pm-due-hourly',
     '27 * * * *',
-    $command$select public.evaluate_fleet_pm_due_calendar();$command$
+    $command$select private.evaluate_fleet_pm_due_calendar();$command$
   );
 end;
 $schedule$;

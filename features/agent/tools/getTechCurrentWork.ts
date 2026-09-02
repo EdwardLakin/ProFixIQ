@@ -4,6 +4,7 @@ import { applyToolAbortSignal, type ToolContext } from "../lib/toolTypes";
 
 const InputSchema = z.object({
   techId: z.string().uuid().optional(),
+  techIds: z.array(z.string().uuid()).min(1).max(2).optional(),
   techName: z.string().min(1).optional(),
 });
 
@@ -55,9 +56,11 @@ export async function runGetTechCurrentWork(rawInput: Input, ctx: ToolContext) {
   const input = InputSchema.parse(rawInput);
   const supabase = getServerSupabase();
 
-  let techId = input.techId ?? null;
+  let techIds = Array.from(
+    new Set(input.techIds ?? (input.techId ? [input.techId] : [])),
+  );
 
-  if (!techId && input.techName) {
+  if (techIds.length === 0 && input.techName) {
     const { data: profile } = await applyToolAbortSignal(
       supabase
         .from("profiles")
@@ -68,11 +71,17 @@ export async function runGetTechCurrentWork(rawInput: Input, ctx: ToolContext) {
       ctx,
     ).maybeSingle();
 
-    techId = profile?.id ?? null;
+    techIds = profile?.id ? [profile.id] : [];
   }
 
-  if (!techId && !input.techName && ctx.userId) {
-    techId = ctx.userId;
+  if (techIds.length === 0 && !input.techName && ctx.userId) {
+    techIds = Array.from(
+      new Set(
+        [ctx.profileId, ctx.userId].filter(
+          (value): value is string => typeof value === "string",
+        ),
+      ),
+    );
   }
 
   let query = supabase
@@ -105,8 +114,10 @@ export async function runGetTechCurrentWork(rawInput: Input, ctx: ToolContext) {
     .order("updated_at", { ascending: false })
     .limit(25);
 
-  if (techId) {
-    query = query.eq("assigned_tech_id", techId);
+  if (techIds.length === 1) {
+    query = query.eq("assigned_tech_id", techIds[0]);
+  } else if (techIds.length > 1) {
+    query = query.in("assigned_tech_id", techIds);
   }
 
   const { data, error } = await applyToolAbortSignal(query, ctx);
@@ -135,18 +146,20 @@ export async function runGetTechCurrentWork(rawInput: Input, ctx: ToolContext) {
   if (rows.length === 0) {
     return {
       ok: true,
-      summary: techId
-        ? "I couldn’t find active assigned work for that technician."
-        : "I couldn’t find active technician work right now.",
+      summary:
+        techIds.length > 0
+          ? "I couldn’t find active assigned work for that technician."
+          : "I couldn’t find active technician work right now.",
       citations: [],
     };
   }
 
   return {
     ok: true,
-    summary: techId
-      ? `I found ${rows.length} active job(s) for that technician.`
-      : `I found ${rows.length} active job line(s) across technicians.`,
+    summary:
+      techIds.length > 0
+        ? `I found ${rows.length} active job(s) for that technician.`
+        : `I found ${rows.length} active job line(s) across technicians.`,
     citations: rows.slice(0, 12).map((row) => {
       const wo = getWorkOrderInfo(row.work_orders);
       return {

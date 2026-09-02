@@ -58,6 +58,7 @@ import {
   type WorkOrderPartRequestRow as PartRequestRow,
 } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
 import { isReviewableQuoteLine } from "@/features/work-orders/lib/quotes/reviewableQuoteLines";
+import { hasActivePartsWaitingSignal } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 import {
   assignWorkOrderLineTechnician,
   createAssignTechnicianOperationKey,
@@ -316,6 +317,17 @@ export default function WorkOrderIdClient(): JSX.Element {
   const assignmentOperationsRef = useRef<
     Map<string, { technicianId: string; operationKey: string }>
   >(new Map());
+  const lineDecisionOperationKeysRef = useRef(new Map<string, string>());
+  const lineDecisionPendingRef = useRef(
+    new Map<string, "approve" | "decline">(),
+  );
+  const lineDecisionInFlightRef = useRef(new Set<string>());
+  const [pendingLineDecisions, setPendingLineDecisions] = useState(
+    () => new Map<string, "approve" | "decline">(),
+  );
+  const [lineDecisionsInFlight, setLineDecisionsInFlight] = useState(
+    () => new Set<string>(),
+  );
 
   const [activeTechsByLine, setActiveTechsByLine] = useState<Record<string, string[]>>({});
   const [assignedTechsByLine, setAssignedTechsByLine] = useState<
@@ -1021,6 +1033,30 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   const approvalPending = useMemo(() => jobLines.filter(isPendingApprovalLine), [jobLines]);
 
+  useEffect(() => {
+    const workOrderId = wo?.id;
+    if (!workOrderId || lineDecisionPendingRef.current.size === 0) return;
+
+    const refreshedPendingIds = new Set(approvalPending.map((line) => line.id));
+    let changed = false;
+    for (const lineId of lineDecisionPendingRef.current.keys()) {
+      if (refreshedPendingIds.has(lineId)) continue;
+      lineDecisionPendingRef.current.delete(lineId);
+      lineDecisionOperationKeysRef.current.delete(
+        `${workOrderId}:${lineId}:approve`,
+      );
+      lineDecisionOperationKeysRef.current.delete(
+        `${workOrderId}:${lineId}:decline`,
+      );
+      lineDecisionInFlightRef.current.delete(lineId);
+      changed = true;
+    }
+    if (changed) {
+      setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
+      setLineDecisionsInFlight(new Set(lineDecisionInFlightRef.current));
+    }
+  }, [approvalPending, wo?.id]);
+
   const activeJobLines = useMemo(() => jobLines, [jobLines]);
   const activeJobCount = useMemo(() => countActiveWorkOrderLines(jobLines), [jobLines]);
 
@@ -1297,54 +1333,194 @@ export default function WorkOrderIdClient(): JSX.Element {
 
   /* ----------------------- line actions ----------------------- */
 
-  const approveLine = useCallback(
-    async (lineId: string) => {
-      if (!lineId) return;
-
-      const res = await fetch(`/api/work-orders/lines/${lineId}/approval-decision`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          decision: "approve",
-          workOrderId: wo?.id ?? null,
-          resetPunchClock: true,
-        }),
-      });
-
-      const json = (await res.json().catch(() => null)) as
-        | { ok?: boolean; error?: string; workOrderId?: string | null }
-        | null;
-
-      if (!res.ok || !json?.ok) {
-        toast.error(json?.error ?? "Failed to approve line");
-        return;
+  const beginLineDecision = useCallback(
+    (lineId: string, decision: "approve" | "decline") => {
+      const pendingDecision = lineDecisionPendingRef.current.get(lineId);
+      if (
+        lineDecisionInFlightRef.current.has(lineId) ||
+        (pendingDecision !== undefined && pendingDecision !== decision)
+      ) {
+        return false;
       }
 
-      toast.success("Line approved");
-      void fetchAll();
+      lineDecisionPendingRef.current.set(lineId, decision);
+      lineDecisionInFlightRef.current.add(lineId);
+      setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
+      setLineDecisionsInFlight(new Set(lineDecisionInFlightRef.current));
+      return true;
     },
-    [fetchAll, wo?.id],
+    [],
+  );
+
+  const clearLineDecision = useCallback(
+    (lineId: string, actionIdentity: string) => {
+      lineDecisionPendingRef.current.delete(lineId);
+      lineDecisionInFlightRef.current.delete(lineId);
+      lineDecisionOperationKeysRef.current.delete(actionIdentity);
+      setPendingLineDecisions(new Map(lineDecisionPendingRef.current));
+      setLineDecisionsInFlight(new Set(lineDecisionInFlightRef.current));
+    },
+    [],
+  );
+
+  const releaseLineDecisionInFlight = useCallback((lineId: string) => {
+    lineDecisionInFlightRef.current.delete(lineId);
+    setLineDecisionsInFlight(new Set(lineDecisionInFlightRef.current));
+  }, []);
+
+  const approveLine = useCallback(
+    async (lineId: string) => {
+      const workOrderId = wo?.id;
+      if (!lineId || !workOrderId) return;
+      if (!beginLineDecision(lineId, "approve")) return;
+      const actionIdentity = `${workOrderId}:${lineId}:approve`;
+      const operationKey =
+        lineDecisionOperationKeysRef.current.get(actionIdentity) ??
+        crypto.randomUUID();
+      lineDecisionOperationKeysRef.current.set(actionIdentity, operationKey);
+
+      try {
+        const res = await fetch(`/api/work-orders/lines/${lineId}/approval-decision`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": operationKey,
+          },
+          body: JSON.stringify({
+            decision: "approve",
+            actorSurface: "staff",
+            workOrderId,
+            idempotencyKey: operationKey,
+            resetPunchClock: true,
+          }),
+        });
+
+        let json: {
+          ok?: boolean;
+          error?: string;
+          workOrderId?: string | null;
+        } | null = null;
+        let responseBodyReadable = true;
+        try {
+          json = (await res.json()) as {
+            ok?: boolean;
+            error?: string;
+            workOrderId?: string | null;
+          };
+        } catch {
+          responseBodyReadable = false;
+        }
+
+        if (!res.ok) {
+          if (res.status >= 500) {
+            toast.error(
+              json?.error ??
+                "Approval response was interrupted; refreshing before retry.",
+            );
+            await fetchAll().catch(() => undefined);
+            return;
+          }
+          clearLineDecision(lineId, actionIdentity);
+          toast.error(json?.error ?? "Failed to approve line");
+          return;
+        }
+        if (!responseBodyReadable || json?.ok !== true) {
+          toast.error(
+            "Approval response was interrupted; refreshing before retry.",
+          );
+          await fetchAll().catch(() => undefined);
+          return;
+        }
+
+        toast.success("Line approved");
+        await fetchAll().catch(() => undefined);
+      } catch {
+        toast.error(
+          "Approval request was interrupted; retry will use the same key.",
+        );
+        await fetchAll().catch(() => undefined);
+      } finally {
+        releaseLineDecisionInFlight(lineId);
+      }
+    },
+    [
+      beginLineDecision,
+      clearLineDecision,
+      fetchAll,
+      releaseLineDecisionInFlight,
+      wo?.id,
+    ],
   );
 
   const declineLine = useCallback(
     async (lineId: string) => {
-      if (!lineId) return;
-      const res = await fetch(`/api/work-orders/lines/${lineId}/approval-decision`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          decision: "decline",
-          workOrderId: wo?.id ?? null,
-        }),
-      });
-      const json = (await res.json().catch(() => null)) as
-        | { ok?: boolean; error?: string }
-        | null;
-      if (!res.ok || !json?.ok) return toast.error(json?.error ?? "Failed to decline line");
-      toast.success("Line declined");
-      void fetchAll();
+      const workOrderId = wo?.id;
+      if (!lineId || !workOrderId) return;
+      if (!beginLineDecision(lineId, "decline")) return;
+      const actionIdentity = `${workOrderId}:${lineId}:decline`;
+      const operationKey =
+        lineDecisionOperationKeysRef.current.get(actionIdentity) ??
+        crypto.randomUUID();
+      lineDecisionOperationKeysRef.current.set(actionIdentity, operationKey);
+      try {
+        const res = await fetch(`/api/work-orders/lines/${lineId}/approval-decision`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": operationKey,
+          },
+          body: JSON.stringify({
+            decision: "decline",
+            actorSurface: "staff",
+            workOrderId,
+            idempotencyKey: operationKey,
+          }),
+        });
+        let json: { ok?: boolean; error?: string } | null = null;
+        let responseBodyReadable = true;
+        try {
+          json = (await res.json()) as { ok?: boolean; error?: string };
+        } catch {
+          responseBodyReadable = false;
+        }
+        if (!res.ok) {
+          if (res.status >= 500) {
+            toast.error(
+              json?.error ??
+                "Decline response was interrupted; refreshing before retry.",
+            );
+            await fetchAll().catch(() => undefined);
+            return;
+          }
+          clearLineDecision(lineId, actionIdentity);
+          toast.error(json?.error ?? "Failed to decline line");
+          return;
+        }
+        if (!responseBodyReadable || json?.ok !== true) {
+          toast.error(
+            "Decline response was interrupted; refreshing before retry.",
+          );
+          await fetchAll().catch(() => undefined);
+          return;
+        }
+        toast.success("Line declined");
+        await fetchAll().catch(() => undefined);
+      } catch {
+        toast.error(
+          "Decline request was interrupted; retry will use the same key.",
+        );
+        await fetchAll().catch(() => undefined);
+      } finally {
+        releaseLineDecisionInFlight(lineId);
+      }
     },
-    [fetchAll, wo?.id],
+    [
+      beginLineDecision,
+      clearLineDecision,
+      fetchAll,
+      releaseLineDecisionInFlight,
+      wo?.id,
+    ],
   );
 
   const approveQuoteLine = useCallback(
@@ -1952,10 +2128,10 @@ export default function WorkOrderIdClient(): JSX.Element {
                   {recentApprovalPending.length > 0 && (
                     <div className="space-y-2">
                       {recentApprovalPending.map((ln, idx) => {
+                        const pendingDecision = pendingLineDecisions.get(ln.id);
+                        const decisionInFlight = lineDecisionsInFlight.has(ln.id);
                         const isAwaitingPartsBase =
-                          (ln.status === "on_hold" &&
-                            (ln.hold_reason ?? "").toLowerCase().includes("part")) ||
-                          (ln.hold_reason ?? "").toLowerCase().includes("quote");
+                          hasActivePartsWaitingSignal(ln);
 
                         const hasQuotedParts = (activeQuotesByLine[ln.id] ?? []).length > 0;
                         const partsLabel = hasQuotedParts
@@ -1998,23 +2174,41 @@ export default function WorkOrderIdClient(): JSX.Element {
                                 <div className="flex shrink-0 flex-wrap items-center gap-2">
                                   <button
                                     type="button"
-                                    className="rounded-md border border-green-700/60 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25"
+                                    disabled={
+                                      decisionInFlight ||
+                                      (pendingDecision !== undefined &&
+                                        pendingDecision !== "approve")
+                                    }
+                                    className="rounded-md border border-green-700/60 px-2 py-1 text-[11px] font-medium text-green-200 hover:bg-green-900/25 disabled:cursor-not-allowed disabled:opacity-50"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       void approveLine(ln.id);
                                     }}
                                   >
-                                    Approve
+                                    {pendingDecision === "approve"
+                                      ? decisionInFlight
+                                        ? "Approving…"
+                                        : "Retry approve"
+                                      : "Approve"}
                                   </button>
                                   <button
                                     type="button"
-                                    className="rounded-md border border-red-700/60 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30"
+                                    disabled={
+                                      decisionInFlight ||
+                                      (pendingDecision !== undefined &&
+                                        pendingDecision !== "decline")
+                                    }
+                                    className="rounded-md border border-red-700/60 px-2 py-1 text-[11px] font-medium text-red-200 hover:bg-red-900/30 disabled:cursor-not-allowed disabled:opacity-50"
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       void declineLine(ln.id);
                                     }}
                                   >
-                                    Decline
+                                    {pendingDecision === "decline"
+                                      ? decisionInFlight
+                                        ? "Declining…"
+                                        : "Retry decline"
+                                      : "Decline"}
                                   </button>
                                 </div>
                               )}

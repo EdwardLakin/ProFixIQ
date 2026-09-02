@@ -3,9 +3,14 @@ import { redirect } from "next/navigation";
 import FleetMaintenanceCalendar from "@/features/fleet/components/FleetMaintenanceCalendar";
 import { requireFleetPortalActor } from "../_lib/requireFleetPortalActor";
 
-export default async function FleetCalendarPage() {
-  const actor = await requireFleetPortalActor();
-  if (!actor.capabilities.canManageUnits) redirect("/portal/fleet");
+type Props = { searchParams: Promise<{ fleetId?: string }> };
 
-  return <FleetMaintenanceCalendar />;
+export default async function FleetCalendarPage({ searchParams }: Props) {
+  const { fleetId } = await searchParams;
+  const actor = await requireFleetPortalActor(fleetId ?? null);
+  if (!actor.capabilities.canManageUnits) redirect("/portal/fleet");
+  const selectedFleetId =
+    fleetId && fleetId === actor.primaryFleetId ? fleetId : null;
+
+  return <FleetMaintenanceCalendar initialFleetId={selectedFleetId} />;
 }

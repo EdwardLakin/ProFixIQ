@@ -8,6 +8,10 @@ Every finding below was verified by reading the code at the audited commit. No
 finding is carried forward on the authority of an earlier document or of GitHub
 issue #1535; where this audit disagrees with #1535, the code is the authority.
 
+This is now a living release ledger. Status changes after the original audit are
+recorded in place only after the corresponding repair is merged and its
+exact-head required CI is green.
+
 ## Audited baseline
 
 | Item | Value |
@@ -40,7 +44,9 @@ issue #1535; where this audit disagrees with #1535, the code is the authority.
 | Partial or indeterminate | 2 |
 
 Two findings were added on 2026-08-30 during the portal repair; see the
-addendum at the end of this document. One of them corrects item 6 below.
+addendum at the end of this document. PR #1570 partially repaired item 6, but
+the clean-replay sign-in bootstrap and remaining browser-only workflows stay
+open until their complete read and mutation paths are policy-independent.
 
 The important correction to #1535 is that the fixes which did land came from
 standalone migrations dated 2026-08-25 that are already on `main`, independent of
@@ -69,15 +75,70 @@ the abandoned draft stack.
    role only. An account on an expired, unpaid, Field-only, or Fleet-only
    package still reaches Shop.
 
-2. **Revoked Customer Portal access remains authorized.**
+2. **Revoked Customer Portal sessions retain access through specific bypasses.**
    `can_access_conversation`
    (`20260716090050_premier_messaging_foundation.sql:174-210`) and
    `actorCanRead()` (`features/inspections/server/inspectionReportAccess.ts:36-87`)
    both key off `customers.user_id` + `shop_id` with no reference to
-   `customer_portal_invites.accepted_at` / `revoked_at`. Revocation is enforced
-   only at `app/api/auth/sign-in/route.ts:193-202`, so an already-issued session
-   keeps messaging and inspection-report/PDF access. No migration clears
-   `customers.user_id` on revocation.
+   `customer_portal_invites.accepted_at` / `revoked_at`, so an already-issued
+   revoked session keeps messaging and inspection-report/PDF access.
+   `authorizeWorkOrderEvidence()`
+   (`features/work-orders/server/authorizeWorkOrderEvidence.ts:41-83`) likewise
+   accepts the service-role `customers.user_id` match without invite evidence;
+   `GET /api/work-orders/[id]/media` then returns customer-visible evidence and
+   resolved display URLs through an admin client. `/portal/settings` is another
+   confirmed bypass: its browser client reads `customers.select("*")` after
+   `auth.getUser()` but never checks accepted, non-revoked invite evidence. Under
+   production-only `customer_select_own`, a revoked session can therefore still
+   fetch the complete customer row, including staff-facing columns. Other
+   browser workflows also resolve customer data before or without an
+   invite-aware guard: vehicles performs its own `select("*")` before checking
+   invite rows, while profile, appointments, and request/quote flows retain
+   direct customer reads. They belong in the same revocation audit even where a
+   later request happens to fail closed.
+
+   Portal notifications form a separate disclosure path. Every `PortalShell`
+   mounts `PortalNotificationsBell`, which reads `portal_notifications`
+   directly. The final `portal_notifications_user_select` and
+   `portal_notifications_user_update` policies
+   (`20260806030520_tune_actor_messaging_advisors.sql:96-108`) require only
+   `user_id = auth.uid()`, and the directly granted mark-read RPCs are security
+   invoker functions over that same policy. Notification bodies can contain up
+   to 240 characters of message content
+   (`20260806030134_actor_scoped_messaging_notifications.sql:332-365`), so invite
+   revocation does not stop the retained session from reading or updating them.
+
+   The booking compatibility boundary is also a confirmed bypass. The later
+   scheduler hardening correctly binds the canonical
+   `scheduler_apply_booking_command_atomic` actor through
+   `scheduler_actor_matches(p_actor_user_id)`
+   (`20260810033000_universal_scheduler_security_and_rebalance.sql:257-259`),
+   and `20260810033500_universal_scheduler_explicit_assignment.sql:10-15`
+   revokes authenticated execution of that low-level function. However,
+   `apply_portal_booking_command_atomic` remains a `SECURITY DEFINER`
+   compatibility adapter granted directly to `authenticated`. Its delegated
+   customer check binds the actor to `auth.uid()` and the customer row, but it
+   never requires accepted, non-revoked invite evidence. A revoked retained
+   session can therefore invoke the adapter directly and bypass the
+   invite-aware API actor guard.
+
+   Sign-in and the canonical `requirePortalCustomerAccess()` /
+   `requirePortalCustomerActor()` path now enforce accepted, non-revoked invite
+   evidence across the dashboard, payments, approvals, guarded booking/request
+   APIs, and other guarded portal routes. Those application guards do not make
+   the directly granted booking RPC safe. PR #1570's weaker
+   `requirePortalCustomer()` does not itself check the invite, but its current
+   invoice and Work Order detail-page callers immediately perform a session-client
+   Work Order ownership read whose
+   RLS requires an accepted, non-revoked invite; those pages are therefore not
+   confirmed bypasses. The remaining repair should converge the confirmed
+   messaging, inspection-report, Work Order evidence, settings, notification,
+   and booking-adapter paths on the invite-aware primitive (or an equivalent
+   durable revocation boundary), audit the other portal browser callers that
+   resolve customer data directly, and harden shared customer helpers so future
+   consumers cannot omit that check. The booking actor-binding and low-level
+   grant fixes have already landed; its remaining defect is invite revocation.
+   No migration currently clears `customers.user_id` on revocation.
 
 3. **Job punch has no assignment or capability check.**
    `apply_job_punch_transition_atomic`
@@ -106,26 +167,59 @@ the abandoned draft stack.
 
 These are not hardening items; they break daily operation on current `main`.
 
-6. **Legitimate portal customers cannot use the portal.**
-   The sign-in guard reads the invite with the service-role client
-   (`app/api/auth/sign-in/route.ts:192-202`), so sign-in succeeds, while
-   `requirePortalCustomerAccess` (`features/portal/server/portalAuth.ts:71-108`)
-   re-queries with the end-user client and gets nothing. This breaks portal
-   entry **and** `app/api/portal/payments/checkout/route.ts:44`, so customer
-   payment checkout is blocked. Highest-value fix in this document.
+6. **Customer Portal bootstrap and browser-only workflows still depend on
+   production-only or staff-only data policies.**
+   PR #1570 correctly moved post-login customer and invite authorization behind
+   server-side, invite-aware guards, without adding a customer-browser RLS
+   policy. However, the `surface === "customer"` branch of
+   `app/api/auth/sign-in/route.ts:183-190` still resolves the linked `customers`
+   row through the signed-in end-user client before those guards can run. A
+   clean-replay database has no SELECT policy admitting a pure portal customer,
+   and removing production-only `customer_select_own` under item 17 would expose
+   the same dependency in production, so the route denies the new session.
 
-   > **Corrected 2026-08-30.** This entry originally stated that both the
-   > `customers` and `customer_portal_invites` reads return zero rows because
-   > neither table has a policy admitting a pure customer. That is true of a
-   > clean-replay database built from `supabase/migrations`, and was verified
-   > against PostgreSQL, but it is **not** true of production, which carries
-   > policies absent from the migration chain (finding 16). In production the
-   > `customers` read succeeds via `customer_select_own`, and only the invite
-   > read fails, because `cpi_staff_rw` requires shop membership through
-   > `is_shop_member_v2`. The outcome is identical — the guard throws
-   > `Portal invite required` — but the blocking layer differs by environment.
-   > PR #1570 repairs this by resolving identity server-side, which does not
-   > depend on either table's RLS.
+   Fixing that one lookup is necessary but not sufficient. Several downstream
+   portal pages still use the browser client for data whose committed policies
+   admit only staff/profile identities. `/portal/request/when` repeats the
+   end-user `customers` lookup, then reads `shops` and `vehicles`; a pure portal
+   customer admitted by a policy-independent sign-in still receives no shop row
+   and cannot request service on clean replay. `/portal/settings`,
+   `/portal/vehicles`, `/portal/profile`, and `/portal/customer-appointments`
+   contain direct browser reads, while settings, profile, and vehicle management
+   also perform browser mutations that the committed write policies do not admit
+   for a pure portal customer.
+
+   The standalone `/portal/booking` entry point has a distinct pre-invite policy
+   dependency. `BookingPageClient.tsx:82-108` queries all online `shops` through
+   the browser client, but the committed `shops` SELECT policy admits a staff
+   profile's shop, not an anonymous or pure portal customer. Shop discovery and
+   the "Send portal link" enrollment request occur before an auth subject or
+   accepted invite exists, so they need a narrowly scoped public/server contract,
+   not the post-login invite guard. The enrollment contract is independently
+   broken: `BookingPageClient.tsx:267-291` sends `shopSlug`, while
+   `/api/portal/qr/setup` accepts only `campaignSlug` (`route.ts:9-16`) and
+   therefore returns its generic no-op response without issuing the intended
+   link.
+
+   The inventory cannot stop at those first lookups. `/portal/request/when`
+   continues through quote-line and shop-hours reads; `/portal/request/build`
+   reads customer, Work Order, booking, vehicle, line, quote-line, and menu data;
+   and the quote-request client separately reads customer and vehicle rows. Each
+   required downstream read and every settings/profile/vehicle mutation needs a
+   server-authorized contract plus clean-replay workflow coverage.
+
+   PR #1570 is therefore a partial repair: its protected portal helpers and
+   payment checkout no longer depend on customer-table RLS, but the complete
+   portal surface is not yet policy-independent. The intended repair is to
+   inventory the complete browser data contract and move sign-in plus every
+   authenticated customer, invite, shop, vehicle, settings, and profile read or
+   mutation behind server-authorized paths pinned to the verified auth subject
+   and requiring accepted, non-revoked invite evidence. Separately, standalone
+   booking needs a minimal public discovery/enrollment contract that exposes
+   only booking-safe Shop data and aligns the client and API identifier before
+   the invite exists; later booking mutations remain invite-aware. Item 6 must
+   remain open until the named workflows function on clean replay. The repair is
+   **not** another broad customer RLS policy.
 
 7. **Staff cannot approve or decline repair lines.**
    Desktop (`app/work-orders/[id]/Client.tsx:1304,1332`) and Shop Mobile
@@ -202,19 +296,23 @@ These are not hardening items; they break daily operation on current `main`.
 
 ## Recommended order
 
-1. **Item 6** — one missing RLS policy restores portal entry and customer
-   payment checkout.
-2. **Items 7 and 8** — staff approval and technician punch-in are the two core
-   daily workflows that currently fail.
-3. **Items 1, 2, 3, 4** — the live authorization and billing boundaries.
-4. **Item 5** — confirm the `job-photos` bucket against the live project and
+1. **Item 6** — make authenticated Customer Portal workflows policy-independent
+   and invite-aware, while preserving a narrowly scoped public discovery and
+   enrollment path for the pre-invite standalone booking flow.
+2. **Items 7 and 8** — restore staff approval and assigned-technician punch-in.
+3. **Items 16 and 17** — reconcile production authorization drift and remove the
+   unrestricted-column customer self-read before treating Clean Replay as
+   authoritative evidence for the production RLS surface.
+4. **Items 1, 2, 3, 4** — the remaining live authorization and billing
+   boundaries.
+5. **Item 5** — confirm the `job-photos` bucket against the live project and
    bring its policy into the migration chain so it is auditable here.
-5. **Items 9, 10, 11, 12** — workflow correctness and onboarding dead ends.
-6. **Items 13, 14, 15** — shared-device data isolation.
+6. **Items 9, 10, 11, 12** — workflow correctness and onboarding dead ends.
+7. **Items 13, 14, 15** — shared-device data isolation.
 
-Repository governance remains outstanding and is not verifiable from the
-repository: `main` was reported unprotected with no rulesets, so release-critical
-code can bypass the audited PR and CI loop.
+Repository governance remains outstanding: current `main` is unprotected with
+no required status checks, so release-critical code can bypass the audited PR
+and CI loop.
 
 ## Addendum — 2026-08-30
 
@@ -274,8 +372,10 @@ already issue `select("*")` against `customers`
 (`app/portal/settings/page.tsx:107`, `app/portal/vehicles/page.tsx:123`), so no
 crafted query is required to reach the data once a session can load those pages.
 
-PR #1570 neither widens nor fixes this. It removes the portal's dependence on
-the policy by resolving identity server-side, but the policy itself remains.
+PR #1570 neither widens nor fixes this. It removes the canonical portal actor
+path's dependence on the policy by resolving identity server-side, but the
+browser-only callers above still depend on the policy and the policy itself
+remains.
 
 Closing it is constrained in a way worth recording, because the obvious remedies
 do not work here:
@@ -295,7 +395,13 @@ contract change on a pre-existing object and needs explicit approval.
 
 ### Revised priority
 
-Findings 16 and 17 do not displace the top of the existing order — items 6, 7,
-and 8 still break daily operation. They do change what a green Clean Replay
-means, so they should be resolved before the release evidence is treated as
-authoritative for authorization.
+Item 6 remains first until sign-in and authenticated browser-only portal
+workflows use policy-independent, invite-aware server paths, and standalone
+booking has a separate working public discovery/enrollment contract for the
+pre-invite stage. PR #1570 repaired the canonical actor path but not every
+clean-replay dependency.
+Items 7 and 8 follow as the two broken daily staff workflows. Findings 16 and 17
+come next because they determine whether Clean Replay is authoritative evidence
+for the deployed authorization surface;
+then the remaining authorization, workflow, onboarding, and client-isolation
+items follow the Recommended order above.

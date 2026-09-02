@@ -9,6 +9,7 @@ import {
   resolveFleetActorContext,
   resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 import { applyWorkOrderQuoteLineDecision } from "@/features/work-orders/server/workOrderQuoteLineApproval";
 
 export const dynamic = "force-dynamic";
@@ -71,7 +72,9 @@ async function accessibleVehicleContext(
   options?: { financialOnly?: boolean; fleetId?: string | null },
 ) {
   const fleetId = clean(options?.fleetId);
-  const scope = resolveFleetActorScope(actor, { explicitFleetId: fleetId });
+  const scope = fleetId
+    ? resolveSelectedFleetRequestScope(actor, { explicitFleetId: fleetId })
+    : resolveFleetActorScope(actor);
   if (!scope?.shopId) throw new Error("Fleet scope is unavailable");
   if (fleetId && !canApprove(actor, fleetId)) {
     throw new Error("Fleet billing access required");
@@ -113,8 +116,8 @@ async function listBilling(
   );
   if (!vehicleIds.length) {
     return {
-      canApprove: canApprove(actor),
-      canPay: canApprove(actor),
+      canApprove: canApprove(actor, clean(fleetId) ?? undefined),
+      canPay: canApprove(actor, clean(fleetId) ?? undefined),
       decisionMode: actor.isInternal ? "shop_recorded" : "fleet_self_service",
       summary: {
         approvals: 0,
@@ -303,8 +306,8 @@ async function listBilling(
   }
 
   return {
-    canApprove: canApprove(actor),
-    canPay: canApprove(actor),
+    canApprove: canApprove(actor, clean(fleetId) ?? undefined),
+    canPay: canApprove(actor, clean(fleetId) ?? undefined),
     decisionMode: actor.isInternal ? "shop_recorded" : "fleet_self_service",
     summary: {
       approvals: items.reduce(
@@ -323,8 +326,9 @@ export async function POST(request: Request) {
   try {
     const supabase = createServerSupabaseRoute();
     const body = (await request.json().catch(() => ({}))) as Body;
+    const requestedFleetId = clean(body.fleetId);
     const actor = await resolveFleetActorContext(supabase, {
-      requestedFleetId: body.fleetId ?? null,
+      requestedFleetId,
     });
     if (!actor.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -337,15 +341,15 @@ export async function POST(request: Request) {
     }
 
     if (!body.action || body.action === "list") {
-      if (!canApprove(actor, clean(body.fleetId) ?? undefined)) {
+      if (!canApprove(actor, requestedFleetId ?? undefined)) {
         return NextResponse.json(
           { error: "Fleet billing access required" },
           { status: 403 },
         );
       }
-      return NextResponse.json(await listBilling(actor, body.fleetId));
+      return NextResponse.json(await listBilling(actor, requestedFleetId));
     }
-    if (!canApprove(actor)) {
+    if (!canApprove(actor, requestedFleetId ?? undefined)) {
       return NextResponse.json(
         { error: "Approval access required" },
         { status: 403 },
@@ -388,6 +392,7 @@ export async function POST(request: Request) {
       actor,
       {
         financialOnly: true,
+        fleetId: requestedFleetId,
       },
     );
     const accessibleVehicleIds = enrollments.map((row) =>

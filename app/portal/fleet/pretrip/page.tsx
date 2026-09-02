@@ -7,9 +7,12 @@ import { requireFleetPortalActor } from "../_lib/requireFleetPortalActor";
 import { isFleetProductHostname } from "@/features/fleet/lib/fleetProductRouting";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
-export default async function FleetPretripStartPage() {
+type Props = { searchParams: Promise<{ fleetId?: string }> };
+
+export default async function FleetPretripStartPage({ searchParams }: Props) {
+  const { fleetId } = await searchParams;
   const [actor, requestHeaders] = await Promise.all([
-    requireFleetPortalActor(),
+    requireFleetPortalActor(fleetId ?? null),
     headers(),
   ]);
   if (actor.actorType !== "fleet_driver" || !actor.primaryFleetId) {

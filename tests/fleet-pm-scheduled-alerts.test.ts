@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(path, "utf8");
 
 const MIGRATION =
-  "supabase/migrations/20260830180000_fleet_pm_scheduled_evaluation_alerts.sql";
+  "supabase/migrations/20260902010000_fleet_pm_scheduled_evaluation_alerts.sql";
 
 describe("scheduled Fleet PM evaluation", () => {
   it("keeps the actor entrypoint authenticated and fleet-authorized", () => {
@@ -23,10 +23,10 @@ describe("scheduled Fleet PM evaluation", () => {
   it("gives the system path no auth.uid() dependency", () => {
     const sql = read(MIGRATION);
     const systemStart = sql.indexOf(
-      "create or replace function public.evaluate_fleet_pm_due_events_system",
+      "create or replace function private.evaluate_fleet_pm_due_events_system",
     );
     const systemEnd = sql.indexOf(
-      "create or replace function public.evaluate_fleet_pm_due_calendar",
+      "create or replace function private.evaluate_fleet_pm_due_calendar",
     );
 
     expect(systemStart).toBeGreaterThan(-1);
@@ -48,22 +48,30 @@ describe("scheduled Fleet PM evaluation", () => {
     const sql = read(MIGRATION);
 
     for (const fn of [
-      "public.evaluate_fleet_pm_due_events_core(uuid, uuid, uuid, boolean)",
-      "public.evaluate_fleet_pm_due_events_system(uuid, uuid)",
-      "public.evaluate_fleet_pm_due_calendar()",
+      "private.evaluate_fleet_pm_due_events_core(uuid, uuid, uuid, boolean)",
+      "private.evaluate_fleet_pm_due_events_system(uuid, uuid)",
+      "private.evaluate_fleet_pm_due_calendar()",
     ]) {
       expect(sql).toContain(
-        `revoke all on function ${fn} from public, anon, authenticated`,
+        `revoke all on function ${fn} from public, anon, authenticated, service_role`,
       );
-      expect(sql).toContain(`grant execute on function ${fn} to service_role`);
+      expect(sql).not.toContain(`grant execute on function ${fn}`);
     }
+
+    expect(sql).not.toContain(
+      "function public.evaluate_fleet_pm_due_events_core",
+    );
+    expect(sql).not.toContain(
+      "function public.evaluate_fleet_pm_due_events_system",
+    );
+    expect(sql).not.toContain("function public.evaluate_fleet_pm_due_calendar");
 
     expect(sql).toContain(
       "grant execute on function public.evaluate_fleet_pm_due_events(uuid, uuid) to authenticated, service_role",
     );
   });
 
-  it("raises a fleet-sourced PM alert the Fleet feed can read", () => {
+  it("raises and backfills a fleet-sourced PM alert the Fleet feed can read", () => {
     const sql = read(MIGRATION);
 
     expect(sql).toContain("insert into public.assistant_notifications");
@@ -74,15 +82,31 @@ describe("scheduled Fleet PM evaluation", () => {
     expect(sql).toContain("'manager', 'fleet',");
     expect(sql).toContain("'fleet_id', v_policy.fleet_id");
     expect(sql).toContain("on conflict (shop_id, fingerprint) do update");
+    expect(sql).toContain("e.status in ('pending', 'deferred')");
+    expect(sql).toContain(
+      "when public.assistant_notifications.status = 'acknowledged'",
+    );
+
+    const createdOnlyEnd = sql.indexOf(
+      "-- A due event may predate this alert integration.",
+    );
+    const alertInsert = sql.indexOf(
+      "insert into public.assistant_notifications",
+    );
+    expect(createdOnlyEnd).toBeGreaterThan(-1);
+    expect(alertInsert).toBeGreaterThan(createdOnlyEnd);
   });
 
-  it("schedules the sweep and retires alerts whose due event closed", () => {
+  it("schedules the sweep and retires alerts whose due event closed or was deleted", () => {
     const sql = read(MIGRATION);
 
     expect(sql).toContain("'fleet-pm-due-hourly'");
-    expect(sql).toContain("select public.evaluate_fleet_pm_due_calendar();");
+    expect(sql).toContain("select private.evaluate_fleet_pm_due_calendar();");
     expect(sql).toContain("set status = 'resolved'");
-    expect(sql).toContain("e.status not in ('pending', 'deferred')");
+    expect(sql).toContain("and not exists (");
+    expect(sql).toContain("where e.id::text = n.entity_id");
+    expect(sql).toContain("and e.status in ('pending', 'deferred')");
+    expect(sql).not.toContain("where e.id = n.entity_id");
     // One unhealthy fleet must not abort the sweep.
     expect(sql).toContain("exception when others then");
   });

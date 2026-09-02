@@ -16,6 +16,7 @@ import {
   resolveFleetActorContext,
   resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 import {
   DEFAULT_FLEET_PRETRIP_TEMPLATE,
   normalizeFleetPretripTemplateSections,
@@ -469,11 +470,15 @@ export async function POST(req: NextRequest) {
     if (!actor.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    const scope = resolveFleetActorScope(actor, {
-      explicitShopId: raw.shopId ?? null,
-      explicitFleetId: raw.fleetId ?? null,
-      preferMembershipFleet: !actor.isInternal,
-    });
+    const scope = raw.fleetId
+      ? resolveSelectedFleetRequestScope(actor, {
+          explicitShopId: raw.shopId ?? null,
+          explicitFleetId: raw.fleetId,
+        })
+      : resolveFleetActorScope(actor, {
+          explicitShopId: raw.shopId ?? null,
+          preferMembershipFleet: !actor.isInternal,
+        });
     if (!scope?.shopId) {
       return NextResponse.json(
         { error: "Unable to resolve fleet for pre-trip reports." },

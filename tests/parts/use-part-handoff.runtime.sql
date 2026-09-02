@@ -679,6 +679,33 @@ insert into public.part_request_items (
   true
 );
 
+-- Exercise every Parts writer whose UUID predicate must remain valid after
+-- assistant_notifications.entity_id is reconciled to text.
+select public.parts_publish_request_notification(
+  '90000000-0000-4000-8000-000000000001',
+  'ready_for_tech'
+);
+select public.parts_sync_technician_ready_notification(
+  '90000000-0000-4000-8000-000000000001'
+);
+select public.parts_reconcile_pick_request_notification(
+  '90000000-0000-4000-8000-000000000001'
+);
+
+do $$
+begin
+  if not exists (
+    select 1
+    from public.assistant_notifications
+    where entity_type = 'part_request'
+      and entity_id = '90000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception
+      'Runtime assertion failed: Parts writer did not persist a text entity id.';
+  end if;
+end
+$$;
+
 create function pg_temp.expect_cross_shop_attach_denied()
 returns void
 language plpgsql

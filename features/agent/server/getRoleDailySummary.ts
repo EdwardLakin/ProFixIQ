@@ -1,7 +1,10 @@
 // features/agent/server/getRoleDailySummary.ts
 
 import { createToolContext, type ToolContext } from "../lib/toolTypes";
-import { canonicalizeRole } from "@/features/shared/lib/rbac";
+import {
+  canAccessAssistantNotifications,
+  canonicalizeRole,
+} from "@/features/shared/lib/rbac";
 import { syncAssistantNotifications } from "./syncAssistantNotifications";
 import { runGetBookings } from "../tools/getBookings";
 import { runGetShopCurrentStatus } from "../tools/getShopCurrentStatus";
@@ -550,22 +553,38 @@ function buildFleetSummary(params: {
 export async function getRoleDailySummary(params: {
   shopId: string;
   userId: string;
+  profileId?: string;
   role: string | null;
   signal?: AbortSignal;
 }): Promise<DailySummaryResult> {
-  const role = normalizeRole(params.role);
+  const canSyncNotifications = canAccessAssistantNotifications(params.role);
+  const role = canSyncNotifications
+    ? normalizeRole(params.role)
+    : canonicalizeRole(params.role);
+  const notificationUserIds = Array.from(
+    new Set(
+      [params.userId, params.profileId].filter(
+        (value): value is string =>
+          typeof value === "string" && value.length > 0,
+      ),
+    ),
+  );
   const ctx: ToolContext = createToolContext({
     shopId: params.shopId,
     userId: params.userId,
+    profileId: params.profileId,
     role,
     signal: params.signal,
   });
 
-  const persistedNotifications = await syncAssistantNotifications({
-    shopId: params.shopId,
-    userId: params.userId,
-    role,
-  });
+  const persistedNotifications = canSyncNotifications
+    ? await syncAssistantNotifications({
+        shopId: params.shopId,
+        userId: params.profileId ?? params.userId,
+        assignmentUserIds: notificationUserIds,
+        role,
+      })
+    : [];
   params.signal?.throwIfAborted();
 
   const rawNotifications: DailySummaryNotification[] =
@@ -604,7 +623,7 @@ export async function getRoleDailySummary(params: {
     ? await runGetShopCurrentStatus({}, ctx)
     : null;
   const techWork = shouldFetchTechWork
-    ? await runGetTechCurrentWork({ techId: params.userId }, ctx)
+    ? await runGetTechCurrentWork({ techIds: notificationUserIds }, ctx)
     : null;
 
   const actionItems = dedupeStrings(

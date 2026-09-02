@@ -208,8 +208,10 @@ function ClarificationResponse({
 
 export default function FleetDriverDashboard({
   view = "home",
+  fleetId,
 }: {
   view?: "home" | "updates";
+  fleetId?: string | null;
 }) {
   const pathname = usePathname() ?? "";
   const internalRoutes = pathname.startsWith("/portal/fleet");
@@ -220,7 +222,8 @@ export default function FleetDriverDashboard({
 
   const load = useCallback(async () => {
     setError(null);
-    const response = await fetch("/api/fleet/driver/dashboard", {
+    const query = fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : "";
+    const response = await fetch(`/api/fleet/driver/dashboard${query}`, {
       cache: "no-store",
     });
     const body = (await response.json().catch(() => ({}))) as
@@ -234,7 +237,7 @@ export default function FleetDriverDashboard({
       );
     }
     setData(body);
-  }, []);
+  }, [fleetId]);
 
   useEffect(() => {
     let active = true;
@@ -448,7 +451,7 @@ export default function FleetDriverDashboard({
           </div>
           {!updatesView ? (
             <Link
-              href={internalRoutes ? "/portal/fleet/updates" : "/updates"}
+              href={`${internalRoutes ? "/portal/fleet/updates" : "/updates"}${fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ""}`}
               className="text-xs font-semibold text-sky-500 dark:text-sky-300"
             >
               View all

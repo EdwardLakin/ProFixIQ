@@ -146,9 +146,10 @@ function EventCard({
   const href = internalRoutes
     ? (toFleetInternalHref(event.href) ?? event.href)
     : event.href;
+  const selectedHref = `${href}${href.includes("?") ? "&" : "?"}fleetId=${encodeURIComponent(event.fleetId)}`;
   return (
     <Link
-      href={href}
+      href={selectedHref}
       title={`${event.unitLabel}: ${event.title}`}
       className={`block rounded-lg border transition hover:-translate-y-0.5 hover:shadow-sm ${meta.className} ${
         compact ? "px-2 py-1" : "p-3"
@@ -178,11 +179,15 @@ function EventCard({
   );
 }
 
-export default function FleetMaintenanceCalendar() {
+export default function FleetMaintenanceCalendar({
+  initialFleetId,
+}: {
+  initialFleetId?: string | null;
+}) {
   const pathname = usePathname();
   const internalRoutes = pathname.startsWith("/portal/fleet");
   const [payload, setPayload] = useState<CalendarPayload | null>(null);
-  const [fleetId, setFleetId] = useState("all");
+  const [fleetId, setFleetId] = useState(initialFleetId ?? "all");
   const [type, setType] = useState<CalendarEventType | "all">("all");
   const [month, setMonth] = useState(() =>
     monthStart(new Date(`${localIsoDate()}T00:00:00Z`)),
@@ -277,7 +282,9 @@ export default function FleetMaintenanceCalendar() {
                 onChange={(event) => setFleetId(event.target.value)}
                 className="min-h-10 rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3 text-xs"
               >
-                <option value="all">All fleets</option>
+                {!initialFleetId ? (
+                  <option value="all">All fleets</option>
+                ) : null}
                 {payload.fleets.map((fleet) => (
                   <option key={fleet.id} value={fleet.id}>
                     {fleet.name}
@@ -297,9 +304,7 @@ export default function FleetMaintenanceCalendar() {
               Refresh
             </button>
             <Link
-              href={
-                internalRoutes ? "/portal/fleet/maintenance" : "/maintenance"
-              }
+              href={`${internalRoutes ? "/portal/fleet/maintenance" : "/maintenance"}${fleetId !== "all" ? `?fleetId=${encodeURIComponent(fleetId)}` : ""}`}
               className="inline-flex min-h-10 items-center rounded-xl bg-sky-400 px-4 py-2 text-xs font-semibold text-slate-950"
             >
               Open PM command

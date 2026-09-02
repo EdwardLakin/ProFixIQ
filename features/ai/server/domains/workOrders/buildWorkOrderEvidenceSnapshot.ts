@@ -2,6 +2,7 @@ import type { Database, Json } from "@shared/types/types/supabase";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAiEvidenceSnapshot, type AiActorContext, type AiEvidenceSnapshotRecord } from "@/features/ai/server";
 import { WORK_ORDER_RULES_VERSION, type WorkOrderEvidenceSnapshot } from "./types";
+import { hasActivePartsWaitingSignal } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 
 type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -165,7 +166,7 @@ export async function buildWorkOrderEvidenceSnapshot(input: BuildInput): Promise
     if (normalize(line.line_type) === "info") informationalLines += 1;
     else actionableLines += 1;
 
-    if (status === "on_hold" || status === "awaiting_parts" || normalize(line.hold_reason).includes("part")) blockedCount += 1;
+    if (status === "awaiting_parts" || hasActivePartsWaitingSignal(line)) blockedCount += 1;
     if (status === "active") activeCount += 1;
     if (status === "completed" || status === "ready_to_invoice" || status === "invoiced") completedCount += 1;
 
@@ -207,7 +208,7 @@ export async function buildWorkOrderEvidenceSnapshot(input: BuildInput): Promise
 
   const waitingParts =
     partRequests.some((row) => !row.fulfilled_at) ||
-    lines.some((line) => normalize(line.status) === "on_hold" && normalize(line.hold_reason).includes("part"));
+    lines.some((line) => hasActivePartsWaitingSignal(line));
 
   const activePunchCount = lines.filter((line) => !!line.punched_in_at && !line.punched_out_at).length;
   const staleActivePunch = lines.some((line) => {

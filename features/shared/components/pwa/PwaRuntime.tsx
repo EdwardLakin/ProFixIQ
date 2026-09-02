@@ -231,7 +231,10 @@ export default function PwaRuntime() {
           const formerScope = getOfflineMutationScope();
           if (formerScope) removeFieldActiveSnapshot(formerScope);
           activateActor(null);
-          void clearOfflineState();
+          // Signing out must never destroy work that has not reached the
+          // server. Unsent mutations and their attachments are retained for the
+          // former identity and replay when that identity signs back in.
+          void clearOfflineState({ preserveUnsyncedWork: true });
         } else if (session?.user.id) {
           activateActor(session.user.id);
         }

@@ -65,6 +65,10 @@ export default function FleetUnitEconomicsPanel({
   const pathname = usePathname() ?? "";
   const productRoutes =
     routePrefix === "/portal/fleet" && !pathname.startsWith("/portal/fleet");
+  const withFleetId = (href: string) =>
+    fleetId
+      ? `${href}${href.includes("?") ? "&" : "?"}fleetId=${encodeURIComponent(fleetId)}`
+      : href;
   const [payload, setPayload] = useState<Payload | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -150,13 +154,13 @@ export default function FleetUnitEconomicsPanel({
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <Link
-                    href={
+                    href={withFleetId(
                       productRoutes
                         ? `/assets/${encodeURIComponent(unit.unitId)}`
                         : routePrefix === "/portal/fleet"
                           ? `${routePrefix}/units/${encodeURIComponent(unit.unitId)}`
-                          : `${routePrefix}/units`
-                    }
+                          : `${routePrefix}/units`,
+                    )}
                     className="text-sm font-semibold hover:underline"
                   >
                     {unit.label}

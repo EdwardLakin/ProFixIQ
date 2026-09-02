@@ -6,8 +6,8 @@ import {
 } from "@/features/shared/lib/supabase/server";
 import {
   resolveFleetActorContext,
-  resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 
 export const dynamic = "force-dynamic";
 
@@ -75,7 +75,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const scope = resolveFleetActorScope(actor, {
+    const scope = resolveSelectedFleetRequestScope(actor, {
       explicitFleetId: requestedFleetId,
     });
     if (!scope?.shopId) {

@@ -11,6 +11,7 @@ import type {
 type Params = {
   shopId: string;
   userId: string;
+  profileId?: string;
   role: string | null;
   context?: SuggestedActionContext;
 };
@@ -303,6 +304,7 @@ export async function getSuggestedActions(
   const summary = await getRoleDailySummary({
     shopId: params.shopId,
     userId: params.userId,
+    profileId: params.profileId,
     role,
   });
 
