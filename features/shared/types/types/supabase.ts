@@ -5501,7 +5501,13 @@ export type Database = {
           accepted_by_user_id: string | null
           created_at: string
           created_by: string | null
+          delivery_attempted_at: string | null
+          delivery_error: string | null
+          delivery_event_at: string | null
+          delivery_reserved_until: string | null
+          delivery_status: string | null
           email: string
+          email_log_id: string | null
           expires_at: string
           fleet_id: string
           id: string
@@ -5515,7 +5521,13 @@ export type Database = {
           accepted_by_user_id?: string | null
           created_at?: string
           created_by?: string | null
+          delivery_attempted_at?: string | null
+          delivery_error?: string | null
+          delivery_event_at?: string | null
+          delivery_reserved_until?: string | null
+          delivery_status?: string | null
           email: string
+          email_log_id?: string | null
           expires_at: string
           fleet_id: string
           id?: string
@@ -5529,7 +5541,13 @@ export type Database = {
           accepted_by_user_id?: string | null
           created_at?: string
           created_by?: string | null
+          delivery_attempted_at?: string | null
+          delivery_error?: string | null
+          delivery_event_at?: string | null
+          delivery_reserved_until?: string | null
+          delivery_status?: string | null
           email?: string
+          email_log_id?: string | null
           expires_at?: string
           fleet_id?: string
           id?: string
@@ -28455,6 +28473,23 @@ export type Database = {
         }
         Returns: string
       }
+      create_fleet_with_owner_invitation_atomic: {
+        Args: {
+          p_contact_email: string
+          p_contact_name: string
+          p_created_by: string
+          p_customer_id?: string
+          p_expires_at: string
+          p_name: string
+          p_shop_id: string
+          p_token_hash: string
+        }
+        Returns: {
+          fleet_id: string
+          fleet_name: string
+          invite_id: string
+        }[]
+      }
       create_manual_work_order_line_atomic: {
         Args: {
           p_actor_profile_id: string
@@ -29952,6 +29987,15 @@ export type Database = {
         }
         Returns: Json
       }
+      process_fleet_invitation_delivery_event: {
+        Args: {
+          p_email_log_id: string
+          p_error_text: string
+          p_event_at: string
+          p_event_type: string
+        }
+        Returns: boolean
+      }
       process_sendgrid_delivery_event: {
         Args: {
           p_email_log_id: string
@@ -30057,6 +30101,15 @@ export type Database = {
         }
         Returns: string
       }
+      record_fleet_portal_invitation_email_acceptance: {
+        Args: {
+          p_accepted_at: string
+          p_email_log_id: string
+          p_invite_id: string
+          p_shop_id: string
+        }
+        Returns: boolean
+      }
       record_offline_photo_receipt_atomic: {
         Args: {
           p_actor_user_id: string
@@ -30116,6 +30169,22 @@ export type Database = {
       reopen_inspection: {
         Args: { p_inspection_id: string; p_reason: string }
         Returns: Json
+      }
+      replace_fleet_portal_invitation_atomic: {
+        Args: {
+          p_created_by: string
+          p_expires_at: string
+          p_invite_id: string
+          p_shop_id: string
+          p_token_hash: string
+        }
+        Returns: {
+          fleet_id: string
+          fleet_name: string
+          invite_email: string
+          invite_id: string
+          invite_role: string
+        }[]
       }
       replace_payroll_period_snapshot: {
         Args: {

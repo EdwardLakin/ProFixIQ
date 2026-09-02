@@ -73,6 +73,18 @@ export async function POST(req: Request) {
       },
     );
     if (eventError) throw new Error(eventError.message);
+    if (event.emailLogId) {
+      const { error: inviteEventError } = await rpc.rpc(
+        "process_fleet_invitation_delivery_event",
+        {
+          p_email_log_id: event.emailLogId,
+          p_event_type: event.eventType,
+          p_event_at: event.eventAt,
+          p_error_text: event.errorText,
+        },
+      );
+      if (inviteEventError) throw new Error(inviteEventError.message);
+    }
     if (inserted) processed += 1;
   }
 

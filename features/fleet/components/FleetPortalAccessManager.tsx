@@ -30,6 +30,16 @@ type Invite = {
   accepted_at: string | null;
   revoked_at: string | null;
   created_at: string;
+  delivery_status?:
+    | "pending"
+    | "sending"
+    | "accepted"
+    | "delivered"
+    | "suppressed"
+    | "failed"
+    | null;
+  delivery_attempted_at?: string | null;
+  delivery_reserved_until?: string | null;
 };
 
 type InvitePayload = {
@@ -37,12 +47,18 @@ type InvitePayload = {
   fleet?: Fleet;
   invites?: Invite[];
   customerCandidate?: CustomerCandidate | null;
+  invitedEmail?: string;
+  invitationAccepted?: boolean;
+  invitationDelivered?: boolean;
+  deliveryStatePersisted?: boolean;
+  deliveryIssue?: "suppressed" | "failed";
   error?: string;
 };
 
 export default function FleetPortalAccessManager() {
   const [fleets, setFleets] = useState<Fleet[]>([]);
   const [invites, setInvites] = useState<Invite[]>([]);
+  const [resendingId, setResendingId] = useState<string | null>(null);
   const [fleetId, setFleetId] = useState("");
   const [email, setEmail] = useState("");
   const [role, setRole] = useState<InviteRole>("viewer");
@@ -56,6 +72,53 @@ export default function FleetPortalAccessManager() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [customerCandidate, setCustomerCandidate] =
     useState<CustomerCandidate | null>(null);
+
+  const resendInvite = async (invite: Invite) => {
+    setResendingId(invite.id);
+    try {
+      const response = await fetch("/api/portal/fleet/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "resend_invite", inviteId: invite.id }),
+      });
+      const payload = (await response
+        .json()
+        .catch(() => null)) as InvitePayload | null;
+      if (!response.ok) {
+        throw new Error(payload?.error || "Invitation could not be resent.");
+      }
+      // The role comes from the stored invitation, so an owning manager
+      // invitation can never be downgraded by resending it.
+      await load(invite.fleet_id);
+      if (payload?.deliveryStatePersisted === false) {
+        toast.error(
+          `The resend to ${invite.email} was attempted, but its delivery state could not be confirmed. The row remains retryable; reload before trying again.`,
+        );
+      } else if (payload?.invitationAccepted) {
+        toast.success(
+          `Invitation to ${invite.email} was accepted by the email provider and is awaiting delivery confirmation.`,
+        );
+      } else if (payload?.invitationDelivered === false) {
+        toast.error(
+          payload.deliveryIssue === "suppressed"
+            ? `${invite.email} is suppressed and received nothing.`
+            : `The invitation to ${invite.email} could not be delivered.`,
+        );
+      } else {
+        toast.success(
+          `Invitation resent to ${invite.email} as ${invite.role}.`,
+        );
+      }
+    } catch (value) {
+      toast.error(
+        value instanceof Error
+          ? value.message
+          : "Invitation could not be resent.",
+      );
+    } finally {
+      setResendingId(null);
+    }
+  };
 
   const load = useCallback(async (preferredFleetId?: string) => {
     setLoading(true);
@@ -152,7 +215,17 @@ export default function FleetPortalAccessManager() {
         throw new Error(payload?.error || "Invitation could not be sent.");
       }
 
-      toast.success("Fleet portal invitation sent.");
+      if (payload?.deliveryStatePersisted === false) {
+        toast.error(
+          "The invitation was accepted by the email provider, but its delivery state could not be confirmed. Reload Fleet access before retrying.",
+        );
+      } else if (payload?.invitationAccepted) {
+        toast.success(
+          "Fleet portal invitation accepted by the email provider and awaiting delivery confirmation.",
+        );
+      } else {
+        toast.success("Fleet portal invitation sent.");
+      }
       setEmail("");
       await load();
     } catch (value) {
@@ -196,9 +269,28 @@ export default function FleetPortalAccessManager() {
       setFleetContactEmail("");
       setShowCreateFleet(false);
       await load(payload.fleet.id);
-      toast.success(
-        "Fleet relationship created. You can send the invitation now.",
-      );
+      const owner = payload.invitedEmail ?? fleetContactEmail;
+      if (payload.deliveryStatePersisted === false) {
+        toast.error(
+          `Fleet created and delivery was attempted for ${owner}, but the delivery state could not be confirmed. The manager invitation remains listed as Delivery pending and can be resent.`,
+        );
+      } else if (payload.invitationAccepted) {
+        toast.success(
+          `Fleet relationship created. The manager invitation to ${owner} was accepted by the email provider and is awaiting delivery confirmation.`,
+        );
+      } else if (payload.invitationDelivered === false) {
+        // The Fleet and its invitation exist; only delivery failed. Say so
+        // plainly so staff resend rather than assuming the owner has access.
+        toast.error(
+          payload.deliveryIssue === "suppressed"
+            ? `Fleet created, but ${owner} is suppressed and received nothing. The manager invitation is listed as Not delivered — use Resend on that row, or invite a different address as manager.`
+            : `Fleet created, but the invitation to ${owner} could not be delivered. The manager invitation is listed as Not delivered — use Resend on that row.`,
+        );
+      } else {
+        toast.success(
+          `Fleet relationship created. Manager invitation sent to ${owner}.`,
+        );
+      }
     } catch (value) {
       toast.error(
         value instanceof Error
@@ -312,18 +404,25 @@ export default function FleetPortalAccessManager() {
                 />
               </label>
               <label className="block text-xs font-semibold text-[color:var(--theme-text-secondary)]">
-                Contact email <span className="font-normal">(optional)</span>
+                Contact email
                 <input
+                  required
                   type="email"
                   maxLength={254}
                   value={fleetContactEmail}
                   onChange={(event) => setFleetContactEmail(event.target.value)}
                   className="mt-1.5 w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3 py-2.5 text-sm text-[color:var(--theme-input-text)]"
                 />
+                <span className="mt-1 block font-normal text-[10px] text-[color:var(--theme-text-muted)]">
+                  The owning Fleet manager invitation is sent here when the
+                  relationship is created.
+                </span>
               </label>
               <button
                 type="submit"
-                disabled={creating || !fleetName.trim()}
+                disabled={
+                  creating || !fleetName.trim() || !fleetContactEmail.trim()
+                }
                 className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[var(--accent-copper)] px-4 py-3 text-sm font-bold text-[color:var(--theme-text-on-accent)] disabled:opacity-60"
               >
                 {creating ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
@@ -431,13 +530,45 @@ export default function FleetPortalAccessManager() {
                 const fleet = fleets.find(
                   (item) => item.id === invite.fleet_id,
                 );
+                const deliveryPending =
+                  !invite.accepted_at &&
+                  !invite.revoked_at &&
+                  (invite.delivery_status === "pending" ||
+                    invite.delivery_status === "sending" ||
+                    invite.delivery_status === "accepted");
+                const undelivered =
+                  !invite.accepted_at &&
+                  !invite.revoked_at &&
+                  (invite.delivery_status === "suppressed" ||
+                    invite.delivery_status === "failed");
                 const status = invite.accepted_at
                   ? "Accepted"
                   : invite.revoked_at
                     ? "Revoked"
                     : new Date(invite.expires_at) <= new Date()
                       ? "Expired"
-                      : "Pending";
+                      : deliveryPending
+                        ? invite.delivery_status === "accepted"
+                          ? "Awaiting delivery"
+                          : invite.delivery_status === "sending"
+                            ? "Sending"
+                            : "Delivery pending"
+                        : undelivered
+                          ? invite.delivery_status === "suppressed"
+                            ? "Not delivered · suppressed"
+                            : "Not delivered"
+                          : "Pending";
+                const reserved =
+                  invite.delivery_reserved_until != null &&
+                  new Date(invite.delivery_reserved_until) > new Date();
+                const canResend =
+                  !invite.accepted_at &&
+                  !invite.revoked_at &&
+                  !(
+                    reserved &&
+                    (invite.delivery_status === "sending" ||
+                      invite.delivery_status === "accepted")
+                  );
 
                 return (
                   <div
@@ -451,8 +582,26 @@ export default function FleetPortalAccessManager() {
                         <span className="capitalize">{invite.role}</span>
                       </div>
                     </div>
-                    <div className="self-center rounded-full border border-[color:var(--theme-border-soft)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
-                      {status}
+                    <div className="flex items-center gap-2 self-center">
+                      <div
+                        className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide ${
+                          undelivered
+                            ? "border-red-400/40 text-red-300"
+                            : "border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-secondary)]"
+                        }`}
+                      >
+                        {status}
+                      </div>
+                      {canResend ? (
+                        <button
+                          type="button"
+                          onClick={() => void resendInvite(invite)}
+                          disabled={resendingId === invite.id}
+                          className="rounded-lg border border-[color:var(--theme-border-soft)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-sky-300 disabled:opacity-60"
+                        >
+                          {resendingId === invite.id ? "Resending…" : "Resend"}
+                        </button>
+                      ) : null}
                     </div>
                   </div>
                 );
