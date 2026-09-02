@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const MIGRATION =
   "supabase/migrations/20260831143918_enforce_shop_work_order_product_boundary.sql";
 const RUNTIME = "tests/security/shop-work-order-product-boundary.runtime.sql";
+const CLEAN_REPLAY = ".github/workflows/supabase-clean-replay-audit.yml";
 const TYPES = "features/shared/types/types/supabase.ts";
 
 describe("Shop Work Order product boundary", () => {
@@ -223,6 +224,11 @@ describe("Shop Work Order product boundary", () => {
     );
     expect(runtime.indexOf("do $product_boundary_acl_contract$")).toBeLessThan(
       runtime.indexOf("set local role authenticated"),
+    );
+
+    const cleanReplay = await readFile(CLEAN_REPLAY, "utf8");
+    expect(cleanReplay).toContain(
+      "-f tests/security/shop-work-order-product-boundary.runtime.sql",
     );
   });
 

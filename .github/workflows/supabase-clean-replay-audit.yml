@@ -350,6 +350,20 @@ jobs:
             -f tests/security/workspace-authorization.runtime.sql \
             2>&1 | tee workspace-authorization-runtime.log
 
+      - name: Execute Shop Work Order product-boundary integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/shop-work-order-product-boundary.runtime.sql \
+            2>&1 | tee shop-work-order-product-boundary-runtime.log
+
       - name: Execute technician assignment contract integration
         shell: bash
         env:
@@ -667,6 +681,7 @@ jobs:
             p0-004-vehicle-recall-fetch-runtime.log
             vehicle-workspace-tenant-runtime.log
             workspace-authorization-runtime.log
+            shop-work-order-product-boundary-runtime.log
             technician-assignment-contract-runtime.log
             mobile-handoff-assignment-compatibility-runtime.log
             p0-005-ai-route-governance-runtime.log

@@ -29766,6 +29766,22 @@ export type Database = {
       }
       profixiq_can_finalize_workforce: { Args: never; Returns: boolean }
       profixiq_can_manage_workforce: { Args: never; Returns: boolean }
+      profixiq_current_actor_can_read_work_order_line_product: {
+        Args: { p_work_order_line_id: string }
+        Returns: boolean
+      }
+      profixiq_current_actor_can_read_work_order_product: {
+        Args: { p_shop_id: string; p_work_order_id: string }
+        Returns: boolean
+      }
+      profixiq_current_actor_has_shop_product_access: {
+        Args: { p_shop_id: string }
+        Returns: boolean
+      }
+      profixiq_current_actor_has_shop_product_for_line: {
+        Args: { p_work_order_line_id: string }
+        Returns: boolean
+      }
       profixiq_current_role: { Args: never; Returns: string }
       profixiq_fleet_has_product_access: {
         Args: { p_fleet_id: string }
