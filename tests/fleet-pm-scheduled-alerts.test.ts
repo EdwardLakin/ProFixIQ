@@ -35,10 +35,18 @@ describe("scheduled Fleet PM evaluation", () => {
     expect(systemBody).toContain("null, false");
   });
 
-  it("never provisions policies without an actor, because created_by is NOT NULL", () => {
+  it("backfills historical program policies with deterministic user attribution", () => {
     const sql = read(MIGRATION);
 
     expect(sql).toContain("if p_provision_policies then");
+    expect(sql).toContain("with fleet_policy_actor as (");
+    expect(sql).toContain("select member.user_id");
+    expect(sql).toContain("f.created_by,");
+    expect(sql).toContain("select profile.id");
+    expect(sql).toContain("and actor.created_by is not null");
+    expect(sql).toContain("fp.assignment_mode = 'all_units'");
+    expect(sql).toContain("from public.fleet_program_assignments assignment");
+    expect(sql).toContain("on conflict (program_id, vehicle_id)");
     // The actor path provisions; the unattended path does not.
     expect(sql).toContain("p_fleet_id, p_vehicle_id, v_user_id, true");
     expect(sql).toContain("p_fleet_id, p_vehicle_id, null, false");
@@ -82,7 +90,11 @@ describe("scheduled Fleet PM evaluation", () => {
     expect(sql).toContain("'manager', 'fleet',");
     expect(sql).toContain("'fleet_id', v_policy.fleet_id");
     expect(sql).toContain("on conflict (shop_id, fingerprint) do update");
-    expect(sql).toContain("e.status in ('pending', 'deferred')");
+    expect(sql).toContain("e.status = 'pending'");
+    expect(sql).toContain("e.status = 'deferred'");
+    expect(sql).toContain(
+      "coalesce(e.deferred_until, current_date) <= current_date",
+    );
     expect(sql).toContain(
       "when public.assistant_notifications.status = 'acknowledged'",
     );
@@ -107,7 +119,11 @@ describe("scheduled Fleet PM evaluation", () => {
     expect(sql).toContain("and not exists (");
     expect(sql).toContain("where e.id::text = n.entity_id");
     expect(sql).toContain("and e.shop_id = n.shop_id");
-    expect(sql).toContain("and e.status in ('pending', 'deferred')");
+    expect(sql).toContain("e.status = 'pending'");
+    expect(sql).toContain("e.status = 'deferred'");
+    expect(sql).toContain(
+      "coalesce(e.deferred_until, current_date) <= current_date",
+    );
     expect(sql).not.toContain("where e.id = n.entity_id");
     // One unhealthy fleet must not abort the sweep.
     expect(sql).toContain("exception when others then");
@@ -119,5 +135,14 @@ describe("scheduled Fleet PM evaluation", () => {
     );
     expect(original).toContain("v_user_id uuid := auth.uid();");
     expect(original).not.toContain("p_provision_policies");
+  });
+
+  it("preserves human deferral evidence during scheduled reevaluation", () => {
+    const sql = read(MIGRATION);
+
+    expect(sql).toContain(
+      "due_snapshot = existing_event.due_snapshot || excluded.due_snapshot",
+    );
+    expect(sql).not.toContain("due_snapshot = excluded.due_snapshot,");
   });
 });

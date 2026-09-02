@@ -13,8 +13,10 @@
 -- fleet-access checks, its return shape, and its policy auto-provisioning are
 -- preserved exactly for every existing caller.
 --
--- fleet_pm_policies.created_by is NOT NULL, so the unattended path evaluates
--- existing active policies and never provisions new ones.
+-- fleet_pm_policies.created_by is NOT NULL, so existing active programs are
+-- deterministically backfilled before the unattended path begins evaluating
+-- policies. Programs created later go through manage_fleet_pm_program, which
+-- provisions their policies atomically.
 -- Scheduler-only helpers live in the existing private schema and remain
 -- unavailable to API roles; only the preserved actor entrypoint is public.
 
@@ -182,7 +184,7 @@ begin
       v_event_id := null;
       v_event_created := false;
 
-      insert into public.fleet_pm_due_events (
+      insert into public.fleet_pm_due_events as existing_event (
         shop_id,
         fleet_id,
         vehicle_id,
@@ -206,7 +208,9 @@ begin
         where status in ('pending', 'deferred', 'converted')
       do update
         set due_reasons = excluded.due_reasons,
-            due_snapshot = excluded.due_snapshot,
+            -- Evaluator-owned keys advance while human-authored evidence, such
+            -- as the deferral object, remains part of the audit snapshot.
+            due_snapshot = existing_event.due_snapshot || excluded.due_snapshot,
             triggering_reading_id = excluded.triggering_reading_id,
             last_evaluated_at = now(),
             updated_at = now()
@@ -310,7 +314,13 @@ begin
         select 1
         from public.fleet_pm_due_events e
         where e.id = v_event_id
-          and e.status in ('pending', 'deferred')
+          and (
+            e.status = 'pending'
+            or (
+              e.status = 'deferred'
+              and coalesce(e.deferred_until, current_date) <= current_date
+            )
+          )
       ) then
         select coalesce(nullif(v.unit_number,''), nullif(v.license_plate,''), nullif(v.vin,''), 'Unit')
         into v_unit_label
@@ -363,6 +373,119 @@ begin
 end;
 $$;
 
+-- Programs created before manage_fleet_pm_program could exist without the
+-- per-unit policies the scheduler consumes. Backfill them once, before the cron
+-- job is installed, using a stable real-user attribution order: an explicit
+-- Fleet member, the Fleet creator, then a shop profile. The assignment predicate
+-- mirrors the canonical PM management RPC and avoids activating selected-unit
+-- programs for unassigned assets.
+with fleet_policy_actor as (
+  select
+    f.id as fleet_id,
+    coalesce(
+      (
+        select member.user_id
+        from public.fleet_members member
+        where member.fleet_id = f.id
+          and member.shop_id = f.shop_id
+        order by
+          case member.role
+            when 'owner' then 1
+            when 'admin' then 2
+            when 'manager' then 3
+            when 'fleet_manager' then 4
+            when 'approver' then 5
+            else 6
+          end,
+          member.created_at,
+          member.user_id
+        limit 1
+      ),
+      f.created_by,
+      (
+        select profile.id
+        from public.profiles profile
+        where profile.shop_id = f.shop_id
+        order by
+          case profile.role
+            when 'owner' then 1
+            when 'admin' then 2
+            when 'manager' then 3
+            else 4
+          end,
+          profile.created_at,
+          profile.id
+        limit 1
+      )
+    ) as created_by
+  from public.fleets f
+)
+insert into public.fleet_pm_policies (
+  shop_id,
+  fleet_id,
+  vehicle_id,
+  program_id,
+  name,
+  interval_km,
+  interval_hours,
+  interval_days,
+  anchor_odometer_km,
+  anchor_engine_hours,
+  anchor_date,
+  requires_fleet_approval,
+  active,
+  created_by
+)
+select
+  f.shop_id,
+  fp.fleet_id,
+  fv.vehicle_id,
+  fp.id,
+  fp.name,
+  coalesce(fv.custom_interval_km, fp.interval_km),
+  coalesce(fv.custom_interval_hours, fp.interval_hours),
+  coalesce(fv.custom_interval_days, fp.interval_days),
+  latest.odometer_km,
+  latest.engine_hours,
+  current_date,
+  fp.requires_fleet_approval,
+  true,
+  actor.created_by
+from public.fleet_programs fp
+join public.fleets f on f.id = fp.fleet_id
+join fleet_policy_actor actor on actor.fleet_id = fp.fleet_id
+join public.fleet_vehicles fv
+  on fv.fleet_id = fp.fleet_id
+ and coalesce(fv.active, true)
+left join lateral (
+  select reading.odometer_km, reading.engine_hours
+  from public.fleet_unit_readings reading
+  where reading.fleet_id = fp.fleet_id
+    and reading.vehicle_id = fv.vehicle_id
+  order by reading.recorded_at desc, reading.created_at desc
+  limit 1
+) latest on true
+where fp.active
+  and actor.created_by is not null
+  and (
+    coalesce(fv.custom_interval_km, fp.interval_km) is not null
+    or coalesce(fv.custom_interval_hours, fp.interval_hours) is not null
+    or coalesce(fv.custom_interval_days, fp.interval_days) is not null
+  )
+  and (
+    fp.assignment_mode = 'all_units'
+    or exists (
+      select 1
+      from public.fleet_program_assignments assignment
+      where assignment.fleet_id = fp.fleet_id
+        and assignment.program_id = fp.id
+        and assignment.vehicle_id = fv.vehicle_id
+    )
+  )
+on conflict (program_id, vehicle_id)
+  where active = true
+do nothing;
+
 -- Actor path: unchanged contract. Authenticates, authorizes the fleet, then
 -- delegates to the shared core with policy provisioning enabled.
 create or replace function public.evaluate_fleet_pm_due_events(
@@ -403,8 +526,9 @@ begin
 end;
 $$;
 
--- System path: no auth.uid(). Never provisions policies, because their
--- created_by is NOT NULL and an unattended run has no actor to attribute.
+-- System path: no auth.uid(). Historical policies were backfilled above and
+-- future programs are provisioned by the canonical actor-authored management
+-- RPC, so this path only evaluates existing policies.
 create or replace function private.evaluate_fleet_pm_due_events_system(
   p_fleet_id uuid,
   p_vehicle_id uuid default null
@@ -460,7 +584,13 @@ begin
       from public.fleet_pm_due_events e
       where e.id::text = n.entity_id
         and e.shop_id = n.shop_id
-        and e.status in ('pending', 'deferred')
+        and (
+          e.status = 'pending'
+          or (
+            e.status = 'deferred'
+            and coalesce(e.deferred_until, current_date) <= current_date
+          )
+        )
     );
 
   return v_evaluated;
