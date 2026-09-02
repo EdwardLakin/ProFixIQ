@@ -7,9 +7,29 @@ import { useEffect, useState } from "react";
 
 import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
 import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
-import FieldWorkspaceShell, {
-  FIELD_SURFACE_SESSION_KEY,
-} from "@/features/mobile/service/FieldWorkspaceShell";
+import FieldWorkspaceShell from "@/features/mobile/service/FieldWorkspaceShell";
+import {
+  clearFieldServiceOfflineAccess,
+  readFieldServiceOfflineAccess,
+  resolveFieldServiceAccessScope,
+  writeFieldServiceOfflineAccess,
+  type FieldServiceAccessPayload,
+} from "@/features/mobile/service/fieldOfflineAccess";
+import {
+  clearFieldSurfaceSession,
+  readFieldSurfaceSession,
+  writeFieldSurfaceSession,
+} from "@/features/mobile/service/fieldSurfaceSession";
+import {
+  getOfflineMutationScope,
+  isRetryableOfflineStatus,
+  setOfflineMutationScope,
+} from "@/features/shared/lib/offline/mutations";
+import {
+  routeLoadFailureFromStatus,
+  runBoundedRouteLoad,
+} from "@/features/shared/lib/route-load";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { MobileBottomNav } from "./MobileBottomNav";
 
 type Props = {
@@ -90,96 +110,186 @@ export function MobileShell({ children, title }: Props) {
   const [fieldVerificationPending, setFieldVerificationPending] = useState(
     pathname.startsWith("/mobile/service"),
   );
+  const [verifiedFieldPathname, setVerifiedFieldPathname] = useState<
+    string | null
+  >(null);
+  const [fieldVerificationAttempt, setFieldVerificationAttempt] = useState(0);
   const resolvedTitle = title ?? getTitleFromPath(pathname);
 
   useEffect(() => {
     let active = true;
     const isFieldRoute = pathname.startsWith("/mobile/service");
-    setFieldVerificationPending(isFieldRoute);
-
-    try {
+    const verifyFieldSurface = async () => {
       if (
         pathname === "/mobile" ||
         pathname === "/mobile/sign-in" ||
         pathname.startsWith("/mobile/sign-in/")
       ) {
-        window.sessionStorage.removeItem(FIELD_SURFACE_SESSION_KEY);
+        clearFieldSurfaceSession();
         setFieldSurface(false);
         setFieldVerificationPending(false);
-        return () => {
-          active = false;
-        };
+        setVerifiedFieldPathname(null);
+        return;
       }
 
-      if (!isFieldRoute) {
-        setFieldSurface(
-          window.sessionStorage.getItem(FIELD_SURFACE_SESSION_KEY) ===
-            "standalone",
+      const storedSurfaceScope = readFieldSurfaceSession();
+      if (!isFieldRoute && !storedSurfaceScope) {
+        setFieldSurface(false);
+        setFieldVerificationPending(false);
+        setVerifiedFieldPathname(null);
+        return;
+      }
+
+      setFieldVerificationPending(true);
+      const supabase = createBrowserSupabase();
+      const sessionResult = await supabase.auth.getSession();
+      if (!active) return;
+      const authUserId = sessionResult.data.session?.user.id?.trim() ?? "";
+      if (sessionResult.error || !authUserId) {
+        clearFieldSurfaceSession();
+        setFieldSurface(false);
+        setFieldVerificationPending(false);
+        setVerifiedFieldPathname(null);
+        return;
+      }
+
+      const actorSurfaceScope =
+        storedSurfaceScope?.userId === authUserId ? storedSurfaceScope : null;
+      if (storedSurfaceScope && !actorSurfaceScope) {
+        clearFieldSurfaceSession();
+      }
+
+      const persistedScope = getOfflineMutationScope();
+      if (persistedScope && persistedScope.userId !== authUserId) {
+        setOfflineMutationScope(null);
+      }
+      const offlineScope =
+        actorSurfaceScope ??
+        (isFieldRoute && persistedScope?.userId === authUserId
+          ? persistedScope
+          : null);
+      const cachedAccess = offlineScope
+        ? readFieldServiceOfflineAccess(offlineScope)
+        : null;
+
+      try {
+        const response = await runBoundedRouteLoad(
+          { route: pathname, operation: "verify Field workspace shell" },
+          async ({ recordStatus, signal }) => {
+            const result = await fetch("/api/mobile/field-service/access", {
+              credentials: "include",
+              cache: "no-store",
+              signal,
+            });
+            recordStatus(result.status);
+            return result;
+          },
         );
-        setFieldVerificationPending(false);
-        return () => {
-          active = false;
-        };
-      }
-    } catch {
-      if (!isFieldRoute) {
-        setFieldSurface(false);
-        setFieldVerificationPending(false);
-      }
-    }
-
-    void fetch("/api/mobile/field-service/access", {
-      credentials: "include",
-      cache: "no-store",
-    })
-      .then(async (response) => {
-        const body = (await response.json().catch(() => null)) as {
-          canAccessFieldService?: boolean;
-          standaloneFieldWorkspace?: boolean;
-          canConfigure?: boolean;
-        } | null;
+        const body = (await response
+          .json()
+          .catch(() => null)) as FieldServiceAccessPayload | null;
         if (!active) return;
+        const verifiedScope = resolveFieldServiceAccessScope(body, authUserId);
 
-        const canAccessFieldService = Boolean(
-          response.ok && body?.canAccessFieldService,
-        );
+        if (!response.ok) {
+          if (
+            response.status >= 500 ||
+            isRetryableOfflineStatus(response.status)
+          ) {
+            throw routeLoadFailureFromStatus(
+              response.status,
+              "Field workspace access could not be verified.",
+            );
+          }
+          if (verifiedScope) clearFieldServiceOfflineAccess(verifiedScope);
+          if (offlineScope && offlineScope.shopId !== verifiedScope?.shopId) {
+            clearFieldServiceOfflineAccess(offlineScope);
+          }
+          clearFieldSurfaceSession();
+          setFieldSurface(false);
+          setVerifiedFieldPathname(null);
+          setFieldVerificationPending(false);
+          return;
+        }
+
+        if (!verifiedScope) {
+          clearFieldSurfaceSession();
+          setFieldSurface(false);
+          setVerifiedFieldPathname(null);
+          setFieldVerificationPending(false);
+          return;
+        }
+
+        const canAccessFieldService = body?.canAccessFieldService === true;
         const standaloneSetupSurface = Boolean(
-          response.ok &&
           pathname.startsWith("/mobile/service/setup") &&
           body?.standaloneFieldWorkspace &&
           body?.canConfigure,
         );
-        const preserveStandaloneField = Boolean(
-          canAccessFieldService && body?.standaloneFieldWorkspace,
-        );
 
-        try {
-          if (preserveStandaloneField) {
-            window.sessionStorage.setItem(
-              FIELD_SURFACE_SESSION_KEY,
-              "standalone",
-            );
+        if (canAccessFieldService) {
+          setOfflineMutationScope(verifiedScope);
+          writeFieldServiceOfflineAccess(verifiedScope, body);
+          if (body?.standaloneFieldWorkspace === true) {
+            writeFieldSurfaceSession(verifiedScope);
           } else {
-            window.sessionStorage.removeItem(FIELD_SURFACE_SESSION_KEY);
+            clearFieldSurfaceSession();
           }
-        } catch {
-          // Session persistence is an optimization; verified route access is authoritative.
-        }
-
-        setFieldSurface(canAccessFieldService || standaloneSetupSurface);
-        setFieldVerificationPending(false);
-      })
-      .catch(() => {
-        if (active) {
+          const shouldUseFieldSurface =
+            isFieldRoute || body?.standaloneFieldWorkspace === true;
+          setFieldSurface(shouldUseFieldSurface);
+          setVerifiedFieldPathname(shouldUseFieldSurface ? pathname : null);
+        } else if (standaloneSetupSurface) {
+          clearFieldSurfaceSession();
+          setFieldSurface(true);
+          setVerifiedFieldPathname(pathname);
+        } else {
+          clearFieldSurfaceSession();
+          clearFieldServiceOfflineAccess(verifiedScope);
           setFieldSurface(false);
-          setFieldVerificationPending(false);
+          setVerifiedFieldPathname(null);
         }
-      });
+        setFieldVerificationPending(false);
+      } catch {
+        if (!active) return;
+        const preserveCachedFieldSurface = Boolean(
+          cachedAccess && (isFieldRoute || actorSurfaceScope),
+        );
+        setFieldSurface(preserveCachedFieldSurface);
+        setVerifiedFieldPathname(preserveCachedFieldSurface ? pathname : null);
+        setFieldVerificationPending(false);
+      }
+    };
+
+    void verifyFieldSurface().catch(() => {
+      if (active) {
+        setFieldSurface(false);
+        setVerifiedFieldPathname(null);
+        setFieldVerificationPending(false);
+      }
+    });
 
     return () => {
       active = false;
     };
-  }, [pathname]);
+  }, [fieldVerificationAttempt, pathname]);
+
+  useEffect(() => {
+    const supabase = createBrowserSupabase();
+    const { data } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "INITIAL_SESSION" || event === "TOKEN_REFRESHED") return;
+      const storedScope = readFieldSurfaceSession();
+      const nextUserId = session?.user.id?.trim() ?? "";
+      if (!nextUserId || (storedScope && storedScope.userId !== nextUserId)) {
+        clearFieldSurfaceSession();
+        setFieldSurface(false);
+        setVerifiedFieldPathname(null);
+      }
+      setFieldVerificationAttempt((value) => value + 1);
+    });
+
+    return () => data.subscription.unsubscribe();
+  }, []);
 
   useEffect(() => {
     const openMenu = () => setMenuOpen(true);
@@ -236,8 +346,8 @@ export function MobileShell({ children, title }: Props) {
       </div>
     );
   } else if (
-    fieldVerificationPending &&
-    pathname.startsWith("/mobile/service")
+    fieldVerificationPending ||
+    (fieldSurface && verifiedFieldPathname !== pathname)
   ) {
     mobileSurface = (
       <div className="profixiq-mobile-command min-h-screen overflow-x-hidden pt-[env(safe-area-inset-top,0px)]">

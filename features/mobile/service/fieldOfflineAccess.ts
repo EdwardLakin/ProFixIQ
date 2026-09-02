@@ -19,6 +19,7 @@ export type FieldServiceAccessPayload = FieldExistingSessionAccess & {
   shopId?: string;
   productEntitled?: boolean;
   configurationComplete?: boolean;
+  standaloneFieldWorkspace?: boolean;
   workspaceCapabilities?: unknown;
 };
 

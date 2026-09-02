@@ -30,8 +30,7 @@ import {
   normalizeFieldWorkspaceCapabilities,
   type FieldWorkspaceCapabilities,
 } from "./fieldWorkspaceCapabilities";
-
-export const FIELD_SURFACE_SESSION_KEY = "profixiq:field-surface:v1";
+import { clearFieldSurfaceSession } from "./fieldSurfaceSession";
 
 type FieldNavItem = {
   label: string;
@@ -242,7 +241,12 @@ export default function FieldWorkspaceShell({
           canAccessFieldService?: boolean;
           workspaceCapabilities?: unknown;
         } | null;
-        if (!active || !response.ok || !body?.canAccessFieldService) return;
+        if (!active) return;
+        if (!response.ok || !body?.canAccessFieldService) {
+          if (response.status < 500) clearFieldSurfaceSession();
+          setWorkspaceCapabilities(EMPTY_FIELD_WORKSPACE_CAPABILITIES);
+          return;
+        }
         setWorkspaceCapabilities(
           normalizeFieldWorkspaceCapabilities(body.workspaceCapabilities),
         );
@@ -257,7 +261,7 @@ export default function FieldWorkspaceShell({
   }, []);
 
   const exitField = () => {
-    window.sessionStorage.removeItem(FIELD_SURFACE_SESSION_KEY);
+    clearFieldSurfaceSession();
     setMenuOpen(false);
   };
 
@@ -267,7 +271,7 @@ export default function FieldWorkspaceShell({
     try {
       const supabase = createBrowserSupabase();
       await supabase.auth.signOut({ scope: "local" });
-      window.sessionStorage.removeItem(FIELD_SURFACE_SESSION_KEY);
+      clearFieldSurfaceSession();
       router.replace("/field/sign-in");
       router.refresh();
     } finally {

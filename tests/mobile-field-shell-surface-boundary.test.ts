@@ -11,15 +11,12 @@ describe("Shop Mobile and Field shell separation", () => {
     expect(mobileShell).toContain('fetch("/api/mobile/field-service/access"');
     expect(mobileShell).toContain("body?.canAccessFieldService");
     expect(mobileShell).toContain("body?.standaloneFieldWorkspace");
-    expect(mobileShell).toContain(
-      'FIELD_SURFACE_SESSION_KEY,\n              "standalone"',
-    );
-    expect(mobileShell).toContain(
-      'window.sessionStorage.getItem(FIELD_SURFACE_SESSION_KEY) ===\n            "standalone"',
-    );
-    expect(mobileShell).not.toContain(
-      'window.sessionStorage.setItem(FIELD_SURFACE_SESSION_KEY, "true")',
-    );
+    expect(mobileShell).toContain("runBoundedRouteLoad");
+    expect(mobileShell).toContain("readFieldServiceOfflineAccess");
+    expect(mobileShell).toContain("readFieldSurfaceSession");
+    expect(mobileShell).toContain("writeFieldSurfaceSession(verifiedScope)");
+    expect(mobileShell).toContain("storedSurfaceScope?.userId === authUserId");
+    expect(mobileShell).toContain("supabase.auth.onAuthStateChange");
     expect(mobileShell).toContain("fieldVerificationPending");
     expect(mobileShell).toContain('aria-busy="true"');
     expect(mobileShell).toContain("Verifying Field workspace...");
