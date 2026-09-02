@@ -200,12 +200,13 @@ export async function POST(req: Request) {
       access,
       workOrderId,
     );
-    if (!productAuthority.authorized) {
+    if (!productAuthority.authorized || !productAuthority.mutationClient) {
       return NextResponse.json(
         { ok: false, error: "Work order not found" },
         { status: 404 },
       );
     }
+    const mutationSupabase = productAuthority.mutationClient;
 
     const { data: repairItem, error: repairErr } = await supabase
       .from("menu_repair_items")
@@ -238,7 +239,10 @@ export async function POST(req: Request) {
       );
     }
 
-    const { data: sourceLine, error: sourceLineError } = await supabase
+    // The target Work Order is already authorized above. For linked Field
+    // work, use its scoped mutation client to verify exact same-shop completed
+    // history that restrictive line RLS intentionally hides from broad reads.
+    const { data: sourceLine, error: sourceLineError } = await mutationSupabase
       .from("work_order_lines")
       .select("id, status")
       .eq("id", repairItem.source_work_order_line_id)
@@ -410,7 +414,6 @@ export async function POST(req: Request) {
       declined_at: null,
     };
 
-    const mutationSupabase = productAuthority.mutationClient;
     const { data: created, error: createErr } = await mutationSupabase
       .from("work_order_quote_lines")
       .insert(quoteRow)

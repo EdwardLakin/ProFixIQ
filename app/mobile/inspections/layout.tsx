@@ -1,13 +1,18 @@
 import type { ReactNode } from "react";
 
 import MobileCommandRoute from "@/features/mobile/layout/MobileCommandRoute";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
-import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
+import { requireCanonicalShopOrFieldPageAccess } from "@/features/mobile/service/server/access";
 
-export default async function MobileInspectionsLayout({ children }: { children: ReactNode }) {
-  await requireShopPageAccess({
+export default async function MobileInspectionsLayout({
+  children,
+}: {
+  children: ReactNode;
+}) {
+  await requireCanonicalShopOrFieldPageAccess({
     requiredCapability: "canRunInspections",
-    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+    redirectTo: "/mobile",
   });
-  return <MobileCommandRoute surface="inspections">{children}</MobileCommandRoute>;
+  return (
+    <MobileCommandRoute surface="inspections">{children}</MobileCommandRoute>
+  );
 }

@@ -38,9 +38,8 @@ describe("offline mutation receipts", () => {
       expect(source).toContain("A stable Idempotency-Key is required.");
     }
     expect(offlineRoute).toContain("requireShopScopedApiAccess");
-    expect(offlineRoute).toContain(
-      "requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES",
-    );
+    expect(offlineRoute).toContain("requiredProductCapabilities: []");
+    expect(offlineRoute).not.toContain("SHOP_OR_FIELD_PRODUCT_CAPABILITIES");
     expect(offlineRoute).toContain('from("offline_mutation_receipts")');
     expect(offlineRoute).toContain('.eq("actor_user_id", access.authUserId)');
     expect(offlineRoute.indexOf('from("offline_mutation_receipts")')).toBeLessThan(

@@ -38,6 +38,7 @@ function isRouteOwnedApi(pathname: string): boolean {
       "/api/branding/active",
       "/api/dashboard/layout",
       "/api/inspections/sign",
+      "/api/offline/mutations",
       "/api/quotes/approval-webhook",
       "/api/stripe/checkout/acquisition-context",
       "/api/stripe/checkout/link-user",
@@ -51,6 +52,9 @@ function isRouteOwnedApi(pathname: string): boolean {
     /^\/api\/inspections\/[^/]+\/report\/pdf$/.test(pathname) ||
     pathname === "/api/inspections/reports" ||
     /^\/api\/mobile\/service-visits\/[^/]+\/transition$/.test(pathname) ||
+    /^\/api\/work-orders\/lines\/[^/]+\/(start|pause|resume|finish)$/.test(
+      pathname,
+    ) ||
     /^\/api\/work-orders\/[^/]+\/(intake|invoice-pdf|media)$/.test(pathname) ||
     /^\/api\/work-orders\/lines\/[^/]+\/approval-decision$/.test(pathname) ||
     /^\/api\/work-orders\/quotes\/[^/]+\/(approval|approval-decision)$/.test(
@@ -110,7 +114,6 @@ function isShopOrFieldApi(pathname: string): boolean {
       "/api/ai/interpret",
       "/api/invoices/finalize",
       "/api/mobile/shifts",
-      "/api/offline/mutations",
       "/api/offline/session-check",
       "/api/offline/technician-work-orders",
       "/api/openai/realtime-token",
@@ -147,10 +150,7 @@ function isShopOrFieldApi(pathname: string): boolean {
     ) ||
     /^\/api\/work-orders\/[^/]+\/lines$/.test(pathname) ||
     /^\/api\/work-order-lines\/[^/]+\/workspace-detail$/.test(pathname) ||
-    /^\/api\/work-orders\/quotes\/[^/]+\/(authorize|decline)$/.test(pathname) ||
-    /^\/api\/work-orders\/lines\/[^/]+\/(start|pause|resume|finish)$/.test(
-      pathname,
-    )
+    /^\/api\/work-orders\/quotes\/[^/]+\/(authorize|decline)$/.test(pathname)
   );
 }
 

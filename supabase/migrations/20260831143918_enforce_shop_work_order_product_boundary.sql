@@ -989,11 +989,25 @@ for update
 to authenticated
 using (
   bucket_id <> 'job-photos'
-  or private.job_photo_object_has_product_access(name)
+  or private.job_photo_object_has_mutation_access(name)
 )
 with check (
   bucket_id <> 'job-photos'
-  or private.job_photo_object_has_product_access(name)
+  or private.job_photo_object_has_mutation_access(name)
+);
+
+drop policy if exists job_photos_product_authorized_update on storage.objects;
+create policy job_photos_product_authorized_update
+on storage.objects
+for update
+to authenticated
+using (
+  bucket_id = 'job-photos'
+  and private.job_photo_object_has_mutation_access(name)
+)
+with check (
+  bucket_id = 'job-photos'
+  and private.job_photo_object_has_mutation_access(name)
 );
 
 drop policy if exists job_photos_product_delete_boundary on storage.objects;
@@ -2257,6 +2271,426 @@ grant execute on function public.mobile_materialize_service_visit_work_order_ato
 revoke all on function private.mobile_materialize_visit_work_order_mode_core(
   uuid, uuid, uuid, text
 ) from public, anon, authenticated, service_role;
+
+-- Inspection quote import is a public PostgREST entry point whose mature
+-- implementation runs as SECURITY DEFINER. Keep its signature stable, bind
+-- the authenticated actor, preserve an exact durable replay, and require Shop
+-- or linked-Field mutation authority before entering the private core.
+alter function public.import_inspection_quote_package_atomic(
+  uuid, uuid, uuid, uuid, uuid, text, jsonb, timestamptz
+) rename to import_inspection_quote_package_product_core;
+alter function public.import_inspection_quote_package_product_core(
+  uuid, uuid, uuid, uuid, uuid, text, jsonb, timestamptz
+) set schema private;
+revoke all on function private.import_inspection_quote_package_product_core(
+  uuid, uuid, uuid, uuid, uuid, text, jsonb, timestamptz
+) from public, anon, authenticated, service_role;
+
+create function public.import_inspection_quote_package_atomic(
+  p_shop_id uuid,
+  p_work_order_id uuid,
+  p_inspection_id uuid,
+  p_requested_vehicle_id uuid,
+  p_actor_user_id uuid,
+  p_operation_key text,
+  p_items jsonb,
+  p_at timestamptz default now()
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_existing public.quote_lifecycle_operation_keys%rowtype;
+begin
+  if coalesce(auth.role(), '') <> 'service_role'
+     and auth.uid() is distinct from p_actor_user_id then
+    raise exception using
+      errcode = '42501',
+      message = 'Inspection import actor mismatch.';
+  end if;
+
+  select operation.*
+    into v_existing
+  from public.quote_lifecycle_operation_keys operation
+  where operation.shop_id = p_shop_id
+    and operation.operation_name = 'inspection_quote_import'
+    and operation.operation_key = p_operation_key;
+  if found then
+    if v_existing.actor_user_id is distinct from p_actor_user_id
+       or v_existing.work_order_id is distinct from p_work_order_id then
+      raise exception using
+        errcode = '23505',
+        message = 'INSPECTION_IMPORT_OPERATION_CONFLICT';
+    end if;
+    return private.import_inspection_quote_package_product_core(
+      p_shop_id,
+      p_work_order_id,
+      p_inspection_id,
+      p_requested_vehicle_id,
+      p_actor_user_id,
+      p_operation_key,
+      p_items,
+      p_at
+    );
+  end if;
+
+  if coalesce(auth.role(), '') <> 'service_role'
+     and not private.profixiq_current_actor_can_mutate_work_order_product(
+       p_shop_id,
+       p_work_order_id
+     ) then
+    raise exception using
+      errcode = '42501',
+      message = 'Work Order product access is required.';
+  end if;
+
+  return private.import_inspection_quote_package_product_core(
+    p_shop_id,
+    p_work_order_id,
+    p_inspection_id,
+    p_requested_vehicle_id,
+    p_actor_user_id,
+    p_operation_key,
+    p_items,
+    p_at
+  );
+end;
+$function$;
+
+revoke all on function public.import_inspection_quote_package_atomic(
+  uuid, uuid, uuid, uuid, uuid, text, jsonb, timestamptz
+) from public, anon, authenticated, service_role;
+grant execute on function public.import_inspection_quote_package_atomic(
+  uuid, uuid, uuid, uuid, uuid, text, jsonb, timestamptz
+) to authenticated, service_role;
+
+-- Preserve the canonical PO receipt signature and Shop-wide FIFO allocation.
+-- Field callers must prove that every PO line is backed by a linked request
+-- item, and their allocation lane is limited to those exact request items.
+create or replace function public.receive_po_part_and_allocate(
+  p_po_id uuid,
+  p_part_id uuid,
+  p_location_id uuid,
+  p_qty numeric,
+  p_operation_id uuid
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_uid uuid := auth.uid();
+  v_shop_id uuid;
+  v_po_status text;
+  v_operation_key text;
+  v_move public.stock_moves%rowtype;
+  v_result jsonb;
+  v_po_remaining numeric;
+  v_remaining numeric;
+  v_po_closed boolean := false;
+  v_field_restricted boolean := false;
+  v_item record;
+  v_target numeric;
+  v_received numeric;
+  v_need numeric;
+  v_take numeric;
+  v_alloc jsonb := '[]'::jsonb;
+begin
+  if v_uid is null then
+    raise exception using errcode = '42501', message = 'Not authenticated';
+  end if;
+  if p_po_id is null
+     or p_part_id is null
+     or p_location_id is null
+     or p_operation_id is null then
+    raise exception using
+      errcode = '22023',
+      message = 'PO, part, location, and operation id are required';
+  end if;
+  if p_qty is null
+     or p_qty <= 0
+     or p_qty::text in ('NaN', 'Infinity', '-Infinity')
+     or round(p_qty, 2) is distinct from p_qty then
+    raise exception using
+      errcode = '22023',
+      message = 'Receipt quantity must be positive with at most two decimal places';
+  end if;
+
+  select purchase_order.shop_id, purchase_order.status::text
+    into v_shop_id, v_po_status
+  from public.purchase_orders purchase_order
+  where purchase_order.id = p_po_id
+  for update;
+  if v_shop_id is null then
+    raise exception using errcode = 'P0002', message = 'Purchase order not found';
+  end if;
+
+  if not exists (
+    select 1
+    from public.profiles profile
+    where (profile.id = v_uid or profile.user_id = v_uid)
+      and profile.shop_id = v_shop_id
+      and public.canonical_shop_membership_role(profile.role::text) in (
+        'owner', 'admin', 'manager', 'lead_hand', 'foreman', 'parts'
+      )
+  ) then
+    raise exception using errcode = '42501', message = 'Parts permission required';
+  end if;
+  if not exists (
+    select 1
+    from public.parts part
+    where part.id = p_part_id
+      and part.shop_id = v_shop_id
+  ) then
+    raise exception using
+      errcode = '42501',
+      message = 'Part does not belong to purchase-order shop';
+  end if;
+  if not exists (
+    select 1
+    from public.stock_locations location
+    where location.id = p_location_id
+      and location.shop_id = v_shop_id
+  ) then
+    raise exception using
+      errcode = '42501',
+      message = 'Location does not belong to purchase-order shop';
+  end if;
+
+  v_operation_key := v_shop_id::text || ':po-receive:' || p_operation_id::text;
+  select move.*
+    into v_move
+  from public.stock_moves move
+  where move.shop_id = v_shop_id
+    and move.idempotency_key = v_operation_key
+  for update;
+  if found then
+    if v_move.part_id is distinct from p_part_id
+       or v_move.location_id is distinct from p_location_id
+       or v_move.qty_change is distinct from p_qty
+       or v_move.reference_kind is distinct from 'purchase_order'
+       or v_move.reference_id is distinct from p_po_id then
+      raise exception using
+        errcode = '22023',
+        message = 'PO_RECEIVE_IDEMPOTENCY_CONFLICT';
+    end if;
+    return coalesce(v_move.metadata -> 'receipt_result', '{}'::jsonb)
+      || jsonb_build_object('ok', true, 'replayed', true, 'move_id', v_move.id);
+  end if;
+
+  v_field_restricted := not public.profixiq_current_actor_has_shop_product_access(
+    v_shop_id
+  );
+  if v_field_restricted and (
+    not exists (
+      select 1
+      from public.purchase_order_lines line
+      where line.po_id = p_po_id
+    )
+    or exists (
+      select 1
+      from public.purchase_order_lines line
+      left join public.part_request_items item
+        on item.id = line.part_request_item_id
+       and item.shop_id = v_shop_id
+      where line.po_id = p_po_id
+        and (
+          line.part_request_item_id is null
+          or item.id is null
+          or item.work_order_id is null
+          or not private.profixiq_current_actor_can_mutate_work_order_product(
+            v_shop_id,
+            item.work_order_id
+          )
+        )
+    )
+  ) then
+    raise exception using
+      errcode = '42501',
+      message = 'Purchase order product access is required.';
+  end if;
+
+  perform 1
+  from public.purchase_order_lines line
+  where line.po_id = p_po_id
+    and line.part_id = p_part_id
+  order by line.created_at, line.id
+  for update;
+  select coalesce(
+      sum(greatest(coalesce(line.qty, 0) - coalesce(line.received_qty, 0), 0)),
+      0
+    )
+    into v_po_remaining
+  from public.purchase_order_lines line
+  where line.po_id = p_po_id
+    and line.part_id = p_part_id;
+  if v_po_remaining <= 0 then
+    raise exception using errcode = '22023', message = 'PO_PART_FULLY_RECEIVED';
+  end if;
+  if p_qty > v_po_remaining then
+    raise exception using
+      errcode = '22023',
+      message = format(
+        'PO_RECEIVE_QUANTITY_EXCEEDS_REMAINING requested=%s remaining=%s',
+        p_qty,
+        v_po_remaining
+      );
+  end if;
+
+  insert into public.stock_moves (
+    shop_id, part_id, location_id, qty_change, reason, reference_kind,
+    reference_id, created_by, idempotency_key, metadata, lifecycle_quantity
+  ) values (
+    v_shop_id,
+    p_part_id,
+    p_location_id,
+    p_qty,
+    'receive',
+    'purchase_order',
+    p_po_id,
+    v_uid,
+    v_operation_key,
+    jsonb_build_object(
+      'operation', 'purchase_order_receipt',
+      'operation_id', p_operation_id,
+      'po_id', p_po_id
+    ),
+    p_qty
+  ) returning * into v_move;
+
+  v_remaining := p_qty;
+  for v_item in
+    select line.id, line.qty, line.received_qty
+    from public.purchase_order_lines line
+    where line.po_id = p_po_id
+      and line.part_id = p_part_id
+    order by line.created_at, line.id
+    for update
+  loop
+    exit when v_remaining <= 0;
+    v_need := greatest(
+      coalesce(v_item.qty, 0) - coalesce(v_item.received_qty, 0),
+      0
+    );
+    v_take := least(v_remaining, v_need);
+    if v_take > 0 then
+      update public.purchase_order_lines
+      set received_qty = coalesce(received_qty, 0) + v_take
+      where id = v_item.id;
+      v_remaining := v_remaining - v_take;
+    end if;
+  end loop;
+  if v_remaining <> 0 then
+    raise exception using
+      errcode = 'P0001',
+      message = 'PO_RECEIVE_LINE_RECONCILIATION_FAILED';
+  end if;
+
+  if exists (
+    select 1
+    from public.purchase_order_lines line
+    where line.po_id = p_po_id
+      and coalesce(line.received_qty, 0) < coalesce(line.qty, 0)
+  ) then
+    v_po_closed := false;
+  else
+    update public.purchase_orders
+    set status = 'received'
+    where id = p_po_id;
+    v_po_closed := true;
+  end if;
+  select purchase_order.status::text
+    into v_po_status
+  from public.purchase_orders purchase_order
+  where purchase_order.id = p_po_id;
+
+  v_remaining := p_qty;
+  for v_item in
+    select
+      item.id,
+      item.qty,
+      item.qty_requested,
+      item.qty_approved,
+      item.qty_received
+    from public.part_request_items item
+    where item.shop_id = v_shop_id
+      and item.part_id = p_part_id
+      and item.status in (
+        'approved', 'reserved', 'ordered', 'picking', 'picked',
+        'partially_received'
+      )
+      and greatest(
+        coalesce(item.qty_approved, 0),
+        coalesce(item.qty_requested, 0),
+        coalesce(item.qty, 0),
+        0
+      ) > greatest(coalesce(item.qty_received, 0), 0)
+      and (
+        not v_field_restricted
+        or exists (
+          select 1
+          from public.purchase_order_lines source_line
+          where source_line.po_id = p_po_id
+            and source_line.part_request_item_id = item.id
+        )
+      )
+    order by item.created_at, item.id
+    for update
+  loop
+    exit when v_remaining <= 0;
+    v_target := greatest(
+      coalesce(v_item.qty_approved, 0),
+      coalesce(v_item.qty_requested, 0),
+      coalesce(v_item.qty, 0),
+      0
+    );
+    v_received := greatest(coalesce(v_item.qty_received, 0), 0);
+    v_need := greatest(v_target - v_received, 0);
+    v_take := least(v_remaining, v_need);
+    if v_take > 0 then
+      update public.part_request_items
+      set qty_received = v_received + v_take,
+          status = case
+            when v_received + v_take >= v_target
+              then 'received'::public.part_request_item_status
+            else 'partially_received'::public.part_request_item_status
+          end
+      where id = v_item.id;
+      v_alloc := v_alloc || jsonb_build_object(
+        'request_item_id', v_item.id,
+        'qty_allocated', v_take
+      );
+      v_remaining := v_remaining - v_take;
+    end if;
+  end loop;
+
+  v_result := jsonb_build_object(
+    'ok', true,
+    'replayed', false,
+    'move_id', v_move.id,
+    'po_id', p_po_id,
+    'po_closed', v_po_closed,
+    'po_status', v_po_status,
+    'part_id', p_part_id,
+    'qty_received_total', p_qty,
+    'allocations', v_alloc,
+    'unallocated_qty', greatest(v_remaining, 0)
+  );
+  update public.stock_moves
+  set metadata = coalesce(metadata, '{}'::jsonb)
+    || jsonb_build_object('receipt_result', v_result)
+  where id = v_move.id;
+  return v_result;
+end;
+$function$;
+
+revoke all on function public.receive_po_part_and_allocate(
+  uuid, uuid, uuid, numeric, uuid
+) from public, anon;
+grant execute on function public.receive_po_part_and_allocate(
+  uuid, uuid, uuid, numeric, uuid
+) to authenticated, service_role;
 
 -- Quote decisions and line voids are public PostgREST entry points whose
 -- mature cores run as SECURITY DEFINER. Preserve committed, actor-bound

@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  requireCanonicalShopOrFieldApiAccess,
+  resolveWorkOrderProductAuthority,
+} from "@/features/mobile/service/server/access";
 
 export async function POST(req: Request) {
   try {
-    const supabase = createServerSupabaseRoute();
-
     const {
       inspectionId,
       workOrderId,
@@ -16,6 +17,21 @@ export async function POST(req: Request) {
       vehicle,
     } = await req.json();
 
+    const access = await requireCanonicalShopOrFieldApiAccess({
+      requiredCapability: "canRunInspections",
+    });
+    if (!access.ok) return access.response;
+    const supabase = access.supabase;
+    if (
+      typeof workOrderId !== "string" ||
+      !(await resolveWorkOrderProductAuthority(access, workOrderId)).authorized
+    ) {
+      return NextResponse.json(
+        { error: "Work order not found" },
+        { status: 404 },
+      );
+    }
+
     const vehicleYear =
       typeof vehicle?.year === "number"
         ? vehicle.year
@@ -25,7 +41,9 @@ export async function POST(req: Request) {
     const vehicleModel =
       typeof vehicle?.model === "string" ? vehicle.model.trim() || null : null;
     const engine =
-      typeof vehicle?.engine === "string" ? vehicle.engine.trim() || null : null;
+      typeof vehicle?.engine === "string"
+        ? vehicle.engine.trim() || null
+        : null;
     const drivetrain =
       typeof vehicle?.drivetrain === "string"
         ? vehicle.drivetrain.trim() || null
@@ -35,27 +53,8 @@ export async function POST(req: Request) {
         ? vehicle.transmission.trim() || null
         : null;
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    // 🔐 get shop_id
-    const { data: profile } = await supabase
-      .from("profiles")
-      .select("shop_id")
-      .eq("id", user.id)
-      .single();
-
-    if (!profile?.shop_id) {
-      return NextResponse.json({ error: "No shop" }, { status: 400 });
-    }
-
     await supabase.from("inspection_smart_match_history").insert({
-      shop_id: profile.shop_id,
+      shop_id: access.profile.shop_id,
       inspection_id: inspectionId,
       work_order_id: workOrderId,
       section_title: sectionTitle,

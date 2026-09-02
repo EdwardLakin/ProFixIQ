@@ -4,7 +4,6 @@ import { NextResponse } from "next/server";
 import { resolveWorkOrderProductAuthority } from "@/features/mobile/service/server/access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 
 type JobPunchLine = {
   id: string;
@@ -30,7 +29,9 @@ export async function requireJobPunchActorAccess(input: {
   | { ok: false; response: NextResponse }
 > {
   const access = await requireShopScopedApiAccess({
-    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+    // Authenticate and resolve tenant identity before receipt lookup. Live
+    // product authority applies only when this is a fresh transition.
+    requiredProductCapabilities: [],
   });
   if (!access.ok) return access;
 

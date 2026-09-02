@@ -328,7 +328,11 @@ function warnSchemaDrift(table: "menu_items" | "menu_repair_items", phase: "rich
   });
 }
 
-async function safeLoadMenuRepairItems(supabase: SupabaseClient<DB>, shopId: string): Promise<MenuRepairItemRow[]> {
+async function safeLoadMenuRepairItems(
+  supabase: SupabaseClient<DB>,
+  shopId: string,
+  completedRepairSourceClient: SupabaseClient<DB> = supabase,
+): Promise<MenuRepairItemRow[]> {
   const baseSelect = "id, name, complaint, correction, labor_hours, parts, source_work_order_line_id, last_pricing_source";
   const extendedSelect = `${baseSelect}, vehicle_year, vehicle_make, vehicle_model, engine, drivetrain, transmission, fuel_type, usage_count`;
   const minimalSelect = "id, name";
@@ -390,7 +394,11 @@ async function safeLoadMenuRepairItems(supabase: SupabaseClient<DB>, shopId: str
   ];
   if (sourceLineIds.length === 0) return [];
 
-  const { data: completedSources, error: completedSourceError } = await supabase
+  // A linked Field inspection may reuse same-shop completed history that is
+  // no longer itself Field-visible. The caller supplies a trusted client only
+  // after authorizing the target Work Order; this stays tenant/id constrained.
+  const { data: completedSources, error: completedSourceError } =
+    await completedRepairSourceClient
     .from("work_order_lines")
     .select("id, status")
     .eq("shop_id", shopId)
@@ -615,6 +623,7 @@ function isCompatibleCandidate(args: {
 
 export async function findSmartInspectionMatch(args: {
   supabase: SupabaseClient<DB>;
+  completedRepairSourceClient?: SupabaseClient<DB>;
   shopId: string;
   body: MatchBody;
 }): Promise<SmartInspectionMatch | null> {
@@ -623,7 +632,7 @@ export async function findSmartInspectionMatch(args: {
   // - menu_repair_items / match history (learned specific repairs)
   // - menu_items (authored catalog, diagnostic, generic services)
   // and then applies safety-first ranking.
-  const { supabase, shopId, body } = args;
+  const { supabase, completedRepairSourceClient, shopId, body } = args;
 
   const noteText = [txt(body?.item), txt(body?.notes), txt(body?.section)]
     .filter(Boolean)
@@ -677,7 +686,11 @@ export async function findSmartInspectionMatch(args: {
       .filter(Boolean),
   );
 
-  const repairItems = await safeLoadMenuRepairItems(supabase, shopId);
+  const repairItems = await safeLoadMenuRepairItems(
+    supabase,
+    shopId,
+    completedRepairSourceClient,
+  );
 
 
   // 🔥 Load active pricing snapshots

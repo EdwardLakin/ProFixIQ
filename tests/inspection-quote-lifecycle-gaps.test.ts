@@ -47,6 +47,9 @@ describe("inspection to canonical quote review lifecycle", () => {
       expect(route).toContain("resolveWorkOrderProductMutationClient");
       expect(route).toContain("mutationClient");
     }
+    expect(addMenuRepairRoute).toMatch(
+      /mutationSupabase[\s\S]+from\("work_order_lines"\)[\s\S]+eq\("shop_id", shopId\)/,
+    );
   });
 
   it("blocks invoice readiness on active pending quote lines without a separate inspection-only readiness path", () => {

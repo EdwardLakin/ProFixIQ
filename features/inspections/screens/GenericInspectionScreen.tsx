@@ -1079,6 +1079,7 @@ type SmartMatchRow = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          workOrderId,
           item: label,
           notes: note,
           section: sectionTitle,
@@ -1211,6 +1212,7 @@ type SmartMatchRow = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          workOrderId,
           itemLabel:
             typeof item?.item === "string"
               ? item.item
@@ -1424,6 +1426,7 @@ type SmartMatchRow = {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          workOrderId,
           itemLabel: label,
           note,
           suggestedMatchId: match.id,

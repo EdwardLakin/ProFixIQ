@@ -1,9 +1,12 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { findSmartInspectionMatch } from "@/features/inspections/server/findSmartInspectionMatch";
-
+import {
+  requireCanonicalShopOrFieldApiAccess,
+  resolveWorkOrderProductMutationClient,
+} from "@/features/mobile/service/server/access";
 
 type Body = {
+  workOrderId?: string;
   item?: string;
   notes?: string;
   section?: string;
@@ -20,31 +23,30 @@ type Body = {
 };
 
 export async function POST(req: Request) {
-  const supabase = createServerSupabaseRoute();
   const body = (await req.json().catch(() => null)) as Body | null;
-
-  const {
-    data: { user },
-    error: authErr,
-  } = await supabase.auth.getUser();
-
-  if (authErr || !user) {
-    return NextResponse.json({ match: null }, { status: 401 });
+  const workOrderId =
+    typeof body?.workOrderId === "string" ? body.workOrderId.trim() : "";
+  if (!workOrderId) {
+    return NextResponse.json({ match: null }, { status: 400 });
   }
 
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("shop_id")
-    .eq("id", user.id)
-    .maybeSingle();
+  const access = await requireCanonicalShopOrFieldApiAccess({
+    requiredCapability: "canRunInspections",
+  });
+  if (!access.ok) return access.response;
 
-  if (!profile?.shop_id) {
-    return NextResponse.json({ match: null });
+  const productAuthority = await resolveWorkOrderProductMutationClient(
+    access,
+    workOrderId,
+  );
+  if (!productAuthority.authorized || !productAuthority.mutationClient) {
+    return NextResponse.json({ match: null }, { status: 404 });
   }
 
   const match = await findSmartInspectionMatch({
-    supabase,
-    shopId: profile.shop_id,
+    supabase: access.supabase,
+    completedRepairSourceClient: productAuthority.mutationClient,
+    shopId: access.profile.shop_id,
     body: body ?? {},
   });
 

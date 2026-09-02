@@ -2,7 +2,6 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { resolveWorkOrderProductAuthority } from "@/features/mobile/service/server/access";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
@@ -91,7 +90,9 @@ export async function POST(request: NextRequest) {
   }
 
   const access = await requireShopScopedApiAccess({
-    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+    // Identity and tenant scope must be available before checking a durable
+    // receipt. Current product authority is required below only for fresh work.
+    requiredProductCapabilities: [],
   });
   if (!access.ok) return access.response;
 

@@ -75,6 +75,7 @@ describe("product boundary stabilization", () => {
     expect(access).toContain("resolveWorkOrderProductAuthority");
     expect(detail).toContain("resolveWorkOrderProductAuthority");
     expect(punches).toContain("resolveWorkOrderProductAuthority");
+    expect(punches).toContain("requiredProductCapabilities: []");
     expect(punches).toContain(
       "`${line.shop_id}:job-punch:${input.operationKey}`",
     );
@@ -90,6 +91,7 @@ describe("product boundary stabilization", () => {
     expect(evidence).toContain("resolveFleetActorContext");
     expect(evidence).toContain("canAccessPortalFleetWrappers");
     expect(offlineMutations).toContain("resolveWorkOrderProductAuthority");
+    expect(offlineMutations).toContain("requiredProductCapabilities: []");
     expect(offlineMutations).toContain("createAdminSupabase");
     expect(offlineMutations).toContain('from("offline_mutation_receipts")');
     expect(offlineMutations).toContain(
@@ -127,6 +129,42 @@ describe("product boundary stabilization", () => {
     ]) {
       expect(read(route)).toContain("canExecuteInspectionForProduct");
     }
+
+    const inspectionLayout = read("app/mobile/inspections/layout.tsx");
+    expect(inspectionLayout).toContain("requireCanonicalShopOrFieldPageAccess");
+    expect(inspectionLayout).toContain(
+      'requiredCapability: "canRunInspections"',
+    );
+
+    const sign = read("app/api/inspections/sign/route.ts");
+    expect(sign).toMatch(
+      /bodyUnknown\.role !== "customer"[\s\S]+canExecuteInspectionForProduct/,
+    );
+
+    const smartMatch = read("app/api/inspections/smart-match/route.ts");
+    const smartMatchHistory = read(
+      "app/api/inspections/smart-match/history/route.ts",
+    );
+    const smartMatchFeedback = read(
+      "app/api/inspections/smart-match/feedback/route.ts",
+    );
+    for (const route of [smartMatch, smartMatchHistory, smartMatchFeedback]) {
+      expect(route).toContain("requireCanonicalShopOrFieldApiAccess");
+      expect(route).toContain('requiredCapability: "canRunInspections"');
+      expect(route).toContain("workOrderId");
+    }
+    expect(smartMatch).toContain("resolveWorkOrderProductMutationClient");
+    expect(smartMatch).toContain("completedRepairSourceClient");
+    expect(smartMatchHistory).toContain("resolveWorkOrderProductAuthority");
+    expect(smartMatchFeedback).toContain("resolveWorkOrderProductAuthority");
+
+    const smartMatchServer = read(
+      "features/inspections/server/findSmartInspectionMatch.ts",
+    );
+    expect(smartMatchServer).toContain(
+      "completedRepairSourceClient?: SupabaseClient<DB>",
+    );
+    expect(smartMatchServer).toContain("await completedRepairSourceClient");
   });
 
   it("does not let a Field role become standard tenant-wide invoice authority", () => {
@@ -178,9 +216,13 @@ describe("product boundary stabilization", () => {
       capabilities: ["shop"],
     });
     expect(resolveApiProductBoundary("/api/offline/mutations")).toEqual({
-      kind: "product",
-      capabilities: ["shop", "field_service"],
+      kind: "route_owned",
     });
+    for (const action of ["start", "pause", "resume", "finish"]) {
+      expect(
+        resolveApiProductBoundary(`/api/work-orders/lines/line-1/${action}`),
+      ).toEqual({ kind: "route_owned" });
+    }
     expect(resolveApiProductBoundary("/api/inspection/save")).toEqual({
       kind: "product",
       capabilities: ["shop", "field_service"],

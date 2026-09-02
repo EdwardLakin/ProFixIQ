@@ -338,6 +338,130 @@ values
     'requested'
   );
 
+-- Field PO receipt fixtures deliberately put an older unrelated request for
+-- the same part ahead of the authorized request. A broad shop FIFO would
+-- mutate the unrelated item; the Field branch must allocate only through the
+-- request-item identities carried by the authorized PO.
+insert into public.part_requests (
+  id, shop_id, work_order_id, job_id, status, notes
+)
+values
+  (
+    '5a200000-0000-4000-8000-000000000023',
+    '59200000-0000-4000-8000-000000000003',
+    '59500000-0000-4000-8000-000000000003',
+    '59600000-0000-4000-8000-000000000003',
+    'approved',
+    'Linked Field PO receipt request'
+  ),
+  (
+    '5a200000-0000-4000-8000-000000000033',
+    '59200000-0000-4000-8000-000000000003',
+    '59500000-0000-4000-8000-000000000013',
+    '59600000-0000-4000-8000-000000000013',
+    'approved',
+    'Unlinked Field PO receipt request'
+  );
+
+insert into public.part_request_items (
+  id, request_id, shop_id, work_order_id, work_order_line_id, part_id,
+  description, qty, qty_requested, qty_approved, qty_received, status,
+  created_at
+)
+values
+  (
+    '5a300000-0000-4000-8000-000000000303',
+    '5a200000-0000-4000-8000-000000000023',
+    '59200000-0000-4000-8000-000000000003',
+    '59500000-0000-4000-8000-000000000003',
+    '59600000-0000-4000-8000-000000000003',
+    '5a100000-0000-4000-8000-000000000003',
+    'Linked Field PO receipt item',
+    1,
+    1,
+    1,
+    0,
+    'approved',
+    now() - interval '1 day'
+  ),
+  (
+    '5a300000-0000-4000-8000-000000000313',
+    '5a200000-0000-4000-8000-000000000033',
+    '59200000-0000-4000-8000-000000000003',
+    '59500000-0000-4000-8000-000000000013',
+    '59600000-0000-4000-8000-000000000013',
+    '5a100000-0000-4000-8000-000000000003',
+    'Unlinked Field PO receipt item',
+    1,
+    1,
+    1,
+    0,
+    'approved',
+    now() - interval '2 days'
+  );
+
+insert into public.suppliers (id, shop_id, name)
+values (
+  '5a400000-0000-4000-8000-000000000003',
+  '59200000-0000-4000-8000-000000000003',
+  'Product Field PO Supplier'
+);
+
+insert into public.stock_locations (id, shop_id, code, name)
+values (
+  '5a500000-0000-4000-8000-000000000003',
+  '59200000-0000-4000-8000-000000000003',
+  'PRODUCT-FIELD-PO',
+  'Product Field PO Bin'
+);
+
+insert into public.purchase_orders (
+  id, shop_id, supplier_id, status, notes, work_order_id
+)
+values
+  (
+    '5a600000-0000-4000-8000-000000000003',
+    '59200000-0000-4000-8000-000000000003',
+    '5a400000-0000-4000-8000-000000000003',
+    'submitted',
+    'Linked Field PO receipt',
+    '59500000-0000-4000-8000-000000000003'
+  ),
+  (
+    '5a600000-0000-4000-8000-000000000013',
+    '59200000-0000-4000-8000-000000000003',
+    '5a400000-0000-4000-8000-000000000003',
+    'submitted',
+    'Unlinked Field PO receipt',
+    '59500000-0000-4000-8000-000000000013'
+  );
+
+insert into public.purchase_order_lines (
+  id, po_id, part_id, qty, received_qty, unit_cost, location_id,
+  part_request_item_id
+)
+values
+  (
+    '5a700000-0000-4000-8000-000000000003',
+    '5a600000-0000-4000-8000-000000000003',
+    '5a100000-0000-4000-8000-000000000003',
+    1,
+    0,
+    10,
+    '5a500000-0000-4000-8000-000000000003',
+    '5a300000-0000-4000-8000-000000000303'
+  ),
+  (
+    '5a700000-0000-4000-8000-000000000013',
+    '5a600000-0000-4000-8000-000000000013',
+    '5a100000-0000-4000-8000-000000000003',
+    1,
+    0,
+    10,
+    '5a500000-0000-4000-8000-000000000003',
+    '5a300000-0000-4000-8000-000000000313'
+  );
+
 -- Canonical standalone Field setup: one owner/operator and one active truck.
 insert into public.mobile_service_settings (
   shop_id, service_model, solo_mode, dispatch_enabled,
@@ -661,6 +785,11 @@ begin
      )
      or has_function_privilege(
        'authenticated',
+       'private.import_inspection_quote_package_product_core(uuid,uuid,uuid,uuid,uuid,text,jsonb,timestamptz)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
+       'authenticated',
        'private.apply_job_punch_transition_product_core(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
        'EXECUTE'
      )
@@ -683,6 +812,16 @@ begin
   end if;
 
   if has_function_privilege(
+       'anon',
+       'public.import_inspection_quote_package_atomic(uuid,uuid,uuid,uuid,uuid,text,jsonb,timestamptz)',
+       'EXECUTE'
+     )
+     or not has_function_privilege(
+       'authenticated',
+       'public.import_inspection_quote_package_atomic(uuid,uuid,uuid,uuid,uuid,text,jsonb,timestamptz)',
+       'EXECUTE'
+     )
+     or has_function_privilege(
        'anon',
        'public.apply_job_punch_transition_atomic(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)',
        'EXECUTE'
@@ -1104,6 +1243,48 @@ begin
     raise exception 'Field actor applied an offline mutation to an unrelated Work Order.';
   end if;
 
+  v_denied := false;
+  begin
+    perform public.import_inspection_quote_package_atomic(
+      '59200000-0000-4000-8000-000000000003',
+      '59500000-0000-4000-8000-000000000003',
+      '59700000-0000-4000-8000-000000000099',
+      null,
+      '59100000-0000-4000-8000-000000000003',
+      'product-boundary:field-inspection-import-core',
+      '[]'::jsonb,
+      now()
+    );
+  exception when raise_exception then
+    if sqlerrm = 'Inspection not found for shop.' then
+      v_denied := true;
+    else
+      raise;
+    end if;
+  end;
+  if not v_denied then
+    raise exception 'Linked Field inspection import did not reach its private core.';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.import_inspection_quote_package_atomic(
+      '59200000-0000-4000-8000-000000000003',
+      '59500000-0000-4000-8000-000000000013',
+      '59700000-0000-4000-8000-000000000099',
+      null,
+      '59100000-0000-4000-8000-000000000003',
+      'product-boundary:field-inspection-import-unlinked',
+      '[]'::jsonb,
+      now()
+    );
+  exception when insufficient_privilege then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Field actor imported findings into an unrelated Work Order.';
+  end if;
+
   select public.parts_attach_inventory_to_request_item_atomic(
     '5a300000-0000-4000-8000-000000000103',
     '5a100000-0000-4000-8000-000000000003'
@@ -1167,6 +1348,54 @@ begin
     raise exception 'Field actor created inventory for an unrelated Work Order.';
   end if;
 
+  select public.receive_po_part_and_allocate(
+    '5a600000-0000-4000-8000-000000000003',
+    '5a100000-0000-4000-8000-000000000003',
+    '5a500000-0000-4000-8000-000000000003',
+    1,
+    '5a800000-0000-4000-8000-000000000003'
+  ) into v_result;
+  if not exists (
+       select 1
+       from jsonb_array_elements(v_result -> 'allocations') allocation
+       where allocation ->> 'request_item_id' =
+         '5a300000-0000-4000-8000-000000000303'
+     )
+     or exists (
+       select 1
+       from jsonb_array_elements(v_result -> 'allocations') allocation
+       where allocation ->> 'request_item_id' =
+         '5a300000-0000-4000-8000-000000000313'
+     )
+     or coalesce((
+       select item.qty_received
+       from public.part_request_items item
+       where item.id = '5a300000-0000-4000-8000-000000000303'
+     ), 0) <> 1
+     or coalesce((
+       select item.qty_received
+       from public.part_request_items item
+       where item.id = '5a300000-0000-4000-8000-000000000313'
+     ), 0) <> 0 then
+    raise exception 'Field PO receipt escaped its authorized request-item identities.';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.receive_po_part_and_allocate(
+      '5a600000-0000-4000-8000-000000000013',
+      '5a100000-0000-4000-8000-000000000003',
+      '5a500000-0000-4000-8000-000000000003',
+      1,
+      '5a800000-0000-4000-8000-000000000013'
+    );
+  exception when insufficient_privilege then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Field actor received an unrelated purchase order.';
+  end if;
+
   insert into storage.objects (id, bucket_id, name, owner, owner_id, metadata)
   values (
     '59c00000-0000-4000-8000-000000000023',
@@ -1176,6 +1405,22 @@ begin
     '59100000-0000-4000-8000-000000000003',
     '{"mimetype":"image/jpeg","fixture":"field-write"}'::jsonb
   );
+
+  update storage.objects
+  set metadata = metadata || '{"retry":"allowed"}'::jsonb
+  where id = '59c00000-0000-4000-8000-000000000023';
+  get diagnostics v_rows = row_count;
+  if v_rows <> 1 then
+    raise exception 'Linked Field actor could not overwrite its stable job-photo path.';
+  end if;
+
+  update storage.objects
+  set metadata = metadata || '{"retry":"denied"}'::jsonb
+  where id = '59c00000-0000-4000-8000-000000000013';
+  get diagnostics v_rows = row_count;
+  if v_rows <> 0 then
+    raise exception 'Field actor overwrote evidence for an unrelated Work Order.';
+  end if;
 
   v_denied := false;
   begin

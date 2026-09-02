@@ -143,7 +143,13 @@ describe("Shop Work Order product boundary", () => {
       "create policy job_photos_product_authorized_insert",
     );
     expect(source).toContain(
+      "create policy job_photos_product_authorized_update",
+    );
+    expect(source).toContain(
       "private.job_photo_object_has_mutation_access(name)",
+    );
+    expect(source).toMatch(
+      /create policy job_photos_product_update_boundary[\s\S]+private\.job_photo_object_has_mutation_access\(name\)[\s\S]+with check \([\s\S]+private\.job_photo_object_has_mutation_access\(name\)/,
     );
     expect(source).not.toContain(
       "create policy job_photos_product_relationship_insert",
@@ -178,6 +184,7 @@ describe("Shop Work Order product boundary", () => {
       "apply_offline_line_mutation_product_core",
       "parts_attach_inventory_to_request_item_product_core",
       "parts_create_and_attach_inventory_product_core",
+      "import_inspection_quote_package_product_core",
     ]) {
       expect(source).toContain(`set schema private`);
       expect(source).toContain(`private.${core}`);
@@ -228,6 +235,12 @@ describe("Shop Work Order product boundary", () => {
     );
     expect(runtime).toContain(
       "Mark-ready product wrapper broke idempotent replay.",
+    );
+    expect(runtime).toContain(
+      "Field actor imported findings into an unrelated Work Order.",
+    );
+    expect(runtime).toContain(
+      "Linked Field actor could not overwrite its stable job-photo path.",
     );
     expect(runtime).toContain(
       "has_schema_privilege('authenticated', 'private', 'USAGE')",
@@ -282,6 +295,21 @@ describe("Shop Work Order product boundary", () => {
       expect(runtime).toContain(`public.${rpc}`);
     }
 
+    expect(source).toContain(
+      "create function public.import_inspection_quote_package_atomic",
+    );
+    expect(source).toContain("Inspection import actor mismatch.");
+    expect(source).toContain("INSPECTION_IMPORT_OPERATION_CONFLICT");
+    expect(source).toContain(
+      "create or replace function public.receive_po_part_and_allocate",
+    );
+    expect(source).toContain("v_field_restricted boolean := false");
+    expect(source).toContain("where source_line.po_id = p_po_id");
+    expect(source).toContain("and source_line.part_request_item_id = item.id");
+    expect(source).toContain(
+      "grant execute on function public.receive_po_part_and_allocate(\n  uuid, uuid, uuid, numeric, uuid\n) to authenticated, service_role",
+    );
+
     expect(runtime).toContain(
       "Field actor reached the job-punch product core without its mature validation.",
     );
@@ -302,6 +330,12 @@ describe("Shop Work Order product boundary", () => {
     );
     expect(runtime).toContain(
       "Field actor created inventory for its linked Work Order incorrectly.",
+    );
+    expect(runtime).toContain(
+      "Field PO receipt escaped its authorized request-item identities.",
+    );
+    expect(runtime).toContain(
+      "Field actor received an unrelated purchase order.",
     );
     expect(runtime).toContain(
       "Fleet read authority became job-punch write authority.",

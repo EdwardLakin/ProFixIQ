@@ -356,8 +356,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  if (bodyUnknown.role === "technician") {
-    const { data: inspectionContext, error: inspectionContextError } =
+  let inspectionContext: {
+    work_order_id: string | null;
+    vehicle_id: string | null;
+  } | null = null;
+  if (bodyUnknown.role !== "customer") {
+    const { data: loadedInspectionContext, error: inspectionContextError } =
       await supabase
         .from("inspections")
         .select("work_order_id, vehicle_id")
@@ -369,7 +373,7 @@ export async function POST(req: NextRequest) {
           vehicle_id: string | null;
         }>();
 
-    if (inspectionContextError || !inspectionContext?.work_order_id) {
+    if (inspectionContextError || !loadedInspectionContext?.work_order_id) {
       return NextResponse.json(
         {
           error:
@@ -384,12 +388,22 @@ export async function POST(req: NextRequest) {
       !(await canExecuteInspectionForProduct({
         supabase,
         shopId: profile.shop_id,
-        workOrderId: inspectionContext.work_order_id,
+        workOrderId: loadedInspectionContext.work_order_id,
       }))
     ) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
+    inspectionContext = loadedInspectionContext;
+  }
+
+  if (bodyUnknown.role === "technician") {
+    if (!inspectionContext?.work_order_id) {
+      return NextResponse.json(
+        { error: "Inspection is not attached to a work order." },
+        { status: 409 },
+      );
+    }
     const imported = await insertPrioritizedJobsFromInspection({
       supabase,
       inspectionId: resolved.inspectionId,
