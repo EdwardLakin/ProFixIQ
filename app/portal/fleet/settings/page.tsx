@@ -16,6 +16,7 @@ import {
 } from "./actions";
 import FleetMemberRemoveButton from "@/features/fleet/components/FleetMemberRemoveButton";
 import { canAdministerFleetForActor } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { getFleetPortalActorContext } from "../_lib/requireFleetPortalActor";
 
@@ -59,18 +60,23 @@ function roleLabel(role: string): string {
 
 export default async function FleetSettingsPage({ searchParams }: PageProps) {
   const params = await searchParams;
-  const actor = await getFleetPortalActorContext();
+  const actor = await getFleetPortalActorContext(params.fleetId ?? null);
   if (!actor.shopId) redirect("/portal/fleet");
 
   const manageableFleetIds = actor.fleetIds.filter((fleetId) =>
     canAdministerFleetForActor(actor, fleetId),
   );
-  const selectedFleetId =
-    params.fleetId && manageableFleetIds.includes(params.fleetId)
-      ? params.fleetId
-      : manageableFleetIds[0];
+  if (params.fleetId && !manageableFleetIds.includes(params.fleetId)) {
+    redirect("/portal/fleet");
+  }
+  const selectedFleetId = params.fleetId ?? manageableFleetIds[0];
 
   if (!selectedFleetId) redirect("/portal/fleet");
+  const selectedScope = resolveSelectedFleetRequestScope(actor, {
+    explicitFleetId: selectedFleetId,
+  });
+  if (!selectedScope?.shopId) redirect("/portal/fleet");
+  const selectedShopId = selectedScope.shopId;
 
   const admin = createAdminSupabase();
   const [fleetListResult, memberResult, unitResult] = await Promise.all([
@@ -79,19 +85,19 @@ export default async function FleetSettingsPage({ searchParams }: PageProps) {
       .select(
         "id,name,contact_name,contact_email,contact_phone,notes,shop_id,active",
       )
-      .eq("shop_id", actor.shopId)
+      .eq("shop_id", selectedShopId)
       .in("id", manageableFleetIds)
       .order("name", { ascending: true }),
     admin
       .from("fleet_members")
       .select("fleet_id,user_id,role")
-      .eq("shop_id", actor.shopId)
+      .eq("shop_id", selectedShopId)
       .eq("fleet_id", selectedFleetId)
       .order("created_at", { ascending: true }),
     admin
       .from("fleet_vehicles")
       .select("vehicle_id", { count: "exact", head: true })
-      .eq("shop_id", actor.shopId)
+      .eq("shop_id", selectedShopId)
       .eq("fleet_id", selectedFleetId)
       .eq("active", true),
   ]);

@@ -71,13 +71,15 @@ function stateLabel(value: string): string {
 
 export default function FleetDriversWorkspace({
   actorLabel,
+  initialFleetId,
 }: {
   actorLabel: string;
+  initialFleetId?: string | null;
 }) {
   const pathname = usePathname() ?? "";
   const internalRoutes = pathname.startsWith("/portal/fleet");
   const [context, setContext] = useState<DriverContext | null>(null);
-  const [fleetId, setFleetId] = useState("all");
+  const [fleetId, setFleetId] = useState(initialFleetId ?? "all");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -89,7 +91,10 @@ export default function FleetDriversWorkspace({
       const response = await fetch("/api/fleet/enrollment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "context" }),
+        body: JSON.stringify({
+          action: "context",
+          fleetId: initialFleetId ?? null,
+        }),
         cache: "no-store",
       });
       const body = (await response.json().catch(() => ({}))) as
@@ -112,7 +117,7 @@ export default function FleetDriversWorkspace({
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [initialFleetId]);
 
   useEffect(() => {
     void load();
@@ -173,16 +178,21 @@ export default function FleetDriversWorkspace({
   const fleetMap = new Map(
     (context?.fleets ?? []).map((fleet) => [fleet.id, fleet.name]),
   );
-  const assignmentHref = internalRoutes
-    ? "/portal/fleet/units/new"
-    : "/assets/new";
-  const pretripHref = internalRoutes
-    ? "/portal/fleet/pretrip-history"
-    : "/pre-trips";
+  const selectedFleetId = fleetId === "all" ? null : fleetId;
+  const withFleetId = (href: string) =>
+    `${href}${selectedFleetId ? `?fleetId=${encodeURIComponent(selectedFleetId)}` : ""}`;
+  const assignmentHref = withFleetId(
+    internalRoutes ? "/portal/fleet/units/new" : "/assets/new",
+  );
+  const pretripHref = withFleetId(
+    internalRoutes ? "/portal/fleet/pretrip-history" : "/pre-trips",
+  );
   const assetHref = (vehicleId: string) =>
-    internalRoutes
-      ? `/portal/fleet/units/${encodeURIComponent(vehicleId)}`
-      : `/assets/${encodeURIComponent(vehicleId)}`;
+    withFleetId(
+      internalRoutes
+        ? `/portal/fleet/units/${encodeURIComponent(vehicleId)}`
+        : `/assets/${encodeURIComponent(vehicleId)}`,
+    );
 
   return (
     <div className="space-y-5 text-[color:var(--theme-text-primary)]">

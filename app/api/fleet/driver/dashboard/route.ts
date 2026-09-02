@@ -2,8 +2,8 @@ import { NextResponse } from "next/server";
 
 import {
   resolveFleetActorContext,
-  resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 import {
   DEFAULT_FLEET_PRETRIP_TEMPLATE,
   normalizeFleetPretripTemplateSections,
@@ -100,7 +100,7 @@ export async function GET(request: Request) {
     const actor = await resolveFleetActorContext(supabase, {
       requestedFleetId,
     });
-    const scope = resolveFleetActorScope(actor, {
+    const scope = resolveSelectedFleetRequestScope(actor, {
       explicitFleetId: requestedFleetId,
       preferMembershipFleet: true,
     });

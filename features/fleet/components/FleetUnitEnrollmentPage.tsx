@@ -53,8 +53,10 @@ function vehicleLabel(vehicle: Vehicle | undefined) {
 
 export default function FleetUnitEnrollmentPage({
   routePrefix = "/portal/fleet",
+  initialFleetId = null,
 }: {
   routePrefix?: "/fleet" | "/portal/fleet";
+  initialFleetId?: string | null;
 }) {
   const [context, setContext] = useState<Context | null>(null);
   const [fleetId, setFleetId] = useState("");
@@ -83,7 +85,7 @@ export default function FleetUnitEnrollmentPage({
     const response = await fetch("/api/fleet/enrollment", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "context" }),
+      body: JSON.stringify({ action: "context", fleetId: initialFleetId }),
       cache: "no-store",
     });
     const body = (await response.json().catch(() => ({}))) as Context & {
@@ -94,8 +96,14 @@ export default function FleetUnitEnrollmentPage({
     setContext(body);
     setVehicles(body.vehicles);
     setMode(body.canEnrollExisting ? "existing" : "new");
-    setFleetId((current) => current || body.fleets[0]?.id || "");
-  }, []);
+    setFleetId(
+      (current) =>
+        current ||
+        body.fleets.find((fleet) => fleet.id === initialFleetId)?.id ||
+        body.fleets[0]?.id ||
+        "",
+    );
+  }, [initialFleetId]);
 
   useEffect(() => {
     void load().catch((error) =>
@@ -111,7 +119,11 @@ export default function FleetUnitEnrollmentPage({
       void fetch("/api/fleet/enrollment", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "search_vehicles", query: search }),
+        body: JSON.stringify({
+          action: "search_vehicles",
+          query: search,
+          fleetId: fleetId || initialFleetId,
+        }),
         cache: "no-store",
       })
         .then(async (response) => {
@@ -130,7 +142,7 @@ export default function FleetUnitEnrollmentPage({
         );
     }, 250);
     return () => window.clearTimeout(timer);
-  }, [context, search]);
+  }, [context, fleetId, initialFleetId, search]);
 
   const enrolled = useMemo(
     () =>
@@ -240,7 +252,7 @@ export default function FleetUnitEnrollmentPage({
           </p>
         </div>
         <Link
-          href={routePrefix === "/fleet" ? "/fleet/units" : "/assets"}
+          href={`${routePrefix === "/fleet" ? "/fleet/units" : "/assets"}${initialFleetId ? `?fleetId=${encodeURIComponent(initialFleetId)}` : ""}`}
           className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-semibold"
         >
           Back to assets

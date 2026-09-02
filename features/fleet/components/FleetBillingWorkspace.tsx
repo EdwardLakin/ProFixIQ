@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Check,
   CheckCircle2,
@@ -121,10 +121,12 @@ function date(value: string | null) {
 
 export default function FleetBillingWorkspace({
   routePrefix,
+  fleetId,
   initialWorkOrderId,
   initialFilter,
 }: {
   routePrefix: "/fleet" | "/portal/fleet";
+  fleetId?: string | null;
   initialWorkOrderId?: string;
   initialFilter?: string;
 }) {
@@ -140,14 +142,14 @@ export default function FleetBillingWorkspace({
   >("phone");
   const [decisionNote, setDecisionNote] = useState("");
 
-  async function load(signal?: AbortSignal) {
+  const load = useCallback(async (signal?: AbortSignal) => {
     setLoading(true);
     setError(null);
     try {
       const response = await fetch("/api/fleet/billing", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "list" }),
+        body: JSON.stringify({ action: "list", fleetId: fleetId ?? null }),
         cache: "no-store",
         signal,
       });
@@ -172,13 +174,13 @@ export default function FleetBillingWorkspace({
     } finally {
       if (!signal?.aborted) setLoading(false);
     }
-  }
+  }, [fleetId, initialFilter, initialWorkOrderId]);
 
   useEffect(() => {
     const controller = new AbortController();
     void load(controller.signal);
     return () => controller.abort();
-  }, []);
+  }, [load]);
 
   const visible = useMemo(() => {
     const items = payload?.items ?? [];
@@ -226,6 +228,7 @@ export default function FleetBillingWorkspace({
           operationKey: crypto.randomUUID(),
           contactMethod,
           note: decisionNote.trim() || undefined,
+          fleetId: fleetId ?? null,
         }),
       });
       const body = (await response.json().catch(() => ({}))) as { error?: string };
@@ -251,7 +254,11 @@ export default function FleetBillingWorkspace({
       const response = await fetch("/api/fleet/billing/checkout", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workOrderId: item.id, routePrefix }),
+        body: JSON.stringify({
+          workOrderId: item.id,
+          routePrefix,
+          fleetId: fleetId ?? null,
+        }),
       });
       const body = (await response.json().catch(() => ({}))) as {
         url?: string;
@@ -422,7 +429,11 @@ export default function FleetBillingWorkspace({
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
-                        href={`${routePrefix}/units/${item.vehicleId}`}
+                        href={`${routePrefix}/units/${item.vehicleId}${
+                          fleetId
+                            ? `?fleetId=${encodeURIComponent(fleetId)}`
+                            : ""
+                        }`}
                         className="font-semibold text-sky-300 hover:underline"
                       >
                         {item.unitLabel}

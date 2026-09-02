@@ -32,11 +32,13 @@ async function readJson<T>(response: Response): Promise<T> {
   return body;
 }
 
-export async function fetchMobileFleetUnits(): Promise<MobileFleetUnit[]> {
+export async function fetchMobileFleetUnits(
+  fleetId: string | null = null,
+): Promise<MobileFleetUnit[]> {
   const response = await fetch("/api/fleet/units", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({}),
+    body: JSON.stringify({ fleetId }),
     cache: "no-store",
   });
   const body = await readJson<{ units?: MobileFleetUnit[] }>(response);

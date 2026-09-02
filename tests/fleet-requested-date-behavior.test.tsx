@@ -133,7 +133,7 @@ describe("Fleet request requested date", () => {
     };
     expect(submitBody.requestedForDate).toBe("2026-08-20");
     expect(routerReplace).toHaveBeenCalledWith(
-      "/portal/fleet/service-requests",
+      "/portal/fleet/service-requests?fleetId=fleet-1",
     );
   });
 });

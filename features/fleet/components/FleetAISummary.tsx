@@ -45,6 +45,10 @@ export default function FleetAISummary({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [data, setData] = useState<SummaryResponse | null>(null);
+  const withFleetId = (href: string) =>
+    fleetId
+      ? `${href}${href.includes("?") ? "&" : "?"}fleetId=${encodeURIComponent(fleetId)}`
+      : href;
 
   useEffect(() => {
     let cancelled = false;
@@ -130,11 +134,11 @@ export default function FleetAISummary({
             {data.points.map((point) => (
               <Link
                 key={point.id}
-                href={
+                href={withFleetId(
                   productRoutes
                     ? (toFleetPublicHref(point.href) ?? point.href)
-                    : point.href
-                }
+                    : point.href,
+                )}
                 className={`group flex items-start justify-between gap-3 rounded-xl border p-3 transition hover:brightness-110 ${tones[point.priority]}`}
               >
                 <span>

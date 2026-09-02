@@ -141,7 +141,10 @@ describe("mobile route continuity", () => {
     expect(chat).not.toContain("router.back()");
     expect(newMessage).toContain('href="/mobile/messages"');
     expect(vehicle).toContain("href={`/mobile/work-orders/${workOrderId}`}");
-    expect(pretrip).toContain('href="/mobile/fleet/pretrip"');
+    expect(pretrip).toContain("href={`/mobile/fleet/pretrip${");
+    expect(pretrip).toContain(
+      "`?fleetId=${encodeURIComponent(fleetId)}`",
+    );
     expect(previous).toContain('router.push("/mobile/work-orders")');
   });
 
@@ -156,7 +159,7 @@ describe("mobile route continuity", () => {
   it("uses the canonical fleet actor scope for mobile service requests", () => {
     const route = read("app/api/fleet/service-requests/route.ts");
     expect(route).toContain("resolveFleetActorContext");
-    expect(route).toContain("resolveFleetActorScope");
+    expect(route).toContain("resolveSelectedFleetRequestScope");
     expect(route).toContain("scope.fleetIds");
     expect(route).toContain('.eq("shop_id", scope.shopId)');
     expect(route).toContain(

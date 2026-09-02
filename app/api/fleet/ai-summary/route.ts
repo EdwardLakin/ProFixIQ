@@ -5,8 +5,8 @@ import {
 } from "@/features/shared/lib/supabase/server";
 import {
   resolveFleetActorContext,
-  resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import {
   enforceAIOperationalPolicy,
@@ -45,7 +45,7 @@ export async function POST(request: Request) {
     const actor = await resolveFleetActorContext(supabase, {
       requestedFleetId: body.fleetId ?? null,
     });
-    const scope = resolveFleetActorScope(actor, {
+    const scope = resolveSelectedFleetRequestScope(actor, {
       explicitFleetId: body.fleetId ?? null,
     });
     if (!actor.userId) {

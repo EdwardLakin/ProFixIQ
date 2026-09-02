@@ -4,10 +4,20 @@ import FleetDriversWorkspace from "@/features/fleet/components/FleetDriversWorks
 import { getFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 import { getFleetPortalActorContext } from "../_lib/requireFleetPortalActor";
 
-export default async function FleetDriversPage() {
-  const actor = await getFleetPortalActorContext();
+type Props = { searchParams: Promise<{ fleetId?: string }> };
+
+export default async function FleetDriversPage({ searchParams }: Props) {
+  const { fleetId } = await searchParams;
+  const actor = await getFleetPortalActorContext(fleetId ?? null);
   const uiContext = getFleetUiContext(actor);
   if (!uiContext.capabilities.canManageUnits) redirect("/portal/fleet");
+  const selectedFleetId =
+    fleetId && fleetId === actor.primaryFleetId ? fleetId : null;
 
-  return <FleetDriversWorkspace actorLabel={uiContext.actorLabel} />;
+  return (
+    <FleetDriversWorkspace
+      actorLabel={uiContext.actorLabel}
+      initialFleetId={selectedFleetId}
+    />
+  );
 }

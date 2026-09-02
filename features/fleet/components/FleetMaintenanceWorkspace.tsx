@@ -102,13 +102,15 @@ function localDateInput(date = new Date()) {
 export default function FleetMaintenanceWorkspace({
   uiContext,
   routePrefix,
+  initialFleetId,
 }: {
   uiContext: FleetUiContext;
   routePrefix: RoutePrefix;
+  initialFleetId?: string | null;
 }) {
   const [data, setData] = useState<Payload | null>(null);
   const [filter, setFilter] = useState<Filter>("action");
-  const [fleetId, setFleetId] = useState("all");
+  const [fleetId, setFleetId] = useState(initialFleetId ?? "all");
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [workingId, setWorkingId] = useState<string | null>(null);
@@ -170,7 +172,10 @@ export default function FleetMaintenanceWorkspace({
       const response = await fetch("/api/fleet/maintenance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          ...body,
+          fleetId: body.fleetId ?? (fleetId === "all" ? null : fleetId),
+        }),
       });
       const result = (await response.json().catch(() => ({}))) as {
         error?: string;
@@ -247,7 +252,9 @@ export default function FleetMaintenanceWorkspace({
                 onChange={(event) => setFleetId(event.target.value)}
                 className="min-h-10 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-xs"
               >
-                <option value="all">All fleets</option>
+                {!initialFleetId ? (
+                  <option value="all">All fleets</option>
+                ) : null}
                 {data.fleets.map((fleet) => (
                   <option key={fleet.id} value={fleet.id}>
                     {fleet.name}
@@ -395,7 +402,7 @@ export default function FleetMaintenanceWorkspace({
                   <div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Link
-                        href={`${routePrefix}/units/${encodeURIComponent(item.vehicleId)}`}
+                        href={`${routePrefix}/units/${encodeURIComponent(item.vehicleId)}?fleetId=${encodeURIComponent(item.fleetId)}`}
                         className="text-base font-semibold text-sky-200 hover:underline"
                       >
                         {item.unitLabel}
@@ -443,7 +450,7 @@ export default function FleetMaintenanceWorkspace({
                         </button>
                       ) : (
                         <Link
-                          href={`${routePrefix}/service-requests`}
+                          href={`${routePrefix}/service-requests?fleetId=${encodeURIComponent(item.fleetId)}`}
                           className="inline-flex min-h-10 items-center rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-semibold"
                         >
                           View request

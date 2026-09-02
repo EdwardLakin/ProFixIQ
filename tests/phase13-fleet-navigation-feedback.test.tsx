@@ -6,6 +6,7 @@ import FleetProductShell from "@/features/fleet/components/FleetProductShell";
 
 const navigation = vi.hoisted(() => ({
   pathname: "/portal/fleet",
+  search: "",
   prefetch: vi.fn(),
   refresh: vi.fn(),
   replace: vi.fn(),
@@ -13,6 +14,7 @@ const navigation = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({
   usePathname: () => navigation.pathname,
+  useSearchParams: () => new URLSearchParams(navigation.search),
   useRouter: () => ({
     prefetch: navigation.prefetch,
     refresh: navigation.refresh,
@@ -49,10 +51,17 @@ vi.mock("@/features/auth/components/ForcePasswordChangeModal", () => ({
   default: () => null,
 }));
 
+vi.mock("@/features/fleet/components/FleetNotificationsBell", () => ({
+  default: ({ routePrefix }: { routePrefix: string }) => (
+    <div data-testid="fleet-notifications" data-route-prefix={routePrefix} />
+  ),
+}));
+
 describe("Fleet navigation feedback", () => {
   beforeEach(() => {
     vi.useFakeTimers();
     navigation.pathname = "/portal/fleet";
+    navigation.search = "";
     navigation.prefetch.mockClear();
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
       callback(performance.now());
@@ -137,5 +146,71 @@ describe("Fleet navigation feedback", () => {
         end: expect.any(Number),
       }),
     );
+  });
+
+  it("uses the selected Fleet membership for shell role and navigation", () => {
+    navigation.search = "fleetId=30000000-0000-4000-8000-00000000000b";
+
+    render(
+      <FleetProductShell
+        title="ProFixIQ Fleet"
+        subtitle="Today’s inspections, reported issues and updates"
+        actorLabel="Fleet Driver"
+        experience="external_driver"
+        canAccessManagerWorkspaces={false}
+        fleetContexts={{
+          "30000000-0000-4000-8000-00000000000b": {
+            actorLabel: "Fleet Manager",
+            experience: "external_manager",
+            canAccessManagerWorkspaces: true,
+            subtitle:
+              "Asset readiness, preventive maintenance and repair decisions",
+          },
+        }}
+        userId={null}
+        productHost={false}
+      >
+        <div>Fleet content</div>
+      </FleetProductShell>,
+    );
+
+    expect(screen.getByText("Fleet Manager")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Drivers/i })).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Assets/i })).toHaveAttribute(
+      "href",
+      "/portal/fleet/units?fleetId=30000000-0000-4000-8000-00000000000b",
+    );
+    expect(screen.getByTestId("fleet-notifications")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("navigation", { name: "Driver shortcuts" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not poll alerts when every entitled Fleet is driver-only", () => {
+    navigation.search = "fleetId=30000000-0000-4000-8000-00000000000a";
+
+    render(
+      <FleetProductShell
+        title="ProFixIQ Fleet"
+        subtitle="Today’s inspections, reported issues and updates"
+        actorLabel="Fleet Driver"
+        experience="external_driver"
+        canAccessManagerWorkspaces={false}
+        fleetContexts={{
+          "30000000-0000-4000-8000-00000000000a": {
+            actorLabel: "Fleet Driver",
+            experience: "external_driver",
+            canAccessManagerWorkspaces: false,
+            subtitle: "Today’s inspections, reported issues and updates",
+          },
+        }}
+        userId={null}
+        productHost={false}
+      >
+        <div>Fleet content</div>
+      </FleetProductShell>,
+    );
+
+    expect(screen.queryByTestId("fleet-notifications")).not.toBeInTheDocument();
   });
 });

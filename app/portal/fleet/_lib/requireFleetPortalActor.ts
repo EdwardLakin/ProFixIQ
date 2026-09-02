@@ -6,7 +6,13 @@ import {
   type FleetActorContext,
 } from "@/features/fleet/lib/resolveFleetActorContext";
 import {
+  getActorCapabilities,
+  resolveFleetRoleTier,
+} from "@/features/shared/lib/rbac";
+import {
+  getFleetShellContext,
   getFleetUiContext,
+  type FleetShellContext,
   type FleetUiContext,
 } from "@/features/fleet/lib/fleetUiCapabilities";
 
@@ -14,7 +20,7 @@ import {
  * React cache is request-scoped here. It deduplicates the layout + page actor
  * lookup without carrying role or entitlement state across requests.
  */
-export const getFleetPortalActorContext = cache(
+const getFleetPortalBaseActorContext = cache(
   async (): Promise<FleetActorContext & { userId: string }> => {
     const supabase = createServerSupabaseRSC();
     const {
@@ -34,14 +40,135 @@ export const getFleetPortalActorContext = cache(
   },
 );
 
-export async function requireFleetPortalActor(): Promise<
-  FleetUiContext & { userId: string; primaryFleetId: string | null }
+const isInternalFleetInActorShop = cache(
+  async (shopId: string, fleetId: string): Promise<boolean> => {
+    const supabase = createServerSupabaseRSC();
+    const { data, error } = await supabase
+      .from("fleets")
+      .select("id")
+      .eq("id", fleetId)
+      .eq("shop_id", shopId)
+      .maybeSingle();
+    return !error && Boolean(data);
+  },
+);
+
+const getInternalFleetIdsInActorShop = cache(
+  async (shopId: string): Promise<string[]> => {
+    const supabase = createServerSupabaseRSC();
+    const { data, error } = await supabase
+      .from("fleets")
+      .select("id")
+      .eq("shop_id", shopId);
+    if (error) return [];
+    return (data ?? []).map((fleet) => fleet.id);
+  },
+);
+
+function selectRequestedFleetActor(
+  actor: FleetActorContext & { userId: string },
+  requestedFleetId: string | null,
+): FleetActorContext & { userId: string } {
+  if (!requestedFleetId || requestedFleetId === actor.primaryFleetId) {
+    return actor;
+  }
+  const membership = actor.fleetMemberships.find(
+    (item) => item.fleetId === requestedFleetId,
+  );
+  if (!membership) return actor;
+  if (actor.isInternal) {
+    return {
+      ...actor,
+      primaryFleetId: membership.fleetId,
+      membershipRole: membership.role,
+    };
+  }
+
+  const tier = resolveFleetRoleTier(membership.role);
+  const normalizedRole = String(membership.role ?? "")
+    .trim()
+    .toLowerCase();
+  const actorType =
+    tier === "manager"
+      ? "fleet_manager"
+      : ["dispatcher", "approver"].includes(normalizedRole)
+        ? "fleet_dispatcher"
+        : tier === "viewer"
+          ? "fleet_driver"
+          : "none";
+  const actorCaps = getActorCapabilities({
+    role: actor.profileRole,
+    fleetRole: membership.role,
+  });
+  const isManager = actorType === "fleet_manager";
+  const isDispatcher = actorType === "fleet_dispatcher";
+  const isDriver = actorType === "fleet_driver";
+
+  return {
+    ...actor,
+    actorType,
+    primaryFleetId: membership.fleetId,
+    membershipRole: membership.role,
+    isFleetActor: isManager || isDispatcher || isDriver,
+    capabilities: {
+      canSeeFleetWideUnits: isManager || isDispatcher,
+      canCreatePretripReports: isDriver,
+      canConvertPretripToServiceRequest: isManager || isDispatcher,
+      canAccessFleetIntake: isManager || isDispatcher || isDriver,
+      canAccessPortalFleetWrappers: isManager || isDispatcher || isDriver,
+      canRunFleetDispatchActions: actorCaps.canManageFleetApprovals,
+      canOverrideShopScope: false,
+    },
+  };
+}
+
+export async function getFleetPortalActorContext(
+  requestedFleetId: string | null = null,
+): Promise<FleetActorContext & { userId: string }> {
+  const actor = await getFleetPortalBaseActorContext();
+  if (
+    requestedFleetId &&
+    actor.isInternal &&
+    actor.shopId &&
+    requestedFleetId !== actor.primaryFleetId &&
+    !actor.fleetMemberships.some(
+      (membership) => membership.fleetId === requestedFleetId,
+    ) &&
+    (await isInternalFleetInActorShop(actor.shopId, requestedFleetId))
+  ) {
+    return { ...actor, primaryFleetId: requestedFleetId };
+  }
+  return selectRequestedFleetActor(actor, requestedFleetId);
+}
+
+export async function requireFleetPortalActor(
+  requestedFleetId: string | null = null,
+): Promise<
+  FleetUiContext & {
+    userId: string;
+    primaryFleetId: string | null;
+    fleetShellContexts: Record<string, FleetShellContext>;
+  }
 > {
-  const actor = await getFleetPortalActorContext();
+  const actor = await getFleetPortalActorContext(requestedFleetId);
+  const shellFleetIds = Array.from(
+    new Set([
+      ...actor.fleetMemberships.map((membership) => membership.fleetId),
+      ...(actor.isInternal && actor.shopId
+        ? await getInternalFleetIdsInActorShop(actor.shopId)
+        : []),
+    ]),
+  );
 
   return {
     ...getFleetUiContext(actor),
     userId: actor.userId,
     primaryFleetId: actor.primaryFleetId,
+    fleetShellContexts: Object.fromEntries(
+      shellFleetIds.map((fleetId) => [
+        fleetId,
+        getFleetShellContext(actor, fleetId),
+      ]),
+    ),
   };
 }

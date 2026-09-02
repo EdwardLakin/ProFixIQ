@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import {
   resolveFleetActorContext,
-  resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 
 export async function GET(req: NextRequest) {
   const supabase = createServerSupabaseRoute();
@@ -41,7 +41,7 @@ export async function GET(req: NextRequest) {
     fleetId = firstFleet?.id ?? null;
   }
 
-  const scope = resolveFleetActorScope(actor, {
+  const scope = resolveSelectedFleetRequestScope(actor, {
     explicitFleetId: fleetId,
   });
 

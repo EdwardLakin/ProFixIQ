@@ -9,6 +9,7 @@ import {
   resolveFleetActorContext,
   resolveFleetActorScope,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 
 export const dynamic = "force-dynamic";
 
@@ -50,17 +51,20 @@ function clean(value: unknown) {
 export async function POST(request: Request) {
   try {
     const body = (await request.json().catch(() => ({}))) as Body;
+    const requestedFleetId = clean(body.fleetId);
     const supabase = createServerSupabaseRoute();
     const actor = await resolveFleetActorContext(supabase, {
-      requestedFleetId: body.fleetId ?? null,
+      requestedFleetId,
     });
     if (!actor.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const scope = resolveFleetActorScope(actor, {
-      explicitFleetId: body.fleetId ?? null,
-    });
+    const scope = requestedFleetId
+      ? resolveSelectedFleetRequestScope(actor, {
+          explicitFleetId: requestedFleetId,
+        })
+      : resolveFleetActorScope(actor);
     if (!scope?.shopId) {
       return NextResponse.json(
         { error: "Fleet management access required" },
@@ -68,9 +72,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const manageableFleetIds = actor.isInternal
-      ? null
-      : manageableFleetIdsForActor(actor);
+    const manageableFleetIds = requestedFleetId
+      ? canManageFleetForActor(actor, requestedFleetId)
+        ? [requestedFleetId]
+        : []
+      : actor.isInternal
+        ? null
+        : manageableFleetIdsForActor(actor);
     if (
       actor.isInternal &&
       !["owner", "admin", "manager"].includes(actor.canonicalRole)

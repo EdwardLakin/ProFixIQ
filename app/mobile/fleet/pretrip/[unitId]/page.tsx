@@ -10,6 +10,7 @@ export default function MobileFleetPretripPage() {
   const search = useSearchParams();
   const unitId = params?.unitId ? String(params.unitId) : null;
   const driverHint = search.get("driver");
+  const fleetId = search.get("fleetId");
 
   if (!unitId) {
     return (
@@ -23,7 +24,9 @@ export default function MobileFleetPretripPage() {
     <main className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-xl flex-col bg-[color:var(--theme-surface-page)] px-3 py-4 text-[color:var(--theme-text-primary)]">
       <div className="mb-3">
         <Link
-          href="/mobile/fleet/pretrip"
+          href={`/mobile/fleet/pretrip${
+            fleetId ? `?fleetId=${encodeURIComponent(fleetId)}` : ""
+          }`}
           className="inline-flex min-h-10 items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 text-xs font-semibold text-[color:var(--theme-text-primary)]"
         >
           ← Select unit
@@ -65,6 +68,7 @@ export default function MobileFleetPretripPage() {
       <div className="rounded-2xl border border-[color:var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] p-3 shadow-[var(--theme-shadow-medium)] backdrop-blur-xl">
         <PretripForm
           unitId={unitId}
+          fleetId={fleetId}
           driverHint={driverHint}
           template={DEFAULT_FLEET_PRETRIP_TEMPLATE}
           trailers={[]}

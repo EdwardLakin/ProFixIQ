@@ -10,10 +10,16 @@ import type { FleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 type Props = {
   uiContext: FleetUiContext;
   routePrefix?: "/fleet" | "/portal/fleet";
+  fleetId?: string | null;
 };
 
 const panel =
   "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]";
+
+function withFleetId(href: string, fleetId?: string | null) {
+  if (!fleetId) return href;
+  return `${href}${href.includes("?") ? "&" : "?"}fleetId=${encodeURIComponent(fleetId)}`;
+}
 
 function meter(unit: FleetUnitListItem) {
   const parts = [
@@ -50,6 +56,7 @@ function StatusPill({ status }: { status: FleetUnitListItem["status"] }) {
 export default function FleetUnitsPage({
   uiContext,
   routePrefix = "/portal/fleet",
+  fleetId,
 }: Props) {
   const pathname = usePathname() ?? "";
   const productRoutes =
@@ -68,7 +75,7 @@ export default function FleetUnitsPage({
         const response = await fetch("/api/fleet/units", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ fleetId: fleetId ?? null }),
           cache: "no-store",
         });
         const body = (await response.json().catch(() => ({}))) as {
@@ -93,7 +100,7 @@ export default function FleetUnitsPage({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [fleetId]);
 
   const fleets = useMemo(
     () =>
@@ -146,18 +153,20 @@ export default function FleetUnitsPage({
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Link
-            href={
-              productRoutes ? "/pre-trips" : `${routePrefix}/pretrip-history`
-            }
+            href={withFleetId(
+              productRoutes ? "/pre-trips" : `${routePrefix}/pretrip-history`,
+              fleetId,
+            )}
             className="inline-flex min-h-10 items-center rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-semibold text-sky-300 hover:bg-sky-300/10"
           >
             {isDriver ? "My pre-trip history" : "Fleet-wide pre-trip history"}
           </Link>
           {uiContext.capabilities.canManageUnits ? (
             <Link
-              href={
-                routePrefix === "/fleet" ? "/fleet/units/new" : "/assets/new"
-              }
+              href={withFleetId(
+                routePrefix === "/fleet" ? "/fleet/units/new" : "/assets/new",
+                fleetId,
+              )}
               className="inline-flex min-h-10 items-center rounded-xl bg-sky-300 px-3 py-2 text-xs font-semibold text-slate-950"
             >
               Enroll units & assign drivers
@@ -282,11 +291,11 @@ export default function FleetUnitsPage({
                 </Link>
               ) : uiContext.capabilities.canViewUnitMaintenanceRecord ? (
                 <Link
-                  href={
+                  href={`${
                     productRoutes
                       ? `/assets/${encodeURIComponent(unit.id)}`
                       : `${routePrefix}/units/${encodeURIComponent(unit.id)}`
-                  }
+                  }?fleetId=${encodeURIComponent(unit.fleetId)}`}
                   className="text-xs font-semibold text-sky-300"
                 >
                   Open unit →

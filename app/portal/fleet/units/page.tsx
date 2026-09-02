@@ -2,13 +2,19 @@ import FleetUnitsPage from "@/features/fleet/components/FleetUnitsPage";
 import { getFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 import { getFleetPortalActorContext } from "../_lib/requireFleetPortalActor";
 
-export default async function PortalFleetUnitsPage() {
-  const actor = await getFleetPortalActorContext();
+type Props = { searchParams: Promise<{ fleetId?: string }> };
+
+export default async function PortalFleetUnitsPage({ searchParams }: Props) {
+  const { fleetId } = await searchParams;
+  const actor = await getFleetPortalActorContext(fleetId ?? null);
+  const selectedFleetId =
+    fleetId && fleetId === actor.primaryFleetId ? fleetId : null;
 
   return (
     <FleetUnitsPage
       uiContext={getFleetUiContext(actor)}
       routePrefix="/portal/fleet"
+      fleetId={selectedFleetId}
     />
   );
 }

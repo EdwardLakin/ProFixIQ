@@ -117,6 +117,10 @@ function visibleCurrencies(values: Record<"CAD" | "USD", number>) {
   return visible.length ? visible : (["CAD"] as const);
 }
 
+function withFleetId(href: string, fleetId: string) {
+  return `${href}${href.includes("?") ? "&" : "?"}fleetId=${encodeURIComponent(fleetId)}`;
+}
+
 export default function FleetReportsWorkspace({
   actorLabel,
   fleetId,
@@ -203,7 +207,7 @@ export default function FleetReportsWorkspace({
     };
   }, [data]);
 
-  const links = internalRoutes
+  const baseLinks = internalRoutes
     ? {
         assets: "/portal/fleet/units",
         history: "/portal/fleet/billing",
@@ -216,6 +220,12 @@ export default function FleetReportsWorkspace({
         maintenance: "/maintenance",
         pretrips: "/pre-trips",
       };
+  const links = Object.fromEntries(
+    Object.entries(baseLinks).map(([key, href]) => [
+      key,
+      withFleetId(href, fleetId),
+    ]),
+  ) as typeof baseLinks;
 
   const exportCsv = useCallback(() => {
     if (!data) return;
@@ -533,7 +543,10 @@ export default function FleetReportsWorkspace({
                       <tr key={unit.unitId}>
                         <td className="px-5 py-4">
                           <Link
-                            href={`${links.assets}/${encodeURIComponent(unit.unitId)}`}
+                            href={withFleetId(
+                              `${baseLinks.assets}/${encodeURIComponent(unit.unitId)}`,
+                              fleetId,
+                            )}
                             className="font-semibold hover:underline"
                           >
                             {unit.label}
