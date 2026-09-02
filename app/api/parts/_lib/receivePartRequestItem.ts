@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
+import {
+  canAccessPartsPurchaseOrder,
+  canAccessPartsRequestItem,
+  requireCanonicalPartsApiAccess,
+} from "@/features/parts/server/fieldPartsAuthorization";
 import { toSafeDatabaseError } from "@/features/shared/lib/server/safeDatabaseError";
 
 type ReceivePayload = {
@@ -69,11 +72,28 @@ export async function receivePartRequestItem(payload: ReceivePayload): Promise<N
     return NextResponse.json({ error: "A stable idempotency key is required." }, { status: 400 });
   }
 
-  const access = await requireShopScopedApiAccess({
-    requiredCapability: "canManageParts",
-    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
-  });
+  const access = await requireCanonicalPartsApiAccess();
   if (!access.ok) return access.response;
+
+  try {
+    const [canAccessItem, canAccessPurchaseOrder] = await Promise.all([
+      canAccessPartsRequestItem(access, payload.itemId),
+      payload.poId
+        ? canAccessPartsPurchaseOrder(access, payload.poId)
+        : Promise.resolve(true),
+    ]);
+    if (!canAccessItem || !canAccessPurchaseOrder) {
+      return NextResponse.json(
+        { error: "Request item not found for shop." },
+        { status: 404 },
+      );
+    }
+  } catch {
+    return NextResponse.json(
+      { error: "Could not verify the Field parts scope." },
+      { status: 503 },
+    );
+  }
 
   const { data: item, error: itemError } = await access.supabase
     .from("part_request_items")

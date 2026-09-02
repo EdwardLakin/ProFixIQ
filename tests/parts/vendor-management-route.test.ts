@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
-  requireShopScopedApiAccess: vi.fn(),
+  requireCanonicalPartsApiAccess: vi.fn(),
 }));
 
-vi.mock("@/features/shared/lib/server/admin-access", () => ({
-  requireShopScopedApiAccess: mocks.requireShopScopedApiAccess,
+vi.mock("@/features/parts/server/fieldPartsAuthorization", () => ({
+  requireCanonicalPartsApiAccess: mocks.requireCanonicalPartsApiAccess,
 }));
 
 const vendorId = "11111111-1111-4111-8111-111111111111";
@@ -73,8 +73,9 @@ function createSupabase(
 }
 
 function authorize(supabase: ReturnType<typeof createSupabase>) {
-  mocks.requireShopScopedApiAccess.mockResolvedValue({
+  mocks.requireCanonicalPartsApiAccess.mockResolvedValue({
     ok: true,
+    productScope: "shop",
     profile: { id: "actor-1", shop_id: "shop-1" },
     supabase,
   });
@@ -105,10 +106,7 @@ describe("parts vendor management route", () => {
     );
 
     expect(response.status).toBe(201);
-    expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
-      requiredCapability: "canManageParts",
-      requiredProductCapabilities: ["shop", "field_service"],
-    });
+    expect(mocks.requireCanonicalPartsApiAccess).toHaveBeenCalledOnce();
     expect(supabase.inserted).toEqual([
       expect.objectContaining({
         shop_id: "shop-1",

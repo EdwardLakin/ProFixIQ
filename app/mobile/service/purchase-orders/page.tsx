@@ -7,7 +7,7 @@ import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access
 export const dynamic = "force-dynamic";
 
 export default async function FieldPurchaseOrdersPage() {
-  const { profile } = await requireShopPageAccess({
+  await requireShopPageAccess({
     requiredCapability: "canManageParts",
     requiredProductCapabilities: FIELD_PRODUCT_CAPABILITIES,
     redirectTo: "/mobile/service",
@@ -33,7 +33,7 @@ export default async function FieldPurchaseOrdersPage() {
         </div>
       </section>
 
-      <MobilePurchaseOrders shopId={profile.shop_id} />
+      <MobilePurchaseOrders />
     </main>
   );
 }

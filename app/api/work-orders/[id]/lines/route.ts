@@ -3,7 +3,10 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import {
+  canFieldActorAccessWorkOrder,
+  requireCanonicalShopOrFieldApiAccess,
+} from "@/features/mobile/service/server/access";
 import {
   toSafeDatabaseError,
   type DatabaseErrorLike,
@@ -114,7 +117,7 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireCanonicalShopOrFieldApiAccess();
   if (!access.ok) return access.response;
 
   const actor = getActorCapabilities({ role: access.profile.role });
@@ -134,6 +137,23 @@ export async function POST(
     );
   }
   const workOrderId = workOrderIdResult.data.toLowerCase();
+
+  try {
+    if (
+      access.productScope === "field" &&
+      !(await canFieldActorAccessWorkOrder(access, workOrderId))
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "Work order not found for this shop." },
+        { status: 404 },
+      );
+    }
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: "Unable to verify work-order access." },
+      { status: 503 },
+    );
+  }
 
   const bodyResult = manualLineSchema.safeParse(
     await request.json().catch(() => null),

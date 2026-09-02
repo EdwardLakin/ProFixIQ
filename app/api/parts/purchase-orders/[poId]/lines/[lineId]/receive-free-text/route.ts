@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
+import {
+  canAccessPartsPurchaseOrder,
+  requireCanonicalPartsApiAccess,
+} from "@/features/parts/server/fieldPartsAuthorization";
 import {
   idempotencyKey,
   isUuid,
@@ -38,11 +40,22 @@ export async function POST(
     );
   }
 
-  const access = await requireShopScopedApiAccess({
-    requiredCapability: "canManageParts",
-    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
-  });
+  const access = await requireCanonicalPartsApiAccess();
   if (!access.ok) return access.response;
+
+  try {
+    if (!(await canAccessPartsPurchaseOrder(access, poId))) {
+      return NextResponse.json(
+        { ok: false, error: "Purchase order not found." },
+        { status: 404 },
+      );
+    }
+  } catch {
+    return NextResponse.json(
+      { ok: false, error: "Could not verify the Field purchase order." },
+      { status: 503 },
+    );
+  }
 
   return runPartsLifecycleRpcWithAccess(
     access,

@@ -114,8 +114,11 @@ function isShopOrFieldApi(pathname: string): boolean {
       "/api/offline/technician-work-orders",
       "/api/openai/realtime-token",
       "/api/parts/consume",
+      "/api/parts/locations",
       "/api/parts/picker",
+      "/api/parts/purchase-orders/mobile-snapshot",
       "/api/parts/requests/queue",
+      "/api/parts/vendors",
       "/api/payments/manual",
       "/api/receive-scan",
       "/api/work-orders/quotes/add",
@@ -127,10 +130,20 @@ function isShopOrFieldApi(pathname: string): boolean {
   }
 
   // Parts routes are shared only after their handlers enforce canonical Field
-  // identity and linked-work-order scope. Unlisted Parts APIs default to Shop.
+  // identity and linked scope for work-order resources. Unlisted Parts APIs
+  // default to Shop.
   return (
     atOrBelow(pathname, "/api/mobile/work-orders") ||
-    /^\/api\/parts\/requests\/items\/[^/]+\/(add|inventory)$/.test(pathname) ||
+    /^\/api\/parts\/items\/[^/]+\/receive$/.test(pathname) ||
+    /^\/api\/parts\/purchase-orders\/[^/]+\/place$/.test(pathname) ||
+    /^\/api\/parts\/purchase-orders\/[^/]+\/lines\/[^/]+\/receive-free-text$/.test(
+      pathname,
+    ) ||
+    pathname === "/api/parts/receiving/receive-item" ||
+    /^\/api\/parts\/requests\/items\/[^/]+\/(add|allocate|inventory|po-line|receive)$/.test(
+      pathname,
+    ) ||
+    /^\/api\/work-orders\/[^/]+\/lines$/.test(pathname) ||
     /^\/api\/work-order-lines\/[^/]+\/workspace-detail$/.test(pathname) ||
     /^\/api\/work-orders\/quotes\/[^/]+\/(authorize|decline)$/.test(pathname) ||
     /^\/api\/work-orders\/lines\/[^/]+\/(start|pause|resume|finish)$/.test(

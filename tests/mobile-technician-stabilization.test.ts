@@ -25,6 +25,10 @@ const mobilePartsPage = readFileSync(
   "app/mobile/parts/page.tsx",
   "utf8",
 );
+const mobilePartsLayout = readFileSync(
+  "app/mobile/parts/layout.tsx",
+  "utf8",
+);
 const mobilePartsWorkflow = readFileSync(
   "features/parts/mobile/MobilePartsWorkflow.tsx",
   "utf8",
@@ -88,11 +92,13 @@ describe("mobile technician stabilization", () => {
 
   it("replaces the mobile parts placeholder with actionable parts commands", () => {
     expect(mobilePartsPage).toContain("MobilePartsWorkflow");
-    expect(mobilePartsWorkflow).toContain("part_request_items");
+    expect(mobilePartsLayout).toContain("MobilePartsRouteGate");
+    expect(mobilePartsWorkflow).toContain('"/api/parts/requests/queue"');
+    expect(mobilePartsWorkflow).toContain('"/api/parts/locations"');
+    expect(mobilePartsWorkflow).not.toContain("createBrowserSupabase");
     expect(receiveDrawer).toContain("/receive");
     expect(mobilePartsWorkflow).toContain("/allocate");
     expect(mobilePartsWorkflow).toContain("Open parts workbench");
     expect(mobilePartsPage).not.toContain("Mobile parts rollout");
   });
 });
-

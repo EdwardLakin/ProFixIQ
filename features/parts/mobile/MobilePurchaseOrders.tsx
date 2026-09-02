@@ -13,7 +13,6 @@ import { toast } from "sonner";
 
 import { purchaseOrderIdentity } from "@/features/parts/lib/purchaseOrderIdentity";
 import { isOpenPartsObligation } from "@/features/parts/lib/open-parts-obligations";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   purchaseOrderCanReceive,
   purchaseOrderLineRemaining,
@@ -119,27 +118,18 @@ type JsonResult = {
   vendorIsActive?: boolean;
   vendor?: Supplier;
   result?: Record<string, unknown>;
+  snapshot?: {
+    requests: PartRequest[];
+    items: PartRequestItem[];
+    suppliers: Supplier[];
+    locations: StockLocation[];
+    purchaseOrders: PurchaseOrder[];
+    lines: PurchaseOrderLine[];
+    workOrders: WorkOrder[];
+  };
 };
 
-const ORDERABLE_REQUEST_STATUSES = [
-  "approved",
-  "partially_ordered",
-  "partially_consumed",
-  "partially_returned",
-] as const;
-
 const CLOSED_PO_STATUSES = new Set(["received", "cancelled", "canceled"]);
-const ACTIVE_PURCHASE_ORDER_STATUSES = [
-  "draft",
-  "open",
-  "ordered",
-  "partially_ordered",
-  "sent",
-  "receiving",
-  "partially_received",
-] as const;
-const QUERY_PAGE_SIZE = 200;
-const QUERY_ID_BATCH_SIZE = 100;
 
 const actionClass =
   "inline-flex min-h-11 items-center justify-center rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--accent-copper)] disabled:cursor-not-allowed disabled:opacity-50";
@@ -201,12 +191,7 @@ async function readJson(response: Response): Promise<JsonResult | null> {
   return (await response.json().catch(() => null)) as JsonResult | null;
 }
 
-export default function MobilePurchaseOrders({
-  shopId,
-}: {
-  shopId: string;
-}): JSX.Element {
-  const supabase = useMemo(() => createBrowserSupabase(), []);
+export default function MobilePurchaseOrders(): JSX.Element {
   const [view, setView] = useState<View>("needs-ordering");
   const [requests, setRequests] = useState<PartRequest[]>([]);
   const [items, setItems] = useState<PartRequestItem[]>([]);
@@ -235,151 +220,25 @@ export default function MobilePurchaseOrders({
     setError(null);
 
     try {
-      const requestPromise = (async (): Promise<PartRequest[]> => {
-        const rows: PartRequest[] = [];
-        for (let offset = 0; ; offset += QUERY_PAGE_SIZE) {
-          const result = await supabase
-            .from("part_requests")
-            .select("id,work_order_id,status")
-            .eq("shop_id", shopId)
-            .in("status", [...ORDERABLE_REQUEST_STATUSES])
-            .order("created_at", { ascending: false })
-            .order("id", { ascending: false })
-            .range(offset, offset + QUERY_PAGE_SIZE - 1);
-          if (result.error) throw result.error;
-          const page = (result.data ?? []) as PartRequest[];
-          rows.push(...page);
-          if (page.length < QUERY_PAGE_SIZE) return rows;
-        }
-      })();
-      const purchaseOrderPromise = (async (): Promise<PurchaseOrder[]> => {
-        const rows: PurchaseOrder[] = [];
-        for (let offset = 0; ; offset += QUERY_PAGE_SIZE) {
-          const result = await supabase
-            .from("purchase_orders")
-            .select(
-              "id,po_number,supplier_id,status,created_at,ordered_at,expected_at,work_order_id,supplier_quote_request_id,total",
-            )
-            .eq("shop_id", shopId)
-            .in("status", [...ACTIVE_PURCHASE_ORDER_STATUSES])
-            .order("created_at", { ascending: false })
-            .order("id", { ascending: false })
-            .range(offset, offset + QUERY_PAGE_SIZE - 1);
-          if (result.error) throw result.error;
-          const page = (result.data ?? []) as PurchaseOrder[];
-          rows.push(...page);
-          if (page.length < QUERY_PAGE_SIZE) return rows;
-        }
-      })();
-
-      const [nextRequests, supplierResult, locationResult, nextPurchaseOrders] =
-        await Promise.all([
-          requestPromise,
-          supabase
-            .from("suppliers")
-            .select("id,name,email,phone,is_active")
-            .eq("shop_id", shopId)
-            .order("name", { ascending: true })
-            .limit(1000),
-          supabase
-            .from("stock_locations")
-            .select("id,code,name")
-            .eq("shop_id", shopId)
-            .order("code", { ascending: true }),
-          purchaseOrderPromise,
-        ]);
-
-      const firstError = supplierResult.error || locationResult.error;
-      if (firstError) throw firstError;
-
-      const requestIds = nextRequests.map((request) => request.id);
-      const poIds = nextPurchaseOrders.map((purchaseOrder) => purchaseOrder.id);
-
-      const nextItems: PartRequestItem[] = [];
-      for (
-        let start = 0;
-        start < requestIds.length;
-        start += QUERY_ID_BATCH_SIZE
-      ) {
-        const requestIdBatch = requestIds.slice(
-          start,
-          start + QUERY_ID_BATCH_SIZE,
-        );
-        for (let offset = 0; ; offset += QUERY_PAGE_SIZE) {
-          const itemResult = await supabase
-            .from("part_request_items")
-            .select(
-              "id,request_id,work_order_id,work_order_line_id,part_id,description,status,qty,qty_requested,qty_approved,qty_ordered,qty_received,unit_cost,location_id,vendor_id,updated_at",
-            )
-            .eq("shop_id", shopId)
-            .in("request_id", requestIdBatch)
-            .order("updated_at", { ascending: false })
-            .order("id", { ascending: false })
-            .range(offset, offset + QUERY_PAGE_SIZE - 1);
-          if (itemResult.error) throw itemResult.error;
-          const page = (itemResult.data ?? []) as PartRequestItem[];
-          nextItems.push(...page);
-          if (page.length < QUERY_PAGE_SIZE) break;
-        }
-      }
-
-      const nextLines: PurchaseOrderLine[] = [];
-      for (let start = 0; start < poIds.length; start += QUERY_ID_BATCH_SIZE) {
-        const poIdBatch = poIds.slice(start, start + QUERY_ID_BATCH_SIZE);
-        for (let offset = 0; ; offset += QUERY_PAGE_SIZE) {
-          const lineResult = await supabase
-            .from("purchase_order_lines")
-            .select(
-              "id,po_id,part_request_item_id,part_id,description,sku,qty,cancelled_qty,received_qty,unit_cost,location_id,created_at",
-            )
-            .in("po_id", poIdBatch)
-            .order("created_at", { ascending: true })
-            .order("id", { ascending: true })
-            .range(offset, offset + QUERY_PAGE_SIZE - 1);
-          if (lineResult.error) throw lineResult.error;
-          const page = (lineResult.data ?? []) as PurchaseOrderLine[];
-          nextLines.push(...page);
-          if (page.length < QUERY_PAGE_SIZE) break;
-        }
-      }
-
-      const workOrderIds = Array.from(
-        new Set(
-          [
-            ...nextRequests.map((request) => request.work_order_id),
-            ...nextItems.map((item) => item.work_order_id),
-            ...nextPurchaseOrders.map(
-              (purchaseOrder) => purchaseOrder.work_order_id,
-            ),
-          ].filter((id): id is string => Boolean(id)),
-        ),
+      const response = await fetch(
+        "/api/parts/purchase-orders/mobile-snapshot",
+        {
+          credentials: "include",
+          cache: "no-store",
+        },
       );
-      const nextWorkOrders: WorkOrder[] = [];
-      for (
-        let start = 0;
-        start < workOrderIds.length;
-        start += QUERY_ID_BATCH_SIZE
-      ) {
-        const workOrderIdBatch = workOrderIds.slice(
-          start,
-          start + QUERY_ID_BATCH_SIZE,
-        );
-        const workOrderResult = await supabase
-          .from("work_orders")
-          .select("id,custom_id")
-          .eq("shop_id", shopId)
-          .in("id", workOrderIdBatch);
-        if (workOrderResult.error) throw workOrderResult.error;
-        nextWorkOrders.push(...((workOrderResult.data ?? []) as WorkOrder[]));
+      const payload = await readJson(response);
+      if (!response.ok || !payload?.snapshot) {
+        throw new Error(payload?.error || "Unable to load purchase orders.");
       }
 
-      setRequests(nextRequests);
-      setItems(nextItems);
-      setSuppliers((supplierResult.data ?? []) as Supplier[]);
-      setLocations((locationResult.data ?? []) as StockLocation[]);
-      setPurchaseOrders(nextPurchaseOrders);
-      setLines(nextLines);
-      setWorkOrders(nextWorkOrders);
+      setRequests(payload.snapshot.requests);
+      setItems(payload.snapshot.items);
+      setSuppliers(payload.snapshot.suppliers);
+      setLocations(payload.snapshot.locations);
+      setPurchaseOrders(payload.snapshot.purchaseOrders);
+      setLines(payload.snapshot.lines);
+      setWorkOrders(payload.snapshot.workOrders);
     } catch (loadError) {
       const message =
         loadError instanceof Error
@@ -390,7 +249,7 @@ export default function MobilePurchaseOrders({
     } finally {
       setLoading(false);
     }
-  }, [shopId, supabase]);
+  }, []);
 
   useEffect(() => {
     void load();

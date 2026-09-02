@@ -4,11 +4,13 @@ const PO_ID = "11111111-1111-4111-8111-111111111111";
 const SHOP_ID = "22222222-2222-4222-8222-222222222222";
 
 const mocks = vi.hoisted(() => ({
-  requireShopScopedApiAccess: vi.fn(),
+  requireCanonicalPartsApiAccess: vi.fn(),
+  canAccessPartsPurchaseOrder: vi.fn(),
 }));
 
-vi.mock("@/features/shared/lib/server/admin-access", () => ({
-  requireShopScopedApiAccess: mocks.requireShopScopedApiAccess,
+vi.mock("@/features/parts/server/fieldPartsAuthorization", () => ({
+  requireCanonicalPartsApiAccess: mocks.requireCanonicalPartsApiAccess,
+  canAccessPartsPurchaseOrder: mocks.canAccessPartsPurchaseOrder,
 }));
 
 function createSupabase(options: {
@@ -49,8 +51,9 @@ function createSupabase(options: {
 }
 
 async function callRoute(supabase: ReturnType<typeof createSupabase>) {
-  mocks.requireShopScopedApiAccess.mockResolvedValue({
+  mocks.requireCanonicalPartsApiAccess.mockResolvedValue({
     ok: true,
+    productScope: "shop",
     profile: { id: "actor-1", shop_id: SHOP_ID },
     supabase,
   });
@@ -72,6 +75,7 @@ async function callRoute(supabase: ReturnType<typeof createSupabase>) {
 describe("purchase-order place route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.canAccessPartsPurchaseOrder.mockResolvedValue(true);
   });
 
   it("places a non-empty draft within the authorized shop scope", async () => {
@@ -84,10 +88,7 @@ describe("purchase-order place route", () => {
       ok: true,
       result: { idempotent: false, po_id: PO_ID, status: "open" },
     });
-    expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
-      requiredCapability: "canManageParts",
-      requiredProductCapabilities: ["shop", "field_service"],
-    });
+    expect(mocks.requireCanonicalPartsApiAccess).toHaveBeenCalledOnce();
     expect(supabase.rpc).toHaveBeenCalledWith("parts_place_purchase_order", {
       p_po_id: PO_ID,
       p_idempotency_key: `${SHOP_ID}:parts_place_purchase_order:place-po-1`,

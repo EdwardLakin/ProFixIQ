@@ -127,8 +127,11 @@ describe("Codex review follow-up hardening", () => {
     expect(read("app/api/parts/_lib/lifecycleCommand.ts")).toContain(
       'requiredCapability: "canManageParts"',
     );
-    expect(read("app/api/parts/_lib/receivePartRequestItem.ts")).toContain(
+    expect(read("features/parts/server/fieldPartsAuthorization.ts")).toContain(
       'requiredCapability: "canManageParts"',
+    );
+    expect(read("app/api/parts/_lib/receivePartRequestItem.ts")).toContain(
+      "canAccessPartsRequestItem",
     );
   });
 });

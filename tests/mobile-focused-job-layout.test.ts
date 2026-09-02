@@ -19,6 +19,7 @@ const mobileWorkOrderClient = readFileSync(
   "features/work-orders/mobile/MobileWorkOrderClient.tsx",
   "utf8",
 );
+const middleware = readFileSync("middleware.ts", "utf8");
 
 function normalizeCss(source: string): string {
   return source
@@ -113,5 +114,9 @@ describe("mobile focused-job viewport layout", () => {
 
     expect(baseIndex).toBeGreaterThanOrEqual(0);
     expect(overrideIndex).toBeGreaterThan(baseIndex);
+  });
+
+  it("keeps focused job deep links inside the shared Shop-or-Field boundary", () => {
+    expect(middleware).toContain('/^\\/mobile\\/jobs\\/[^/]+$/.test(pathname)');
   });
 });

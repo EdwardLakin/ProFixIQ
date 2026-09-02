@@ -104,7 +104,7 @@ export async function loadPartsRequestQueue(input: {
         input.supabase
           .from("part_request_items")
           .select(
-            "id,request_id,description,part_id,requested_part_number,requested_manufacturer,quoted_price,unit_price,unit_cost,qty,qty_requested,qty_approved,qty_ordered,qty_received,qty_reserved,qty_consumed,qty_returned,status,updated_at",
+            "id,request_id,description,part_id,requested_part_number,requested_manufacturer,quoted_price,unit_price,unit_cost,qty,qty_requested,qty_approved,qty_ordered,qty_received,qty_reserved,qty_consumed,qty_returned,status,work_order_line_id,created_at,updated_at",
           )
           .eq("shop_id", input.shopId)
           .in("request_id", ids)

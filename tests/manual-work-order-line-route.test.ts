@@ -9,14 +9,16 @@ const UPPERCASE_LINE_ID = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA";
 
 const mocks = vi.hoisted(() => ({
   requireAccess: vi.fn(),
+  canFieldActorAccessWorkOrder: vi.fn(),
   createAdmin: vi.fn(),
   adminRpc: vi.fn(),
   authenticatedFrom: vi.fn(),
   authenticatedRpc: vi.fn(),
 }));
 
-vi.mock("@/features/shared/lib/server/admin-access", () => ({
-  requireShopScopedApiAccess: mocks.requireAccess,
+vi.mock("@/features/mobile/service/server/access", () => ({
+  requireCanonicalShopOrFieldApiAccess: mocks.requireAccess,
+  canFieldActorAccessWorkOrder: mocks.canFieldActorAccessWorkOrder,
 }));
 
 vi.mock("@/features/shared/lib/supabase/server", () => ({
@@ -64,8 +66,10 @@ beforeEach(() => {
     error: null,
   });
   mocks.createAdmin.mockReturnValue({ rpc: mocks.adminRpc });
+  mocks.canFieldActorAccessWorkOrder.mockResolvedValue(true);
   mocks.requireAccess.mockResolvedValue({
     ok: true,
+    productScope: "shop",
     authUserId: AUTH_USER_ID,
     profile: { id: PROFILE_ID, shop_id: SHOP_ID, role: "advisor" },
     supabase: {
@@ -83,6 +87,7 @@ describe("manual work-order line route", () => {
   it("rejects Parts before constructing a service-role client", async () => {
     mocks.requireAccess.mockResolvedValueOnce({
       ok: true,
+      productScope: "shop",
       authUserId: AUTH_USER_ID,
       profile: { id: PROFILE_ID, shop_id: SHOP_ID, role: "parts" },
       supabase: {
@@ -102,6 +107,7 @@ describe("manual work-order line route", () => {
   it("preserves assigned-mechanic eligibility for the database assignment check", async () => {
     mocks.requireAccess.mockResolvedValueOnce({
       ok: true,
+      productScope: "shop",
       authUserId: AUTH_USER_ID,
       profile: { id: PROFILE_ID, shop_id: SHOP_ID, role: "mechanic" },
       supabase: {
@@ -114,6 +120,30 @@ describe("manual work-order line route", () => {
 
     expect(response.status).toBe(201);
     expect(mocks.adminRpc).toHaveBeenCalledOnce();
+  });
+
+  it("hides a work order outside the canonical Field assignment scope", async () => {
+    mocks.requireAccess.mockResolvedValueOnce({
+      ok: true,
+      productScope: "field",
+      authUserId: AUTH_USER_ID,
+      profile: { id: PROFILE_ID, shop_id: SHOP_ID, role: "mechanic" },
+      supabase: {
+        from: mocks.authenticatedFrom,
+        rpc: mocks.authenticatedRpc,
+      },
+    });
+    mocks.canFieldActorAccessWorkOrder.mockResolvedValueOnce(false);
+
+    const response = await POST(lineRequest(), context());
+
+    expect(response.status).toBe(404);
+    expect(mocks.canFieldActorAccessWorkOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ productScope: "field" }),
+      WORK_ORDER_ID,
+    );
+    expect(mocks.createAdmin).not.toHaveBeenCalled();
+    expect(mocks.adminRpc).not.toHaveBeenCalled();
   });
 
   it("uses the service-only command with tenant scope and both actor identities", async () => {

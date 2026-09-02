@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import ReceiveDrawer, {
   type ReceiveDrawerItem,
 } from "@/features/parts/components/ReceiveDrawer";
-import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import type { PartsRequestQueueSnapshot } from "@/features/parts/lib/requests/parts-request-queue";
 
 type Lane = "requests" | "approval" | "ordered" | "ready";
 
@@ -71,8 +71,9 @@ type AllocationDraft = {
 };
 
 type ApiResult = { ok?: boolean; error?: string };
+type QueueApiResult = ApiResult & { snapshot?: PartsRequestQueueSnapshot };
+type LocationApiResult = ApiResult & { locations?: LocationLite[] };
 
-const ACTIVE_REQUEST_STATUSES = ["requested", "quoted", "approved"] as const;
 const CANCELLED_ITEM_STATUSES = new Set([
   "cancelled",
   "canceled",
@@ -125,7 +126,6 @@ function laneLabel(lane: Lane): string {
 }
 
 export default function MobilePartsWorkflow(): JSX.Element {
-  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [lane, setLane] = useState<Lane>("requests");
   const [entries, setEntries] = useState<WorkflowEntry[]>([]);
   const [locations, setLocations] = useState<LocationLite[]>([]);
@@ -140,54 +140,35 @@ export default function MobilePartsWorkflow(): JSX.Element {
     setError(null);
 
     try {
-      const [requestResult, locationResult] = await Promise.all([
-        supabase
-          .from("part_requests")
-          .select("id, work_order_id, job_id, status, notes, created_at")
-          .in("status", [...ACTIVE_REQUEST_STATUSES])
-          .order("created_at", { ascending: false })
-          .limit(300),
-        supabase
-          .from("stock_locations")
-          .select("id, code, name")
-          .order("code", { ascending: true }),
+      const [queueResponse, locationResponse] = await Promise.all([
+        fetch("/api/parts/requests/queue", {
+          credentials: "include",
+          cache: "no-store",
+        }),
+        fetch("/api/parts/locations", {
+          credentials: "include",
+          cache: "no-store",
+        }),
       ]);
-
-      if (requestResult.error) throw requestResult.error;
-      if (locationResult.error) throw locationResult.error;
-
-      const requests = (requestResult.data ?? []) as RequestLite[];
-      const requestIds = requests.map((request) => request.id);
-      const workOrderIds = Array.from(
-        new Set(
-          requests
-            .map((request) => request.work_order_id)
-            .filter((id): id is string => Boolean(id)),
-        ),
-      );
-
-      let items: ItemLite[] = [];
-      if (requestIds.length > 0) {
-        const itemResult = await supabase
-          .from("part_request_items")
-          .select(
-            "id, request_id, work_order_line_id, part_id, description, status, qty, qty_requested, qty_approved, qty_received, qty_consumed, created_at",
-          )
-          .in("request_id", requestIds)
-          .order("created_at", { ascending: false });
-        if (itemResult.error) throw itemResult.error;
-        items = (itemResult.data ?? []) as ItemLite[];
+      const [queuePayload, locationPayload] = (await Promise.all([
+        queueResponse.json().catch(() => null),
+        locationResponse.json().catch(() => null),
+      ])) as [QueueApiResult | null, LocationApiResult | null];
+      if (!queueResponse.ok || !queuePayload?.snapshot) {
+        throw new Error(
+          queuePayload?.error || "Unable to load the parts workflow.",
+        );
+      }
+      if (!locationResponse.ok || !locationPayload?.locations) {
+        throw new Error(
+          locationPayload?.error || "Unable to load stock locations.",
+        );
       }
 
-      let workOrders: WorkOrderLite[] = [];
-      if (workOrderIds.length > 0) {
-        const workOrderResult = await supabase
-          .from("work_orders")
-          .select("id, custom_id")
-          .in("id", workOrderIds);
-        if (workOrderResult.error) throw workOrderResult.error;
-        workOrders = (workOrderResult.data ?? []) as WorkOrderLite[];
-      }
+      const requests = queuePayload.snapshot.requests as RequestLite[];
+      const items = queuePayload.snapshot.items as ItemLite[];
+      const workOrders =
+        queuePayload.snapshot.workOrders as WorkOrderLite[];
 
       const workOrderById = new Map(
         workOrders.map((workOrder) => [workOrder.id, workOrder]),
@@ -277,7 +258,7 @@ export default function MobilePartsWorkflow(): JSX.Element {
       }
 
       setEntries(nextEntries);
-      setLocations((locationResult.data ?? []) as LocationLite[]);
+      setLocations(locationPayload.locations);
     } catch (loadError) {
       const message =
         loadError instanceof Error
@@ -288,7 +269,7 @@ export default function MobilePartsWorkflow(): JSX.Element {
     } finally {
       setLoading(false);
     }
-  }, [supabase]);
+  }, []);
 
   useEffect(() => {
     void load();

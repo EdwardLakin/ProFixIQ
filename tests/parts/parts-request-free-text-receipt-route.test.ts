@@ -7,11 +7,13 @@ const SHOP_ID = "33333333-3333-4333-8333-333333333333";
 const RPC_NAME = "parts_receive_free_text_po_line";
 
 const mocks = vi.hoisted(() => ({
-  requireShopScopedApiAccess: vi.fn(),
+  requireCanonicalPartsApiAccess: vi.fn(),
+  canAccessPartsPurchaseOrder: vi.fn(),
 }));
 
-vi.mock("@/features/shared/lib/server/admin-access", () => ({
-  requireShopScopedApiAccess: mocks.requireShopScopedApiAccess,
+vi.mock("@/features/parts/server/fieldPartsAuthorization", () => ({
+  requireCanonicalPartsApiAccess: mocks.requireCanonicalPartsApiAccess,
+  canAccessPartsPurchaseOrder: mocks.canAccessPartsPurchaseOrder,
 }));
 
 function request(body: Record<string, unknown>): Request {
@@ -36,11 +38,12 @@ async function callRoute(body: Record<string, unknown>) {
 describe("request-backed free-text PO receipt route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.canAccessPartsPurchaseOrder.mockResolvedValue(true);
   });
 
   it("requires parts capability before invoking the receipt RPC", async () => {
     const rpc = vi.fn();
-    mocks.requireShopScopedApiAccess.mockResolvedValue({
+    mocks.requireCanonicalPartsApiAccess.mockResolvedValue({
       ok: false,
       response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
       supabase: { rpc },
@@ -49,10 +52,7 @@ describe("request-backed free-text PO receipt route", () => {
     const response = await callRoute({ qty: 1, idempotencyKey: "receipt-1" });
 
     expect(response.status).toBe(403);
-    expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
-      requiredCapability: "canManageParts",
-      requiredProductCapabilities: ["shop", "field_service"],
-    });
+    expect(mocks.requireCanonicalPartsApiAccess).toHaveBeenCalledOnce();
     expect(rpc).not.toHaveBeenCalled();
   });
 
@@ -61,8 +61,9 @@ describe("request-backed free-text PO receipt route", () => {
       data: { ok: true, line_received_qty: 1, request_received_qty: 1 },
       error: null,
     }));
-    mocks.requireShopScopedApiAccess.mockResolvedValue({
+    mocks.requireCanonicalPartsApiAccess.mockResolvedValue({
       ok: true,
+      productScope: "shop",
       profile: { id: "actor-id", shop_id: SHOP_ID },
       supabase: { rpc },
     });
@@ -80,8 +81,9 @@ describe("request-backed free-text PO receipt route", () => {
 
   it("rejects receipt quantities beyond the request ledger precision", async () => {
     const rpc = vi.fn();
-    mocks.requireShopScopedApiAccess.mockResolvedValue({
+    mocks.requireCanonicalPartsApiAccess.mockResolvedValue({
       ok: true,
+      productScope: "shop",
       profile: { id: "actor-id", shop_id: SHOP_ID },
       supabase: { rpc },
     });
@@ -96,7 +98,7 @@ describe("request-backed free-text PO receipt route", () => {
     expect(payload.error).toBe(
       "Receipt quantity cannot use more than two decimal places.",
     );
-    expect(mocks.requireShopScopedApiAccess).not.toHaveBeenCalled();
+    expect(mocks.requireCanonicalPartsApiAccess).not.toHaveBeenCalled();
     expect(rpc).not.toHaveBeenCalled();
   });
 
@@ -105,8 +107,9 @@ describe("request-backed free-text PO receipt route", () => {
       data: null,
       error: { message: "PARTS_PO_SHOP_MISMATCH" },
     }));
-    mocks.requireShopScopedApiAccess.mockResolvedValue({
+    mocks.requireCanonicalPartsApiAccess.mockResolvedValue({
       ok: true,
+      productScope: "shop",
       profile: { id: "actor-id", shop_id: SHOP_ID },
       supabase: { rpc },
     });

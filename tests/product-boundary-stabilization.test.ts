@@ -193,10 +193,21 @@ describe("product boundary stabilization", () => {
     ).toEqual({ kind: "route_owned" });
     for (const sharedPartsPath of [
       "/api/parts/consume",
+      "/api/parts/locations",
       "/api/parts/picker",
+      "/api/parts/purchase-orders/mobile-snapshot",
+      "/api/parts/purchase-orders/po-1/place",
+      "/api/parts/purchase-orders/po-1/lines/line-1/receive-free-text",
+      "/api/parts/receiving/receive-item",
       "/api/parts/requests/queue",
       "/api/parts/requests/items/item-1/add",
+      "/api/parts/requests/items/item-1/allocate",
       "/api/parts/requests/items/item-1/inventory",
+      "/api/parts/requests/items/item-1/po-line",
+      "/api/parts/requests/items/item-1/receive",
+      "/api/parts/items/item-1/receive",
+      "/api/parts/vendors",
+      "/api/work-orders/wo-1/lines",
     ]) {
       expect(resolveApiProductBoundary(sharedPartsPath)).toEqual({
         kind: "product",
@@ -206,8 +217,6 @@ describe("product boundary stabilization", () => {
     for (const shopPartsPath of [
       "/api/parts/requests/create",
       "/api/parts/requests/items/item-1/edit",
-      "/api/parts/purchase-orders/po-1/place",
-      "/api/parts/vendors",
     ]) {
       expect(resolveApiProductBoundary(shopPartsPath)).toEqual({
         kind: "product",
@@ -327,6 +336,7 @@ describe("product boundary stabilization", () => {
       "app/api/parts/consume/route.ts",
       "app/api/parts/picker/route.ts",
       "app/api/parts/requests/items/[itemId]/add/route.ts",
+      "app/api/work-orders/[id]/lines/route.ts",
       "app/api/inspections/build-from-prompt/route.ts",
       "app/api/work-orders/quotes/add/route.ts",
       "app/api/work-orders/quotes/add-from-menu-repair/route.ts",

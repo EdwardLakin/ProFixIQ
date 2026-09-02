@@ -12,6 +12,7 @@ import { isOpenPartsObligation } from "@/features/parts/lib/open-parts-obligatio
 const read = (path: string) => readFileSync(path, "utf8");
 const page = read("app/mobile/service/purchase-orders/page.tsx");
 const workflow = read("features/parts/mobile/MobilePurchaseOrders.tsx");
+const snapshot = read("app/api/parts/purchase-orders/mobile-snapshot/route.ts");
 
 describe("Field purchase orders", () => {
   it("derives the approved ordering ceiling without conflating requested and ordered quantities", () => {
@@ -55,8 +56,9 @@ describe("Field purchase orders", () => {
   it("requires parts capability at the Field page boundary", () => {
     expect(page).toContain('requiredCapability: "canManageParts"');
     expect(page).toContain('redirectTo: "/mobile/service"');
-    expect(page).toContain("shopId={profile.shop_id}");
-    expect(workflow).toContain('.eq("shop_id", shopId)');
+    expect(page).toContain("<MobilePurchaseOrders />");
+    expect(workflow).toContain('"/api/parts/purchase-orders/mobile-snapshot"');
+    expect(workflow).not.toContain("createBrowserSupabase");
   });
 
   it("authors approved demand through the canonical idempotent PO command", () => {
@@ -97,11 +99,19 @@ describe("Field purchase orders", () => {
   });
 
   it("loads every operational PO before rendering the receive queue", () => {
-    expect(workflow).toContain("ACTIVE_PURCHASE_ORDER_STATUSES");
-    expect(workflow).toContain("offset += QUERY_PAGE_SIZE");
-    expect(workflow).toContain(
-      '.range(offset, offset + QUERY_PAGE_SIZE - 1)',
+    expect(snapshot).toContain("ACTIVE_PURCHASE_ORDER_STATUSES");
+    expect(snapshot).toContain("offset += QUERY_PAGE_SIZE");
+    expect(snapshot).toContain(
+      "readPage(offset, offset + QUERY_PAGE_SIZE - 1)",
     );
+    expect(snapshot).toContain(".range(from, to)");
     expect(workflow).not.toContain(".limit(150)");
+  });
+
+  it("filters the Field snapshot through canonical linked-work authority", () => {
+    expect(snapshot).toContain("requireCanonicalPartsApiAccess");
+    expect(snapshot).toContain("listFieldOperatorAssignedWorkOrderIds");
+    expect(snapshot).toContain("allowedItemIds");
+    expect(snapshot).toContain("purchaseOrderLines.every");
   });
 });

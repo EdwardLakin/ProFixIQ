@@ -4,11 +4,13 @@ const PO_ID = "11111111-1111-4111-8111-111111111111";
 const SHOP_ID = "22222222-2222-4222-8222-222222222222";
 
 const mocks = vi.hoisted(() => ({
-  requireShopScopedApiAccess: vi.fn(),
+  requireCanonicalPartsApiAccess: vi.fn(),
+  canAccessPartsPurchaseOrder: vi.fn(),
 }));
 
-vi.mock("@/features/shared/lib/server/admin-access", () => ({
-  requireShopScopedApiAccess: mocks.requireShopScopedApiAccess,
+vi.mock("@/features/parts/server/fieldPartsAuthorization", () => ({
+  requireCanonicalPartsApiAccess: mocks.requireCanonicalPartsApiAccess,
+  canAccessPartsPurchaseOrder: mocks.canAccessPartsPurchaseOrder,
 }));
 
 function request(body: Record<string, unknown>): Request {
@@ -34,6 +36,7 @@ async function callRoute(body: Record<string, unknown>) {
 describe("Field purchase-order placement route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.canAccessPartsPurchaseOrder.mockResolvedValue(true);
   });
 
   it("places through the atomic lifecycle command with quote contact context", async () => {
@@ -41,8 +44,9 @@ describe("Field purchase-order placement route", () => {
       data: { ok: true, po_id: PO_ID, status: "open" },
       error: null,
     }));
-    mocks.requireShopScopedApiAccess.mockResolvedValue({
+    mocks.requireCanonicalPartsApiAccess.mockResolvedValue({
       ok: true,
+      productScope: "field",
       profile: { shop_id: SHOP_ID },
       supabase: { rpc },
     });
@@ -50,10 +54,11 @@ describe("Field purchase-order placement route", () => {
     const response = await callRoute({ contactChannel: "email" });
 
     expect(response.status).toBe(200);
-    expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
-      requiredCapability: "canManageParts",
-      requiredProductCapabilities: ["shop", "field_service"],
-    });
+    expect(mocks.requireCanonicalPartsApiAccess).toHaveBeenCalledOnce();
+    expect(mocks.canAccessPartsPurchaseOrder).toHaveBeenCalledWith(
+      expect.objectContaining({ productScope: "field" }),
+      PO_ID,
+    );
     expect(rpc).toHaveBeenCalledWith("parts_place_purchase_order", {
       p_po_id: PO_ID,
       p_idempotency_key: `${SHOP_ID}:parts_place_purchase_order:place-po-1`,
@@ -69,8 +74,9 @@ describe("Field purchase-order placement route", () => {
         message: "Add at least one active line before placing this PO.",
       },
     }));
-    mocks.requireShopScopedApiAccess.mockResolvedValue({
+    mocks.requireCanonicalPartsApiAccess.mockResolvedValue({
       ok: true,
+      productScope: "field",
       profile: { shop_id: SHOP_ID },
       supabase: { rpc },
     });

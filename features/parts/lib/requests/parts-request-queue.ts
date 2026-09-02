@@ -31,6 +31,8 @@ export type PartsRequestQueueItem = Pick<
   | "qty_returned"
   | "status"
   | "unit_cost"
+  | "work_order_line_id"
+  | "created_at"
   | "updated_at"
 >;
 

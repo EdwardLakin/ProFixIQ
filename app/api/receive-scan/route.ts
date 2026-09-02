@@ -1,8 +1,11 @@
 // app/api/receive-scan/route.ts (FULL FILE REPLACEMENT)
 
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database } from "@shared/types/types/supabase";
+import {
+  canAccessPartsPurchaseOrder,
+  requireCanonicalPartsApiAccess,
+} from "@/features/parts/server/fieldPartsAuthorization";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
 import { toSafeDatabaseError } from "@/features/shared/lib/server/safeDatabaseError";
 
@@ -10,8 +13,6 @@ type DB = Database;
 
 export async function POST(req: Request) {
   try {
-    const supabase = createServerSupabaseRoute();
-
     const body = (await req.json().catch(() => ({}))) as Partial<{
       part_id: string;
       location_id: string;
@@ -41,17 +42,18 @@ export async function POST(req: Request) {
       );
     }
 
-    // Optional early auth check so errors are clean
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
+    const access = await requireCanonicalPartsApiAccess();
+    if (!access.ok) return access.response;
+    const supabase = access.supabase;
 
-    if (userErr) {
-      return NextResponse.json({ error: userErr.message }, { status: 401 });
-    }
-    if (!user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    if (
+      access.productScope === "field" &&
+      (!poId || !(await canAccessPartsPurchaseOrder(access, poId)))
+    ) {
+      return NextResponse.json(
+        { error: "Purchase order not found." },
+        { status: 404 },
+      );
     }
 
     /* ============================================================
@@ -75,7 +77,7 @@ export async function POST(req: Request) {
       await logOperationalEvent({
         supabase,
         event: "parts_received",
-        actorId: user.id,
+        actorId: access.authUserId,
         entityType: "part",
         entityId: partId,
         details: {
@@ -128,7 +130,7 @@ export async function POST(req: Request) {
     await logOperationalEvent({
       supabase,
       event: "parts_received",
-      actorId: user.id,
+      actorId: access.authUserId,
       entityType: "part",
       entityId: partId,
       details: {

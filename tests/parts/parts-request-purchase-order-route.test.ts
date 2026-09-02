@@ -6,11 +6,15 @@ const SHOP_ID = "33333333-3333-4333-8333-333333333333";
 const RPC_NAME = "parts_create_or_reuse_po_line_for_request";
 
 const mocks = vi.hoisted(() => ({
-  requireShopScopedApiAccess: vi.fn(),
+  requireCanonicalPartsApiAccess: vi.fn(),
+  canAccessPartsRequestItem: vi.fn(),
+  canAccessPartsPurchaseOrder: vi.fn(),
 }));
 
-vi.mock("@/features/shared/lib/server/admin-access", () => ({
-  requireShopScopedApiAccess: mocks.requireShopScopedApiAccess,
+vi.mock("@/features/parts/server/fieldPartsAuthorization", () => ({
+  requireCanonicalPartsApiAccess: mocks.requireCanonicalPartsApiAccess,
+  canAccessPartsRequestItem: mocks.canAccessPartsRequestItem,
+  canAccessPartsPurchaseOrder: mocks.canAccessPartsPurchaseOrder,
 }));
 
 function createSupabase() {
@@ -68,12 +72,15 @@ async function callRoute(body: Record<string, unknown>) {
 describe("parts request purchase-order route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.canAccessPartsRequestItem.mockResolvedValue(true);
+    mocks.canAccessPartsPurchaseOrder.mockResolvedValue(true);
   });
 
   it("returns stable 409 for a free-text item without acquisition cost and skips RPC", async () => {
     const supabase = createSupabase();
-    mocks.requireShopScopedApiAccess.mockResolvedValue({
+    mocks.requireCanonicalPartsApiAccess.mockResolvedValue({
       ok: true,
+      productScope: "shop",
       profile: { id: "actor-id", shop_id: SHOP_ID },
       supabase,
     });
@@ -99,8 +106,9 @@ describe("parts request purchase-order route", () => {
 
   it("passes explicit free-text acquisition cost through the scoped RPC", async () => {
     const supabase = createSupabase();
-    mocks.requireShopScopedApiAccess.mockResolvedValue({
+    mocks.requireCanonicalPartsApiAccess.mockResolvedValue({
       ok: true,
+      productScope: "shop",
       profile: { id: "actor-id", shop_id: SHOP_ID },
       supabase,
     });
@@ -113,10 +121,7 @@ describe("parts request purchase-order route", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
-      requiredCapability: "canManageParts",
-      requiredProductCapabilities: ["shop", "field_service"],
-    });
+    expect(mocks.requireCanonicalPartsApiAccess).toHaveBeenCalledOnce();
     expect(supabase.filters).toEqual([
       ["id", ITEM_ID],
       ["shop_id", SHOP_ID],
@@ -138,8 +143,9 @@ describe("parts request purchase-order route", () => {
 
   it("rejects order quantities with more than two decimal places", async () => {
     const supabase = createSupabase();
-    mocks.requireShopScopedApiAccess.mockResolvedValue({
+    mocks.requireCanonicalPartsApiAccess.mockResolvedValue({
       ok: true,
+      productScope: "shop",
       profile: { id: "actor-id", shop_id: SHOP_ID },
       supabase,
     });
