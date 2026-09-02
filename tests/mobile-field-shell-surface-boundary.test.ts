@@ -21,6 +21,10 @@ describe("Shop Mobile and Field shell separation", () => {
     expect(mobileShell).toContain(
       'document.addEventListener("visibilitychange"',
     );
+    expect(mobileShell).toContain(
+      "preserveFieldSurfaceOnNextVerification.current = true",
+    );
+    expect(mobileShell).toContain("if (!preserveCurrentFieldSurface)");
     expect(mobileShell).toContain("fieldVerificationPending");
     expect(mobileShell).toContain('aria-busy="true"');
     expect(mobileShell).toContain("Verifying Field workspace...");
@@ -33,9 +37,11 @@ describe("Shop Mobile and Field shell separation", () => {
       /href: "\/mobile\/service"[\s\S]*?roles: ALL_MOBILE_ROLES/,
     );
     expect(mobileNav).toContain("fieldAccess?.canConfigure");
-    expect(mobileNav).toMatch(
-      /fieldAccessResponse\?\.ok && fieldAccess\?\.canConfigure[\s\S]*?"\/mobile\/service\/setup"/,
-    );
+    expect(mobileNav).toContain("verifiedSetupDestination");
+    expect(mobileNav).toContain("fieldAccessResponse?.status === 403");
+    expect(mobileNav).toContain('fieldAccess?.decision === "forbidden"');
+    expect(mobileNav).toContain("fieldAccess?.productEntitled");
+    expect(mobileNav).toContain('"/mobile/service/setup"');
     expect(mobileNav).toContain(
       'tile.href !== "/mobile/service" || fieldServiceHref',
     );

@@ -226,17 +226,32 @@ export function MobileBottomNav({ open, onClose }: Props) {
       );
       setProfileName(profile?.full_name?.trim() || "Team member");
 
-      const fieldAccessResponse = await fetch("/api/mobile/field-service/access", {
-        credentials: "include",
-        cache: "no-store",
-      }).catch(() => null);
-      const fieldAccess = (await fieldAccessResponse?.json().catch(() => null)) as
-        | { canAccessFieldService?: boolean; canConfigure?: boolean }
-        | null;
+      const fieldAccessResponse = await fetch(
+        "/api/mobile/field-service/access",
+        {
+          credentials: "include",
+          cache: "no-store",
+        },
+      ).catch(() => null);
+      const fieldAccess = (await fieldAccessResponse
+        ?.json()
+        .catch(() => null)) as {
+        decision?: string;
+        productEntitled?: boolean;
+        canAccessFieldService?: boolean;
+        canConfigure?: boolean;
+      } | null;
+      const verifiedSetupDestination = Boolean(
+        fieldAccess?.canConfigure &&
+        fieldAccess?.productEntitled &&
+        (fieldAccessResponse?.ok ||
+          (fieldAccessResponse?.status === 403 &&
+            fieldAccess?.decision === "forbidden")),
+      );
       setFieldServiceHref(
         fieldAccessResponse?.ok && fieldAccess?.canAccessFieldService
           ? "/mobile/service"
-          : fieldAccessResponse?.ok && fieldAccess?.canConfigure
+          : verifiedSetupDestination
             ? "/mobile/service/setup"
             : null,
       );

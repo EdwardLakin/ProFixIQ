@@ -3,7 +3,7 @@
 import { Menu } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import type { ReactNode } from "react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
 import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
@@ -114,12 +114,17 @@ export function MobileShell({ children, title }: Props) {
     string | null
   >(null);
   const [fieldVerificationAttempt, setFieldVerificationAttempt] = useState(0);
+  const preserveFieldSurfaceOnNextVerification = useRef(false);
   const resolvedTitle = title ?? getTitleFromPath(pathname);
 
   useEffect(() => {
     let active = true;
     const isFieldRoute = pathname.startsWith("/mobile/service");
     const verifyFieldSurface = async () => {
+      const preserveCurrentFieldSurface =
+        preserveFieldSurfaceOnNextVerification.current;
+      preserveFieldSurfaceOnNextVerification.current = false;
+
       if (
         pathname === "/mobile" ||
         pathname === "/mobile/sign-in" ||
@@ -140,7 +145,9 @@ export function MobileShell({ children, title }: Props) {
         return;
       }
 
-      setFieldVerificationPending(true);
+      if (!preserveCurrentFieldSurface) {
+        setFieldVerificationPending(true);
+      }
       const supabase = createBrowserSupabase();
       const sessionResult = await supabase.auth.getSession();
       if (!active) return;
@@ -285,6 +292,7 @@ export function MobileShell({ children, title }: Props) {
         setFieldSurface(false);
         setVerifiedFieldPathname(null);
       }
+      preserveFieldSurfaceOnNextVerification.current = false;
       setFieldVerificationAttempt((value) => value + 1);
     });
 
@@ -292,8 +300,10 @@ export function MobileShell({ children, title }: Props) {
   }, []);
 
   useEffect(() => {
-    const revalidate = () =>
+    const revalidate = () => {
+      preserveFieldSurfaceOnNextVerification.current = true;
       setFieldVerificationAttempt((value) => value + 1);
+    };
     const revalidateWhenVisible = () => {
       if (document.visibilityState === "visible") revalidate();
     };

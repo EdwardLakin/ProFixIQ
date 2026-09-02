@@ -93,6 +93,8 @@ describe("Mobile Service shell", () => {
     expect(tiles.match(/href: "\/mobile\/service"/g)).toHaveLength(1);
     expect(mobileNav).toContain("fieldAccess?.canAccessFieldService");
     expect(mobileNav).toContain("fieldAccess?.canConfigure");
+    expect(mobileNav).toContain("verifiedSetupDestination");
+    expect(mobileNav).toContain("fieldAccessResponse?.status === 403");
     expect(mobileNav).toContain('"/mobile/service/setup"');
     expect(mobileNav).toContain(
       'tile.href !== "/mobile/service" || fieldServiceHref',
