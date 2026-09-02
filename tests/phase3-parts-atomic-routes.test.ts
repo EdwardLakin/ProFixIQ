@@ -19,6 +19,9 @@ describe("phase 3 atomic parts routes", () => {
   it("uses one item attach command", () => {
     const route = source("app/api/parts/requests/items/[itemId]/add/route.ts");
     expect(route).toContain("parts_update_attach_allocate_item_atomic");
+    expect(route).toContain("requireCanonicalShopOrFieldApiAccess");
+    expect(route).toContain("canFieldActorAccessWorkOrder");
+    expect(route).toContain('.select("work_order_id")');
     expect(route).not.toContain('from("part_request_items").update');
     expect(route).not.toContain("upsert_part_allocation_from_request_item");
   });

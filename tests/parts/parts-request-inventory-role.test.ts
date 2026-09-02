@@ -93,8 +93,11 @@ describe("parts request inventory route authorization", () => {
   });
 
   it("requires Field request items to belong to an authorized work order", () => {
-    expect(routeSource).toContain('access.productScope === "field"');
-    expect(routeSource).toContain("item.work_order_id");
-    expect(routeSource).toContain("canFieldActorAccessWorkOrder");
+    for (const source of [routeSource, addRouteSource]) {
+      expect(source).toContain('access.productScope === "field"');
+      expect(source).toContain("work_order_id");
+      expect(source).toContain("canFieldActorAccessWorkOrder");
+      expect(source).toContain("requireCanonicalShopOrFieldApiAccess");
+    }
   });
 });

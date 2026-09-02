@@ -115,6 +115,8 @@ function isShopOrFieldApi(pathname: string): boolean {
       "/api/openai/realtime-token",
       "/api/payments/manual",
       "/api/receive-scan",
+      "/api/work-orders/quotes/add",
+      "/api/work-orders/quotes/add-from-menu-repair",
       "/api/work-order-lines/operational",
     ].includes(pathname)
   ) {

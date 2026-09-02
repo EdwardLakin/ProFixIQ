@@ -241,6 +241,15 @@ describe("product boundary stabilization", () => {
       kind: "product",
       capabilities: ["shop", "field_service"],
     });
+    for (const quoteCreationPath of [
+      "/api/work-orders/quotes/add",
+      "/api/work-orders/quotes/add-from-menu-repair",
+    ]) {
+      expect(resolveApiProductBoundary(quoteCreationPath)).toEqual({
+        kind: "product",
+        capabilities: ["shop", "field_service"],
+      });
+    }
     expect(resolveApiProductBoundary("/api/portal/fleet/invites")).toEqual({
       kind: "product",
       capabilities: ["fleet_maintenance"],
@@ -288,7 +297,11 @@ describe("product boundary stabilization", () => {
       "app/api/mobile/shifts/route.ts",
       "app/api/portal/book/route.ts",
       "app/api/parts/consume/route.ts",
+      "app/api/parts/picker/route.ts",
+      "app/api/parts/requests/items/[itemId]/add/route.ts",
       "app/api/inspections/build-from-prompt/route.ts",
+      "app/api/work-orders/quotes/add/route.ts",
+      "app/api/work-orders/quotes/add-from-menu-repair/route.ts",
     ]) {
       expect(read(canonicalSharedApi)).toContain(
         "requireCanonicalShopOrFieldApiAccess",

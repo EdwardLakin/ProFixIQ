@@ -12,6 +12,11 @@ const markReadyMigration = readFileSync(
   "utf8",
 );
 const canonicalQuotes = readFileSync("features/work-orders/lib/work-orders/canonicalQuoteLines.ts", "utf8");
+const addQuoteRoute = readFileSync("app/api/work-orders/quotes/add/route.ts", "utf8");
+const addMenuRepairRoute = readFileSync(
+  "app/api/work-orders/quotes/add-from-menu-repair/route.ts",
+  "utf8",
+);
 
 describe("inspection to canonical quote review lifecycle", () => {
   it("uses canonical pending quote lines as first-class Quote Review queue sources without work_order_lines", () => {
@@ -34,6 +39,13 @@ describe("inspection to canonical quote review lifecycle", () => {
     expect(findingsPage).toContain('/api/work-orders/quotes/add');
     expect(findingsPage).not.toContain('/api/work-orders/lines/${resolvedWorkOrderLineId}/finish');
     expect(findingsPage).not.toContain('punched_out_at');
+  });
+
+  it("keeps Field quote creation bound to an authorized linked work order", () => {
+    for (const route of [addQuoteRoute, addMenuRepairRoute]) {
+      expect(route).toContain("requireCanonicalShopOrFieldApiAccess");
+      expect(route).toContain("resolveWorkOrderProductAuthority");
+    }
   });
 
   it("blocks invoice readiness on active pending quote lines without a separate inspection-only readiness path", () => {

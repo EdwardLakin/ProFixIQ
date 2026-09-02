@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  requireCanonicalShopOrFieldApiAccess,
+  resolveWorkOrderProductAuthority,
+} from "@/features/mobile/service/server/access";
 import {
   createCanonicalQuoteLines,
   safeTrim,
@@ -14,7 +17,9 @@ type Body = {
 };
 
 export async function POST(req: Request) {
-  const supabase = createServerSupabaseRoute();
+  const access = await requireCanonicalShopOrFieldApiAccess();
+  if (!access.ok) return access.response;
+  const supabase = access.supabase;
 
   try {
     const body = (await req.json().catch(() => null)) as Body | null;
@@ -28,22 +33,19 @@ export async function POST(req: Request) {
       );
     }
 
-    const {
-      data: { user },
-      error: userError,
-    } = await supabase.auth.getUser();
-
-    if (userError) {
-      return NextResponse.json({ error: userError.message }, { status: 401 });
-    }
-    if (!user) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    const productAuthority = await resolveWorkOrderProductAuthority(
+      access,
+      workOrderId,
+    );
+    if (!productAuthority.authorized) {
+      return NextResponse.json({ error: "Work order not found" }, { status: 404 });
     }
 
     const { data: wo, error: woErr } = await supabase
       .from("work_orders")
       .select("id, shop_id, vehicle_id")
       .eq("id", workOrderId)
+      .eq("shop_id", access.profile.shop_id)
       .maybeSingle();
 
     if (woErr) {
@@ -65,7 +67,7 @@ export async function POST(req: Request) {
       shopId: wo.shop_id,
       workOrderId,
       vehicleId: safeTrim(body?.vehicleId) || wo.vehicle_id || null,
-      suggestedBy: user.id,
+      suggestedBy: access.authUserId,
       items,
     });
 

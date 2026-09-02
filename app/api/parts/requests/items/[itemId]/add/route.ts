@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import {
+  canFieldActorAccessWorkOrder,
+  requireCanonicalShopOrFieldApiAccess,
+} from "@/features/mobile/service/server/access";
 
 type RpcError = {
   message: string;
@@ -52,9 +54,8 @@ export async function POST(
     );
   }
 
-  const access = await requireShopScopedApiAccess({
+  const access = await requireCanonicalShopOrFieldApiAccess({
     requiredCapability: "canManageParts",
-    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 
@@ -94,6 +95,33 @@ export async function POST(
     return NextResponse.json(
       { ok: false, error: "A stable idempotency key is required." },
       { status: 400 },
+    );
+  }
+
+  const { data: requestItem, error: requestItemError } = await access.supabase
+    .from("part_request_items")
+    .select("work_order_id")
+    .eq("id", itemId)
+    .eq("shop_id", access.profile.shop_id)
+    .maybeSingle<{ work_order_id: string | null }>();
+  if (requestItemError) {
+    return NextResponse.json(
+      { ok: false, error: requestItemError.message },
+      { status: 500 },
+    );
+  }
+  if (
+    !requestItem ||
+    (access.productScope === "field" &&
+      (!requestItem.work_order_id ||
+        !(await canFieldActorAccessWorkOrder(
+          access,
+          requestItem.work_order_id,
+        ))))
+  ) {
+    return NextResponse.json(
+      { ok: false, error: "Request item not found." },
+      { status: 404 },
     );
   }
 

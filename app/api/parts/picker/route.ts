@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { requireCanonicalShopOrFieldApiAccess } from "@/features/mobile/service/server/access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 const MENU_EDITOR_ROLES = [
@@ -27,15 +26,13 @@ function cleanSearch(value: string | null): string {
 export async function GET(request: Request) {
   const url = new URL(request.url);
   const pickerContext = url.searchParams.get("context");
-  const access = await requireShopScopedApiAccess(
+  const access = await requireCanonicalShopOrFieldApiAccess(
     pickerContext === "menu-editor"
       ? {
           allowRoles: MENU_EDITOR_ROLES,
-          requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
         }
       : {
           requiredCapability: "canManageParts",
-          requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
         },
   );
   if (!access.ok) return access.response;

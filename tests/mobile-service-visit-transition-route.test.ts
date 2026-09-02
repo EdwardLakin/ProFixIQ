@@ -52,6 +52,9 @@ describe("mobile Service Visit transition route committed retries", () => {
     const response = await POST(request(), context);
 
     expect(response.status).toBe(200);
+    expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
+      requiredProductCapabilities: ["field_service"],
+    });
     expect(await response.json()).toMatchObject({
       ok: true,
       idempotent: true,
@@ -87,6 +90,9 @@ describe("mobile Service Visit transition route committed retries", () => {
     const response = await POST(request(), context);
 
     expect(response.status).toBe(200);
+    expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
+      requiredProductCapabilities: ["field_service"],
+    });
     expect(mocks.requireMobileServiceOperatorApiAccess).toHaveBeenCalledOnce();
     expect(transitionRpc).toHaveBeenCalledWith(
       "mobile_replay_service_visit_transition_atomic",

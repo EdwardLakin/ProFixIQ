@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { Database, Json } from "@shared/types/types/supabase";
+import {
+  requireCanonicalShopOrFieldApiAccess,
+  resolveWorkOrderProductAuthority,
+} from "@/features/mobile/service/server/access";
 import { getActiveMenuRepairPricingSnapshot } from "@/features/parts/server/getActiveMenuRepairPricingSnapshot";
 import { normalizeLaborHoursInput } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
 import {
@@ -176,7 +179,9 @@ function partTotal(parts: ReusePart[], usePricing: boolean): number | null {
 
 export async function POST(req: Request) {
   try {
-    const supabase = createServerSupabaseRoute();
+    const access = await requireCanonicalShopOrFieldApiAccess();
+    if (!access.ok) return access.response;
+    const supabase = access.supabase;
     const body = (await req.json().catch(() => null)) as Body | null;
 
     const workOrderId = safeTrim(body?.workOrderId);
@@ -190,28 +195,16 @@ export async function POST(req: Request) {
       );
     }
 
-    const {
-      data: { user },
-      error: authErr,
-    } = await supabase.auth.getUser();
-
-    if (authErr || !user) {
-      return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-    }
-
-    const { data: profile, error: profileErr } = await supabase
-      .from("profiles")
-      .select("shop_id")
-      .eq("id", user.id)
-      .maybeSingle();
-
-    if (profileErr) {
-      return NextResponse.json({ ok: false, error: profileErr.message }, { status: 500 });
-    }
-
-    const shopId = safeTrim((profile as { shop_id?: unknown } | null)?.shop_id);
-    if (!shopId) {
-      return NextResponse.json({ ok: false, error: "Missing shop context" }, { status: 400 });
+    const shopId = access.profile.shop_id;
+    const productAuthority = await resolveWorkOrderProductAuthority(
+      access,
+      workOrderId,
+    );
+    if (!productAuthority.authorized) {
+      return NextResponse.json(
+        { ok: false, error: "Work order not found" },
+        { status: 404 },
+      );
     }
 
     const { data: repairItem, error: repairErr } = await supabase
@@ -393,7 +386,7 @@ export async function POST(req: Request) {
       work_order_line_id: null,
       shop_id: shopId,
       vehicle_id: workOrder.vehicle_id,
-      suggested_by: user.id,
+      suggested_by: access.authUserId,
       description: repairItem.name,
       job_type: "repair",
       est_labor_hours: laborHours,
@@ -439,7 +432,7 @@ export async function POST(req: Request) {
         shopId,
         workOrderId: workOrder.id,
         quoteLineId: created.id,
-        requestedBy: user.id,
+        requestedBy: access.authUserId,
         notes: [
           useFinalPricing
             ? "Fresh menu repair pricing persisted to the canonical parts request."

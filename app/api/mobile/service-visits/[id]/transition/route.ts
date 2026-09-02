@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import type { ServiceVisitStatus } from "@/features/scheduling/lib/service-visit-contract";
 import { requireMobileServiceOperatorApiAccess } from "@/features/mobile/service/server/access";
+import { FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 const STATUSES = new Set<ServiceVisitStatus>([
@@ -36,7 +37,9 @@ export async function POST(
   request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
-  const authenticatedAccess = await requireShopScopedApiAccess();
+  const authenticatedAccess = await requireShopScopedApiAccess({
+    requiredProductCapabilities: FIELD_PRODUCT_CAPABILITIES,
+  });
   if (!authenticatedAccess.ok) return authenticatedAccess.response;
   const { id } = await context.params;
   const body = (await request.json().catch(() => null)) as Body | null;
