@@ -282,7 +282,9 @@ export default function FleetMaintenanceCalendar({
                 onChange={(event) => setFleetId(event.target.value)}
                 className="min-h-10 rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3 text-xs"
               >
-                <option value="all">All fleets</option>
+                {!initialFleetId ? (
+                  <option value="all">All fleets</option>
+                ) : null}
                 {payload.fleets.map((fleet) => (
                   <option key={fleet.id} value={fleet.id}>
                     {fleet.name}
@@ -302,9 +304,7 @@ export default function FleetMaintenanceCalendar({
               Refresh
             </button>
             <Link
-              href={
-                internalRoutes ? "/portal/fleet/maintenance" : "/maintenance"
-              }
+              href={`${internalRoutes ? "/portal/fleet/maintenance" : "/maintenance"}${fleetId !== "all" ? `?fleetId=${encodeURIComponent(fleetId)}` : ""}`}
               className="inline-flex min-h-10 items-center rounded-xl bg-sky-400 px-4 py-2 text-xs font-semibold text-slate-950"
             >
               Open PM command

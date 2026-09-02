@@ -105,6 +105,9 @@ describe("Phase 13 Fleet navigation performance contract", () => {
     );
     const requestLayout = read("app/portal/fleet/request/layout.tsx");
     const requestBuilder = read("app/portal/fleet/request/build/page.tsx");
+    const units = read("features/fleet/components/FleetUnitsPage.tsx");
+    const mobilePretrip = read("app/mobile/fleet/pretrip/page.tsx");
+    const mobileFleetClient = read("features/mobile/fleet/client.ts");
     expect(maintenancePage).toContain("initialFleetId={selectedFleetId}");
     expect(maintenanceRoute).toContain(
       "requestedFleetId = clean(body.fleetId)",
@@ -137,20 +140,28 @@ describe("Phase 13 Fleet navigation performance contract", () => {
     expect(enrollmentPage).toContain(
       "requireFleetPortalActor(fleetId ?? null)",
     );
-    expect(enrollmentPage).toContain("initialFleetId={actor.primaryFleetId}");
+    expect(enrollmentPage).toContain(
+      "initialFleetId={fleetId ? actor.primaryFleetId : null}",
+    );
     expect(enrollment).toContain(
       'body: JSON.stringify({ action: "context", fleetId: initialFleetId })',
     );
     expect(enrollment).toContain("fleetId: fleetId || initialFleetId");
+    expect(enrollment).toContain("encodeURIComponent(initialFleetId)");
     expect(actorGuard).toContain("getInternalFleetIdsInActorShop");
     expect(actorGuard).toContain(
       "await getInternalFleetIdsInActorShop(actor.shopId)",
     );
-    expect(pretripHistoryPage).toContain("fleetId={actor.primaryFleetId}");
+    expect(pretripHistoryPage).toContain(
+      "fleetId={fleetId ? actor.primaryFleetId : null}",
+    );
     expect(pretripHistory).toContain(
       "body: JSON.stringify({ shopId: null, fleetId })",
     );
     expect(pretripHistory).toContain("href={withFleetId(");
+    expect(settingsPage).toContain(
+      "params.fleetId && !manageableFleetIds.includes(params.fleetId)",
+    );
     expect(pretripRoute).toContain("resolveSelectedFleetRequestScope(actor, {");
     expect(settingsPage).toContain(
       "const selectedShopId = selectedScope.shopId",
@@ -159,6 +170,13 @@ describe("Phase 13 Fleet navigation performance contract", () => {
     expect(towerRoute).toContain("resolveSelectedFleetRequestScope(actor, {");
     expect(calendarPage).toContain("initialFleetId={selectedFleetId}");
     expect(calendar).toContain('useState(initialFleetId ?? "all")');
+    expect(calendar).toContain("!initialFleetId ? (");
+    expect(calendar).toContain('<option value="all">All fleets</option>');
+    expect(units).toContain("href={withFleetId(");
+    expect(mobilePretrip).toContain(
+      "new URLSearchParams(window.location.search).get(",
+    );
+    expect(mobileFleetClient).toContain("JSON.stringify({ fleetId })");
     expect(requestsPage).toContain("fleetId={selectedFleetId}");
     expect(requests).toContain(
       "body: JSON.stringify({ fleetId: fleetId ?? null })",

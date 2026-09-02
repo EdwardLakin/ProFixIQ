@@ -18,7 +18,7 @@ export default async function PortalFleetUnitEnrollmentPage({
   return (
     <FleetUnitEnrollmentPage
       routePrefix="/portal/fleet"
-      initialFleetId={actor.primaryFleetId}
+      initialFleetId={fleetId ? actor.primaryFleetId : null}
     />
   );
 }

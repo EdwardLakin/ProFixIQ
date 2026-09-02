@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { render, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import FleetMaintenanceWorkspace from "@/features/fleet/components/FleetMaintenanceWorkspace";
@@ -70,5 +70,6 @@ describe("selected Fleet maintenance scope", () => {
       action: "list",
       fleetId: FLEET_B,
     });
+    expect(screen.queryByRole("option", { name: "All fleets" })).toBeNull();
   });
 });

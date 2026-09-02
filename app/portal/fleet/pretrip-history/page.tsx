@@ -15,7 +15,7 @@ export default async function PortalFleetPretripHistoryPage({
     <PretripReportsPage
       uiContext={uiContext}
       routePrefix="/portal/fleet"
-      fleetId={actor.primaryFleetId}
+      fleetId={fleetId ? actor.primaryFleetId : null}
     />
   );
 }

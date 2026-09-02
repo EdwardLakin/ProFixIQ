@@ -26,7 +26,10 @@ export default function MobilePretripIndexPage() {
     setLoading(true);
     setError(null);
     try {
-      setUnits(await fetchMobileFleetUnits());
+      const fleetId = new URLSearchParams(window.location.search).get(
+        "fleetId",
+      );
+      setUnits(await fetchMobileFleetUnits(fleetId));
     } catch (caught) {
       setError(
         caught instanceof Error
@@ -64,10 +67,13 @@ export default function MobilePretripIndexPage() {
               <ClipboardCheck aria-hidden className="h-5 w-5" />
             </span>
             <div className="min-w-0">
-              <div className="mobile-dashboard-hero__eyebrow">Daily inspection</div>
+              <div className="mobile-dashboard-hero__eyebrow">
+                Daily inspection
+              </div>
               <h1 className="mobile-dashboard-hero__title">Start a pre-trip</h1>
               <p className="mobile-dashboard-hero__subtitle">
-                Select the unit. The walk-around, readings and defects stay attached to that vehicle.
+                Select the unit. The walk-around, readings and defects stay
+                attached to that vehicle.
               </p>
             </div>
           </div>

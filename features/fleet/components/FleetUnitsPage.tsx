@@ -16,6 +16,11 @@ type Props = {
 const panel =
   "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]";
 
+function withFleetId(href: string, fleetId?: string | null) {
+  if (!fleetId) return href;
+  return `${href}${href.includes("?") ? "&" : "?"}fleetId=${encodeURIComponent(fleetId)}`;
+}
+
 function meter(unit: FleetUnitListItem) {
   const parts = [
     unit.currentOdometerKm == null
@@ -148,18 +153,20 @@ export default function FleetUnitsPage({
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           <Link
-            href={
-              productRoutes ? "/pre-trips" : `${routePrefix}/pretrip-history`
-            }
+            href={withFleetId(
+              productRoutes ? "/pre-trips" : `${routePrefix}/pretrip-history`,
+              fleetId,
+            )}
             className="inline-flex min-h-10 items-center rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-semibold text-sky-300 hover:bg-sky-300/10"
           >
             {isDriver ? "My pre-trip history" : "Fleet-wide pre-trip history"}
           </Link>
           {uiContext.capabilities.canManageUnits ? (
             <Link
-              href={
-                routePrefix === "/fleet" ? "/fleet/units/new" : "/assets/new"
-              }
+              href={withFleetId(
+                routePrefix === "/fleet" ? "/fleet/units/new" : "/assets/new",
+                fleetId,
+              )}
               className="inline-flex min-h-10 items-center rounded-xl bg-sky-300 px-3 py-2 text-xs font-semibold text-slate-950"
             >
               Enroll units & assign drivers

@@ -66,10 +66,10 @@ export default async function FleetSettingsPage({ searchParams }: PageProps) {
   const manageableFleetIds = actor.fleetIds.filter((fleetId) =>
     canAdministerFleetForActor(actor, fleetId),
   );
-  const selectedFleetId =
-    params.fleetId && manageableFleetIds.includes(params.fleetId)
-      ? params.fleetId
-      : manageableFleetIds[0];
+  if (params.fleetId && !manageableFleetIds.includes(params.fleetId)) {
+    redirect("/portal/fleet");
+  }
+  const selectedFleetId = params.fleetId ?? manageableFleetIds[0];
 
   if (!selectedFleetId) redirect("/portal/fleet");
   const selectedScope = resolveSelectedFleetRequestScope(actor, {

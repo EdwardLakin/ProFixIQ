@@ -62,6 +62,7 @@ describe("selected Fleet workspace requests", () => {
     expect(fetchMock.mock.calls[0]?.[0]).toBe(
       `/api/fleet/calendar?fleetId=${FLEET_B}`,
     );
+    expect(screen.queryByRole("option", { name: "All fleets" })).toBeNull();
   });
 
   it("loads service requests for the server-validated Fleet", async () => {
@@ -77,7 +78,9 @@ describe("selected Fleet workspace requests", () => {
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    render(<FleetServiceRequestsPage uiContext={uiContext} fleetId={FLEET_B} />);
+    render(
+      <FleetServiceRequestsPage uiContext={uiContext} fleetId={FLEET_B} />,
+    );
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(JSON.parse(String(fetchMock.mock.calls[0]?.[1]?.body))).toEqual({

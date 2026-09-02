@@ -252,7 +252,7 @@ export default function FleetUnitEnrollmentPage({
           </p>
         </div>
         <Link
-          href={routePrefix === "/fleet" ? "/fleet/units" : "/assets"}
+          href={`${routePrefix === "/fleet" ? "/fleet/units" : "/assets"}${initialFleetId ? `?fleetId=${encodeURIComponent(initialFleetId)}` : ""}`}
           className="rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-semibold"
         >
           Back to assets
