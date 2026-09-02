@@ -357,4 +357,22 @@ describe("Shop Work Order product boundary", () => {
       "profixiq_current_actor_has_shop_product_for_line:",
     );
   });
+
+  it("keeps Shop-oriented clean-replay fixtures product-explicit", async () => {
+    for (const fixture of [
+      "tests/parts/parts-request-purchase-order.runtime.sql",
+      "tests/security/quote-review-cost-and-sell.runtime.sql",
+      "tests/security/vehicle-workspace-tenant.runtime.sql",
+      "tests/security/workspace-authorization.runtime.sql",
+    ]) {
+      const source = await readFile(fixture, "utf8");
+
+      expect(source).toContain("subscription_package");
+      expect(source).toContain("stripe_subscription_status");
+      expect(source).toContain("stripe_pricing_model");
+      expect(source).toContain("'shop_operations'");
+      expect(source).toContain("'active'");
+      expect(source).toContain("'product_packages_v1'");
+    }
+  });
 });

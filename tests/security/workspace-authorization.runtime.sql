@@ -103,19 +103,33 @@ values
     'Workspace Auth Driver A'
   );
 
-insert into public.shops (id, owner_id, business_name, name)
+insert into public.shops (
+  id,
+  owner_id,
+  business_name,
+  name,
+  subscription_package,
+  stripe_subscription_status,
+  stripe_pricing_model
+)
 values
   (
     '71300000-0000-4000-8000-000000000001',
     '71100000-0000-4000-8000-000000000001',
     'Workspace Authorization Shop A',
-    'Workspace Authorization Shop A'
+    'Workspace Authorization Shop A',
+    'shop_operations',
+    'active',
+    'product_packages_v1'
   ),
   (
     '71300000-0000-4000-8000-000000000002',
     '71100000-0000-4000-8000-000000000005',
     'Workspace Authorization Shop B',
-    'Workspace Authorization Shop B'
+    'Workspace Authorization Shop B',
+    'shop_operations',
+    'active',
+    'product_packages_v1'
   );
 
 -- The baseline insert trigger initializes user_id from id. Recreate the

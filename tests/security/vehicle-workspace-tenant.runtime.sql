@@ -46,21 +46,36 @@ set user_id = excluded.user_id,
     role = excluded.role,
     full_name = excluded.full_name;
 
-insert into public.shops (id, owner_id, business_name, name, user_limit)
+insert into public.shops (
+  id,
+  owner_id,
+  business_name,
+  name,
+  user_limit,
+  subscription_package,
+  stripe_subscription_status,
+  stripe_pricing_model
+)
 values
   (
     '68200000-0000-4000-8000-000000000001',
     '68100000-0000-4000-8000-000000000001',
     'Vehicle Workspace Shop A',
     'Vehicle Workspace Shop A',
-    5
+    5,
+    'shop_operations',
+    'active',
+    'product_packages_v1'
   ),
   (
     '68200000-0000-4000-8000-000000000002',
     '68100000-0000-4000-8000-000000000002',
     'Vehicle Workspace Shop B',
     'Vehicle Workspace Shop B',
-    5
+    5,
+    'shop_operations',
+    'active',
+    'product_packages_v1'
   )
 on conflict (id) do nothing;
 
