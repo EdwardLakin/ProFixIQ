@@ -60,12 +60,18 @@ export async function canAccessPartsPurchaseOrder(
   const { data: purchaseOrder, error: purchaseOrderError } =
     await access.supabase
       .from("purchase_orders")
-      .select("id")
+      .select("id,work_order_id")
       .eq("id", purchaseOrderId)
       .eq("shop_id", access.profile.shop_id)
-      .maybeSingle<{ id: string }>();
+      .maybeSingle<{ id: string; work_order_id: string | null }>();
   if (purchaseOrderError) throw new Error(purchaseOrderError.message);
   if (!purchaseOrder) return false;
+  if (
+    purchaseOrder.work_order_id &&
+    !(await canAccessWorkOrders(access, [purchaseOrder.work_order_id]))
+  ) {
+    return false;
+  }
 
   const { data: lines, error: lineError } = await access.supabase
     .from("purchase_order_lines")

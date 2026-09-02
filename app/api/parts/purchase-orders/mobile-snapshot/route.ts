@@ -116,7 +116,7 @@ export async function GET() {
       );
     }
 
-    const items = await loadForIdBatches(
+    const orderingItems = await loadForIdBatches(
       requests.map((request) => request.id),
       (requestIds, from, to) =>
         access.supabase
@@ -145,13 +145,55 @@ export async function GET() {
           .range(from, to),
     );
 
-    const allowedItemIds = new Set(items.map((item) => item.id));
+    const purchaseOrderItems = await loadForIdBatches(
+      Array.from(
+        new Set(
+          lines
+            .map((line) => line.part_request_item_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      ),
+      (itemIds, from, to) =>
+        access.supabase
+          .from("part_request_items")
+          .select(
+            "id,request_id,work_order_id,work_order_line_id,part_id,description,status,qty,qty_requested,qty_approved,qty_ordered,qty_received,unit_cost,location_id,vendor_id,updated_at",
+          )
+          .eq("shop_id", access.profile.shop_id)
+          .in("id", itemIds)
+          .order("updated_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to),
+    );
+    const items = [
+      ...new Map(
+        [...orderingItems, ...purchaseOrderItems].map((item) => [
+          item.id,
+          item,
+        ]),
+      ).values(),
+    ];
+    const fieldWorkOrderIdSet = fieldWorkOrderIds
+      ? new Set(fieldWorkOrderIds)
+      : null;
+    const allowedItemIds = new Set(
+      items
+        .filter(
+          (item) =>
+            !fieldWorkOrderIdSet ||
+            (item.work_order_id &&
+              fieldWorkOrderIdSet.has(item.work_order_id)),
+        )
+        .map((item) => item.id),
+    );
     const visiblePurchaseOrders = fieldWorkOrderIds
       ? purchaseOrders.filter((purchaseOrder) => {
           const purchaseOrderLines = lines.filter(
             (line) => line.po_id === purchaseOrder.id,
           );
           return (
+            (!purchaseOrder.work_order_id ||
+              fieldWorkOrderIdSet?.has(purchaseOrder.work_order_id)) &&
             purchaseOrderLines.length > 0 &&
             purchaseOrderLines.every(
               (line) =>

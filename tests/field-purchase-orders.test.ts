@@ -111,6 +111,8 @@ describe("Field purchase orders", () => {
   it("filters the Field snapshot through canonical linked-work authority", () => {
     expect(snapshot).toContain("requireCanonicalPartsApiAccess");
     expect(snapshot).toContain("listFieldOperatorAssignedWorkOrderIds");
+    expect(snapshot).toContain("purchaseOrderItems");
+    expect(snapshot).toContain('.in("id", itemIds)');
     expect(snapshot).toContain("allowedItemIds");
     expect(snapshot).toContain("purchaseOrderLines.every");
   });

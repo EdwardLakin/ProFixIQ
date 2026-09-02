@@ -93,7 +93,10 @@ describe("canonical Field Parts authorization", () => {
   });
 
   it("requires every PO line to resolve to an authorized linked request item", async () => {
-    const headerQuery = query({ data: { id: PO_ID }, error: null });
+    const headerQuery = query({
+      data: { id: PO_ID, work_order_id: WORK_ORDER_ID },
+      error: null,
+    });
     const lineQuery = query({
       data: [{ part_request_item_id: ITEM_ID }],
       error: null,

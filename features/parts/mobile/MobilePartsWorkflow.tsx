@@ -74,6 +74,11 @@ type ApiResult = { ok?: boolean; error?: string };
 type QueueApiResult = ApiResult & { snapshot?: PartsRequestQueueSnapshot };
 type LocationApiResult = ApiResult & { locations?: LocationLite[] };
 
+const ACTIVE_WORKFLOW_REQUEST_STATUSES = new Set([
+  "requested",
+  "quoted",
+  "approved",
+]);
 const CANCELLED_ITEM_STATUSES = new Set([
   "cancelled",
   "canceled",
@@ -183,6 +188,7 @@ export default function MobilePartsWorkflow(): JSX.Element {
       const nextEntries: WorkflowEntry[] = [];
       for (const request of requests) {
         const requestStatus = clean(request.status).toLowerCase();
+        if (!ACTIVE_WORKFLOW_REQUEST_STATUSES.has(requestStatus)) continue;
         const requestItems = itemsByRequest.get(request.id) ?? [];
         const workOrder = request.work_order_id
           ? workOrderById.get(request.work_order_id)

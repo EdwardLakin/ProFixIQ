@@ -96,6 +96,9 @@ describe("mobile technician stabilization", () => {
     expect(mobilePartsWorkflow).toContain('"/api/parts/requests/queue"');
     expect(mobilePartsWorkflow).toContain('"/api/parts/locations"');
     expect(mobilePartsWorkflow).not.toContain("createBrowserSupabase");
+    expect(mobilePartsWorkflow).toContain(
+      "ACTIVE_WORKFLOW_REQUEST_STATUSES.has(requestStatus)",
+    );
     expect(receiveDrawer).toContain("/receive");
     expect(mobilePartsWorkflow).toContain("/allocate");
     expect(mobilePartsWorkflow).toContain("Open parts workbench");
