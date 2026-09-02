@@ -49,8 +49,12 @@ describe("customer account foundation", () => {
       'const customerId = String(body.customerId ?? "").trim()',
     );
     expect(fleetRoute).toContain('.eq("shop_id", access.profile.shop_id)');
+    // Fleet creation now goes through create_fleet_with_owner_invitation_atomic,
+    // so the verified customer is passed as an RPC argument rather than spread
+    // into a direct insert. The contract is unchanged: the customer id only
+    // reaches Fleet creation when it was explicitly supplied and shop-verified.
     expect(fleetRoute).toContain(
-      "...(customerId ? { customer_id: customerId } : {})",
+      "...(customerId ? { p_customer_id: customerId } : {})",
     );
   });
 });
