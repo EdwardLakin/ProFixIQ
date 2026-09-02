@@ -103,8 +103,10 @@ describe("scheduled Fleet PM evaluation", () => {
     expect(sql).toContain("'fleet-pm-due-hourly'");
     expect(sql).toContain("select private.evaluate_fleet_pm_due_calendar();");
     expect(sql).toContain("set status = 'resolved'");
+    expect(sql).toContain("and n.entity_type = 'fleet_pm_due_event'");
     expect(sql).toContain("and not exists (");
     expect(sql).toContain("where e.id::text = n.entity_id");
+    expect(sql).toContain("and e.shop_id = n.shop_id");
     expect(sql).toContain("and e.status in ('pending', 'deferred')");
     expect(sql).not.toContain("where e.id = n.entity_id");
     // One unhealthy fleet must not abort the sweep.

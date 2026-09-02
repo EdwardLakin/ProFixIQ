@@ -452,12 +452,14 @@ begin
       updated_at = now()
   where n.source = 'fleet'
     and n.code = 'fleet_pm_due'
+    and n.entity_type = 'fleet_pm_due_event'
     and n.status in ('active', 'acknowledged')
     -- Resolve both closed events and alerts whose event was cascade-deleted.
     and not exists (
       select 1
       from public.fleet_pm_due_events e
       where e.id::text = n.entity_id
+        and e.shop_id = n.shop_id
         and e.status in ('pending', 'deferred')
     );
 
