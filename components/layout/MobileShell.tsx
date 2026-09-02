@@ -22,7 +22,8 @@ function getTitleFromPath(pathname: string): string {
   if (pathname === "/mobile") return "Home";
   if (pathname.startsWith("/mobile/service")) return "Field Service";
   if (pathname.startsWith("/mobile/jobs/")) return "Focused job";
-  if (pathname.startsWith("/mobile/work-orders/create")) return "Create work order";
+  if (pathname.startsWith("/mobile/work-orders/create"))
+    return "Create work order";
   if (/^\/mobile\/work-orders\/[^/]+/.test(pathname)) return "Work order";
   if (pathname.startsWith("/mobile/work-orders")) return "Work orders";
   if (pathname.startsWith("/mobile/appointments")) return "Appointments";
@@ -33,7 +34,8 @@ function getTitleFromPath(pathname: string): string {
   if (pathname.startsWith("/mobile/tech/queue")) return "My jobs";
   if (pathname.startsWith("/mobile/tech/performance")) return "My performance";
   if (pathname.startsWith("/mobile/workforce/attendance")) return "Attendance";
-  if (pathname.startsWith("/mobile/fleet/service-requests")) return "Service requests";
+  if (pathname.startsWith("/mobile/fleet/service-requests"))
+    return "Service requests";
   if (pathname.startsWith("/mobile/fleet/pretrip")) return "Pre-trip";
   if (pathname.startsWith("/mobile/fleet")) return "Fleet";
   if (pathname.startsWith("/mobile/assistant")) return "Assistant";
@@ -52,9 +54,13 @@ function isImmersiveRoute(pathname: string): boolean {
   return /^\/mobile\/inspections\/[^/]+$/.test(pathname);
 }
 
-function shouldIgnoreAnchor(anchor: HTMLAnchorElement, event: MouseEvent): boolean {
+function shouldIgnoreAnchor(
+  anchor: HTMLAnchorElement,
+  event: MouseEvent,
+): boolean {
   if (event.defaultPrevented || event.button !== 0) return true;
-  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return true;
+  if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey)
+    return true;
   if (anchor.hasAttribute("download")) return true;
   if (anchor.dataset.mobileRouteBypass === "true") return true;
 
@@ -81,10 +87,15 @@ export function MobileShell({ children, title }: Props) {
   const [fieldSurface, setFieldSurface] = useState(
     pathname.startsWith("/mobile/service"),
   );
+  const [fieldVerificationPending, setFieldVerificationPending] = useState(
+    pathname.startsWith("/mobile/service"),
+  );
   const resolvedTitle = title ?? getTitleFromPath(pathname);
 
   useEffect(() => {
     let active = true;
+    const isFieldRoute = pathname.startsWith("/mobile/service");
+    setFieldVerificationPending(isFieldRoute);
 
     try {
       if (
@@ -94,23 +105,26 @@ export function MobileShell({ children, title }: Props) {
       ) {
         window.sessionStorage.removeItem(FIELD_SURFACE_SESSION_KEY);
         setFieldSurface(false);
+        setFieldVerificationPending(false);
         return () => {
           active = false;
         };
       }
 
-      if (!pathname.startsWith("/mobile/service")) {
+      if (!isFieldRoute) {
         setFieldSurface(
           window.sessionStorage.getItem(FIELD_SURFACE_SESSION_KEY) ===
             "standalone",
         );
+        setFieldVerificationPending(false);
         return () => {
           active = false;
         };
       }
     } catch {
-      if (!pathname.startsWith("/mobile/service")) {
+      if (!isFieldRoute) {
         setFieldSurface(false);
+        setFieldVerificationPending(false);
       }
     }
 
@@ -131,9 +145,9 @@ export function MobileShell({ children, title }: Props) {
         );
         const standaloneSetupSurface = Boolean(
           response.ok &&
-            pathname.startsWith("/mobile/service/setup") &&
-            body?.standaloneFieldWorkspace &&
-            body?.canConfigure,
+          pathname.startsWith("/mobile/service/setup") &&
+          body?.standaloneFieldWorkspace &&
+          body?.canConfigure,
         );
         const preserveStandaloneField = Boolean(
           canAccessFieldService && body?.standaloneFieldWorkspace,
@@ -153,9 +167,13 @@ export function MobileShell({ children, title }: Props) {
         }
 
         setFieldSurface(canAccessFieldService || standaloneSetupSurface);
+        setFieldVerificationPending(false);
       })
       .catch(() => {
-        if (active) setFieldSurface(false);
+        if (active) {
+          setFieldSurface(false);
+          setFieldVerificationPending(false);
+        }
       });
 
     return () => {
@@ -166,7 +184,8 @@ export function MobileShell({ children, title }: Props) {
   useEffect(() => {
     const openMenu = () => setMenuOpen(true);
     window.addEventListener("profixiq:mobile-menu-open", openMenu);
-    return () => window.removeEventListener("profixiq:mobile-menu-open", openMenu);
+    return () =>
+      window.removeEventListener("profixiq:mobile-menu-open", openMenu);
   }, []);
 
   useEffect(() => {
@@ -196,10 +215,14 @@ export function MobileShell({ children, title }: Props) {
     };
 
     document.addEventListener("click", keepNavigationMobile, true);
-    return () => document.removeEventListener("click", keepNavigationMobile, true);
+    return () =>
+      document.removeEventListener("click", keepNavigationMobile, true);
   }, [router]);
 
-  if (pathname === "/mobile/sign-in" || pathname.startsWith("/mobile/sign-in/")) {
+  if (
+    pathname === "/mobile/sign-in" ||
+    pathname.startsWith("/mobile/sign-in/")
+  ) {
     return children;
   }
 
@@ -209,6 +232,20 @@ export function MobileShell({ children, title }: Props) {
       <div className="profixiq-mobile-command min-h-screen overflow-x-hidden pt-[env(safe-area-inset-top,0px)]">
         <main className="mobile-command-main min-w-0 overflow-x-hidden">
           {children}
+        </main>
+      </div>
+    );
+  } else if (
+    fieldVerificationPending &&
+    pathname.startsWith("/mobile/service")
+  ) {
+    mobileSurface = (
+      <div className="profixiq-mobile-command min-h-screen overflow-x-hidden pt-[env(safe-area-inset-top,0px)]">
+        <main
+          aria-busy="true"
+          className="mobile-command-main grid min-h-[60vh] place-items-center px-4 text-center text-sm font-semibold text-[color:var(--theme-text-secondary)]"
+        >
+          Verifying Field workspace...
         </main>
       </div>
     );

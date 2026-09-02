@@ -37,8 +37,10 @@ describe("Mobile assigned-truck inventory", () => {
   });
 
   it("exposes a touch-friendly Field Service truck stock surface", () => {
-    expect(page).toContain("Truck inventory");
-    expect(page).toContain("MobileTruckInventory");
+    expect(page).toContain('redirect("/mobile/service/truck-inventory")');
+    expect(page).not.toContain(
+      'import MobileTruckInventory from "@/features/parts/mobile/MobileTruckInventory"',
+    );
     expect(partsPage).not.toContain('href="/mobile/parts/truck"');
     expect(mobileTiles).not.toContain('href: "/mobile/parts/truck"');
     expect(fieldPage).toContain("MobileTruckInventory");
