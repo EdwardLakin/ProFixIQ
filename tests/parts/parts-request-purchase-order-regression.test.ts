@@ -237,6 +237,11 @@ describe("parts request purchase-order regression contract", () => {
 
   it("runs the discoverable two-shop flow during clean replay", () => {
     expect(runtime).toContain("-- @regression-flow parts.request-to-po");
+    expect(runtime).toContain("'shop_operations'");
+    expect(runtime).toContain("'product_packages_v1'");
+    expect(runtime).toContain(
+      "subscription_package = excluded.subscription_package",
+    );
     expect(runtime).toContain("PARTS_ORDER_IDEMPOTENCY_CONFLICT");
     expect(runtime).toContain("PARTS_REQUEST_VENDOR_MISMATCH");
     expect(runtime).toContain(
