@@ -221,7 +221,8 @@ describe("premier fleet workspaces", () => {
     );
     const pretrips = source("features/fleet/components/PretripReportsPage.tsx");
 
-    expect(issues).toContain("requestHref = productHostRoute");
+    expect(issues).toContain("requestHref = withFleetId");
+    expect(issues).toContain('fleetId=${encodeURIComponent(fleetId)}');
     expect(issues).toContain('"/requests/new"');
     expect(issues).toContain("`/pre-trips/start/${encodedUnitId}`");
     expect(issues).toContain("href={pretripHref(a.unitId)}");
