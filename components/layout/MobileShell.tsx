@@ -292,6 +292,21 @@ export function MobileShell({ children, title }: Props) {
   }, []);
 
   useEffect(() => {
+    const revalidate = () =>
+      setFieldVerificationAttempt((value) => value + 1);
+    const revalidateWhenVisible = () => {
+      if (document.visibilityState === "visible") revalidate();
+    };
+
+    window.addEventListener("online", revalidate);
+    document.addEventListener("visibilitychange", revalidateWhenVisible);
+    return () => {
+      window.removeEventListener("online", revalidate);
+      document.removeEventListener("visibilitychange", revalidateWhenVisible);
+    };
+  }, []);
+
+  useEffect(() => {
     const openMenu = () => setMenuOpen(true);
     window.addEventListener("profixiq:mobile-menu-open", openMenu);
     return () =>

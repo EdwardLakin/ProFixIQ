@@ -72,9 +72,10 @@ describe("Mobile V1 productization", () => {
     expect(tiles).toContain('href: "/mobile/service"');
     expect(tiles).toContain("roles: ALL_MOBILE_ROLES");
     expect(tiles.match(/href: "\/mobile\/service"/g)).toHaveLength(1);
-    expect(mobileNav).toContain("canAccessFieldService");
+    expect(mobileNav).toContain("fieldAccess?.canAccessFieldService");
+    expect(mobileNav).toContain("fieldAccess?.canConfigure");
     expect(mobileNav).toContain(
-      '!tile.href.startsWith("/mobile/service") || canAccessFieldService',
+      'tile.href !== "/mobile/service" || fieldServiceHref',
     );
   });
 

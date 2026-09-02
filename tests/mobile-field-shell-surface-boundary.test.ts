@@ -17,6 +17,10 @@ describe("Shop Mobile and Field shell separation", () => {
     expect(mobileShell).toContain("writeFieldSurfaceSession(verifiedScope)");
     expect(mobileShell).toContain("storedSurfaceScope?.userId === authUserId");
     expect(mobileShell).toContain("supabase.auth.onAuthStateChange");
+    expect(mobileShell).toContain('window.addEventListener("online"');
+    expect(mobileShell).toContain(
+      'document.addEventListener("visibilitychange"',
+    );
     expect(mobileShell).toContain("fieldVerificationPending");
     expect(mobileShell).toContain('aria-busy="true"');
     expect(mobileShell).toContain("Verifying Field workspace...");
@@ -28,8 +32,12 @@ describe("Shop Mobile and Field shell separation", () => {
     expect(mobileTiles).toMatch(
       /href: "\/mobile\/service"[\s\S]*?roles: ALL_MOBILE_ROLES/,
     );
+    expect(mobileNav).toContain("fieldAccess?.canConfigure");
+    expect(mobileNav).toMatch(
+      /fieldAccessResponse\?\.ok && fieldAccess\?\.canConfigure[\s\S]*?"\/mobile\/service\/setup"/,
+    );
     expect(mobileNav).toContain(
-      '!tile.href.startsWith("/mobile/service") || canAccessFieldService',
+      'tile.href !== "/mobile/service" || fieldServiceHref',
     );
   });
 });

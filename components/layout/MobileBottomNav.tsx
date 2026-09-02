@@ -188,7 +188,7 @@ export function MobileBottomNav({ open, onClose }: Props) {
   const [userId, setUserId] = useState<string | null>(null);
   const [profileName, setProfileName] = useState<string>("Team member");
   const [role, setRole] = useState<MobileRole | null>(null);
-  const [canAccessFieldService, setCanAccessFieldService] = useState(false);
+  const [fieldServiceHref, setFieldServiceHref] = useState<string | null>(null);
   const [messageUnreadCount, setMessageUnreadCount] = useState(0);
   const [signingOut, setSigningOut] = useState(false);
   const [install, setInstall] = useState<InstallAvailability>({
@@ -209,7 +209,7 @@ export function MobileBottomNav({ open, onClose }: Props) {
       if (!id) {
         setRole(null);
         setProfileName("Team member");
-        setCanAccessFieldService(false);
+        setFieldServiceHref(null);
         return;
       }
 
@@ -231,10 +231,14 @@ export function MobileBottomNav({ open, onClose }: Props) {
         cache: "no-store",
       }).catch(() => null);
       const fieldAccess = (await fieldAccessResponse?.json().catch(() => null)) as
-        | { canAccessFieldService?: boolean }
+        | { canAccessFieldService?: boolean; canConfigure?: boolean }
         | null;
-      setCanAccessFieldService(
-        Boolean(fieldAccessResponse?.ok && fieldAccess?.canAccessFieldService),
+      setFieldServiceHref(
+        fieldAccessResponse?.ok && fieldAccess?.canAccessFieldService
+          ? "/mobile/service"
+          : fieldAccessResponse?.ok && fieldAccess?.canConfigure
+            ? "/mobile/service/setup"
+            : null,
       );
     };
 
@@ -325,27 +329,30 @@ export function MobileBottomNav({ open, onClose }: Props) {
     }
 
     const dynamic = getMobileTilesForRole(role, ["all"])
-      .filter(
-        (tile) =>
-          !tile.href.startsWith("/mobile/service") || canAccessFieldService,
-      )
-      .map((tile) => ({
-      href: tile.href,
-      label: tile.title,
-      icon: iconForHref(tile.href),
-      badge:
-        tile.href.includes("messages") && messageUnreadCount > 0
-          ? messageUnreadCount > 99
-            ? "99+"
-            : messageUnreadCount
-          : null,
-    }));
+      .filter((tile) => tile.href !== "/mobile/service" || fieldServiceHref)
+      .map((tile) => {
+        const href =
+          tile.href === "/mobile/service" && fieldServiceHref
+            ? fieldServiceHref
+            : tile.href;
+        return {
+          href,
+          label: tile.title,
+          icon: iconForHref(href),
+          badge:
+            href.includes("messages") && messageUnreadCount > 0
+              ? messageUnreadCount > 99
+                ? "99+"
+                : messageUnreadCount
+              : null,
+        };
+      });
 
     return [home, ...dynamic].filter(
       (item, index, items) =>
         items.findIndex((candidate) => candidate.href === item.href) === index,
     );
-  }, [canAccessFieldService, messageUnreadCount, role]);
+  }, [fieldServiceHref, messageUnreadCount, role]);
 
   const utilityItems = useMemo<NavItem[]>(() => {
     if (role === "mechanic") return [];

@@ -86,14 +86,16 @@ describe("Mobile Service shell", () => {
     expect(scopeGate).toContain('router.replace("/mobile")');
   });
 
-  it("shows one Field entry candidate and relies on verified Field access to render it", () => {
+  it("shows one Field entry candidate and maps verified configurators to setup", () => {
     expect(tiles).toContain('href: "/mobile/service"');
     expect(tiles).toContain('title: "Field Service"');
     expect(tiles).toContain("roles: ALL_MOBILE_ROLES");
     expect(tiles.match(/href: "\/mobile\/service"/g)).toHaveLength(1);
-    expect(mobileNav).toContain("canAccessFieldService");
+    expect(mobileNav).toContain("fieldAccess?.canAccessFieldService");
+    expect(mobileNav).toContain("fieldAccess?.canConfigure");
+    expect(mobileNav).toContain('"/mobile/service/setup"');
     expect(mobileNav).toContain(
-      '!tile.href.startsWith("/mobile/service") || canAccessFieldService',
+      'tile.href !== "/mobile/service" || fieldServiceHref',
     );
   });
 });
