@@ -107,6 +107,7 @@ function isShopOrFieldApi(pathname: string): boolean {
 
   if (
     [
+      "/api/ai/interpret",
       "/api/invoices/finalize",
       "/api/mobile/shifts",
       "/api/offline/mutations",

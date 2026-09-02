@@ -125,11 +125,13 @@ describe("enforcement layers", () => {
       "app/work-orders/quote-review/page.tsx",
       "app/mobile/reports/layout.tsx",
       "app/mobile/technicians/layout.tsx",
-      "app/mobile/appointments/layout.tsx",
       "app/mobile/work-orders/create/layout.tsx",
     ]) {
       expect(read(path)).toContain("requireShopPageAccess");
     }
+    expect(read("app/mobile/appointments/layout.tsx")).toContain(
+      "requireCanonicalShopOrFieldPageAccess",
+    );
   });
 
   it("replaces role-blind work-order RLS with role and assignment policies", () => {

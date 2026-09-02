@@ -174,6 +174,10 @@ describe("product boundary stabilization", () => {
       kind: "product",
       capabilities: ["shop", "field_service"],
     });
+    expect(resolveApiProductBoundary("/api/ai/interpret")).toEqual({
+      kind: "product",
+      capabilities: ["shop", "field_service"],
+    });
     for (const action of ["authorize", "decline"]) {
       expect(
         resolveApiProductBoundary(`/api/work-orders/quotes/quote-1/${action}`),

@@ -115,5 +115,10 @@ describe("Field purchase orders", () => {
     expect(snapshot).toContain('.in("id", itemIds)');
     expect(snapshot).toContain("allowedItemIds");
     expect(snapshot).toContain("purchaseOrderLines.every");
+    expect(snapshot).toContain("visiblePurchaseOrderItemIds");
+    expect(snapshot).toContain("items: visibleItems");
+    expect(snapshot).toContain(
+      "...visibleItems.map((item) => item.work_order_id)",
+    );
   });
 });

@@ -1,5 +1,6 @@
 import "server-only";
 
+import { redirect } from "next/navigation";
 import { NextResponse } from "next/server";
 
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
@@ -20,7 +21,10 @@ import {
   SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   SHOP_PRODUCT_CAPABILITIES,
 } from "@/features/shared/lib/product-access";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import {
+  requireShopPageAccess,
+  requireShopScopedApiAccess,
+} from "@/features/shared/lib/server/admin-access";
 
 export type ShopAccess = Extract<
   Awaited<ReturnType<typeof requireShopScopedApiAccess>>,
@@ -39,6 +43,10 @@ export type CanonicalShopOrFieldProductScope = "shop" | "field";
 
 type CanonicalShopOrFieldApiAccessOptions = Omit<
   NonNullable<Parameters<typeof requireShopScopedApiAccess>[0]>,
+  "requiredProductCapabilities"
+>;
+type CanonicalShopOrFieldPageAccessOptions = Omit<
+  Parameters<typeof requireShopPageAccess>[0],
   "requiredProductCapabilities"
 >;
 
@@ -227,6 +235,28 @@ export async function requireCanonicalShopOrFieldApiAccess(
       ),
     };
   }
+}
+
+export async function requireCanonicalShopOrFieldPageAccess(
+  options: CanonicalShopOrFieldPageAccessOptions,
+) {
+  const access = await requireShopPageAccess({
+    ...options,
+    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
+  });
+
+  let productScope: CanonicalShopOrFieldProductScope | null = null;
+  try {
+    productScope = await resolveCanonicalShopOrFieldProductScope({
+      ...access,
+      ok: true,
+    });
+  } catch {
+    redirect(options.redirectTo ?? "/mobile");
+  }
+  if (!productScope) redirect(options.redirectTo ?? "/mobile");
+
+  return { ...access, productScope };
 }
 
 export async function isExplicitMobileFieldOperator(

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { requireCanonicalShopOrFieldApiAccess } from "@/features/mobile/service/server/access";
 import { readBoundedJson } from "@/features/shared/lib/server/bounded-json";
 import {
   claimDurableAIRouteQuota,
@@ -280,7 +280,7 @@ function findBestAllowedItem(allowed: string[], candidate: string): string | nul
 export async function POST(req: Request) {
   const startedAt = Date.now();
   try {
-    const access = await requireShopScopedApiAccess({
+    const access = await requireCanonicalShopOrFieldApiAccess({
       requiredCapability: "canRunInspections",
     });
     if (!access.ok) return access.response;

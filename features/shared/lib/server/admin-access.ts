@@ -79,6 +79,8 @@ export async function requireShopPageAccess(
 ): Promise<{
   profile: ShopScopedProfile;
   canonicalRole: CanonicalRole;
+  authUserId: string;
+  supabase: ReturnType<typeof createServerSupabaseRSC>;
 }> {
   const supabase = createServerSupabaseRSC();
   const {
@@ -165,6 +167,8 @@ export async function requireShopPageAccess(
   return {
     profile: { ...profile, shop_id: profile.shop_id },
     canonicalRole: role,
+    authUserId: user.id,
+    supabase,
   };
 }
 

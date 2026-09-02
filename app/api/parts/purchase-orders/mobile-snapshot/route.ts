@@ -209,12 +209,25 @@ export async function GET() {
     const visibleLines = lines.filter((line) =>
       visiblePurchaseOrderIds.has(line.po_id),
     );
+    const orderingItemIds = new Set(orderingItems.map((item) => item.id));
+    const visiblePurchaseOrderItemIds = new Set(
+      visibleLines
+        .map((line) => line.part_request_item_id)
+        .filter((id): id is string => Boolean(id)),
+    );
+    const visibleItems = fieldWorkOrderIds
+      ? items.filter(
+          (item) =>
+            orderingItemIds.has(item.id) ||
+            visiblePurchaseOrderItemIds.has(item.id),
+        )
+      : items;
 
     const workOrderIds = Array.from(
       new Set(
         [
           ...requests.map((request) => request.work_order_id),
-          ...items.map((item) => item.work_order_id),
+          ...visibleItems.map((item) => item.work_order_id),
           ...visiblePurchaseOrders.map(
             (purchaseOrder) => purchaseOrder.work_order_id,
           ),
@@ -237,7 +250,7 @@ export async function GET() {
       ok: true,
       snapshot: {
         requests,
-        items,
+        items: visibleItems,
         suppliers: supplierResult.data ?? [],
         locations: locationResult.data ?? [],
         purchaseOrders: visiblePurchaseOrders,

@@ -20,6 +20,10 @@ vi.mock("@/features/shared/lib/server/admin-access", () => ({
   requireShopScopedApiAccess: mocks.requireAccess,
 }));
 
+vi.mock("@/features/mobile/service/server/access", () => ({
+  requireCanonicalShopOrFieldApiAccess: mocks.requireAccess,
+}));
+
 vi.mock("@/features/shared/lib/supabase/server", () => ({
   createAdminSupabase: mocks.createAdmin,
 }));
