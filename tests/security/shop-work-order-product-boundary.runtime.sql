@@ -342,6 +342,14 @@ values
 -- the same part ahead of the authorized request. A broad shop FIFO would
 -- mutate the unrelated item; the Field branch must allocate only through the
 -- request-item identities carried by the authorized PO.
+update public.work_order_lines
+set approval_state = 'approved',
+    line_status = 'authorized'
+where id in (
+  '59600000-0000-4000-8000-000000000003',
+  '59600000-0000-4000-8000-000000000013'
+);
+
 insert into public.part_requests (
   id, shop_id, work_order_id, job_id, status, notes
 )

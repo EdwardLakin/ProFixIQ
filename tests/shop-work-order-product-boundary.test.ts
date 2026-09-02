@@ -334,6 +334,8 @@ describe("Shop Work Order product boundary", () => {
     expect(runtime).toContain(
       "Field PO receipt escaped its authorized request-item identities.",
     );
+    expect(runtime).toContain("set approval_state = 'approved'");
+    expect(runtime).toContain("line_status = 'authorized'");
     expect(runtime).toContain(
       "Field actor received an unrelated purchase order.",
     );
