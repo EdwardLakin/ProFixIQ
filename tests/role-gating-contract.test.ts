@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import {
+  canAccessAssistantNotifications,
   canonicalizeRole,
   getActorCapabilities,
   ROLE_GROUPS,
@@ -19,6 +20,21 @@ describe("canonical role gating contract", () => {
     expect(canonicalizeRole("leadhand")).toBe("lead_hand");
     expect(canonicalizeRole("lead hand")).toBe("lead_hand");
     expect(canonicalizeRole("not-a-real-role")).toBe("unknown");
+  });
+
+  it("keeps fleet-only and portal roles out of Shop notification sync", () => {
+    for (const role of [...ROLE_GROUPS.shopWideOperators, "mechanic"]) {
+      expect(canAccessAssistantNotifications(role)).toBe(true);
+    }
+    for (const role of [
+      "fleet_manager",
+      "dispatcher",
+      "driver",
+      "customer",
+      "unknown",
+    ]) {
+      expect(canAccessAssistantNotifications(role)).toBe(false);
+    }
   });
 
   it("keeps owner and admin as account administrators", () => {

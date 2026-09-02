@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@shared/types/types/supabase";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { applyJobPunchTransition } from "@/features/work-orders/server/applyJobPunchTransition";
 
 type DB = Database;
@@ -24,8 +25,59 @@ type JobLaborResult =
   | { ok: true; payload?: unknown }
   | { ok: false; status: number; error: string };
 
+type TrustedActorContext = {
+  authUserId: string;
+  profileId: string;
+  shopId: string;
+};
+
 function internalOperationKey(parts: Array<string | null | undefined>): string {
   return parts.map((part) => String(part ?? "").trim()).filter(Boolean).join(":");
+}
+
+async function resolveInternalResumeActor(params: {
+  supabase: SupabaseClient<DB>;
+  technicianId: string;
+  source?: "manual" | "break_resume" | "lunch_resume";
+  trustedActor?: TrustedActorContext;
+}): Promise<TrustedActorContext | undefined> {
+  if (params.trustedActor) return params.trustedActor;
+  if (params.source !== "break_resume" && params.source !== "lunch_resume") {
+    return undefined;
+  }
+
+  // Break/lunch auto-resume is an established server-only path that uses the
+  // service-role client after the shift endpoint has already authorized the
+  // actor and revalidated assignment. Preserve that path without weakening
+  // ordinary browser/API calls: only the two explicit internal resume sources
+  // may derive trusted actor context from the canonical profile.
+  const { data: profiles, error } = await params.supabase
+    .from("profiles")
+    .select("id,user_id,shop_id,role")
+    .or(`id.eq.${params.technicianId},user_id.eq.${params.technicianId}`)
+    .limit(2)
+    .returns<
+      Array<{
+        id: string;
+        user_id: string | null;
+        shop_id: string | null;
+        role: string | null;
+      }>
+    >();
+  if (error || !profiles || profiles.length !== 1 || !profiles[0]?.shop_id) {
+    return undefined;
+  }
+
+  const profile = profiles[0];
+  const shopId = profile.shop_id;
+  if (!shopId) return undefined;
+  const capabilities = getActorCapabilities({ role: profile.role });
+  if (!capabilities.canPerformAssignedWork) return undefined;
+  return {
+    authUserId: profile.user_id ?? profile.id,
+    profileId: profile.id,
+    shopId,
+  };
 }
 
 export async function startTechnicianJobLabor(params: {
@@ -37,6 +89,7 @@ export async function startTechnicianJobLabor(params: {
   startedAtIso?: string;
   source?: "manual" | "break_resume" | "lunch_resume";
   allowConcurrentJobPunches?: boolean;
+  trustedActor?: TrustedActorContext;
 }): Promise<JobLaborResult> {
   const operationKey =
     params.operationKey?.trim() ||
@@ -48,6 +101,7 @@ export async function startTechnicianJobLabor(params: {
       params.startedAtIso,
       params.source,
     ]);
+  const trustedActor = await resolveInternalResumeActor(params);
   return applyJobPunchTransition({
     supabase: params.supabase,
     lineId: params.lineId,
@@ -55,6 +109,7 @@ export async function startTechnicianJobLabor(params: {
     technicianId: params.technicianId,
     options: {
       operationKey,
+      enforceAssignedWork: true,
       allowConcurrentJobPunches: params.allowConcurrentJobPunches === true,
       nowIso: params.startedAtIso,
       startSource:
@@ -63,6 +118,7 @@ export async function startTechnicianJobLabor(params: {
           : params.source === "lunch_resume"
             ? "job_resumed_after_lunch"
             : undefined,
+      trustedActor,
     },
   });
 }
@@ -74,7 +130,9 @@ export async function stopTechnicianJobLabor(params: {
   operationKey?: string;
   sourceEventId?: string | null;
   endedAtIso?: string;
+  expectedLineUpdatedAt?: string;
   reason?: string;
+  transitionIntent?: "parts_quote_hold";
   preserveLineStatus?: boolean;
   event?: string;
   details?: Json;
@@ -96,9 +154,14 @@ export async function stopTechnicianJobLabor(params: {
     technicianId: params.technicianId,
     options: {
       operationKey,
+      // Preserve the established shared Hold behavior. Assignment is enforced
+      // when labor starts; Hold itself remains on the canonical punch contract.
+      enforceAssignedWork: false,
       nowIso: params.endedAtIso,
       pause: {
         holdReason: params.reason,
+        expectedLineUpdatedAt: params.expectedLineUpdatedAt,
+        transitionIntent: params.transitionIntent,
         preserveLineStatus: params.preserveLineStatus === true,
         event: params.event,
         details: params.details,

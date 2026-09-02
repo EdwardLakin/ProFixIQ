@@ -1,0 +1,722 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+const read = (path: string) => readFileSync(path, "utf8");
+
+const signInRoute = read("app/api/auth/sign-in/route.ts");
+const approvalRoute = read(
+  "app/api/work-orders/lines/[id]/approval-decision/route.ts",
+);
+const punchTransition = read(
+  "features/work-orders/server/applyJobPunchTransition.ts",
+);
+const technicianLabor = read(
+  "features/work-orders/server/technicianJobLabor.ts",
+);
+const pauseRoute = read("app/api/work-orders/lines/[id]/pause/route.ts");
+const resumeRoute = read("app/api/work-orders/lines/[id]/resume/route.ts");
+const finishRoute = read("app/api/work-orders/lines/[id]/finish/route.ts");
+const completeWorkOrderLine = read(
+  "features/work-orders/server/completeWorkOrderLine.ts",
+);
+const punchClient = read(
+  "features/work-orders/lib/jobPunchTransitionsClient.ts",
+);
+const staffDecisionMigration = read(
+  "supabase/migrations/20260830044000_add_staff_line_decision_boundary.sql",
+);
+const generatedTypes = read("features/shared/types/types/supabase.ts");
+const portalApprovalActions = read(
+  "features/portal/components/QuoteApprovalActions.tsx",
+);
+const portalApprovalsPage = read("app/portal/approvals/page.tsx");
+const desktopWorkOrder = read("app/work-orders/[id]/Client.tsx");
+const mobileWorkOrder = read(
+  "features/work-orders/mobile/MobileWorkOrderClient.tsx",
+);
+const desktopFocusedJob = read(
+  "features/work-orders/components/workorders/FocusedJobModal.tsx",
+);
+const mobileFocusedJob = read(
+  "features/work-orders/mobile/MobileFocusedJob.tsx",
+);
+
+describe("customer portal sign-in bootstrap", () => {
+  it("resolves the customer and invite with the server-side client", () => {
+    const customerBlock = signInRoute.slice(
+      signInRoute.indexOf('if (surface === "customer")'),
+      signInRoute.indexOf('if (surface === "fleet")'),
+    );
+    expect(customerBlock).toContain("const admin = createAdminSupabase()");
+    expect(customerBlock).toContain('await admin\n      .from("customers")');
+    expect(customerBlock).toContain('await admin\n      .from("customer_portal_invites")');
+    expect(customerBlock).not.toContain('await supabase\n      .from("customers")');
+    expect(customerBlock).toContain('.eq("user_id", signedInUser.id)');
+    expect(customerBlock).toContain('.eq("accepted_by_user_id", signedInUser.id)');
+    expect(customerBlock).toContain('.is("revoked_at", null)');
+  });
+});
+
+describe("staff approval decision routing", () => {
+  it("requires explicit staff intent and defaults omitted surfaces to portal", () => {
+    expect(approvalRoute).toContain("resolveAuthenticatedStaffProfile");
+    expect(approvalRoute).toContain('actorSurface === "staff"');
+    expect(approvalRoute).not.toContain(
+      'actorSurface !== "portal" && profile?.shop_id',
+    );
+    expect(approvalRoute).toContain("requirePortalCustomerActor(supabase)");
+    expect(portalApprovalActions).toContain('actorSurface: "portal"');
+    expect(portalApprovalsPage).toContain('actorSurface: "portal"');
+    expect(desktopWorkOrder).toContain('actorSurface: "staff"');
+    expect(mobileWorkOrder).toContain('actorSurface: "staff"');
+  });
+
+  it("retains stable keys while allowing only the same decision to retry", () => {
+    for (const [client, declineBoundary] of [
+      [desktopWorkOrder, "const approveQuoteLine"],
+      [mobileWorkOrder, "const sendToParts"],
+    ] as const) {
+      expect(client).toContain("lineDecisionOperationKeysRef");
+      expect(client).toContain("lineDecisionPendingRef");
+      expect(client).toContain("lineDecisionInFlightRef");
+      expect(client).toContain(
+        "pendingDecision !== undefined && pendingDecision !== decision",
+      );
+      expect(client).toContain(
+        "lineDecisionOperationKeysRef.current.get(actionIdentity)",
+      );
+      expect(client).toContain(
+        "lineDecisionOperationKeysRef.current.set(actionIdentity, operationKey)",
+      );
+      expect(client).toContain('"Idempotency-Key": operationKey');
+      expect(client).toContain("idempotencyKey: operationKey");
+      expect(client).toContain('pendingDecision !== "approve"');
+      expect(client).toContain('pendingDecision !== "decline"');
+      expect(client).toContain('"Retry approve"');
+      expect(client).toContain('"Retry decline"');
+      expect(client).toContain(
+        "const refreshedPendingIds = new Set(approvalPending.map((line) => line.id))",
+      );
+      expect(client).toContain(
+        "`${workOrderId}:${lineId}:approve`",
+      );
+      expect(client).toContain("`${workOrderId}:${lineId}:decline`");
+
+      const approveBlock = client.slice(
+        client.indexOf("const approveLine"),
+        client.indexOf("const declineLine"),
+      );
+      const declineBlock = client.slice(
+        client.indexOf("const declineLine"),
+        client.indexOf(declineBoundary),
+      );
+      for (const decisionBlock of [approveBlock, declineBlock]) {
+        expect(decisionBlock).toContain("responseBodyReadable");
+        expect(decisionBlock).toContain("json?.ok !== true");
+        expect(decisionBlock).toContain(
+          "await fetchAll().catch(() => undefined)",
+        );
+        expect(decisionBlock).toContain("releaseLineDecisionInFlight(lineId)");
+        expect(decisionBlock).not.toContain("res.json().catch(() => null)");
+
+        const ambiguousResponse = decisionBlock.slice(
+          decisionBlock.indexOf("if (!responseBodyReadable"),
+          decisionBlock.indexOf("toast.success"),
+        );
+        expect(ambiguousResponse).not.toContain("clearLineDecision(");
+        const serverErrorStart = decisionBlock.indexOf(
+          "if (res.status >= 500)",
+        );
+        const definitiveRejection = decisionBlock.indexOf(
+          "clearLineDecision(lineId, actionIdentity)",
+        );
+        expect(serverErrorStart).toBeGreaterThan(-1);
+        expect(definitiveRejection).toBeGreaterThan(serverErrorStart);
+        const ambiguousServerError = decisionBlock.slice(
+          serverErrorStart,
+          definitiveRejection,
+        );
+        expect(ambiguousServerError).toContain(
+          "await fetchAll().catch(() => undefined)",
+        );
+        expect(ambiguousServerError).toContain("return;");
+        expect(ambiguousServerError).not.toContain("clearLineDecision(");
+        const finallyBoundary = decisionBlock.indexOf("} finally {");
+        const interruptedRequest = decisionBlock.slice(
+          decisionBlock.lastIndexOf("} catch {", finallyBoundary),
+          finallyBoundary,
+        );
+        expect(interruptedRequest).not.toContain("clearLineDecision(");
+      }
+      expect(
+        approveBlock.slice(approveBlock.indexOf('toast.success("Line approved")')),
+      ).not.toContain("lineDecisionOperationKeysRef.current.delete(actionIdentity)");
+      expect(
+        declineBlock.slice(declineBlock.indexOf('toast.success("Line declined")')),
+      ).not.toContain("lineDecisionOperationKeysRef.current.delete(actionIdentity)");
+    }
+  });
+
+  it("maps durable decision-key conflicts to HTTP 409", () => {
+    expect(approvalRoute).toContain('lower.includes("conflict")');
+  });
+
+  it("replays committed staff decisions before mutable route preflights", () => {
+    const receiptRead = approvalRoute.indexOf(
+      '.from("quote_lifecycle_operation_keys")',
+    );
+    const targetRead = approvalRoute.indexOf('.from("work_order_lines")');
+    const quarantineRead = approvalRoute.indexOf(
+      "checkQuotePricingQuarantine({",
+    );
+    expect(receiptRead).toBeGreaterThan(-1);
+    expect(receiptRead).toBeLessThan(targetRead);
+    expect(receiptRead).toBeLessThan(quarantineRead);
+    expect(approvalRoute).toContain("hasExactDecisionLines");
+    expect(approvalRoute.match(/replayStaffDecisionReceipt\(\)/g)).toHaveLength(
+      2,
+    );
+  });
+
+  it("uses the guarded staff-specific atomic adapter for staff decisions", () => {
+    expect(approvalRoute).toContain("getActorCapabilities");
+    expect(approvalRoute).toContain("capabilities.canAuthorizeQuotes");
+    expect(approvalRoute).not.toContain("STAFF_APPROVAL_ROLES");
+    expect(mobileWorkOrder).toContain(
+      "const canApprove = currentActor.canAuthorizeQuotes",
+    );
+    expect(approvalRoute).toContain(
+      'rpc.rpc("apply_staff_line_decision_atomic"',
+    );
+    expect(approvalRoute).toContain("p_line_id: lineId");
+    expect(approvalRoute).toContain("p_actor_user_id: actor.userId");
+    expect(approvalRoute).toContain(
+      'p_operation_key: `${actor.shopId}:staff-line-decision:${key}`',
+    );
+    const staffRpcStart = approvalRoute.indexOf(
+      'rpc.rpc("apply_staff_line_decision_atomic"',
+    );
+    const portalRpcStart = approvalRoute.indexOf(
+      'rpc.rpc("apply_portal_line_decision_atomic"',
+      staffRpcStart,
+    );
+    expect(approvalRoute.slice(staffRpcStart, portalRpcStart)).not.toContain(
+      "p_at:",
+    );
+    expect(staffDecisionMigration).toContain(
+      "create or replace function public.apply_staff_line_decision_atomic",
+    );
+    expect(staffDecisionMigration).toContain("'in_progress'");
+    expect(staffDecisionMigration).toContain(
+      "'owner', 'admin', 'manager', 'advisor', 'service', 'foreman'",
+    );
+    expect(staffDecisionMigration).toContain(
+      "from public.work_order_line_labor_segments seg",
+    );
+    expect(staffDecisionMigration).toContain(
+      "technician labor has already been recorded for this line",
+    );
+    expect(staffDecisionMigration).toContain(
+      "v_now timestamptz := clock_timestamp()",
+    );
+    expect(staffDecisionMigration).toContain(
+      "WORK_ORDER_ARCHIVED: archived work orders cannot receive staff approval decisions.",
+    );
+    expect(staffDecisionMigration).toContain(
+      "STAFF_LINE_DECISION_INELIGIBLE: line is no longer approval-pending.",
+    );
+    expect(staffDecisionMigration).not.toContain("and seg.ended_at is null");
+    expect(generatedTypes).toContain("apply_staff_line_decision_atomic: {");
+    expect(approvalRoute).not.toContain("supabase as unknown as RpcClient");
+  });
+
+  it("checks the target and pricing quarantine through a scoped trusted projection", () => {
+    const capabilityCheck = approvalRoute.indexOf(
+      "capabilities.canAuthorizeQuotes",
+    );
+    const projection = approvalRoute.indexOf(
+      'actor.kind === "staff" ? createAdminSupabase() : supabase',
+    );
+    const targetLookup = approvalRoute.indexOf(
+      '.from("work_order_lines")',
+      projection,
+    );
+    const quarantineCheck = approvalRoute.indexOf(
+      "await checkQuotePricingQuarantine({",
+      targetLookup,
+    );
+    const staffRpc = approvalRoute.indexOf(
+      'rpc.rpc("apply_staff_line_decision_atomic"',
+      quarantineCheck,
+    );
+
+    expect(capabilityCheck).toBeGreaterThan(-1);
+    expect(projection).toBeGreaterThan(capabilityCheck);
+    expect(targetLookup).toBeGreaterThan(projection);
+    expect(quarantineCheck).toBeGreaterThan(targetLookup);
+    expect(staffRpc).toBeGreaterThan(quarantineCheck);
+    const scopedProjection = approvalRoute.slice(targetLookup, quarantineCheck);
+    expect(scopedProjection).toContain('.eq("id", lineId)');
+    expect(scopedProjection).toContain('.eq("work_order_id", workOrderId)');
+    expect(scopedProjection).toContain('.eq("shop_id", actor.shopId)');
+    expect(scopedProjection).toContain("if (!targetLine)");
+    expect(approvalRoute).toContain("supabase: decisionReadClient");
+    expect(approvalRoute).toContain("const rpc = supabase");
+  });
+
+  it("returns exact receipts before state checks and uses canonical lock ordering", () => {
+    const receiptLookup = staffDecisionMigration.indexOf(
+      "from public.quote_lifecycle_operation_keys operation",
+    );
+    const workOrderLock = staffDecisionMigration.indexOf(
+      "from public.work_orders wo",
+    );
+    const siblingLocks = staffDecisionMigration.indexOf(
+      "from public.work_order_lines sibling",
+    );
+    const quoteLineLocks = staffDecisionMigration.indexOf(
+      "from public.work_order_quote_lines quote_line",
+      siblingLocks,
+    );
+    const segmentNowaitLocks = staffDecisionMigration.indexOf(
+      "from public.work_order_line_labor_segments seg",
+      quoteLineLocks,
+    );
+    const serializedReceiptLookup = staffDecisionMigration.indexOf(
+      "select operation.result, operation.actor_user_id, operation.work_order_id",
+      segmentNowaitLocks,
+    );
+    const laborCheck = staffDecisionMigration.indexOf(
+      "from public.work_order_line_labor_segments seg",
+      serializedReceiptLookup,
+    );
+
+    expect(receiptLookup).toBeGreaterThan(-1);
+    expect(workOrderLock).toBeGreaterThan(receiptLookup);
+    expect(siblingLocks).toBeGreaterThan(workOrderLock);
+    expect(quoteLineLocks).toBeGreaterThan(siblingLocks);
+    expect(segmentNowaitLocks).toBeGreaterThan(quoteLineLocks);
+    expect(serializedReceiptLookup).toBeGreaterThan(segmentNowaitLocks);
+    expect(laborCheck).toBeGreaterThan(serializedReceiptLookup);
+    expect(
+      staffDecisionMigration.slice(
+        segmentNowaitLocks,
+        staffDecisionMigration.indexOf("exit;", segmentNowaitLocks),
+      ),
+    ).toContain("for update nowait");
+    expect(staffDecisionMigration).toContain("for update nowait");
+    expect(staffDecisionMigration).toContain("when lock_not_available then");
+    expect(staffDecisionMigration).toContain("perform pg_sleep(0.02)");
+    expect(staffDecisionMigration).toContain(
+      "return v_existing_result || jsonb_build_object('idempotent', true)",
+    );
+    expect(staffDecisionMigration).toContain(
+      "STAFF_LINE_DECISION_OPERATION_CONFLICT",
+    );
+
+    const compatibilityMutation = staffDecisionMigration.indexOf(
+      "v_rollup := public.reconcile_work_order_approval_state_atomic(",
+    );
+    const compatibilityReceipt = staffDecisionMigration.indexOf(
+      "insert into public.quote_lifecycle_operation_keys(",
+      compatibilityMutation,
+    );
+    const compatibilityAudit = staffDecisionMigration.indexOf(
+      "insert into public.activity_logs",
+      compatibilityReceipt,
+    );
+    const receiptValidation = staffDecisionMigration.indexOf(
+      "select operation.result, operation.actor_user_id, operation.work_order_id",
+      compatibilityAudit,
+    );
+    expect(compatibilityMutation).toBeGreaterThan(laborCheck);
+    expect(compatibilityReceipt).toBeGreaterThan(compatibilityMutation);
+    expect(compatibilityAudit).toBeGreaterThan(compatibilityReceipt);
+    expect(receiptValidation).toBeGreaterThan(compatibilityAudit);
+    expect(staffDecisionMigration).not.toContain(
+      "public.apply_approval_compatibility_bundle_atomic(",
+    );
+    expect(staffDecisionMigration).toContain(
+      "quote_line.metadata #> '{parts_quote,pricing_sanitization,customer_pricing_quarantined}'",
+    );
+    expect(staffDecisionMigration).toContain(
+      "v_existing_actor_user_id is distinct from v_actor_auth_user_id",
+    );
+  });
+
+  it("keeps pure portal customers on the portal decision contract", () => {
+    expect(approvalRoute).toContain(
+      'rpc.rpc("apply_portal_line_decision_atomic"',
+    );
+    expect(approvalRoute).toContain("p_customer_id: actor.customerId");
+    expect(approvalRoute).toContain("p_actor_user_id: actor.userId");
+  });
+});
+
+describe("assigned technician punch shop resolution", () => {
+  it("resolves shop and assignment server-side instead of through financial RLS", () => {
+    expect(punchTransition).toContain("resolveAuthenticatedStaffProfile");
+    expect(punchTransition).toContain("createAdminSupabase");
+    expect(punchTransition).toContain('admin\n    .from("work_order_lines")');
+    expect(punchTransition).toContain("capabilities.canPerformAssignedWork");
+    expect(punchTransition).toContain("isAssigned");
+    expect(punchTransition).toContain(
+      '.select("id,shop_id,assigned_tech_id,assigned_to,status,approval_state")',
+    );
+    expect(punchTransition).toContain("line.assigned_to === actorProfileId");
+    expect(punchTransition).toContain("isLegacyOnlyAssignment");
+    expect(punchTransition).toContain("anyCanonicalAssignment");
+    expect(punchTransition).toContain(
+      "Technician is not assigned to this work-order line.",
+    );
+  });
+
+  it("keeps send-to-parts as a narrowly identified pre-labor transition", () => {
+    expect(
+      mobileWorkOrder.match(/transitionIntent: "parts_quote_hold"/g),
+    ).toHaveLength(1);
+    expect(punchClient).toContain('| "parts_quote_hold"');
+    expect(punchClient).not.toContain('"work_order_hold"');
+    expect(punchClient).not.toContain('"work_order_release"');
+    expect(punchClient).toContain("expectedLineUpdatedAt?: string");
+    expect(punchClient).toContain(
+      'const clientMutationId = `${offlineMutationNamespace}:${operationKey}`',
+    );
+    expect(punchClient).toContain(
+      'body?.transitionIntent === "parts_quote_hold"\n      ? "pre_labor_parts_quote_hold"',
+    );
+    expect(pauseRoute).toContain("transitionIntent: body?.transitionIntent");
+    expect(pauseRoute).toContain(
+      "expectedLineUpdatedAt: body?.expectedLineUpdatedAt",
+    );
+    expect(technicianLabor).toContain(
+      "transitionIntent: params.transitionIntent",
+    );
+    expect(technicianLabor).toContain(
+      "expectedLineUpdatedAt: params.expectedLineUpdatedAt",
+    );
+    expect(punchTransition).toContain(
+      'options?.pause?.transitionIntent === "parts_quote_hold"',
+    );
+    expect(punchTransition).toContain(
+      'normalizedHoldReason !== "awaiting parts quote"',
+    );
+    expect(punchTransition).toContain(
+      "A line with recorded labor cannot be sent to parts as pre-labor work.",
+    );
+    expect(punchTransition).toContain(
+      'rpc.rpc("apply_pre_labor_parts_quote_hold_atomic"',
+    );
+    expect(staffDecisionMigration).toContain(
+      "create or replace function public.apply_pre_labor_parts_quote_hold_atomic",
+    );
+    const partsHoldBoundary = staffDecisionMigration.indexOf(
+      "create or replace function public.apply_pre_labor_parts_quote_hold_atomic",
+    );
+    const partsHoldWorkOrderLock = staffDecisionMigration.indexOf(
+      "from public.work_orders work_order",
+      partsHoldBoundary,
+    );
+    const partsHoldLineLock = staffDecisionMigration.indexOf(
+      "from public.work_order_lines line",
+      partsHoldBoundary,
+    );
+    const partsHoldSegmentLock = staffDecisionMigration.indexOf(
+      "from public.work_order_line_labor_segments segment",
+      partsHoldLineLock,
+    );
+    const partsHoldLaborAssertion = staffDecisionMigration.indexOf(
+      "A line with recorded labor cannot be sent to parts as pre-labor work.",
+      partsHoldSegmentLock,
+    );
+    const partsHoldMutation = staffDecisionMigration.indexOf(
+      "update public.work_order_lines",
+      partsHoldLaborAssertion,
+    );
+    const partsHoldBoundaryEnd = staffDecisionMigration.indexOf(
+      "revoke all on function public.apply_staff_line_decision_atomic",
+      partsHoldBoundary,
+    );
+    const partsHoldSql = staffDecisionMigration.slice(
+      partsHoldBoundary,
+      partsHoldBoundaryEnd,
+    );
+    expect(partsHoldWorkOrderLock).toBeGreaterThan(partsHoldBoundary);
+    expect(partsHoldLineLock).toBeGreaterThan(partsHoldWorkOrderLock);
+    expect(partsHoldSegmentLock).toBeGreaterThan(partsHoldLineLock);
+    expect(partsHoldLaborAssertion).toBeGreaterThan(partsHoldSegmentLock);
+    expect(partsHoldMutation).toBeGreaterThan(partsHoldLaborAssertion);
+    expect(partsHoldBoundaryEnd).toBeGreaterThan(partsHoldMutation);
+    expect(
+      partsHoldSql.match(/'pre_labor_parts_quote_hold'/g),
+    ).toHaveLength(4);
+    expect(partsHoldSql).not.toContain("'job_punch:pause'");
+    expect(punchTransition).toContain(
+      '? "pre_labor_parts_quote_hold"\n    : `job_punch:${action}`',
+    );
+    expect(
+      staffDecisionMigration.slice(partsHoldWorkOrderLock, partsHoldLaborAssertion),
+    ).toContain("for update nowait");
+    expect(generatedTypes).toContain(
+      "apply_pre_labor_parts_quote_hold_atomic: {",
+    );
+    expect(generatedTypes).toContain(
+      "p_expected_line_updated_at?: string",
+    );
+    expect(punchTransition).toContain(
+      "partsQuoteHoldManagementRequested\n        ? !capabilities.canManageWorkOrders",
+    );
+    expect(punchTransition).toContain(
+      "!partsQuoteHoldManagementRequested && options?.enforceAssignedWork === true",
+    );
+    expect(mobileWorkOrder).toContain(
+      "const canSendToParts = currentActor.canManageWorkOrders",
+    );
+    expect(mobileWorkOrder).toContain("partsHoldOperationKeysRef");
+    expect(mobileWorkOrder).toContain("partsHoldPendingRef");
+    expect(mobileWorkOrder).toContain("partsHoldInFlightRef");
+    expect(mobileWorkOrder).toContain(
+      "{ operationKey: identity.operationKey }",
+    );
+    expect(mobileWorkOrder).toContain("disabled={partsHoldPending}");
+    expect(mobileWorkOrder).toContain('"Queued for parts"');
+    expect(mobileWorkOrder).toContain(
+      "partsHoldOperationKeysRef.current.delete(lineId)",
+    );
+    expect(mobileWorkOrder).toContain("partsQuoteEligiblePending");
+    expect(mobileWorkOrder).toContain("!isCanonicalPartsQuoteHold(line)");
+    expect(staffDecisionMigration).toContain(
+      "PARTS_QUOTE_HOLD_BUSY: line state is changing; retry the hold.",
+    );
+    expect(staffDecisionMigration).toContain(
+      "A voided or terminal line cannot be sent to parts.",
+    );
+    expect(staffDecisionMigration).toContain("for share nowait");
+    expect(staffDecisionMigration).toContain(
+      "actor capability changed before the hold",
+    );
+    expect(staffDecisionMigration).toContain(
+      "WORK_ORDER_ARCHIVED: archived work orders cannot be sent to parts.",
+    );
+    expect(staffDecisionMigration).toContain("PARTS_QUOTE_HOLD_STALE");
+    expect(staffDecisionMigration).toContain(
+      "PARTS_QUOTE_HOLD_PENDING: approval-pending parts work cannot be punched.",
+    );
+    expect(staffDecisionMigration).toContain(
+      "v_now timestamptz := clock_timestamp()",
+    );
+    expect(staffDecisionMigration).toContain("'parts_quote_hold',");
+    expect(staffDecisionMigration).toContain(
+      "when lower(trim(coalesce(hold_reason, ''))) = 'awaiting parts quote'\n            then 'Customer declined'",
+    );
+    expect(staffDecisionMigration).not.toContain(
+      "create trigger normalize_declined_parts_quote_hold_reason",
+    );
+    expect(staffDecisionMigration).toContain(
+      "create or replace function public.apply_portal_parts_hold_line_decision_atomic",
+    );
+    expect(approvalRoute).toContain(
+      'decision === "approve"\n          ? await rpc.rpc("apply_portal_line_decision_atomic"',
+    );
+    expect(approvalRoute).toContain(
+      '"apply_portal_parts_hold_line_decision_atomic"',
+    );
+    expect(approvalRoute).toContain("p_decision: decision");
+    expect(staffDecisionMigration).toContain(
+      "v_result := public.apply_portal_line_decision_atomic(",
+    );
+    expect(staffDecisionMigration).toContain(
+      "v_decision not in ('decline', 'defer')",
+    );
+    expect(staffDecisionMigration).toContain(
+      "when v_decision = 'decline' then 'Customer declined'\n    else null",
+    );
+    expect(staffDecisionMigration).toContain(
+      "and not public.scheduler_actor_matches(p_actor_user_id)",
+    );
+    expect(staffDecisionMigration).toContain(
+      "PORTAL_LINE_DECISION_OPERATION_CONFLICT",
+    );
+    expect(generatedTypes).toContain(
+      "apply_portal_parts_hold_line_decision_atomic: {",
+    );
+    expect(punchTransition).not.toContain(
+      "p_at: options?.nowIso ?? new Date().toISOString(),\n        p_hold_reason",
+    );
+    expect(punchTransition).not.toContain(
+      "p_event: cleanString(options?.pause?.event),\n        p_details: details,\n      })",
+    );
+    expect(mobileWorkOrder).toContain(
+      "const acceptedCount = results.filter(Boolean).length",
+    );
+    expect(mobileWorkOrder).toContain(
+      "Queued ${acceptedCount} of ${ids.length} pending lines",
+    );
+  });
+
+  it("isolates assigned-work hardening from the shared completion contract", () => {
+    expect(punchTransition).toContain("enforceAssignedWork?: boolean");
+    expect(technicianLabor.match(/enforceAssignedWork: true/g)).toHaveLength(1);
+    expect(technicianLabor).toContain("enforceAssignedWork: false");
+    expect(resumeRoute).not.toContain("enforceAssignedWork:");
+    expect(finishRoute).toContain("enforceAssignedWork: true");
+    expect(finishRoute).toContain("await completeWorkOrderLine");
+    expect(completeWorkOrderLine).toContain("enforceAssignedWork?: boolean");
+    expect(completeWorkOrderLine).toContain(
+      "enforceAssignedWork: input.enforceAssignedWork === true",
+    );
+    expect(punchTransition).toContain(
+      '"apply_assigned_job_punch_transition_atomic"',
+    );
+    expect(staffDecisionMigration).toContain(
+      "create or replace function public.apply_assigned_job_punch_transition_atomic",
+    );
+    expect(punchTransition).toContain(
+      'normalized.includes("parts_quote_hold_busy")',
+    );
+    const assignedBoundary = staffDecisionMigration.indexOf(
+      "create or replace function public.apply_assigned_job_punch_transition_atomic",
+    );
+    const assignedLineLock = staffDecisionMigration.indexOf(
+      "from public.work_order_lines line",
+      assignedBoundary,
+    );
+    const assignedProfileLock = staffDecisionMigration.indexOf(
+      "from public.profiles profile",
+      assignedLineLock,
+    );
+    const assignedWorkOrderLock = staffDecisionMigration.indexOf(
+      "from public.work_orders work_order",
+      assignedProfileLock,
+    );
+    const assignedSegmentLock = staffDecisionMigration.indexOf(
+      "from public.work_order_line_labor_segments segment",
+      assignedWorkOrderLock,
+    );
+    const assignedInspectionLock = staffDecisionMigration.indexOf(
+      "from public.inspections inspection",
+      assignedSegmentLock,
+    );
+    const assignedAssertion = staffDecisionMigration.indexOf(
+      "Technician is not assigned to this work-order line.",
+      assignedLineLock,
+    );
+    const canonicalDelegation = staffDecisionMigration.indexOf(
+      "return public.apply_job_punch_transition_atomic(",
+      assignedAssertion,
+    );
+    expect(assignedLineLock).toBeGreaterThan(assignedBoundary);
+    expect(assignedProfileLock).toBeGreaterThan(assignedLineLock);
+    expect(assignedWorkOrderLock).toBeGreaterThan(assignedProfileLock);
+    expect(assignedSegmentLock).toBeGreaterThan(assignedWorkOrderLock);
+    expect(assignedInspectionLock).toBeGreaterThan(assignedSegmentLock);
+    expect(assignedAssertion).toBeGreaterThan(assignedInspectionLock);
+    expect(canonicalDelegation).toBeGreaterThan(assignedAssertion);
+    expect(
+      staffDecisionMigration.slice(assignedLineLock, assignedProfileLock),
+    ).toContain("for update nowait");
+    expect(
+      staffDecisionMigration.slice(assignedProfileLock, assignedWorkOrderLock),
+    ).toContain("for update nowait");
+    expect(
+      staffDecisionMigration.slice(assignedWorkOrderLock, assignedSegmentLock),
+    ).toContain("for update nowait");
+    expect(
+      staffDecisionMigration.slice(assignedSegmentLock, assignedInspectionLock),
+    ).toContain("for update nowait");
+    expect(
+      staffDecisionMigration.slice(assignedInspectionLock, assignedAssertion),
+    ).toContain("for update nowait");
+    const assignedSegmentLockBlock = staffDecisionMigration.slice(
+      assignedSegmentLock,
+      assignedInspectionLock,
+    );
+    expect(assignedSegmentLockBlock).toContain(
+      "segment.work_order_line_id = p_work_order_line_id",
+    );
+    expect(assignedSegmentLockBlock).toContain(
+      "segment.technician_id = v_profile_id",
+    );
+    expect(assignedSegmentLockBlock).toContain("order by segment.id");
+    expect(staffDecisionMigration).toContain(
+      "ASSIGNED_JOB_PUNCH_BUSY: assignment state is changing; retry the punch.",
+    );
+    expect(punchTransition).toContain(
+      'normalized.includes("assigned_job_punch_busy")',
+    );
+    const segmentOwnership = staffDecisionMigration.indexOf(
+      "Technician has no active labor segment on this line to pause or finish.",
+      assignedAssertion,
+    );
+    expect(segmentOwnership).toBeGreaterThan(assignedAssertion);
+    expect(
+      staffDecisionMigration.slice(assignedAssertion, segmentOwnership),
+    ).toContain("not v_has_active_segment");
+    expect(staffDecisionMigration).toContain(
+      "v_action = 'finish'\n     and v_has_any_active_segment\n     and not v_has_active_segment",
+    );
+    expect(staffDecisionMigration).not.toContain(
+      "v_action in ('pause', 'finish') and not v_has_active_segment",
+    );
+    expect(canonicalDelegation).toBeGreaterThan(segmentOwnership);
+    expect(generatedTypes).toContain(
+      "apply_assigned_job_punch_transition_atomic: {",
+    );
+  });
+
+  it("canonicalizes adapter roles with the shared membership contract", () => {
+    expect(
+      staffDecisionMigration.match(
+        /public\.canonical_shop_membership_role\([^)]*role::text\)/g,
+      ),
+    ).toHaveLength(7);
+    const assignedBoundary = staffDecisionMigration.slice(
+      staffDecisionMigration.indexOf(
+        "create or replace function public.apply_assigned_job_punch_transition_atomic",
+      ),
+      staffDecisionMigration.indexOf(
+        "create or replace function public.apply_pre_labor_parts_quote_hold_atomic",
+      ),
+    );
+    expect(assignedBoundary).toContain(
+      "'owner', 'admin', 'manager', 'mechanic', 'lead_hand', 'foreman'",
+    );
+    expect(assignedBoundary).not.toMatch(
+      /'tech'|'technician'|'lead hand'|'leadhand'/,
+    );
+  });
+
+  it("keeps Hold and Remove Hold on the shared labor-punch contract", () => {
+    for (const focusedJob of [desktopFocusedJob, mobileFocusedJob]) {
+      expect(focusedJob).toContain('runJobPunchTransition(workOrderLineId, "pause"');
+      expect(focusedJob).toContain('runJobPunchTransition(workOrderLineId, "resume"');
+      expect(focusedJob).not.toContain('transitionIntent: "work_order_hold"');
+      expect(focusedJob).not.toContain('transitionIntent: "work_order_release"');
+    }
+    expect(pauseRoute).toContain('transitionIntent?: "parts_quote_hold"');
+    expect(resumeRoute).not.toContain("transitionIntent");
+    expect(punchTransition).not.toContain("workOrderManagementRequested");
+  });
+
+  it("binds ordinary punch requests to the authenticated technician", () => {
+    expect(punchTransition).toContain("await supabase.auth.getUser()");
+    expect(punchTransition).toContain("technicianId !== actorUserId");
+    expect(punchTransition).toContain("technicianId !== actorProfileId");
+    expect(punchTransition).toContain("p_actor_user_id: actorUserId");
+    expect(punchTransition).toContain('.from("workforce_operation_keys")');
+    expect(punchTransition.indexOf('.from("workforce_operation_keys")')).toBeLessThan(
+      punchTransition.indexOf('.from("work_order_line_labor_segments")'),
+    );
+    expect(punchTransition).toContain("const replayExistingOperation");
+    expect(punchTransition.match(/await replayExistingOperation\(\)/g)).toHaveLength(2);
+  });
+
+  it("preserves the trusted break and lunch auto-resume path", () => {
+    expect(technicianLabor).toContain('params.source !== "break_resume"');
+    expect(technicianLabor).toContain('params.source !== "lunch_resume"');
+    expect(technicianLabor).toContain("resolveInternalResumeActor");
+    expect(technicianLabor).toContain("trustedActor");
+    expect(technicianLabor).toContain('select("id,user_id,shop_id,role")');
+    expect(technicianLabor).toContain("capabilities.canPerformAssignedWork");
+  });
+});

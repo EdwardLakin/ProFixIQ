@@ -1,0 +1,88 @@
+export const PRE_LABOR_PARTS_QUOTE_HOLD_REASON = "Awaiting parts quote";
+
+type PartsWaitingLineState = {
+  approval_state?: unknown;
+  hold_reason?: unknown;
+  status?: unknown;
+};
+
+type PartsQuoteHoldVersionSource = {
+  created_at?: unknown;
+  id?: unknown;
+  updated_at?: unknown;
+};
+
+function normalize(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function normalizeWaitingPartsPhrase(value: unknown): string {
+  return normalize(value).replace(/[_-]+/g, " ").replace(/\s+/g, " ");
+}
+
+export function createPreLaborPartsQuoteHoldOperationKey(
+  line: PartsQuoteHoldVersionSource,
+): string | null {
+  const lineId = String(line.id ?? "").trim();
+  const stateVersion = String(line.updated_at ?? "").trim();
+  if (!lineId || !stateVersion) return null;
+
+  return `pre-labor-parts-quote-hold:${lineId}:${encodeURIComponent(stateVersion)}`;
+}
+
+/**
+ * The task-owned pre-labor hold is active only while customer approval is
+ * still pending. The legacy portal decision RPC always changes that approval
+ * state, so even its direct decline entry point durably terminates this hold.
+ */
+export function isCanonicalPreLaborPartsQuoteHold(
+  line: PartsWaitingLineState,
+): boolean {
+  return (
+    normalize(line.approval_state) === "pending" &&
+    normalize(line.status) === "on_hold" &&
+    normalize(line.hold_reason) ===
+      PRE_LABOR_PARTS_QUOTE_HOLD_REASON.toLowerCase()
+  );
+}
+
+export function shouldRetainPendingPreLaborPartsQuoteHold(
+  line: (PartsWaitingLineState & PartsQuoteHoldVersionSource) | null | undefined,
+  expectedLineUpdatedAt: unknown,
+): boolean {
+  if (!line || isCanonicalPreLaborPartsQuoteHold(line)) return false;
+
+  const refreshedVersion = String(line.updated_at ?? "").trim();
+  const expectedVersion = String(expectedLineUpdatedAt ?? "").trim();
+  return Boolean(
+    refreshedVersion &&
+      expectedVersion &&
+      refreshedVersion === expectedVersion,
+  );
+}
+
+/**
+ * Preserve established waiting-parts reasons while preventing a stale exact
+ * pre-labor reason from overriding a completed customer decision. Word
+ * boundaries also keep unrelated reasons such as "Department approval" from
+ * being mistaken for a parts signal.
+ */
+export function hasActivePartsWaitingSignal(
+  line: PartsWaitingLineState,
+): boolean {
+  const status = normalize(line.status);
+  const holdReason = normalize(line.hold_reason);
+  const searchableHoldReason = normalizeWaitingPartsPhrase(line.hold_reason);
+
+  if (status === "waiting_parts") return true;
+
+  if (holdReason === PRE_LABOR_PARTS_QUOTE_HOLD_REASON.toLowerCase()) {
+    return isCanonicalPreLaborPartsQuoteHold(line);
+  }
+
+  return (
+    /\b(?:awaiting parts|waiting for parts)\b/.test(searchableHoldReason) ||
+    /\bparts?\b/.test(searchableHoldReason) ||
+    /\bquotes?\b/.test(searchableHoldReason)
+  );
+}

@@ -76,6 +76,38 @@ vi.mock("@/features/shared/lib/offline/database", () => ({
     },
   ),
   clearOfflineDatabase: vi.fn(async () => storage.rows.clear()),
+  collectRequiredOfflineMutationIds: vi.fn(
+    (
+      rows: Array<{
+        clientMutationId: string;
+        status: string;
+        dependsOn?: string[];
+      }>,
+    ) => {
+      const byId = new Map(
+        rows.map((row) => [row.clientMutationId, row] as const),
+      );
+      const required = new Set(
+        rows
+          .filter((row) => row.status !== "synced")
+          .map((row) => row.clientMutationId),
+      );
+      const pending = [...required];
+
+      while (pending.length > 0) {
+        const currentId = pending.pop();
+        if (!currentId) continue;
+        const current = byId.get(currentId);
+        for (const dependencyId of current?.dependsOn ?? []) {
+          if (!byId.has(dependencyId) || required.has(dependencyId)) continue;
+          required.add(dependencyId);
+          pending.push(dependencyId);
+        }
+      }
+
+      return required;
+    },
+  ),
   deleteStoredMutations: vi.fn(async (ids: string[]) => {
     if (!storage.available) return false;
     for (const id of ids) storage.rows.delete(id);

@@ -1627,6 +1627,137 @@ export type Database = {
           },
         ]
       }
+      assistant_notification_rollout_markers: {
+        Row: {
+          contract: string
+          deployment_id: string | null
+          deployment_sha: string
+          finalized_at: string | null
+          first_observed_at: string
+          last_observed_at: string
+        }
+        Insert: {
+          contract: string
+          deployment_id?: string | null
+          deployment_sha: string
+          finalized_at?: string | null
+          first_observed_at?: string
+          last_observed_at?: string
+        }
+        Update: {
+          contract?: string
+          deployment_id?: string | null
+          deployment_sha?: string
+          finalized_at?: string | null
+          first_observed_at?: string
+          last_observed_at?: string
+        }
+        Relationships: []
+      }
+      assistant_notifications: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          code: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          fingerprint: string
+          first_seen_at: string
+          href: string | null
+          id: string
+          last_seen_at: string
+          level: string
+          message: string
+          metadata: Json
+          resolved_at: string | null
+          role: string | null
+          shop_id: string
+          source: string
+          status: string
+          title: string
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          code: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          fingerprint: string
+          first_seen_at?: string
+          href?: string | null
+          id?: string
+          last_seen_at?: string
+          level: string
+          message: string
+          metadata?: Json
+          resolved_at?: string | null
+          role?: string | null
+          shop_id: string
+          source?: string
+          status?: string
+          title: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          code?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          fingerprint?: string
+          first_seen_at?: string
+          href?: string | null
+          id?: string
+          last_seen_at?: string
+          level?: string
+          message?: string
+          metadata?: Json
+          resolved_at?: string | null
+          role?: string | null
+          shop_id?: string
+          source?: string
+          status?: string
+          title?: string
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "assistant_notifications_acknowledged_by_fkey"
+            columns: ["acknowledged_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assistant_notifications_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assistant_notifications_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "assistant_notifications_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_logs: {
         Row: {
           action: string
@@ -27452,6 +27583,28 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_assigned_job_punch_transition_atomic: {
+        Args: {
+          p_action: string
+          p_actor_user_id: string
+          p_allow_concurrent?: boolean
+          p_at?: string
+          p_cause?: string
+          p_correction?: string
+          p_details?: Json
+          p_event?: string
+          p_hold_reason?: string
+          p_notes?: string
+          p_operation_key: string
+          p_preserve_line_status?: boolean
+          p_release_to_awaiting?: boolean
+          p_shop_id: string
+          p_start_source?: string
+          p_technician_id: string
+          p_work_order_line_id: string
+        }
+        Returns: Json
+      }
       apply_canonical_offline_shift_punch_atomic: {
         Args: {
           p_actor_auth_user_id: string
@@ -27589,6 +27742,19 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_portal_parts_hold_line_decision_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_customer_id: string
+          p_decision: string
+          p_line_id: string
+          p_operation_key: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       apply_portal_quote_decision_atomic: {
         Args: {
           p_at?: string
@@ -27598,6 +27764,21 @@ export type Database = {
           p_quote_line_ids: string[]
           p_shop_id: string
           p_work_order_id: string
+        }
+        Returns: Json
+      }
+      apply_pre_labor_parts_quote_hold_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_details?: Json
+          p_event?: string
+          p_expected_line_updated_at?: string
+          p_hold_reason?: string
+          p_notes?: string
+          p_operation_key: string
+          p_shop_id: string
+          p_work_order_line_id: string
         }
         Returns: Json
       }
@@ -27651,6 +27832,18 @@ export type Database = {
           p_note: string
           p_operation_key: string
           p_quote_line_ids: string[]
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
+      apply_staff_line_decision_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_decision: string
+          p_line_id: string
+          p_operation_key: string
           p_shop_id: string
           p_work_order_id: string
         }
@@ -27771,6 +27964,10 @@ export type Database = {
           p_work_order_id: string
         }
         Returns: Json
+      }
+      assistant_notification_trusted_writer_rollout_complete: {
+        Args: never
+        Returns: boolean
       }
       attach_signed_inspection_pdf_atomic: {
         Args: {
@@ -29037,6 +29234,10 @@ export type Database = {
       }
       mark_active: { Args: never; Returns: undefined }
       mark_all_portal_notifications_read: { Args: never; Returns: number }
+      mark_assistant_notification_trusted_writer_rollout: {
+        Args: { p_deployment_id?: string; p_deployment_sha: string }
+        Returns: undefined
+      }
       mark_financial_outbox_delivery_ambiguous: {
         Args: { p_delivery_id: string; p_error: string; p_worker_id: string }
         Returns: boolean

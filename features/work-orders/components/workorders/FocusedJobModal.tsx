@@ -32,6 +32,7 @@ import SuggestedQuickAdd from "@/features/work-orders/components/SuggestedQuickA
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
+import { hasActivePartsWaitingSignal } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 import {
   formatLaborSummary,
   resolveOperationalLineStatusLabel,
@@ -739,7 +740,7 @@ export default function FocusedJobModal(props: {
   const lineTotal = Number(pricing?.lineTotal ?? 0);
   const hasPartsRequestedMarker =
     String(line?.correction ?? "").toLowerCase().includes("demo_moment:parts_bottleneck") ||
-    String(line?.hold_reason ?? "").toLowerCase().includes("part") ||
+    Boolean(line && hasActivePartsWaitingSignal(line)) ||
     String(line?.description ?? "").toLowerCase().includes("backorder");
   const partsBottleneckDisplay = resolvePartsBottleneckDisplay({
     hasRequestedMarker: hasPartsRequestedMarker,

@@ -18,6 +18,7 @@ import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticate
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
+import { hasActivePartsWaitingSignal } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 import {
   ACTIVE_WORK_ORDER_STATUSES,
   countActiveWorkOrders,
@@ -415,7 +416,6 @@ export default function MobileWorkOrderQueue({
             if (!signals[workOrderId]) signals[workOrderId] = emptySignal();
             const target = signals[workOrderId];
             const lineStatus = String(item.status ?? "").toLowerCase();
-            const holdReason = String(item.hold_reason ?? "").toLowerCase();
 
             if (lineStatus === "in_progress") target.inProgress += 1;
             if (String(item.approval_state ?? "").toLowerCase() === "pending") {
@@ -424,10 +424,7 @@ export default function MobileWorkOrderQueue({
             if (assignmentByLine.get(item.id)?.technicianIds.length === 0) {
               target.unassigned += 1;
             }
-            if (
-              (lineStatus === "on_hold" && holdReason.includes("part")) ||
-              holdReason.includes("quote")
-            ) {
+            if (hasActivePartsWaitingSignal(item)) {
               target.waitingParts += 1;
             }
           });

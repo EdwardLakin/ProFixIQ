@@ -14,6 +14,7 @@ import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/sha
 type RunAssistantParams = {
   shopId: string;
   userId: string;
+  profileId?: string;
   role: string | null;
   query: string;
   context?: AssistantContext;
@@ -234,6 +235,7 @@ export async function runAssistant(
   const dailySummary = await getRoleDailySummary({
     shopId: params.shopId,
     userId: params.userId,
+    profileId: params.profileId,
     role: params.role,
   });
 

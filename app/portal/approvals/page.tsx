@@ -230,7 +230,11 @@ export default function PortalApprovalsPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           cache: "no-store",
-          body: JSON.stringify({ decision, workOrderId }),
+          body: JSON.stringify({
+            decision,
+            actorSurface: "portal",
+            workOrderId,
+          }),
         },
       );
 

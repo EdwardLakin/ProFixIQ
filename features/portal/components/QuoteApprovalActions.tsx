@@ -111,6 +111,7 @@ export default function QuoteApprovalActions({ workOrderId, lines, onChanged }: 
               },
               body: JSON.stringify({
                 decision,
+                actorSurface: "portal",
                 workOrderId,
                 idempotencyKey: lineOperationKey,
               }),

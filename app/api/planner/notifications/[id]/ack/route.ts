@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
-
-
 async function requireUser(
   supabase: ReturnType<typeof createServerSupabaseRoute>,
 ) {
@@ -18,19 +16,22 @@ async function requireUser(
 async function resolveProfile(
   supabase: ReturnType<typeof createServerSupabaseRoute>,
   userId: string,
-): Promise<{ shopId: string | null }> {
+): Promise<{ profileId: string | null; shopId: string | null }> {
   const { data, error } = await supabase
     .from("profiles")
-    .select("shop_id")
-    .eq("id", userId)
-    .maybeSingle();
+    .select("id, shop_id")
+    .or(`id.eq.${userId},user_id.eq.${userId}`)
+    .limit(2);
 
   if (error) {
-    return { shopId: null };
+    return { profileId: null, shopId: null };
   }
 
+  const profile = data?.find((row) => row.id === userId) ?? data?.[0];
+
   return {
-    shopId: data?.shop_id ?? null,
+    profileId: profile?.id ?? null,
+    shopId: profile?.shop_id ?? null,
   };
 }
 
@@ -49,7 +50,7 @@ export async function POST(_request: Request, context: RouteContext) {
   }
 
   const profile = await resolveProfile(supabase, user.id);
-  if (!profile.shopId) {
+  if (!profile.profileId || !profile.shopId) {
     return NextResponse.json(
       { error: "No shop found for user" },
       { status: 400 },
@@ -72,7 +73,7 @@ export async function POST(_request: Request, context: RouteContext) {
     .update({
       status: "acknowledged",
       acknowledged_at: now,
-      acknowledged_by: user.id,
+      acknowledged_by: profile.profileId,
       updated_at: now,
     })
     .eq("id", notificationId)
