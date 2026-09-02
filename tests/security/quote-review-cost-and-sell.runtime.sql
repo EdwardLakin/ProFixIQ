@@ -55,21 +55,36 @@ where id = '40100000-0000-4000-8000-000000000011';
 delete from public.profiles
 where id = '40100000-0000-4000-8000-000000000003';
 
-insert into public.shops (id, owner_id, business_name, name, labor_rate)
+insert into public.shops (
+  id,
+  owner_id,
+  business_name,
+  name,
+  labor_rate,
+  subscription_package,
+  stripe_subscription_status,
+  stripe_pricing_model
+)
 values
   (
     '40200000-0000-4000-8000-000000000001',
     '40100000-0000-4000-8000-000000000011',
     'Quote Cost Sell Shop A',
     'Quote Cost Sell Shop A',
-    0
+    0,
+    'shop_operations',
+    'active',
+    'product_packages_v1'
   ),
   (
     '40200000-0000-4000-8000-000000000002',
     '40100000-0000-4000-8000-000000000002',
     'Quote Cost Sell Shop B',
     'Quote Cost Sell Shop B',
-    0
+    0,
+    'shop_operations',
+    'active',
+    'product_packages_v1'
   );
 
 update public.profiles
