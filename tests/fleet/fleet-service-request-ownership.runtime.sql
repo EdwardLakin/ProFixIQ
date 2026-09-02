@@ -22,15 +22,24 @@ set user_id = excluded.user_id,
     role = excluded.role,
     full_name = excluded.full_name;
 
-insert into public.shops (id, owner_id, business_name, name, user_limit)
+insert into public.shops (
+  id, owner_id, business_name, name, user_limit,
+  stripe_subscription_status, stripe_pricing_model, subscription_package
+)
 values (
   '81520000-0000-4000-8000-000000000001',
   '81510000-0000-4000-8000-000000000001',
   'Phase 15 Connected Lifecycle Shop',
   'Phase 15 Connected Lifecycle Shop',
-  5
+  5,
+  'active',
+  'product_packages_v1',
+  'complete_operations'
 )
-on conflict (id) do nothing;
+on conflict (id) do update
+set stripe_subscription_status = excluded.stripe_subscription_status,
+    stripe_pricing_model = excluded.stripe_pricing_model,
+    subscription_package = excluded.subscription_package;
 
 update public.profiles
 set shop_id = '81520000-0000-4000-8000-000000000001'

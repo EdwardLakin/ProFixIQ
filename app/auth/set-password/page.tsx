@@ -120,13 +120,15 @@ export default function SetPasswordPage() {
     const redirect = await resolvePostAuthDestination({
       supabase,
       searchParams,
-      requiredProductCapabilities: claim.surface
-        ? acquisitionSurfaceProductCapabilities(claim.surface)
-        : searchParams.get("surface") === "field"
-          ? FIELD_PRODUCT_CAPABILITIES
-          : searchParams.get("surface") === "billing"
-            ? []
-            : undefined,
+      requiredProductCapabilities: isPortalActivation
+        ? []
+        : claim.surface
+          ? acquisitionSurfaceProductCapabilities(claim.surface)
+          : searchParams.get("surface") === "field"
+            ? FIELD_PRODUCT_CAPABILITIES
+            : searchParams.get("surface") === "billing"
+              ? []
+              : undefined,
       defaultDashboardHref: claim.surface
         ? acquisitionHomeHref(claim.surface)
         : getReturnPath(role),

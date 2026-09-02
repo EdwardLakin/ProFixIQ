@@ -163,6 +163,27 @@ async function resolveVisibleWorkOrder(
 }
 
 /**
+ * Resolve a route alias with the caller's own RLS-bound client so product and
+ * relationship policies remain in force before any trusted detail read.
+ */
+export async function resolveVisibleWorkOrderId(input: {
+  supabase: SupabaseClient<Database>;
+  shopId: string;
+  routeId: string;
+}): Promise<string | null> {
+  const shopId = input.shopId.trim();
+  const routeId = input.routeId.trim();
+  if (!shopId || !routeId) return null;
+
+  const workOrder = await resolveVisibleWorkOrder(
+    input.supabase,
+    shopId,
+    routeId,
+  );
+  return workOrder?.shop_id === shopId ? workOrder.id : null;
+}
+
+/**
  * Loads only the trusted identity needed to bootstrap sibling Work Order
  * workspace modules. The authenticated RLS client remains the visibility
  * boundary; the existing client cockpit still owns operational reads and all

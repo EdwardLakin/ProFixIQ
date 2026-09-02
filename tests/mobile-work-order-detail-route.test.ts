@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireShopScopedApiAccess: vi.fn(),
   loadMobileWorkOrderDetail: vi.fn(),
   resolveWorkOrderProductAuthority: vi.fn(),
+  resolveVisibleWorkOrderId: vi.fn(),
 }));
 
 vi.mock("@/features/shared/lib/server/admin-access", () => ({
@@ -20,6 +21,15 @@ vi.mock("@/features/mobile/service/server/access", () => ({
 }));
 
 vi.mock("server-only", () => ({}));
+vi.mock(
+  "@/features/work-orders/workspace/server/loadWorkOrderWorkspaceSnapshot",
+  async (importOriginal) => ({
+    ...(await importOriginal<
+      typeof import("@/features/work-orders/workspace/server/loadWorkOrderWorkspaceSnapshot")
+    >()),
+    resolveVisibleWorkOrderId: mocks.resolveVisibleWorkOrderId,
+  }),
+);
 vi.mock(
   "@/features/work-orders/mobile/server/loadMobileWorkOrderDetail",
   async (importOriginal) => ({
@@ -47,6 +57,7 @@ describe("mobile work-order detail route", () => {
     vi.clearAllMocks();
     mocks.createAdminSupabase.mockReturnValue({ from: vi.fn() });
     mocks.requireShopScopedApiAccess.mockResolvedValue(allowedAccess());
+    mocks.resolveVisibleWorkOrderId.mockResolvedValue(WORK_ORDER_ID);
     mocks.resolveWorkOrderProductAuthority.mockResolvedValue({
       authorized: true,
       product: "shop",
@@ -72,9 +83,8 @@ describe("mobile work-order detail route", () => {
 
   it("preserves advisor, parts, technician, and lead-tech access", async () => {
     const { GET } = await import("../app/api/mobile/work-orders/[id]/route");
-    const { MOBILE_WORK_ORDER_DETAIL_ROLES } = await import(
-      "@/features/work-orders/mobile/server/loadMobileWorkOrderDetail"
-    );
+    const { MOBILE_WORK_ORDER_DETAIL_ROLES } =
+      await import("@/features/work-orders/mobile/server/loadMobileWorkOrderDetail");
 
     const response = await GET(new Request("https://profixiq.test"), {
       params: Promise.resolve({ id: WORK_ORDER_ID }),
@@ -141,8 +151,30 @@ describe("mobile work-order detail route", () => {
     expect(mocks.loadMobileWorkOrderDetail).not.toHaveBeenCalled();
   });
 
+  it("resolves a custom-id alias before applying product authority", async () => {
+    const { GET } = await import("../app/api/mobile/work-orders/[id]/route");
+
+    const response = await GET(new Request("https://profixiq.test"), {
+      params: Promise.resolve({ id: "WO-000014" }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(mocks.resolveVisibleWorkOrderId).toHaveBeenCalledWith(
+      expect.objectContaining({ routeId: "WO-000014", shopId: "shop-1" }),
+    );
+    expect(mocks.resolveWorkOrderProductAuthority).toHaveBeenCalledWith(
+      expect.objectContaining({ profile: expect.any(Object) }),
+      WORK_ORDER_ID,
+    );
+    expect(mocks.loadMobileWorkOrderDetail).toHaveBeenCalledWith(
+      expect.objectContaining({ routeId: "WO-000014" }),
+    );
+  });
+
   it("returns a recoverable 500 without exposing the database error", async () => {
-    const consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+    const consoleError = vi
+      .spyOn(console, "error")
+      .mockImplementation(() => {});
     mocks.loadMobileWorkOrderDetail.mockRejectedValue(
       new Error("database host secret"),
     );

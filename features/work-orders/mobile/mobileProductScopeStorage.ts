@@ -101,12 +101,47 @@ export async function getCachedMobileProductScope(scope: {
 export async function reconcileMobileProductScope(args: {
   scope: { userId: string; shopId: string };
   productScope: MobileProductScope;
+  authorizedWorkOrderIds?: readonly string[];
 }): Promise<void> {
   const current = await getCachedMobileProductScope(args.scope);
   if (current !== args.productScope) {
     // Removing the authority first keeps interrupted transitions fail closed.
     await removeAuthority(args.scope);
     await removeMobileProductScopedSnapshots(args.scope);
+  } else if (args.productScope === "field" && args.authorizedWorkOrderIds) {
+    const authorizedIds = new Set(args.authorizedWorkOrderIds);
+    const [details, lists] = await Promise.all([
+      listOfflineSnapshots({ scope: args.scope, kind: DETAIL_KIND }),
+      listOfflineSnapshots({ scope: args.scope, kind: LIST_KIND }),
+    ]);
+    const revokedDetailAliases = details
+      .filter((snapshot) => {
+        const workOrderId = (
+          snapshot.data as { workOrder?: { id?: unknown } } | null
+        )?.workOrder?.id;
+        return (
+          typeof workOrderId !== "string" || !authorizedIds.has(workOrderId)
+        );
+      })
+      .map((snapshot) => snapshot.entityId);
+
+    await Promise.all([
+      removeOfflineSnapshots({
+        scope: args.scope,
+        kind: DETAIL_KIND,
+        entityIds: revokedDetailAliases,
+      }),
+      removeOfflineSnapshots({
+        scope: args.scope,
+        kind: LIST_KIND,
+        entityIds: lists.map((snapshot) => snapshot.entityId),
+      }),
+      removeOfflineSnapshots({
+        scope: args.scope,
+        kind: TECHNICIAN_BUNDLE_KIND,
+        entityIds: [TECHNICIAN_BUNDLE_ID],
+      }),
+    ]);
   }
 
   await saveOfflineSnapshot({

@@ -253,10 +253,18 @@ describe("product boundary stabilization", () => {
     expect(resolveApiProductBoundary("/api/inspections/sign")).toEqual({
       kind: "route_owned",
     });
+    expect(resolveApiProductBoundary("/api/chat/conversations")).toEqual({
+      kind: "route_owned",
+    });
 
     const dispatchScope = read("features/dispatch/server/productScope.ts");
     expect(dispatchScope).toContain("getMobileFieldServiceAccess");
     expect(dispatchScope).toContain("fieldAccess.canAccessFieldService");
+
+    const setPassword = read("app/auth/set-password/page.tsx");
+    expect(setPassword).toMatch(
+      /requiredProductCapabilities:\s*isPortalActivation\s*\? \[\]/,
+    );
 
     const intake = read("app/api/work-orders/[id]/intake/route.ts");
     expect(intake).toContain("resolveIntakeAccess");

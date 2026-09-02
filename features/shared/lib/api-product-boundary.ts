@@ -19,6 +19,7 @@ function isRouteOwnedApi(pathname: string): boolean {
   if (
     [
       "/api/auth",
+      "/api/chat",
       "/api/demo",
       "/api/fleet",
       "/api/internal",
