@@ -92,6 +92,9 @@ describe("Field Service Visit execution boundary", () => {
   });
 
   it("recovers only exact actor-bound committed retries before mutable authorization", () => {
+    expect(mobileTransitionRoute).toContain(
+      "requiredProductCapabilities: []",
+    );
     expect(committedRetryRepair).toContain("v_actor_profile_id");
     expect(committedRetryRepair).toContain("_request_hash_version");
     expect(committedRetryRepair).toContain("_request_hash");

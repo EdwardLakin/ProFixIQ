@@ -186,6 +186,34 @@ describe("product boundary stabilization", () => {
       kind: "product",
       capabilities: ["field_service"],
     });
+    expect(
+      resolveApiProductBoundary(
+        "/api/mobile/service-visits/visit-1/transition",
+      ),
+    ).toEqual({ kind: "route_owned" });
+    for (const sharedPartsPath of [
+      "/api/parts/consume",
+      "/api/parts/picker",
+      "/api/parts/requests/queue",
+      "/api/parts/requests/items/item-1/add",
+      "/api/parts/requests/items/item-1/inventory",
+    ]) {
+      expect(resolveApiProductBoundary(sharedPartsPath)).toEqual({
+        kind: "product",
+        capabilities: ["shop", "field_service"],
+      });
+    }
+    for (const shopPartsPath of [
+      "/api/parts/requests/create",
+      "/api/parts/requests/items/item-1/edit",
+      "/api/parts/purchase-orders/po-1/place",
+      "/api/parts/vendors",
+    ]) {
+      expect(resolveApiProductBoundary(shopPartsPath)).toEqual({
+        kind: "product",
+        capabilities: ["shop"],
+      });
+    }
     expect(resolveApiProductBoundary("/api/fleet/units")).toEqual({
       kind: "route_owned",
     });

@@ -53,7 +53,7 @@ describe("mobile Service Visit transition route committed retries", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
-      requiredProductCapabilities: ["field_service"],
+      requiredProductCapabilities: [],
     });
     expect(await response.json()).toMatchObject({
       ok: true,
@@ -91,7 +91,7 @@ describe("mobile Service Visit transition route committed retries", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
-      requiredProductCapabilities: ["field_service"],
+      requiredProductCapabilities: [],
     });
     expect(mocks.requireMobileServiceOperatorApiAccess).toHaveBeenCalledOnce();
     expect(transitionRpc).toHaveBeenCalledWith(

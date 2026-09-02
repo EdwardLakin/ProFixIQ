@@ -50,6 +50,7 @@ function isRouteOwnedApi(pathname: string): boolean {
     /^\/api\/invoices\/[^/]+\/documents\/[^/]+\/signed$/.test(pathname) ||
     /^\/api\/inspections\/[^/]+\/report\/pdf$/.test(pathname) ||
     pathname === "/api/inspections/reports" ||
+    /^\/api\/mobile\/service-visits\/[^/]+\/transition$/.test(pathname) ||
     /^\/api\/work-orders\/[^/]+\/(intake|invoice-pdf|media)$/.test(pathname) ||
     /^\/api\/work-orders\/lines\/[^/]+\/approval-decision$/.test(pathname) ||
     /^\/api\/work-orders\/quotes\/[^/]+\/(approval|approval-decision)$/.test(
@@ -99,7 +100,6 @@ function isShopOrFieldApi(pathname: string): boolean {
       "/api/inspection",
       "/api/inspection-form-imports",
       "/api/inspections",
-      "/api/parts",
     ].some((prefix) => atOrBelow(pathname, prefix))
   ) {
     return true;
@@ -113,6 +113,9 @@ function isShopOrFieldApi(pathname: string): boolean {
       "/api/offline/session-check",
       "/api/offline/technician-work-orders",
       "/api/openai/realtime-token",
+      "/api/parts/consume",
+      "/api/parts/picker",
+      "/api/parts/requests/queue",
       "/api/payments/manual",
       "/api/receive-scan",
       "/api/work-orders/quotes/add",
@@ -123,8 +126,11 @@ function isShopOrFieldApi(pathname: string): boolean {
     return true;
   }
 
+  // Parts routes are shared only after their handlers enforce canonical Field
+  // identity and linked-work-order scope. Unlisted Parts APIs default to Shop.
   return (
     atOrBelow(pathname, "/api/mobile/work-orders") ||
+    /^\/api\/parts\/requests\/items\/[^/]+\/(add|inventory)$/.test(pathname) ||
     /^\/api\/work-order-lines\/[^/]+\/workspace-detail$/.test(pathname) ||
     /^\/api\/work-orders\/quotes\/[^/]+\/(authorize|decline)$/.test(pathname) ||
     /^\/api\/work-orders\/lines\/[^/]+\/(start|pause|resume|finish)$/.test(
