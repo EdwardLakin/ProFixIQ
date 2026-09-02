@@ -5,6 +5,8 @@ const read = (path: string) => readFileSync(path, "utf8");
 const api = read("app/api/mobile/service-visits/truck-inventory/route.ts");
 const page = read("app/mobile/parts/truck/page.tsx");
 const partsPage = read("app/mobile/parts/page.tsx");
+const fieldPage = read("app/mobile/service/truck-inventory/page.tsx");
+const fieldShell = read("features/mobile/service/FieldWorkspaceShell.tsx");
 const ui = read("features/parts/mobile/MobileTruckInventory.tsx");
 const mobileTiles = read("features/mobile/config/mobile-tiles.ts");
 
@@ -37,10 +39,11 @@ describe("Mobile assigned-truck inventory", () => {
   it("exposes a touch-friendly Field Service truck stock surface", () => {
     expect(page).toContain("Truck inventory");
     expect(page).toContain("MobileTruckInventory");
-    expect(partsPage).toContain('href="/mobile/parts/truck"');
-    expect(mobileTiles).toContain('href: "/mobile/parts/truck"');
-    expect(mobileTiles).toContain('title: "Truck Inventory"');
-    expect(mobileTiles).toContain('roles: ["mechanic", "lead_hand", "foreman"]');
+    expect(partsPage).not.toContain('href="/mobile/parts/truck"');
+    expect(mobileTiles).not.toContain('href: "/mobile/parts/truck"');
+    expect(fieldPage).toContain("MobileTruckInventory");
+    expect(fieldShell).toContain('label: "Truck inventory"');
+    expect(fieldShell).toContain('href: "/mobile/service/truck-inventory"');
     expect(ui).toContain('fetch("/api/mobile/service-visits/truck-inventory"');
     expect(ui).toContain("On hand");
     expect(ui).toContain("Reserved");
