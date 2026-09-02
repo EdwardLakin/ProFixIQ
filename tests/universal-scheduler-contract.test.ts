@@ -98,6 +98,9 @@ describe("Universal Scheduler cutover", () => {
     expect(legacyStaffCreate).toContain(
       "allowRoles: ROLE_GROUPS.schedulerBookingWriters",
     );
+    expect(legacyStaffCreate).toContain(
+      "requireCanonicalShopOrFieldApiAccess",
+    );
     expect(legacyStaffCreate).not.toContain("canManageScheduling");
   });
 

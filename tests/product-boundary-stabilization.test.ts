@@ -71,6 +71,7 @@ describe("product boundary stabilization", () => {
 
     expect(access).toContain('.eq("mode", "mobile")');
     expect(access).toContain("canManageLinkedFieldWork");
+    expect(access).toContain("canFieldActorAccessWorkOrder");
     expect(access).toContain("resolveWorkOrderProductAuthority");
     expect(detail).toContain("resolveWorkOrderProductAuthority");
     expect(punches).toContain("resolveWorkOrderProductAuthority");
@@ -284,6 +285,10 @@ describe("product boundary stabilization", () => {
       "app/api/inspection-form-imports/[jobId]/route.ts",
       "app/api/inspection-form-imports/[jobId]/approve/route.ts",
       "app/api/parts/requests/items/[itemId]/inventory/route.ts",
+      "app/api/mobile/shifts/route.ts",
+      "app/api/portal/book/route.ts",
+      "app/api/parts/consume/route.ts",
+      "app/api/inspections/build-from-prompt/route.ts",
     ]) {
       expect(read(canonicalSharedApi)).toContain(
         "requireCanonicalShopOrFieldApiAccess",

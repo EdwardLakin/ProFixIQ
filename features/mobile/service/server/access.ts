@@ -263,6 +263,34 @@ export async function canFieldOperatorAccessWorkOrder(
   return Boolean(data);
 }
 
+export async function canFieldActorAccessWorkOrder(
+  access: ShopAccess,
+  workOrderId: string,
+): Promise<boolean> {
+  const actor = getActorCapabilities({ role: access.profile.role });
+  const fieldAccess = await getMobileFieldServiceAccess(access);
+  if (
+    !fieldAccess.canAccessFieldService ||
+    (!actor.canManageScheduling && !actor.canPerformAssignedWork)
+  ) {
+    return false;
+  }
+
+  let query = access.supabase
+    .from("service_visits")
+    .select("id")
+    .eq("shop_id", access.profile.shop_id)
+    .eq("work_order_id", workOrderId)
+    .eq("mode", "mobile");
+  if (!actor.canManageScheduling) {
+    query = query.eq("assigned_user_id", access.profile.id);
+  }
+
+  const { data, error } = await query.limit(1).maybeSingle<{ id: string }>();
+  if (error) throw new Error(error.message);
+  return Boolean(data?.id);
+}
+
 export async function listFieldOperatorAssignedWorkOrderIds(
   access: ShopAccess,
 ): Promise<string[]> {
@@ -327,7 +355,7 @@ export async function resolveWorkOrderProductAuthority(
   });
   if (shopAccess.entitled) return { authorized: true, product: "shop" };
 
-  if (await canFieldOperatorAccessWorkOrder(access, workOrderId)) {
+  if (await canFieldActorAccessWorkOrder(access, workOrderId)) {
     return { authorized: true, product: "field" };
   }
 

@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
+import { requireCanonicalShopOrFieldApiAccess } from "@/features/mobile/service/server/access";
 import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import {
   createPortalBooking,
   type CreatePortalBookingInput,
@@ -32,9 +31,8 @@ function legacyStaffOperationKey(
 
 export async function POST(req: Request) {
   try {
-    const access = await requireShopScopedApiAccess({
+    const access = await requireCanonicalShopOrFieldApiAccess({
       allowRoles: ROLE_GROUPS.schedulerBookingWriters,
-      requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
     });
     if (!access.ok) return access.response;
 

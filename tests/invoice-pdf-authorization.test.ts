@@ -3,12 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   resolveAuthenticatedStaffProfile: vi.fn(),
+  resolveWorkOrderProductAuthority: vi.fn(),
   resolveWorkOrderFinancialAccess: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/features/shared/lib/server/admin-access", () => ({
   resolveAuthenticatedStaffProfile: mocks.resolveAuthenticatedStaffProfile,
+}));
+vi.mock("@/features/mobile/service/server/access", () => ({
+  resolveWorkOrderProductAuthority: mocks.resolveWorkOrderProductAuthority,
 }));
 vi.mock(
   "@/features/work-orders/workspace/server/workOrderFinancialAuthorization",
@@ -63,6 +67,10 @@ describe("invoice PDF authorization", () => {
       access: { canViewInvoice: false },
       error: null,
     });
+    mocks.resolveWorkOrderProductAuthority.mockResolvedValue({
+      authorized: true,
+      product: "shop",
+    });
   });
 
   it("allows effective invoice-view capability to render a working draft without consulting portal membership", async () => {
@@ -80,6 +88,7 @@ describe("invoice PDF authorization", () => {
         supabase: client.supabase,
         authUserId: "user-1",
         shopId: "shop-a",
+        workOrderId: "work-order-a",
         customerId: null,
         customerVisibleDocument: false,
       }),
@@ -90,10 +99,36 @@ describe("invoice PDF authorization", () => {
       profileId: "profile-1",
       shopId: "shop-a",
     });
-    expect(client.rpc).toHaveBeenCalledWith(
-      "profixiq_shop_has_product_access",
-      { p_capability: "shop", p_shop_id: "shop-a" },
+    expect(mocks.resolveWorkOrderProductAuthority).toHaveBeenCalledWith(
+      expect.objectContaining({ authUserId: "user-1" }),
+      "work-order-a",
     );
+  });
+
+  it("allows a financially authorized Field actor for a linked work order", async () => {
+    mocks.resolveAuthenticatedStaffProfile.mockResolvedValue(
+      staffProfile("manager", "shop-a"),
+    );
+    mocks.resolveWorkOrderProductAuthority.mockResolvedValue({
+      authorized: true,
+      product: "field",
+    });
+    mocks.resolveWorkOrderFinancialAccess.mockResolvedValue({
+      access: { canViewInvoice: true },
+      error: null,
+    });
+    const client = sessionClient();
+
+    await expect(
+      canAccessInvoicePdf({
+        supabase: client.supabase,
+        authUserId: "user-1",
+        shopId: "shop-a",
+        workOrderId: "work-order-a",
+        customerId: null,
+        customerVisibleDocument: false,
+      }),
+    ).resolves.toBe(true);
   });
 
   it("denies same-shop staff when effective invoice-view is denied", async () => {
@@ -107,15 +142,13 @@ describe("invoice PDF authorization", () => {
         supabase: client.supabase,
         authUserId: "user-1",
         shopId: "shop-a",
+        workOrderId: "work-order-a",
         customerId: null,
         customerVisibleDocument: false,
       }),
     ).resolves.toBe(false);
 
-    expect(client.rpc).toHaveBeenCalledWith(
-      "profixiq_shop_has_product_access",
-      { p_capability: "shop", p_shop_id: "shop-a" },
-    );
+    expect(mocks.resolveWorkOrderProductAuthority).toHaveBeenCalledTimes(1);
   });
 
   it("denies a billing operator from a different shop", async () => {
@@ -129,12 +162,14 @@ describe("invoice PDF authorization", () => {
         supabase: client.supabase,
         authUserId: "user-1",
         shopId: "shop-a",
+        workOrderId: "work-order-a",
         customerId: null,
         customerVisibleDocument: true,
       }),
     ).resolves.toBe(false);
 
     expect(mocks.resolveWorkOrderFinancialAccess).not.toHaveBeenCalled();
+    expect(mocks.resolveWorkOrderProductAuthority).not.toHaveBeenCalled();
     expect(client.rpc).not.toHaveBeenCalled();
   });
 
@@ -146,11 +181,40 @@ describe("invoice PDF authorization", () => {
         supabase: client.supabase,
         authUserId: "portal-user",
         shopId: "shop-a",
+        workOrderId: "work-order-a",
         customerId: "customer-a",
         customerVisibleDocument: true,
       }),
     ).resolves.toBe(true);
 
+    expect(client.rpc).toHaveBeenCalledWith("profixiq_is_portal_customer_for", {
+      p_customer_id: "customer-a",
+      p_shop_id: "shop-a",
+    });
+  });
+
+  it("preserves portal membership fallback for a same-shop customer profile", async () => {
+    mocks.resolveAuthenticatedStaffProfile.mockResolvedValue(
+      staffProfile("customer", "shop-a"),
+    );
+    mocks.resolveWorkOrderProductAuthority.mockResolvedValue({
+      authorized: false,
+      product: null,
+    });
+    const client = sessionClient({ data: true, error: null });
+
+    await expect(
+      canAccessInvoicePdf({
+        supabase: client.supabase,
+        authUserId: "portal-user",
+        shopId: "shop-a",
+        workOrderId: "work-order-a",
+        customerId: "customer-a",
+        customerVisibleDocument: true,
+      }),
+    ).resolves.toBe(true);
+
+    expect(mocks.resolveWorkOrderFinancialAccess).not.toHaveBeenCalled();
     expect(client.rpc).toHaveBeenCalledWith("profixiq_is_portal_customer_for", {
       p_customer_id: "customer-a",
       p_shop_id: "shop-a",
@@ -165,6 +229,7 @@ describe("invoice PDF authorization", () => {
         supabase: client.supabase,
         authUserId: "portal-user",
         shopId: "shop-a",
+        workOrderId: "work-order-a",
         customerId: "customer-a",
         customerVisibleDocument: false,
       }),
@@ -181,6 +246,7 @@ describe("invoice PDF authorization", () => {
         supabase: client.supabase,
         authUserId: "portal-user",
         shopId: "shop-a",
+        workOrderId: "work-order-a",
         customerId: "customer-a",
         customerVisibleDocument: true,
       }),
@@ -198,6 +264,7 @@ describe("invoice PDF authorization", () => {
         supabase: client.supabase,
         authUserId: "portal-user",
         shopId: "shop-a",
+        workOrderId: "work-order-a",
         customerId: "customer-a",
         customerVisibleDocument: true,
       }),
@@ -212,6 +279,7 @@ describe("invoice PDF authorization", () => {
         supabase: client.supabase,
         authUserId: "portal-user",
         shopId: "shop-a",
+        workOrderId: "work-order-a",
         customerId: null,
         customerVisibleDocument: true,
       }),
@@ -225,6 +293,7 @@ describe("invoice PDF authorization", () => {
     expect(versionRoute).toContain(
       "customerId: workOrder?.customer_id ?? null",
     );
+    expect(versionRoute).toContain("workOrderId: version.work_order_id");
     expect(versionRoute).toContain("CUSTOMER_VISIBLE_INVOICE_STATES.includes(");
     expect(versionRoute).toContain("version.lifecycle_status");
     expect(versionRoute).toContain(
@@ -246,6 +315,7 @@ describe("invoice PDF authorization", () => {
     );
     expect(workOrderRoute).toContain("canAccessInvoicePdf");
     expect(workOrderRoute).toContain("customerId: workOrder.customer_id");
+    expect(workOrderRoute).toContain("workOrderId,");
     expect(workOrderRoute).toContain(
       "customerVisibleDocument: activeVersion !== null",
     );

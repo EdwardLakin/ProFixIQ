@@ -7,11 +7,12 @@ const mocks = vi.hoisted(() => ({
   createResponse: vi.fn(),
   getOpenAIClient: vi.fn(),
   getOpenAIModelForPurpose: vi.fn(),
-  requireShopScopedApiAccess: vi.fn(),
+  requireCanonicalShopOrFieldApiAccess: vi.fn(),
 }));
 
-vi.mock("@/features/shared/lib/server/admin-access", () => ({
-  requireShopScopedApiAccess: mocks.requireShopScopedApiAccess,
+vi.mock("@/features/mobile/service/server/access", () => ({
+  requireCanonicalShopOrFieldApiAccess:
+    mocks.requireCanonicalShopOrFieldApiAccess,
 }));
 
 vi.mock("@/features/shared/lib/server/openai", () => ({
@@ -59,7 +60,7 @@ function allowedAccess() {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  mocks.requireShopScopedApiAccess.mockResolvedValue(allowedAccess());
+  mocks.requireCanonicalShopOrFieldApiAccess.mockResolvedValue(allowedAccess());
   mocks.getOpenAIClient.mockReturnValue({
     responses: { create: mocks.createResponse },
   });
@@ -106,16 +107,15 @@ describe("inspection prompt-builder authorization", () => {
     "returns %s before selecting or invoking an AI provider",
     async (status) => {
       vi.stubEnv("OPENAI_API_KEY", "test-key");
-      mocks.requireShopScopedApiAccess.mockResolvedValueOnce(
+      mocks.requireCanonicalShopOrFieldApiAccess.mockResolvedValueOnce(
         deniedAccess(status),
       );
 
       const response = await POST(promptRequest());
 
       expect(response.status).toBe(status);
-      expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
+      expect(mocks.requireCanonicalShopOrFieldApiAccess).toHaveBeenCalledWith({
         allowRoles: ROLE_GROUPS.billingOperators,
-        requiredProductCapabilities: ["shop", "field_service"],
       });
       expect(mocks.getOpenAIModelForPurpose).not.toHaveBeenCalled();
       expect(mocks.getOpenAIClient).not.toHaveBeenCalled();
@@ -144,7 +144,7 @@ describe("inspection prompt-builder authorization", () => {
     const response = await POST(promptRequest());
 
     expect(response.status).toBe(200);
-    expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledTimes(1);
+    expect(mocks.requireCanonicalShopOrFieldApiAccess).toHaveBeenCalledTimes(1);
     expect(mocks.getOpenAIClient).toHaveBeenCalledTimes(1);
     expect(mocks.createResponse).toHaveBeenCalledTimes(1);
   });

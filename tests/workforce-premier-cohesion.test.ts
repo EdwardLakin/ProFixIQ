@@ -147,6 +147,9 @@ describe("premier workforce cohesion", () => {
     expect(selfCard).toContain("Employee profile unavailable");
     expect(selfCard).toContain("<ShiftTracker userId={data.profile.id}");
     expect(selfCard).toContain('"workforce:shift-state"');
+    expect(mobileShiftRoute).toContain(
+      "requireCanonicalShopOrFieldApiAccess",
+    );
     expect(mobileShiftRoute).toContain("p_user_id: a.me.id");
     expect(mobileShiftRoute).toContain("p_profile_id: a.me.id");
     expect(mobileShiftRoute).toContain(

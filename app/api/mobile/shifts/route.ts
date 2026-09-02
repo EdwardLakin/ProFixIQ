@@ -1,7 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { requireCanonicalShopOrFieldApiAccess } from "@/features/mobile/service/server/access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { WORKFORCE_STAFF_ROLES } from "@/features/workforce/lib/roster";
 import type { Json } from "@shared/types/types/supabase";
 import {
@@ -62,9 +61,8 @@ type ShiftLifecycleRpcRow = ActiveShift & {
 };
 
 async function authz() {
-  const access = await requireShopScopedApiAccess({
+  const access = await requireCanonicalShopOrFieldApiAccess({
     allowRoles: [...WORKFORCE_STAFF_ROLES],
-    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) {
     return {

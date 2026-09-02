@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import {
-  canFieldOperatorAccessWorkOrder,
+  canFieldActorAccessWorkOrder,
   requireCanonicalShopOrFieldApiAccess,
 } from "@/features/mobile/service/server/access";
 
@@ -126,7 +126,7 @@ export async function POST(
   if (
     access.productScope === "field" &&
     (!item.work_order_id ||
-      !(await canFieldOperatorAccessWorkOrder(access, item.work_order_id)))
+      !(await canFieldActorAccessWorkOrder(access, item.work_order_id)))
   ) {
     return NextResponse.json(
       { ok: false, error: "Request item not found." },

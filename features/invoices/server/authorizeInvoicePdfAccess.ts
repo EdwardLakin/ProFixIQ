@@ -1,12 +1,13 @@
 import "server-only";
 
+import {
+  resolveWorkOrderProductAuthority,
+  type ShopAccess,
+} from "@/features/mobile/service/server/access";
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { resolveWorkOrderFinancialAccess } from "@/features/work-orders/workspace/server/workOrderFinancialAuthorization";
-import {
-  resolveShopProductAccess,
-  SHOP_PRODUCT_CAPABILITIES,
-} from "@/features/shared/lib/product-access";
 
 type SessionClient = ReturnType<typeof createServerSupabaseRoute>;
 
@@ -14,6 +15,7 @@ export async function canAccessInvoicePdf(input: {
   supabase: SessionClient;
   authUserId: string;
   shopId: string;
+  workOrderId: string;
   customerId: string | null;
   customerVisibleDocument: boolean;
 }): Promise<boolean> {
@@ -23,20 +25,31 @@ export async function canAccessInvoicePdf(input: {
   );
 
   if (profile?.shop_id === input.shopId) {
-    const productAccess = await resolveShopProductAccess({
-      supabase: input.supabase,
-      shopId: input.shopId,
-      capabilities: SHOP_PRODUCT_CAPABILITIES,
-    });
-    if (productAccess.error || !productAccess.entitled) return false;
-
-    const financial = await resolveWorkOrderFinancialAccess({
-      supabase: input.supabase,
-      profileId: profile.id,
-      shopId: input.shopId,
-    });
-    if (financial.error === null && financial.access.canViewInvoice) {
-      return true;
+    try {
+      const actor = getActorCapabilities({ role: profile.role });
+      const staffAccess: ShopAccess = {
+        ok: true,
+        profile: { ...profile, shop_id: input.shopId },
+        canonicalRole: actor.canonicalRole,
+        authUserId: input.authUserId,
+        supabase: input.supabase,
+      };
+      const productAuthority = await resolveWorkOrderProductAuthority(
+        staffAccess,
+        input.workOrderId,
+      );
+      if (productAuthority.authorized) {
+        const financial = await resolveWorkOrderFinancialAccess({
+          supabase: input.supabase,
+          profileId: profile.id,
+          shopId: input.shopId,
+        });
+        if (financial.error === null && financial.access.canViewInvoice) {
+          return true;
+        }
+      }
+    } catch {
+      // A failed staff/product lookup must not suppress the independent portal relationship check.
     }
   }
 

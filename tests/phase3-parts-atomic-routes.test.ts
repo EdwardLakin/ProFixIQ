@@ -28,6 +28,9 @@ describe("phase 3 atomic parts routes", () => {
     expect(route).toContain("parts_attach_and_issue_line_part_atomic");
     expect(route).not.toContain("parts_issue_by_line_part_atomic");
     expect(route).toContain(":legacy-consume:");
+    expect(route).toContain("requireCanonicalShopOrFieldApiAccess");
+    expect(route).toContain("canFieldActorAccessWorkOrder");
+    expect(route).toContain('.select("work_order_id")');
   });
 
   it("keeps quote suggestions out of physical inventory allocations", () => {

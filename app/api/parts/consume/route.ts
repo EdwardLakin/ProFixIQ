@@ -2,8 +2,10 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
-import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import {
+  canFieldActorAccessWorkOrder,
+  requireCanonicalShopOrFieldApiAccess,
+} from "@/features/mobile/service/server/access";
 
 type RpcError = {
   message: string;
@@ -27,9 +29,8 @@ const Payload = z.object({
 });
 
 export async function POST(req: Request) {
-  const access = await requireShopScopedApiAccess({
+  const access = await requireCanonicalShopOrFieldApiAccess({
     requiredCapability: "canManageWorkOrders",
-    requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES,
   });
   if (!access.ok) return access.response;
 
@@ -49,6 +50,34 @@ export async function POST(req: Request) {
     return NextResponse.json(
       { error: "A stable idempotency key is required." },
       { status: 400 },
+    );
+  }
+
+  const { data: line, error: lineError } = await access.supabase
+    .from("work_order_lines")
+    .select("work_order_id")
+    .eq("id", body.work_order_line_id)
+    .eq("shop_id", access.profile.shop_id)
+    .maybeSingle<{ work_order_id: string }>();
+  if (lineError) {
+    return NextResponse.json(
+      { error: "Unable to verify work-order access." },
+      { status: 503 },
+    );
+  }
+  if (!line) {
+    return NextResponse.json(
+      { error: "Work-order line not found." },
+      { status: 404 },
+    );
+  }
+  if (
+    access.productScope === "field" &&
+    !(await canFieldActorAccessWorkOrder(access, line.work_order_id))
+  ) {
+    return NextResponse.json(
+      { error: "Work-order line not found." },
+      { status: 404 },
     );
   }
 

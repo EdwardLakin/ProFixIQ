@@ -70,6 +70,7 @@ export async function GET(
       supabase: sessionClient,
       authUserId: user.id,
       shopId: version.shop_id,
+      workOrderId: version.work_order_id,
       customerId: workOrder?.customer_id ?? null,
       customerVisibleDocument: CUSTOMER_VISIBLE_INVOICE_STATES.includes(
         version.lifecycle_status,

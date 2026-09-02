@@ -71,6 +71,7 @@ export async function GET(
       supabase,
       authUserId: user.id,
       shopId: workOrder.shop_id,
+      workOrderId,
       customerId: workOrder.customer_id,
       customerVisibleDocument: activeVersion !== null,
     });

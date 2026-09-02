@@ -22,13 +22,13 @@ const commitRouteSource = readFileSync(
 
 const mocks = vi.hoisted(() => ({
   requireCanonicalShopOrFieldApiAccess: vi.fn(),
-  canFieldOperatorAccessWorkOrder: vi.fn(),
+  canFieldActorAccessWorkOrder: vi.fn(),
 }));
 
 vi.mock("@/features/mobile/service/server/access", () => ({
   requireCanonicalShopOrFieldApiAccess:
     mocks.requireCanonicalShopOrFieldApiAccess,
-  canFieldOperatorAccessWorkOrder: mocks.canFieldOperatorAccessWorkOrder,
+  canFieldActorAccessWorkOrder: mocks.canFieldActorAccessWorkOrder,
 }));
 
 describe("parts request inventory route authorization", () => {
@@ -95,6 +95,6 @@ describe("parts request inventory route authorization", () => {
   it("requires Field request items to belong to an authorized work order", () => {
     expect(routeSource).toContain('access.productScope === "field"');
     expect(routeSource).toContain("item.work_order_id");
-    expect(routeSource).toContain("canFieldOperatorAccessWorkOrder");
+    expect(routeSource).toContain("canFieldActorAccessWorkOrder");
   });
 });
