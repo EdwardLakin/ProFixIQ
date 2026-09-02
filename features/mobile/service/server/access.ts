@@ -25,6 +25,7 @@ import {
   requireShopPageAccess,
   requireShopScopedApiAccess,
 } from "@/features/shared/lib/server/admin-access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 export type ShopAccess = Extract<
   Awaited<ReturnType<typeof requireShopScopedApiAccess>>,
@@ -391,6 +392,27 @@ export async function resolveWorkOrderProductAuthority(
 
   if (shopAccess.error) throw new Error(shopAccess.error);
   return { authorized: false, product: null };
+}
+
+/**
+ * RLS intentionally keeps shared commercial tables Shop-write-only. After the
+ * canonical resource check succeeds, Field mutations use the server command
+ * client so their narrowly scoped handler can enter those existing workflows.
+ */
+export async function resolveWorkOrderProductMutationClient(
+  access: ShopAccess,
+  workOrderId: string,
+) {
+  const authority = await resolveWorkOrderProductAuthority(access, workOrderId);
+  if (!authority.authorized) {
+    return { ...authority, mutationClient: null };
+  }
+
+  return {
+    ...authority,
+    mutationClient:
+      authority.product === "field" ? createAdminSupabase() : access.supabase,
+  };
 }
 
 function fieldAccessDeniedResponse(fieldAccess: MobileFieldServiceAccess) {

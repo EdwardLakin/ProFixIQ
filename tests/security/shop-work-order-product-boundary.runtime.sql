@@ -214,6 +214,47 @@ values (
   '{"ok":true,"action":"pause","work_order_line_id":"59600000-0000-4000-8000-000000000013"}'::jsonb
 );
 
+-- Seed committed offline mutations for the same reassigned Field line. Durable
+-- actor/action/entity receipts must remain replayable, while fresh mutations
+-- against this unrelated Work Order remain denied below.
+insert into public.offline_mutation_receipts (
+  shop_id, actor_user_id, operation_key, action_type, payload_hash,
+  entity_type, entity_id, result
+)
+values
+  (
+    '59200000-0000-4000-8000-000000000003',
+    '59100000-0000-4000-8000-000000000003',
+    'product-boundary:field-offline-replay',
+    'update_work_order_line_notes',
+    encode(
+      extensions.digest(
+        '{"workOrderLineId":"59600000-0000-4000-8000-000000000013","notes":"offline replay"}'::jsonb::text,
+        'sha256'
+      ),
+      'hex'
+    ),
+    'work_order_line',
+    '59600000-0000-4000-8000-000000000013',
+    '{"ok":true,"action_type":"update_work_order_line_notes","work_order_id":"59500000-0000-4000-8000-000000000013","work_order_line_id":"59600000-0000-4000-8000-000000000013"}'::jsonb
+  ),
+  (
+    '59200000-0000-4000-8000-000000000003',
+    '59100000-0000-4000-8000-000000000003',
+    'product-boundary:field-photo-replay',
+    'upload_job_photo',
+    encode(
+      extensions.digest(
+        '{"workOrderLineId":"59600000-0000-4000-8000-000000000013","path":"wo/59500000-0000-4000-8000-000000000013/lines/59600000-0000-4000-8000-000000000013/field-photo-replay.jpg"}'::jsonb::text,
+        'sha256'
+      ),
+      'hex'
+    ),
+    'work_order_line',
+    '59600000-0000-4000-8000-000000000013',
+    '{"ok":true,"action_type":"upload_job_photo","work_order_id":"59500000-0000-4000-8000-000000000013","work_order_line_id":"59600000-0000-4000-8000-000000000013","path":"wo/59500000-0000-4000-8000-000000000013/lines/59600000-0000-4000-8000-000000000013/field-photo-replay.jpg"}'::jsonb
+  );
+
 -- Direct Parts RPC fixtures cover both a linked Field Work Order and an
 -- unrelated same-shop Work Order. The public wrappers must distinguish them
 -- before their SECURITY DEFINER implementations can mutate inventory.
@@ -1019,6 +1060,31 @@ begin
   end;
   if not v_denied then
     raise exception 'Field actor reached the offline mutation product core without its mature validation.';
+  end if;
+
+  select public.apply_offline_line_mutation_atomic(
+    p_shop_id => '59200000-0000-4000-8000-000000000003',
+    p_actor_user_id => '59100000-0000-4000-8000-000000000003',
+    p_operation_key => 'product-boundary:field-offline-replay',
+    p_action_type => 'update_work_order_line_notes',
+    p_work_order_line_id => '59600000-0000-4000-8000-000000000013',
+    p_payload => '{"workOrderLineId":"59600000-0000-4000-8000-000000000013","notes":"offline replay"}'::jsonb
+  ) into v_result;
+  if coalesce((v_result ->> 'idempotent')::boolean, false) is not true
+     or v_result ->> 'action_type' is distinct from 'update_work_order_line_notes' then
+    raise exception 'Committed Field offline mutation was not replayable after reassignment.';
+  end if;
+
+  select public.record_offline_photo_receipt_atomic(
+    p_shop_id => '59200000-0000-4000-8000-000000000003',
+    p_actor_user_id => '59100000-0000-4000-8000-000000000003',
+    p_operation_key => 'product-boundary:field-photo-replay',
+    p_work_order_line_id => '59600000-0000-4000-8000-000000000013',
+    p_payload => '{"workOrderLineId":"59600000-0000-4000-8000-000000000013","path":"wo/59500000-0000-4000-8000-000000000013/lines/59600000-0000-4000-8000-000000000013/field-photo-replay.jpg"}'::jsonb
+  ) into v_result;
+  if coalesce((v_result ->> 'idempotent')::boolean, false) is not true
+     or v_result ->> 'action_type' is distinct from 'upload_job_photo' then
+    raise exception 'Committed Field photo receipt was not replayable after reassignment.';
   end if;
 
   v_denied := false;

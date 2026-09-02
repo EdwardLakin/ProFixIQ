@@ -122,7 +122,7 @@ describe("Shop Work Order product boundary", () => {
     );
   });
 
-  it("product-scopes canonical media and private job-photo storage without adding a write grant", async () => {
+  it("product-scopes canonical media and grants only mutation-authorized job-photo uploads", async () => {
     const source = await readFile(MIGRATION, "utf8");
 
     for (const command of ["select", "insert", "update", "delete"]) {
@@ -138,6 +138,12 @@ describe("Shop Work Order product boundary", () => {
     expect(source).toContain("bucket_id <> 'job-photos'");
     expect(source).toContain(
       "private.job_photo_object_has_product_access(name)",
+    );
+    expect(source).toContain(
+      "create policy job_photos_product_authorized_insert",
+    );
+    expect(source).toContain(
+      "private.job_photo_object_has_mutation_access(name)",
     );
     expect(source).not.toContain(
       "create policy job_photos_product_relationship_insert",
@@ -256,6 +262,10 @@ describe("Shop Work Order product boundary", () => {
     expect(source).toContain(
       "operation.work_order_line_id = p_work_order_line_id",
     );
+    expect(source).toContain("receipt.actor_user_id = auth.uid()");
+    expect(source).toContain("receipt.action_type = p_action_type");
+    expect(source).toContain("receipt.entity_type = 'work_order_line'");
+    expect(source).toContain("receipt.entity_id = p_work_order_line_id");
     expect(
       source.match(
         /errcode = 'P0002',\n\s+message = 'Fleet service request is unavailable\.'/g,
@@ -277,6 +287,12 @@ describe("Shop Work Order product boundary", () => {
     );
     expect(runtime).toContain(
       "Committed Field job punch was not replayable after reassignment.",
+    );
+    expect(runtime).toContain(
+      "Committed Field offline mutation was not replayable after reassignment.",
+    );
+    expect(runtime).toContain(
+      "Committed Field photo receipt was not replayable after reassignment.",
     );
     expect(runtime).toContain(
       "Field actor reached the offline mutation product core without its mature validation.",

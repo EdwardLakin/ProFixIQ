@@ -886,6 +886,56 @@ begin
 end;
 $function$;
 
+create or replace function private.job_photo_object_has_mutation_access(
+  p_name text
+) returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $function$
+declare
+  v_match text[];
+  v_work_order_id uuid;
+  v_work_order_line_id uuid;
+  v_shop_id uuid;
+begin
+  if auth.uid() is null then
+    return false;
+  end if;
+
+  v_match := regexp_match(
+    coalesce(p_name, ''),
+    '^wo/([0-9a-fA-F-]{36})/lines/([0-9a-fA-F-]{36})/([^/]+)$'
+  );
+  if v_match is null then
+    return false;
+  end if;
+
+  begin
+    v_work_order_id := v_match[1]::uuid;
+    v_work_order_line_id := v_match[2]::uuid;
+  exception when invalid_text_representation then
+    return false;
+  end;
+
+  select work_order.shop_id
+    into v_shop_id
+  from public.work_orders work_order
+  join public.work_order_lines line
+    on line.id = v_work_order_line_id
+   and line.work_order_id = work_order.id
+   and line.shop_id = work_order.shop_id
+  where work_order.id = v_work_order_id;
+
+  return v_shop_id is not null
+    and private.profixiq_current_actor_can_mutate_work_order_product(
+      v_shop_id,
+      v_work_order_id
+    );
+end;
+$function$;
+
 revoke all on function private.job_photo_object_has_product_access(text)
   from public, anon, authenticated, service_role;
 grant execute on function private.job_photo_object_has_product_access(text)
@@ -893,6 +943,10 @@ grant execute on function private.job_photo_object_has_product_access(text)
 revoke all on function private.job_photo_object_relationship_read_access(text)
   from public, anon, authenticated, service_role;
 grant execute on function private.job_photo_object_relationship_read_access(text)
+  to authenticated, service_role;
+revoke all on function private.job_photo_object_has_mutation_access(text)
+  from public, anon, authenticated, service_role;
+grant execute on function private.job_photo_object_has_mutation_access(text)
   to authenticated, service_role;
 
 drop policy if exists job_photos_product_select_boundary on storage.objects;
@@ -914,7 +968,17 @@ for insert
 to authenticated
 with check (
   bucket_id <> 'job-photos'
-  or private.job_photo_object_has_product_access(name)
+  or private.job_photo_object_has_mutation_access(name)
+);
+
+drop policy if exists job_photos_product_authorized_insert on storage.objects;
+create policy job_photos_product_authorized_insert
+on storage.objects
+for insert
+to authenticated
+with check (
+  bucket_id = 'job-photos'
+  and private.job_photo_object_has_mutation_access(name)
 );
 
 drop policy if exists job_photos_product_update_boundary on storage.objects;
@@ -2527,6 +2591,26 @@ declare
 begin
   if coalesce(auth.role(), '') = 'service_role'
      or public.profixiq_current_actor_has_shop_product_access(p_shop_id) then
+    return private.apply_offline_line_mutation_product_core(
+      p_shop_id, p_actor_user_id, p_operation_key, p_action_type,
+      p_work_order_line_id, p_payload
+    );
+  end if;
+
+  -- Preserve idempotent retries after a Field visit is reassigned. The receipt
+  -- must match the authenticated actor, operation, action, entity, and line;
+  -- the private core additionally validates the canonical payload hash.
+  if auth.uid() is not null
+     and exists (
+       select 1
+       from public.offline_mutation_receipts receipt
+       where receipt.shop_id = p_shop_id
+         and receipt.operation_key = p_operation_key
+         and receipt.actor_user_id = auth.uid()
+         and receipt.action_type = p_action_type
+         and receipt.entity_type = 'work_order_line'
+         and receipt.entity_id = p_work_order_line_id
+     ) then
     return private.apply_offline_line_mutation_product_core(
       p_shop_id, p_actor_user_id, p_operation_key, p_action_type,
       p_work_order_line_id, p_payload

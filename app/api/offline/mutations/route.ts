@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveWorkOrderProductAuthority } from "@/features/mobile/service/server/access";
 import { SHOP_OR_FIELD_PRODUCT_CAPABILITIES } from "@/features/shared/lib/product-access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type SupportedAction =
   | "update_work_order_line_notes"
@@ -94,38 +95,59 @@ export async function POST(request: NextRequest) {
   });
   if (!access.ok) return access.response;
 
-  const { data: line, error: lineError } = await access.supabase
-    .from("work_order_lines")
-    .select("work_order_id")
-    .eq("id", workOrderLineId)
+  // A durable actor/action/line receipt can outlive current Field assignment.
+  // The backing RPC still verifies the payload hash before replaying it.
+  const { data: receipt, error: receiptError } = await createAdminSupabase()
+    .from("offline_mutation_receipts")
+    .select("id")
     .eq("shop_id", access.profile.shop_id)
-    .maybeSingle<{ work_order_id: string | null }>();
-  if (lineError) {
+    .eq("operation_key", operationKey)
+    .eq("actor_user_id", access.authUserId)
+    .eq("action_type", actionType)
+    .eq("entity_type", "work_order_line")
+    .eq("entity_id", workOrderLineId)
+    .maybeSingle<{ id: string }>();
+  if (receiptError) {
     return NextResponse.json(
       { error: "Unable to authorize the saved mutation." },
       { status: 503 },
-    );
-  }
-  if (!line?.work_order_id) {
-    return NextResponse.json(
-      { error: "Work-order line not found." },
-      { status: 404 },
     );
   }
 
-  try {
-    const authority = await resolveWorkOrderProductAuthority(
-      access,
-      line.work_order_id,
-    );
-    if (!authority.authorized) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!receipt) {
+    const { data: line, error: lineError } = await access.supabase
+      .from("work_order_lines")
+      .select("work_order_id")
+      .eq("id", workOrderLineId)
+      .eq("shop_id", access.profile.shop_id)
+      .maybeSingle<{ work_order_id: string | null }>();
+    if (lineError) {
+      return NextResponse.json(
+        { error: "Unable to authorize the saved mutation." },
+        { status: 503 },
+      );
     }
-  } catch {
-    return NextResponse.json(
-      { error: "Unable to authorize the saved mutation." },
-      { status: 503 },
-    );
+    if (!line?.work_order_id) {
+      return NextResponse.json(
+        { error: "Work-order line not found." },
+        { status: 404 },
+      );
+    }
+
+    try {
+      const authority = await resolveWorkOrderProductAuthority(
+        access,
+        line.work_order_id,
+      );
+      if (!authority.authorized) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+    } catch {
+      return NextResponse.json(
+        { error: "Unable to authorize the saved mutation." },
+        { status: 503 },
+      );
+    }
   }
 
   const rpc = access.supabase as unknown as RpcClient;

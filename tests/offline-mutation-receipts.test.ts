@@ -41,6 +41,11 @@ describe("offline mutation receipts", () => {
     expect(offlineRoute).toContain(
       "requiredProductCapabilities: SHOP_OR_FIELD_PRODUCT_CAPABILITIES",
     );
+    expect(offlineRoute).toContain('from("offline_mutation_receipts")');
+    expect(offlineRoute).toContain('.eq("actor_user_id", access.authUserId)');
+    expect(offlineRoute.indexOf('from("offline_mutation_receipts")')).toBeLessThan(
+      offlineRoute.indexOf('from("work_order_lines")'),
+    );
     expect(punchRoute).toContain("requireShopScopedApiAccess");
     expect(punchRoute).toContain(
       "apply_canonical_offline_shift_punch_atomic",

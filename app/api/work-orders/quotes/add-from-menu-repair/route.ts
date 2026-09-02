@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { Database, Json } from "@shared/types/types/supabase";
 import {
   requireCanonicalShopOrFieldApiAccess,
-  resolveWorkOrderProductAuthority,
+  resolveWorkOrderProductMutationClient,
 } from "@/features/mobile/service/server/access";
 import { getActiveMenuRepairPricingSnapshot } from "@/features/parts/server/getActiveMenuRepairPricingSnapshot";
 import { normalizeLaborHoursInput } from "@/features/work-orders/lib/pricing/resolveWorkOrderLinePricing";
@@ -196,7 +196,7 @@ export async function POST(req: Request) {
     }
 
     const shopId = access.profile.shop_id;
-    const productAuthority = await resolveWorkOrderProductAuthority(
+    const productAuthority = await resolveWorkOrderProductMutationClient(
       access,
       workOrderId,
     );
@@ -410,7 +410,8 @@ export async function POST(req: Request) {
       declined_at: null,
     };
 
-    const { data: created, error: createErr } = await supabase
+    const mutationSupabase = productAuthority.mutationClient;
+    const { data: created, error: createErr } = await mutationSupabase
       .from("work_order_quote_lines")
       .insert(quoteRow)
       .select("id")
@@ -428,7 +429,7 @@ export async function POST(req: Request) {
     let persistedStage: string | null = stage;
     let persistedPartsVerificationRequired = partsVerificationRequired;
     if (reuseParts.length > 0) {
-      const partRequestResult = await persistReusePartRequest(supabase, {
+      const partRequestResult = await persistReusePartRequest(mutationSupabase, {
         shopId,
         workOrderId: workOrder.id,
         quoteLineId: created.id,
@@ -448,7 +449,7 @@ export async function POST(req: Request) {
       });
 
       if (partRequestResult.error) {
-        const { error: quoteCleanupError } = await supabase
+        const { error: quoteCleanupError } = await mutationSupabase
           .from("work_order_quote_lines")
           .delete()
           .eq("id", created.id)

@@ -90,6 +90,14 @@ describe("product boundary stabilization", () => {
     expect(evidence).toContain("resolveFleetActorContext");
     expect(evidence).toContain("canAccessPortalFleetWrappers");
     expect(offlineMutations).toContain("resolveWorkOrderProductAuthority");
+    expect(offlineMutations).toContain("createAdminSupabase");
+    expect(offlineMutations).toContain('from("offline_mutation_receipts")');
+    expect(offlineMutations).toContain(
+      '.eq("actor_user_id", access.authUserId)',
+    );
+    expect(
+      offlineMutations.indexOf('from("offline_mutation_receipts")'),
+    ).toBeLessThan(offlineMutations.indexOf('from("work_order_lines")'));
     expect(offlineBundle).toContain("listFieldOperatorAssignedWorkOrderIds");
     expect(offlineBundle).toContain("selectAuthorizedAssignedWorkOrderIds");
     expect(offlineBundleSelector).toContain(
@@ -357,6 +365,15 @@ describe("product boundary stabilization", () => {
       expect(read(canonicalSharedApi)).toContain(
         "requireCanonicalShopOrFieldApiAccess",
       );
+    }
+
+    for (const quoteCreationApi of [
+      "app/api/work-orders/quotes/add/route.ts",
+      "app/api/work-orders/quotes/add-from-menu-repair/route.ts",
+    ]) {
+      const source = read(quoteCreationApi);
+      expect(source).toContain("resolveWorkOrderProductMutationClient");
+      expect(source).toContain("mutationClient");
     }
 
     for (const sharedApi of [

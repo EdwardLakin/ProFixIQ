@@ -44,7 +44,8 @@ describe("inspection to canonical quote review lifecycle", () => {
   it("keeps Field quote creation bound to an authorized linked work order", () => {
     for (const route of [addQuoteRoute, addMenuRepairRoute]) {
       expect(route).toContain("requireCanonicalShopOrFieldApiAccess");
-      expect(route).toContain("resolveWorkOrderProductAuthority");
+      expect(route).toContain("resolveWorkOrderProductMutationClient");
+      expect(route).toContain("mutationClient");
     }
   });
 

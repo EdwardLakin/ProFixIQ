@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   requireCanonicalShopOrFieldApiAccess,
-  resolveWorkOrderProductAuthority,
+  resolveWorkOrderProductMutationClient,
 } from "@/features/mobile/service/server/access";
 import {
   createCanonicalQuoteLines,
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const productAuthority = await resolveWorkOrderProductAuthority(
+    const productAuthority = await resolveWorkOrderProductMutationClient(
       access,
       workOrderId,
     );
@@ -63,7 +63,7 @@ export async function POST(req: Request) {
     }
 
     const result = await createCanonicalQuoteLines({
-      supabase,
+      supabase: productAuthority.mutationClient,
       shopId: wo.shop_id,
       workOrderId,
       vehicleId: safeTrim(body?.vehicleId) || wo.vehicle_id || null,
