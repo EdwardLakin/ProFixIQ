@@ -960,6 +960,16 @@ using (
   or private.job_photo_object_has_product_access(name)
 );
 
+drop policy if exists job_photos_product_authorized_select on storage.objects;
+create policy job_photos_product_authorized_select
+on storage.objects
+for select
+to authenticated
+using (
+  bucket_id = 'job-photos'
+  and private.job_photo_object_has_mutation_access(name)
+);
+
 drop policy if exists job_photos_product_insert_boundary on storage.objects;
 create policy job_photos_product_insert_boundary
 on storage.objects

@@ -140,6 +140,9 @@ describe("Shop Work Order product boundary", () => {
       "private.job_photo_object_has_product_access(name)",
     );
     expect(source).toContain(
+      "create policy job_photos_product_authorized_select",
+    );
+    expect(source).toContain(
       "create policy job_photos_product_authorized_insert",
     );
     expect(source).toContain(

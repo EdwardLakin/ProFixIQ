@@ -913,13 +913,17 @@ begin
     select count(*)
     from public.work_order_media
     where work_order_id = '59500000-0000-4000-8000-000000000001'
-  ) <> 1 or (
+  ) <> 1 then
+    raise exception 'Shop Operations canonical media access was not preserved.';
+  end if;
+
+  if (
     select count(*)
     from storage.objects
     where bucket_id = 'job-photos'
       and name like 'wo/59500000-0000-4000-8000-000000000001/%'
   ) <> 1 then
-    raise exception 'Shop Operations evidence access was not preserved.';
+    raise exception 'Shop Operations job-photo object access was not preserved.';
   end if;
 
   select media.id into v_media_id
