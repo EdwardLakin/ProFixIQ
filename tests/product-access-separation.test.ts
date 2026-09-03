@@ -52,10 +52,24 @@ describe("dedicated product access surfaces", () => {
     expect(accessRoute).toContain("mustChangePassword");
     expect(routeGate).toContain("resolveFieldExistingSessionHref");
     expect(routeGate).toContain('router.replace(destination ?? "/mobile")');
-    expect(route).toContain('surface === "field" ? "local" : "global"');
+    expect(route).toContain('const rejectedSessionScope = "local" as const');
     expect(route).toContain(
       "supabase.auth.signOut({ scope: rejectedSessionScope })",
     );
+  });
+
+  it("keeps inactive owners inside a limited billing recovery surface", () => {
+    const route = read("app/api/auth/sign-in/route.ts");
+    const billingPage = read("app/account/billing/page.tsx");
+    const shopSignIn = read("features/auth/components/SignIn.tsx");
+    const mobileSignIn = read("app/mobile/sign-in/page.tsx");
+
+    expect(route).toContain("billingRecoveryDestination");
+    expect(route).toContain("resolveShopProductAccess");
+    expect(billingPage).toContain('allowRoles: ["owner", "admin"]');
+    expect(billingPage).toContain('requiredCapability: "canManageBilling"');
+    expect(shopSignIn).toContain('access === "shop_required"');
+    expect(mobileSignIn).toContain('access === "shop_required"');
   });
 
   it("forces existing Field sessions through password setup before routing", () => {
@@ -84,7 +98,9 @@ describe("dedicated product access surfaces", () => {
         { canConfigure: true, mustChangePassword: true },
         "/mobile/service",
       ),
-    ).toBe("/auth/set-password?redirect=%2Fmobile%2Fservice%2Fsetup");
+    ).toBe(
+      "/auth/set-password?redirect=%2Fmobile%2Fservice%2Fsetup",
+    );
 
     expect(resolveFieldExistingSessionHref({}, "/mobile/service")).toBeNull();
     expect(
@@ -127,9 +143,7 @@ describe("dedicated product access surfaces", () => {
         },
         "/mobile/service/setup",
       ),
-    ).toBe(
-      "/auth/set-password?redirect=%2Fmobile%2Fservice%2Fsetup",
-    );
+    ).toBe("/auth/set-password?redirect=%2Fmobile%2Fservice%2Fsetup");
 
     expect(
       resolveFieldExistingSessionHref(
