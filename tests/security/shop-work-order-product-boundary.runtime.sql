@@ -14,6 +14,8 @@ values
   ('59100000-0000-4000-8000-000000000008', 'product-null-tech@example.test', '{"full_name":"Product Null Tech"}'::jsonb),
   ('59100000-0000-4000-8000-000000000009', 'product-shop-tech@example.test', '{"full_name":"Product Shop Tech"}'::jsonb),
   ('59100000-0000-4000-8000-000000000014', 'product-fleet-shop-owner@example.test', '{"full_name":"Product Fleet Shop Owner"}'::jsonb),
+  ('59100000-0000-4000-8000-000000000012', 'product-imported-field@example.test', '{"full_name":"Product Imported Field"}'::jsonb),
+  ('59110000-0000-4000-8000-000000000012', 'product-imported-field-profile@example.test', '{"full_name":"Product Imported Field Profile"}'::jsonb),
   ('59110000-0000-4000-8000-000000000004', 'product-fleet-profile@example.test', '{"full_name":"Product Fleet Profile"}'::jsonb)
 on conflict (id) do nothing;
 
@@ -21,7 +23,10 @@ on conflict (id) do nothing;
 -- bootstrap profile for this imported actor before linking its canonical
 -- profile id back to the real authenticated user.
 delete from public.profiles
-where id = '59100000-0000-4000-8000-000000000004';
+where id in (
+  '59100000-0000-4000-8000-000000000004',
+  '59100000-0000-4000-8000-000000000012'
+);
 
 insert into public.profiles (id, user_id, role, full_name)
 values
@@ -34,6 +39,7 @@ values
   ('59100000-0000-4000-8000-000000000007', '59100000-0000-4000-8000-000000000007', 'owner', 'Product Read Only Owner'),
   ('59100000-0000-4000-8000-000000000008', '59100000-0000-4000-8000-000000000008', 'mechanic', 'Product Null Tech'),
   ('59100000-0000-4000-8000-000000000009', '59100000-0000-4000-8000-000000000009', 'mechanic', 'Product Shop Tech'),
+  ('59110000-0000-4000-8000-000000000012', '59100000-0000-4000-8000-000000000012', 'mechanic', 'Product Imported Field'),
   ('59100000-0000-4000-8000-000000000014', '59100000-0000-4000-8000-000000000014', 'owner', 'Product Fleet Shop Owner')
 on conflict (id) do update
 set user_id = excluded.user_id,
@@ -46,6 +52,10 @@ set user_id = excluded.user_id,
 update public.profiles
 set user_id = '59100000-0000-4000-8000-000000000004'
 where id = '59110000-0000-4000-8000-000000000004';
+
+update public.profiles
+set user_id = '59100000-0000-4000-8000-000000000012'
+where id = '59110000-0000-4000-8000-000000000012';
 
 insert into public.shops (
   id, owner_id, business_name, name, user_limit,
@@ -73,6 +83,7 @@ set shop_id = case id
   when '59100000-0000-4000-8000-000000000002'::uuid then '59200000-0000-4000-8000-000000000002'::uuid
   when '59100000-0000-4000-8000-000000000003'::uuid then '59200000-0000-4000-8000-000000000003'::uuid
   when '59110000-0000-4000-8000-000000000004'::uuid then '59200000-0000-4000-8000-000000000004'::uuid
+  when '59110000-0000-4000-8000-000000000012'::uuid then '59200000-0000-4000-8000-000000000002'::uuid
   when '59100000-0000-4000-8000-000000000014'::uuid then '59200000-0000-4000-8000-000000000004'::uuid
   when '59100000-0000-4000-8000-000000000005'::uuid then '59200000-0000-4000-8000-000000000005'::uuid
   when '59100000-0000-4000-8000-000000000006'::uuid then '59200000-0000-4000-8000-000000000006'::uuid
@@ -85,6 +96,7 @@ where id in (
   '59100000-0000-4000-8000-000000000002',
   '59100000-0000-4000-8000-000000000003',
   '59110000-0000-4000-8000-000000000004',
+  '59110000-0000-4000-8000-000000000012',
   '59100000-0000-4000-8000-000000000005',
   '59100000-0000-4000-8000-000000000006',
   '59100000-0000-4000-8000-000000000007',
@@ -203,6 +215,15 @@ select
 from public.work_order_lines line
 join public.shops shop on shop.id = line.shop_id
 where line.id::text like '59600000-0000-4000-8000-%';
+
+insert into public.work_order_line_technicians (
+  work_order_line_id, technician_id, assigned_by
+)
+values (
+  '59600000-0000-4000-8000-000000000002',
+  '59110000-0000-4000-8000-000000000012',
+  '59100000-0000-4000-8000-000000000002'
+);
 
 -- Seed a previously committed Field punch on the currently unlinked Work
 -- Order. The actor-owned receipt must remain replayable after reassignment,
@@ -501,10 +522,34 @@ set service_model = 'mobile',
     solo_mode = true,
     onboarding_completed_at = now();
 
+insert into public.mobile_service_settings (
+  shop_id, service_model, solo_mode, dispatch_enabled,
+  service_vehicles_enabled, field_operator_count_target,
+  onboarding_completed_at, configured_by
+)
+values (
+  '59200000-0000-4000-8000-000000000002',
+  'both', false, true, false, 1, now(),
+  '59100000-0000-4000-8000-000000000002'
+)
+on conflict (shop_id) do update
+set service_model = 'both',
+    solo_mode = false,
+    dispatch_enabled = true,
+    onboarding_completed_at = now();
+
 insert into public.mobile_field_operators (shop_id, profile_id, enabled)
 values (
   '59200000-0000-4000-8000-000000000003',
   '59100000-0000-4000-8000-000000000003',
+  true
+)
+on conflict (shop_id, profile_id) do update set enabled = true;
+
+insert into public.mobile_field_operators (shop_id, profile_id, enabled)
+values (
+  '59200000-0000-4000-8000-000000000002',
+  '59110000-0000-4000-8000-000000000012',
   true
 )
 on conflict (shop_id, profile_id) do update set enabled = true;
@@ -533,6 +578,14 @@ values
     'mobile',
     'working',
     '59100000-0000-4000-8000-000000000003'
+  ),
+  (
+    '59900000-0000-4000-8000-000000000002',
+    '59200000-0000-4000-8000-000000000002',
+    '59500000-0000-4000-8000-000000000002',
+    'mobile',
+    'working',
+    '59110000-0000-4000-8000-000000000012'
   ),
   (
     '59900000-0000-4000-8000-000000000005',
@@ -1576,6 +1629,82 @@ begin
      or v_replayed_result ->> 'workOrderId' is distinct from v_result ->> 'workOrderId'
      or coalesce((v_replayed_result ->> 'idempotent')::boolean, false) is not true then
     raise exception 'Field product wrapper broke mobile handoff idempotency.';
+  end if;
+
+  -- Imported Field identities authenticate with profiles.user_id while visits
+  -- and line assignments retain profiles.id. Exercise direct RLS and both
+  -- offline receipt writers with that split identity shape.
+  perform set_config(
+    'request.jwt.claim.sub',
+    '59100000-0000-4000-8000-000000000012',
+    true
+  );
+  perform set_config(
+    'request.jwt.claims',
+    '{"sub":"59100000-0000-4000-8000-000000000012","role":"authenticated"}',
+    true
+  );
+  if auth.uid() is distinct from
+       '59100000-0000-4000-8000-000000000012'::uuid then
+    raise exception 'Imported Field auth subject did not switch.';
+  end if;
+
+  select count(*) into v_count
+  from public.work_orders
+  where id = '59500000-0000-4000-8000-000000000002';
+  if v_count <> 1 then
+    raise exception 'Linked imported Field actor could not read its Work Order through financial RLS.';
+  end if;
+  select count(*) into v_count
+  from public.work_order_lines
+  where id = '59600000-0000-4000-8000-000000000002';
+  if v_count <> 1 then
+    raise exception 'Linked imported Field actor could not read its Work Order line through financial RLS.';
+  end if;
+  select count(*) into v_count
+  from public.work_order_quote_lines
+  where id = '59700000-0000-4000-8000-000000000002';
+  if v_count <> 1 then
+    raise exception 'Linked imported Field actor could not read its quote line through financial RLS.';
+  end if;
+
+  select public.apply_offline_line_mutation_atomic(
+    '59200000-0000-4000-8000-000000000002',
+    '59100000-0000-4000-8000-000000000012',
+    'product-boundary:imported-field-offline',
+    'update_work_order_line_notes',
+    '59600000-0000-4000-8000-000000000002',
+    '{"notes":"Imported Field offline note"}'::jsonb
+  ) into v_result;
+  if coalesce((v_result ->> 'idempotent')::boolean, true)
+     or v_result ->> 'action_type'
+       is distinct from 'update_work_order_line_notes' then
+    raise exception 'Imported Field actor could not write a fresh offline note.';
+  end if;
+
+  select public.record_offline_photo_receipt_atomic(
+    '59200000-0000-4000-8000-000000000002',
+    '59100000-0000-4000-8000-000000000012',
+    'product-boundary:imported-field-photo',
+    '59600000-0000-4000-8000-000000000002',
+    '{"path":"wo/59500000-0000-4000-8000-000000000002/lines/59600000-0000-4000-8000-000000000002/imported-field.jpg"}'::jsonb
+  ) into v_result;
+  if coalesce((v_result ->> 'idempotent')::boolean, true)
+     or v_result ->> 'action_type' is distinct from 'upload_job_photo' then
+    raise exception 'Imported Field actor could not write a fresh photo receipt.';
+  end if;
+
+  select count(*) into v_count
+  from public.offline_mutation_receipts receipt
+  where receipt.shop_id = '59200000-0000-4000-8000-000000000002'
+    and receipt.operation_key in (
+      'product-boundary:imported-field-offline',
+      'product-boundary:imported-field-photo'
+    )
+    and receipt.actor_user_id =
+      '59100000-0000-4000-8000-000000000012';
+  if v_count <> 2 then
+    raise exception 'Imported Field receipts did not preserve the authenticated subject.';
   end if;
 
   -- Fleet can read only the Work Order linked to its own service request.

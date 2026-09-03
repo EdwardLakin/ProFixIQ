@@ -18,7 +18,12 @@ describe("Shop Work Order product boundary", () => {
     expect(source).toContain("'ready_to_invoice'");
     expect(source).toContain("'invoiced'");
     expect(source).toContain("'cancelled'");
-    expect(source).toMatch(
+    expect(source).toContain("do $work_order_status_contract$");
+    expect(source).toContain(
+      "Unexpected Work Order statuses require an explicit compatibility mapping",
+    );
+    expect(source).toContain("detail = 'Unexpected statuses: '");
+    expect(source).not.toMatch(
       /add constraint work_orders_status_check[\s\S]+?\) not valid;/,
     );
   });
@@ -106,7 +111,7 @@ describe("Shop Work Order product boundary", () => {
       }
     }
 
-    expect(source.match(/as restrictive/g)).toHaveLength(27);
+    expect(source.match(/as restrictive/g)).toHaveLength(30);
     expect(source).toContain(
       "public.profixiq_current_actor_has_shop_product_access(shop_id)",
     );
@@ -141,6 +146,18 @@ describe("Shop Work Order product boundary", () => {
     expect(source).toMatch(
       /create policy work_order_quote_lines_estimate_select[\s\S]+?can_select_estimate_quote_line[\s\S]+?profixiq_current_actor_has_field_work_order_access[\s\S]+?profixiq_current_actor_has_fleet_work_order_access[\s\S]+?\);/,
     );
+    for (const policy of [
+      "work_orders_financial_capability_select",
+      "work_order_lines_financial_capability_select",
+      "work_order_quote_lines_financial_capability_select",
+    ]) {
+      expect(source).toContain(`create policy ${policy}`);
+    }
+    expect(
+      source.match(
+        /or private\.profixiq_current_actor_has_field_work_order_access/g,
+      )?.length,
+    ).toBeGreaterThanOrEqual(5);
   });
 
   it("product-scopes canonical media and grants only mutation-authorized job-photo uploads", async () => {
@@ -386,6 +403,19 @@ describe("Shop Work Order product boundary", () => {
     );
     expect(runtime).toContain(
       "Committed Field photo receipt was not replayable after reassignment.",
+    );
+    expect(source).toContain("v_actor_profile_id uuid;");
+    expect(source).toContain("profile.user_id = p_actor_user_id");
+    expect(source).toContain(
+      "assignment.technician_id = v_actor_profile_id",
+    );
+    expect(source).toContain(
+      "create or replace function public.record_offline_photo_receipt_atomic",
+    );
+    expect(runtime).toContain("product-boundary:imported-field-offline");
+    expect(runtime).toContain("product-boundary:imported-field-photo");
+    expect(runtime).toContain(
+      "Imported Field receipts did not preserve the authenticated subject.",
     );
     expect(runtime).toContain(
       "Field actor reached the offline mutation product core without its mature validation.",

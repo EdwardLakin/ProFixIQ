@@ -5,10 +5,61 @@ set local statement_timeout = '5min';
 
 -- The generated baseline still carries the original eight-value Work Order
 -- status constraint, while established lifecycle RPCs persist newer canonical
--- states such as ready_to_invoice, invoiced, and cancelled. Preserve the full
--- legacy vocabulary used by existing shops and admit the canonical states.
--- NOT VALID avoids retroactively rejecting an older production-only alias;
--- PostgreSQL still enforces this contract for every new or updated row.
+-- states such as ready_to_invoice, invoiced, and cancelled. Production was
+-- inventoried before this migration was finalized and every live value is in
+-- this compatibility vocabulary. Fail with the exact unexpected values in any
+-- divergent environment instead of leaving a latent NOT VALID constraint.
+do $work_order_status_contract$
+declare
+  v_unexpected text[];
+begin
+  select pg_catalog.array_agg(candidate.status order by candidate.status)
+    into v_unexpected
+  from (
+    select distinct work_order.status::text as status
+    from public.work_orders work_order
+    where work_order.status is not null
+      and not (
+        work_order.status::text = any (array[
+          'new',
+          'awaiting',
+          'pending',
+          'awaiting_inspection',
+          'inspection',
+          'estimate',
+          'recommended',
+          'awaiting_approval',
+          'quote_sent',
+          'approved',
+          'authorized',
+          'in_progress',
+          'active',
+          'waiting_parts',
+          'on_hold',
+          'waiting',
+          'paused',
+          'ready_to_invoice',
+          'ready',
+          'queued',
+          'planned',
+          'invoiced',
+          'completed',
+          'done',
+          'cancelled',
+          'canceled'
+        ]::text[])
+      )
+  ) candidate;
+
+  if v_unexpected is not null then
+    raise exception using
+      errcode = '23514',
+      message = 'Unexpected Work Order statuses require an explicit compatibility mapping before constraint enforcement.',
+      detail = 'Unexpected statuses: ' || pg_catalog.array_to_string(v_unexpected, ', ');
+  end if;
+end
+$work_order_status_contract$;
+
 alter table public.work_orders
   drop constraint if exists work_orders_status_check;
 alter table public.work_orders
@@ -42,7 +93,7 @@ alter table public.work_orders
       'cancelled',
       'canceled'
     ])
-  ) not valid;
+  );
 
 -- Fleet and Customer Portal profiles are stored in the same profile relation as
 -- Shop staff.  Keep the canonical staff predicate role-aware so the financial
@@ -430,6 +481,68 @@ using (
     work_order_id
   )
   or private.profixiq_current_actor_has_fleet_work_order_access(
+    shop_id,
+    work_order_id
+  )
+);
+
+-- Field operators are durable Shop profiles, so the earlier restrictive
+-- financial policies would otherwise veto their relationship-scoped reads
+-- even after the permissive Field policies match. Compose only the canonical
+-- linked-visit predicate into those mixed operational/financial relations;
+-- financial values remain served through the existing role-shaped projection.
+drop policy if exists work_orders_financial_capability_select
+  on public.work_orders;
+create policy work_orders_financial_capability_select
+on public.work_orders
+as restrictive
+for select
+to authenticated
+using (
+  not public.workspace_actor_is_staff_for_shop(shop_id)
+  or public.workspace_actor_has_capability(
+    shop_id,
+    'work_order.financial.sell.view'
+  )
+  or public.workspace_actor_has_capability(shop_id, 'work_order.invoice.view')
+  or private.profixiq_current_actor_has_field_work_order_access(shop_id, id)
+);
+
+drop policy if exists work_order_lines_financial_capability_select
+  on public.work_order_lines;
+create policy work_order_lines_financial_capability_select
+on public.work_order_lines
+as restrictive
+for select
+to authenticated
+using (
+  not public.workspace_actor_is_staff_for_shop(shop_id)
+  or public.workspace_actor_has_capability(
+    shop_id,
+    'work_order.financial.sell.view'
+  )
+  or public.workspace_actor_has_capability(shop_id, 'work_order.invoice.view')
+  or private.profixiq_current_actor_has_field_work_order_access(
+    shop_id,
+    work_order_id
+  )
+);
+
+drop policy if exists work_order_quote_lines_financial_capability_select
+  on public.work_order_quote_lines;
+create policy work_order_quote_lines_financial_capability_select
+on public.work_order_quote_lines
+as restrictive
+for select
+to authenticated
+using (
+  not public.workspace_actor_is_staff_for_shop(shop_id)
+  or public.workspace_actor_has_capability(
+    shop_id,
+    'work_order.financial.sell.view'
+  )
+  or public.workspace_actor_has_capability(shop_id, 'work_order.invoice.view')
+  or private.profixiq_current_actor_has_field_work_order_access(
     shop_id,
     work_order_id
   )
@@ -3345,6 +3458,400 @@ revoke all on function private.apply_offline_line_mutation_product_core(
   uuid, uuid, text, text, uuid, jsonb
 ) from public, anon, authenticated, service_role;
 
+-- Offline callers send the authenticated subject, while assignments reference
+-- the canonical profile id. Resolve both identity shapes for authorization and
+-- continue recording the auth subject in the durable receipt.
+create or replace function private.apply_offline_line_mutation_product_core(
+  p_shop_id uuid,
+  p_actor_user_id uuid,
+  p_operation_key text,
+  p_action_type text,
+  p_work_order_line_id uuid,
+  p_payload jsonb
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_line public.work_order_lines%rowtype;
+  v_actor_profile_id uuid;
+  v_role text;
+  v_existing public.offline_mutation_receipts%rowtype;
+  v_receipt_id uuid;
+  v_payload jsonb := coalesce(p_payload, '{}'::jsonb);
+  v_payload_hash text := pg_catalog.encode(
+    extensions.digest(coalesce(p_payload, '{}'::jsonb)::text, 'sha256'),
+    'hex'
+  );
+  v_base_updated_at timestamptz;
+  v_result jsonb;
+begin
+  if auth.uid() is not null and auth.uid() <> p_actor_user_id then
+    raise exception using
+      errcode = 'P0001',
+      message = 'Authenticated actor does not match the mutation actor.';
+  end if;
+  if nullif(pg_catalog.btrim(p_operation_key), '') is null
+     or pg_catalog.length(p_operation_key) > 240 then
+    raise exception using
+      errcode = 'P0001',
+      message = 'A stable operation key is required.';
+  end if;
+  if p_action_type not in (
+    'update_work_order_line_notes',
+    'save_story_draft'
+  ) then
+    raise exception using
+      errcode = 'P0001',
+      message = 'Unsupported offline line mutation.';
+  end if;
+
+  select receipt.*
+    into v_existing
+  from public.offline_mutation_receipts receipt
+  where receipt.shop_id = p_shop_id
+    and receipt.operation_key = p_operation_key;
+  if found then
+    if v_existing.action_type <> p_action_type
+       or v_existing.payload_hash <> v_payload_hash then
+      raise exception using
+        errcode = 'P0001',
+        message = 'IDEMPOTENCY_KEY_REUSE: operation key belongs to different mutation data.';
+    end if;
+    return v_existing.result
+      || pg_catalog.jsonb_build_object(
+        'idempotent', true,
+        'receipt_id', v_existing.id
+      );
+  end if;
+
+  select profile.id, pg_catalog.lower(coalesce(profile.role::text, ''))
+    into v_actor_profile_id, v_role
+  from public.profiles profile
+  where profile.shop_id = p_shop_id
+    and (
+      profile.id = p_actor_user_id
+      or profile.user_id = p_actor_user_id
+    )
+  order by (profile.id = p_actor_user_id) desc,
+           profile.updated_at desc nulls last,
+           profile.id
+  limit 1;
+  if not found then
+    raise exception using
+      errcode = 'P0001',
+      message = 'Actor is not available for this shop.';
+  end if;
+
+  select line.*
+    into v_line
+  from public.work_order_lines line
+  where line.id = p_work_order_line_id
+    and line.shop_id = p_shop_id
+  for update;
+  if not found then
+    raise exception using
+      errcode = 'P0001',
+      message = 'Work-order line not found for shop.';
+  end if;
+  if v_line.voided_at is not null
+     or pg_catalog.lower(coalesce(v_line.status::text, '')) not in (
+       'awaiting',
+       'assigned',
+       'queued',
+       'approved',
+       'active',
+       'in_progress',
+       'on_hold',
+       'paused',
+       'waiting_parts'
+     ) then
+    raise exception using
+      errcode = 'P0001',
+      message = 'Work-order line is not active.';
+  end if;
+  if v_role not in (
+       'owner',
+       'admin',
+       'manager',
+       'advisor',
+       'service',
+       'lead_hand',
+       'lead hand',
+       'leadhand',
+       'foreman'
+     )
+     and v_line.assigned_tech_id is distinct from v_actor_profile_id
+     and not exists (
+       select 1
+       from public.work_order_line_technicians assignment
+       where assignment.work_order_line_id = p_work_order_line_id
+         and assignment.technician_id = v_actor_profile_id
+     ) then
+    raise exception using
+      errcode = 'P0001',
+      message = 'Actor is not assigned to this work-order line.';
+  end if;
+
+  if nullif(pg_catalog.btrim(v_payload ->> 'baseUpdatedAt'), '') is not null then
+    begin
+      v_base_updated_at := (v_payload ->> 'baseUpdatedAt')::timestamptz;
+    exception when invalid_datetime_format then
+      raise exception using
+        errcode = 'P0001',
+        message = 'Invalid offline base version.';
+    end;
+    if v_line.updated_at is distinct from v_base_updated_at then
+      raise exception using
+        errcode = 'P0001',
+        message = 'OFFLINE_VERSION_CONFLICT: this job changed on another device. Review the server state before retrying.';
+    end if;
+  end if;
+
+  if p_action_type = 'update_work_order_line_notes' then
+    update public.work_order_lines
+    set technician_notes = coalesce(v_payload ->> 'notes', ''),
+        updated_at = pg_catalog.now()
+    where id = p_work_order_line_id
+      and shop_id = p_shop_id;
+  else
+    update public.work_order_lines
+    set cause = coalesce(v_payload ->> 'cause', ''),
+        correction = coalesce(v_payload ->> 'correction', ''),
+        updated_at = pg_catalog.now()
+    where id = p_work_order_line_id
+      and shop_id = p_shop_id;
+  end if;
+
+  v_result := pg_catalog.jsonb_build_object(
+    'ok', true,
+    'idempotent', false,
+    'action_type', p_action_type,
+    'work_order_id', v_line.work_order_id,
+    'work_order_line_id', p_work_order_line_id,
+    'completed_at', pg_catalog.now()
+  );
+  insert into public.offline_mutation_receipts(
+    shop_id,
+    actor_user_id,
+    operation_key,
+    action_type,
+    payload_hash,
+    entity_type,
+    entity_id,
+    result
+  ) values (
+    p_shop_id,
+    p_actor_user_id,
+    p_operation_key,
+    p_action_type,
+    v_payload_hash,
+    'work_order_line',
+    p_work_order_line_id,
+    v_result
+  )
+  returning id into v_receipt_id;
+
+  return v_result
+    || pg_catalog.jsonb_build_object('receipt_id', v_receipt_id);
+exception when unique_violation then
+  select receipt.*
+    into v_existing
+  from public.offline_mutation_receipts receipt
+  where receipt.shop_id = p_shop_id
+    and receipt.operation_key = p_operation_key;
+  if found
+     and v_existing.action_type = p_action_type
+     and v_existing.payload_hash = v_payload_hash then
+    return v_existing.result
+      || pg_catalog.jsonb_build_object(
+        'idempotent', true,
+        'receipt_id', v_existing.id
+      );
+  end if;
+  raise exception using
+    errcode = 'P0001',
+    message = 'IDEMPOTENCY_KEY_REUSE: operation key belongs to different mutation data.';
+end;
+$function$;
+
+create or replace function public.record_offline_photo_receipt_atomic(
+  p_shop_id uuid,
+  p_actor_user_id uuid,
+  p_operation_key text,
+  p_work_order_line_id uuid,
+  p_payload jsonb
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_line record;
+  v_actor_profile_id uuid;
+  v_role text;
+  v_existing public.offline_mutation_receipts%rowtype;
+  v_receipt_id uuid;
+  v_payload jsonb := coalesce(p_payload, '{}'::jsonb);
+  v_payload_hash text := pg_catalog.encode(
+    extensions.digest(coalesce(p_payload, '{}'::jsonb)::text, 'sha256'),
+    'hex'
+  );
+  v_result jsonb;
+begin
+  if auth.uid() is not null and auth.uid() <> p_actor_user_id then
+    raise exception using
+      errcode = 'P0001',
+      message = 'Authenticated actor does not match the mutation actor.';
+  end if;
+  if nullif(pg_catalog.btrim(p_operation_key), '') is null
+     or pg_catalog.length(p_operation_key) > 240 then
+    raise exception using
+      errcode = 'P0001',
+      message = 'A stable operation key is required.';
+  end if;
+
+  select receipt.*
+    into v_existing
+  from public.offline_mutation_receipts receipt
+  where receipt.shop_id = p_shop_id
+    and receipt.operation_key = p_operation_key;
+  if found then
+    if v_existing.action_type <> 'upload_job_photo'
+       or v_existing.payload_hash <> v_payload_hash then
+      raise exception using
+        errcode = 'P0001',
+        message = 'IDEMPOTENCY_KEY_REUSE: operation key belongs to different mutation data.';
+    end if;
+    return v_existing.result
+      || pg_catalog.jsonb_build_object(
+        'idempotent', true,
+        'receipt_id', v_existing.id
+      );
+  end if;
+
+  select profile.id, pg_catalog.lower(coalesce(profile.role::text, ''))
+    into v_actor_profile_id, v_role
+  from public.profiles profile
+  where profile.shop_id = p_shop_id
+    and (
+      profile.id = p_actor_user_id
+      or profile.user_id = p_actor_user_id
+    )
+  order by (profile.id = p_actor_user_id) desc,
+           profile.updated_at desc nulls last,
+           profile.id
+  limit 1;
+  if not found then
+    raise exception using
+      errcode = 'P0001',
+      message = 'Actor is not available for this shop.';
+  end if;
+
+  select line.work_order_id, line.shop_id, line.assigned_tech_id
+    into v_line
+  from public.work_order_lines line
+  where line.id = p_work_order_line_id
+    and line.shop_id = p_shop_id;
+  if not found then
+    raise exception using
+      errcode = 'P0001',
+      message = 'Work-order line not found for shop.';
+  end if;
+  if v_role not in (
+       'owner',
+       'admin',
+       'manager',
+       'advisor',
+       'service',
+       'lead_hand',
+       'lead hand',
+       'leadhand',
+       'foreman'
+     )
+     and v_line.assigned_tech_id is distinct from v_actor_profile_id
+     and not exists (
+       select 1
+       from public.work_order_line_technicians assignment
+       where assignment.work_order_line_id = p_work_order_line_id
+         and assignment.technician_id = v_actor_profile_id
+     ) then
+    raise exception using
+      errcode = 'P0001',
+      message = 'Actor is not assigned to this work-order line.';
+  end if;
+  if nullif(v_payload ->> 'path', '') is null
+     or pg_catalog.strpos(
+       v_payload ->> 'path',
+       'wo/' || v_line.work_order_id::text
+         || '/lines/' || p_work_order_line_id::text || '/'
+     ) <> 1 then
+    raise exception using
+      errcode = 'P0001',
+      message = 'Photo storage path does not match the work-order line.';
+  end if;
+
+  v_result := pg_catalog.jsonb_build_object(
+    'ok', true,
+    'idempotent', false,
+    'action_type', 'upload_job_photo',
+    'work_order_id', v_line.work_order_id,
+    'work_order_line_id', p_work_order_line_id,
+    'path', v_payload ->> 'path',
+    'completed_at', pg_catalog.now()
+  );
+  insert into public.offline_mutation_receipts(
+    shop_id,
+    actor_user_id,
+    operation_key,
+    action_type,
+    payload_hash,
+    entity_type,
+    entity_id,
+    result
+  ) values (
+    p_shop_id,
+    p_actor_user_id,
+    p_operation_key,
+    'upload_job_photo',
+    v_payload_hash,
+    'work_order_line',
+    p_work_order_line_id,
+    v_result
+  )
+  returning id into v_receipt_id;
+
+  return v_result
+    || pg_catalog.jsonb_build_object('receipt_id', v_receipt_id);
+exception when unique_violation then
+  select receipt.*
+    into v_existing
+  from public.offline_mutation_receipts receipt
+  where receipt.shop_id = p_shop_id
+    and receipt.operation_key = p_operation_key;
+  if found
+     and v_existing.action_type = 'upload_job_photo'
+     and v_existing.payload_hash = v_payload_hash then
+    return v_existing.result
+      || pg_catalog.jsonb_build_object(
+        'idempotent', true,
+        'receipt_id', v_existing.id
+      );
+  end if;
+  raise exception using
+    errcode = 'P0001',
+    message = 'IDEMPOTENCY_KEY_REUSE: operation key belongs to different mutation data.';
+end;
+$function$;
+
+revoke all on function public.record_offline_photo_receipt_atomic(
+  uuid, uuid, text, uuid, jsonb
+) from public, anon, authenticated, service_role;
+grant execute on function public.record_offline_photo_receipt_atomic(
+  uuid, uuid, text, uuid, jsonb
+) to authenticated, service_role;
+
 create function public.apply_offline_line_mutation_atomic(
   p_shop_id uuid,
   p_actor_user_id uuid,
@@ -3578,6 +4085,7 @@ begin
   foreach v_signature in array array[
     'public.apply_job_punch_transition_atomic(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)'::regprocedure,
     'public.apply_offline_line_mutation_atomic(uuid,uuid,text,text,uuid,jsonb)'::regprocedure,
+    'public.record_offline_photo_receipt_atomic(uuid,uuid,text,uuid,jsonb)'::regprocedure,
     'public.parts_attach_inventory_to_request_item_atomic(uuid,uuid)'::regprocedure,
     'public.parts_create_and_attach_inventory_atomic(uuid,text,text,text,text,text,text,numeric,numeric,numeric,uuid,text)'::regprocedure
   ]
