@@ -62,7 +62,8 @@ values
   ('72400000-0000-4000-8000-000000000001', '72200000-0000-4000-8000-000000000001', '72300000-0000-4000-8000-000000000001', 'job', 'in_progress', 'Assign and clear', null),
   ('72400000-0000-4000-8000-000000000002', '72200000-0000-4000-8000-000000000001', '72300000-0000-4000-8000-000000000001', 'job', 'in_progress', 'Stale edit', null),
   ('72400000-0000-4000-8000-000000000003', '72200000-0000-4000-8000-000000000001', '72300000-0000-4000-8000-000000000001', 'job', 'in_progress', 'Inactive technician', null),
-  ('72400000-0000-4000-8000-000000000004', '72200000-0000-4000-8000-000000000001', '72300000-0000-4000-8000-000000000001', 'job', 'in_progress', 'Legacy-only ambiguity', '72100000-0000-4000-8000-000000000002');
+  ('72400000-0000-4000-8000-000000000004', '72200000-0000-4000-8000-000000000001', '72300000-0000-4000-8000-000000000001', 'job', 'in_progress', 'Legacy-only ambiguity', '72100000-0000-4000-8000-000000000002'),
+  ('72400000-0000-4000-8000-000000000005', '72200000-0000-4000-8000-000000000001', '72300000-0000-4000-8000-000000000001', 'job', 'in_progress', 'Legacy-only explicit reassignment', '72100000-0000-4000-8000-000000000002');
 
 do $assignment_contract$
 declare
@@ -72,6 +73,24 @@ declare
   v_report jsonb;
   v_bulk jsonb;
 begin
+  if exists (
+    select 1
+    from pg_trigger
+    where tgrelid = 'public.work_order_lines'::regclass
+      and tgname in (
+        'trg_sync_work_order_line_assignee',
+        'trg_wol_sync_assigned_to'
+      )
+      and not tgisinternal
+  ) then
+    raise exception 'A retired legacy assignment mirror trigger is still active.';
+  end if;
+
+  if to_regprocedure('public.sync_work_order_line_assignee()') is not null
+     or to_regprocedure('public.fn_wol_sync_assigned_to()') is not null then
+    raise exception 'A retired legacy assignment mirror function is still installed.';
+  end if;
+
   if has_function_privilege(
     'authenticated',
     'public.mutate_work_order_line_assignment_atomic(uuid,uuid,uuid,uuid,text,text,timestamptz)',
@@ -216,6 +235,28 @@ begin
   );
   if not v_report @> '[{"work_order_line_id":"72400000-0000-4000-8000-000000000004","issue_codes":["legacy_only_assignment"]}]'::jsonb then
     raise exception 'The report did not preserve the legacy-only ambiguity.';
+  end if;
+
+  perform public.mutate_work_order_line_assignment_atomic(
+    '72200000-0000-4000-8000-000000000001',
+    '72400000-0000-4000-8000-000000000005',
+    '72100000-0000-4000-8000-000000000003',
+    '72100000-0000-4000-8000-000000000001',
+    'set_primary',
+    'runtime:replace-legacy-primary',
+    null
+  );
+  if not exists (
+    select 1
+    from public.work_order_lines line
+    join public.work_order_line_technicians assignment
+      on assignment.work_order_line_id = line.id
+     and assignment.technician_id = line.assigned_tech_id
+    where line.id = '72400000-0000-4000-8000-000000000005'
+      and line.assigned_tech_id = '72100000-0000-4000-8000-000000000003'
+      and line.assigned_to is null
+  ) then
+    raise exception 'Explicit assignment did not replace the legacy-only mirror.';
   end if;
 
   v_bulk := public.assign_work_order_primary_technician_bulk_atomic(
