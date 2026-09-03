@@ -1585,16 +1585,42 @@ begin
     '{"sub":"59100000-0000-4000-8000-000000000004","role":"authenticated"}',
     true
   );
-  select count(*) into v_count
-  from public.work_orders
-  where shop_id = '59200000-0000-4000-8000-000000000004';
-  if v_count <> 1 then
-    raise exception 'Fleet actor did not receive exactly its linked Work Order.';
+  if auth.uid() is distinct from
+       '59100000-0000-4000-8000-000000000004'::uuid then
+    raise exception 'Fleet auth subject did not switch: uid=%, scalar=%, claims=%',
+      auth.uid(),
+      current_setting('request.jwt.claim.sub', true),
+      current_setting('request.jwt.claims', true);
+  end if;
+  if not public.profixiq_shop_has_product_access(
+    '59200000-0000-4000-8000-000000000004',
+    'fleet_maintenance'
+  ) then
+    raise exception 'Fleet actor did not receive its Shop Fleet entitlement.';
   end if;
   if not public.profixiq_fleet_has_product_access(
     '59a00000-0000-4000-8000-000000000004'
   ) then
     raise exception 'Imported Fleet profile did not resolve its canonical membership entitlement.';
+  end if;
+  if not private.profixiq_current_actor_has_fleet_work_order_access(
+    '59200000-0000-4000-8000-000000000004',
+    '59500000-0000-4000-8000-000000000004'
+  ) then
+    raise exception 'Fleet actor did not resolve its linked Work Order relationship.';
+  end if;
+  if private.profixiq_current_actor_has_fleet_work_order_access(
+    '59200000-0000-4000-8000-000000000004',
+    '59500000-0000-4000-8000-000000000014'
+  ) then
+    raise exception 'Fleet actor resolved an unrelated Work Order relationship.';
+  end if;
+  select count(*) into v_count
+  from public.work_orders
+  where shop_id = '59200000-0000-4000-8000-000000000004';
+  if v_count <> 1 then
+    raise exception 'Fleet actor received % Work Orders instead of exactly its linked Work Order.',
+      v_count;
   end if;
   select count(*) into v_count
   from public.work_order_lines

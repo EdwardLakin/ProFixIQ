@@ -265,6 +265,13 @@ describe("Shop Work Order product boundary", () => {
     expect(runtime).toContain(
       "Trusted wrappers may populate the legacy scalar subject",
     );
+    expect(runtime).toContain("Fleet auth subject did not switch:");
+    expect(runtime).toContain(
+      "Fleet actor did not resolve its linked Work Order relationship.",
+    );
+    expect(runtime).toContain(
+      "Fleet actor resolved an unrelated Work Order relationship.",
+    );
     expect(runtime).toContain("Product Field Attach Part");
     expect(runtime).toContain("sqlerrm = 'WORK_ORDER_MEDIA_SCOPE_MISMATCH'");
     expect(
