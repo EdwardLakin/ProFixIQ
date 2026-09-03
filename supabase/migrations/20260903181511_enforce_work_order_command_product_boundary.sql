@@ -206,7 +206,7 @@ begin
       perform 1
       from public.shops shop
       where shop.id = p_shop_id
-      for update nowait;
+      for share nowait;
       if not found then
         raise exception using errcode = 'P0001', message = 'Shop not found.';
       end if;
@@ -229,13 +229,13 @@ begin
         perform 1
         from public.mobile_service_settings settings
         where settings.shop_id = p_shop_id
-        for update nowait;
+        for share nowait;
 
         perform 1
         from public.mobile_field_operators operator
         where operator.shop_id = p_shop_id
           and operator.profile_id = v_profile_id
-        for update nowait;
+        for share nowait;
 
         v_field_entitled := public.mobile_profile_has_field_service_access(
           p_shop_id,
@@ -415,7 +415,7 @@ begin
       perform 1
       from public.shops shop
       where shop.id = p_shop_id
-      for update nowait;
+      for share nowait;
       if not found then
         return false;
       end if;
@@ -435,13 +435,13 @@ begin
       perform 1
       from public.mobile_service_settings settings
       where settings.shop_id = p_shop_id
-      for update nowait;
+      for share nowait;
 
       perform 1
       from public.mobile_field_operators operator
       where operator.shop_id = p_shop_id
         and operator.profile_id = p_profile_id
-      for update nowait;
+      for share nowait;
 
       if public.mobile_profile_has_field_service_access(
         p_shop_id,

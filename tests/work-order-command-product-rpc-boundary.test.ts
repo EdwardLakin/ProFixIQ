@@ -192,6 +192,7 @@ describe("Work Order command product RPC boundary", () => {
     expect(shopLock).toBeLessThan(shopDecision);
     expect(fieldSettingsLock).toBeGreaterThan(shopDecision);
     expect(fieldSettingsLock).toBeLessThan(fieldDecision);
+    expect(migration.match(/for share nowait;/g)).toHaveLength(6);
   });
 
   it("requires Field technicians to own the line or active labor segment", () => {
