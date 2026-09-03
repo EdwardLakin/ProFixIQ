@@ -15,6 +15,13 @@ const triggerRetirementMigration = fs.readFileSync(
   ),
   "utf8",
 );
+const functionRetirementMigration = fs.readFileSync(
+  path.join(
+    process.cwd(),
+    "supabase/migrations/20260903161756_retire_orphaned_assignment_mirror_functions.sql",
+  ),
+  "utf8",
+);
 const runtime = fs.readFileSync(
   path.join(
     process.cwd(),
@@ -161,6 +168,16 @@ describe("PFX-004 atomic assignment SQL contract", () => {
     expect(runtime).toContain(
       "A retired legacy assignment mirror trigger is still active.",
     );
+  });
+
+  it("retires the dependency-free legacy trigger functions in a forward migration", () => {
+    expect(functionRetirementMigration).toContain(
+      "drop function if exists public.sync_work_order_line_assignee()",
+    );
+    expect(functionRetirementMigration).toContain(
+      "drop function if exists public.fn_wol_sync_assigned_to()",
+    );
+    expect(functionRetirementMigration).not.toContain("cascade");
   });
 
   it("does not create labor, payroll, or notification side effects", () => {

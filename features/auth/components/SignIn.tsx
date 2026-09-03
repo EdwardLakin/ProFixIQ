@@ -15,6 +15,7 @@ import { navigateAfterAuthentication } from "@/features/auth/lib/postAuthNavigat
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 import { signInWithIdentifier } from "@/features/auth/lib/signInClient";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { ACCOUNT_BILLING_RECOVERY_HREF } from "@/features/shared/lib/product-access";
 import { claimStripeAcquisitionAfterAuth } from "@/features/stripe/lib/client/claim-acquisition";
 import {
   normalizeProductAcquisitionSurface,
@@ -119,7 +120,11 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
   const [error, setError] = useState(() =>
     searchParams.get("billing_link_error") === "1"
       ? "We couldn't securely link that checkout. Retry from the same checkout confirmation link."
-      : "",
+      : searchParams.get("access") === "unavailable"
+        ? "We couldn't verify Shop access right now. Try again shortly."
+        : searchParams.get("access") === "shop_required"
+          ? "This account does not currently include ProFixIQ Shop access."
+          : "",
   );
   const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(false);
@@ -246,6 +251,9 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
   }, [acquisitionSessionId, isAcquisitionFlow]);
 
   useEffect(() => {
+    const access = searchParams.get("access");
+    if (access === "shop_required" || access === "unavailable") return;
+
     let cancelled = false;
     void (async () => {
       const { data } = await supabase.auth.getUser();
@@ -318,10 +326,14 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
           navigateAfterAuthentication(destination);
           return;
         }
-        const requested = safeInternalRedirect(
-          searchParams.get("redirect"),
-          result.destination,
-        );
+        const requested =
+          result.destination === ACCOUNT_BILLING_RECOVERY_HREF ||
+          result.destination.startsWith("/auth/set-password")
+            ? result.destination
+            : safeInternalRedirect(
+                searchParams.get("redirect"),
+                result.destination,
+              );
         navigateAfterAuthentication(requested);
         return;
       }

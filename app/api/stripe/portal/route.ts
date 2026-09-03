@@ -76,6 +76,9 @@ async function createCustomerIfMissing(
 
 export async function POST(req: Request) {
   try {
+    const body = (await req.json().catch(() => null)) as {
+      returnTo?: unknown;
+    } | null;
     const stripe = createStripeClient(mustEnv("STRIPE_SECRET_KEY"));
 
     const access = await requireShopScopedApiAccess({
@@ -128,7 +131,11 @@ export async function POST(req: Request) {
       shop,
       access.profile.id,
     );
-    const returnUrl = `${getSiteUrl()}/dashboard/owner/settings#billing`;
+    const returnUrl = `${getSiteUrl()}${
+      body?.returnTo === "/account/billing"
+        ? "/account/billing"
+        : "/dashboard/owner/settings#billing"
+    }`;
 
     const session = await stripe.billingPortal.sessions.create({
       customer: customerId,

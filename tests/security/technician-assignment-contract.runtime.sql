@@ -86,6 +86,11 @@ begin
     raise exception 'A retired legacy assignment mirror trigger is still active.';
   end if;
 
+  if to_regprocedure('public.sync_work_order_line_assignee()') is not null
+     or to_regprocedure('public.fn_wol_sync_assigned_to()') is not null then
+    raise exception 'A retired legacy assignment mirror function is still installed.';
+  end if;
+
   if has_function_privilege(
     'authenticated',
     'public.mutate_work_order_line_assignment_atomic(uuid,uuid,uuid,uuid,text,text,timestamptz)',

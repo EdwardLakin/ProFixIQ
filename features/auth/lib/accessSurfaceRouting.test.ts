@@ -9,6 +9,12 @@ import {
 } from "./accessSurfaceRouting";
 
 describe("product access surface routing", () => {
+  it("preserves the limited billing recovery destination", () => {
+    expect(
+      resolveFieldPostSignInHref("/account/billing", "/mobile/service"),
+    ).toBe("/account/billing");
+  });
+
   it("keeps plain sign-in as the neutral app chooser", () => {
     expect(resolveLegacySignInHref(new URLSearchParams())).toBeNull();
   });

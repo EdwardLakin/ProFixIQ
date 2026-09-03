@@ -25,6 +25,11 @@ const authFixture = vi.hoisted(() => ({
     created_at: string;
   }>,
   customerId: null as string | null,
+  productAccess: {
+    shop: { data: true, error: null as { message: string } | null },
+    field_service: { data: true, error: null as { message: string } | null },
+    fleet_maintenance: { data: true, error: null as { message: string } | null },
+  },
   refreshedCookies: [] as Array<{
     name: string;
     value: string;
@@ -107,7 +112,15 @@ vi.mock("@supabase/ssr", () => ({
         },
       },
       from: (table: string) => new MockQuery(table),
-      rpc: async () => ({ data: true, error: null }),
+      rpc: async (
+        _name: string,
+        args: {
+          p_capability?: "shop" | "field_service" | "fleet_maintenance";
+        },
+      ) =>
+        args.p_capability
+          ? authFixture.productAccess[args.p_capability]
+          : { data: true, error: null },
     };
   },
 }));
@@ -120,6 +133,9 @@ afterEach(() => {
   authFixture.profile = null;
   authFixture.memberships = [];
   authFixture.customerId = null;
+  authFixture.productAccess.shop = { data: true, error: null };
+  authFixture.productAccess.field_service = { data: true, error: null };
+  authFixture.productAccess.fleet_maintenance = { data: true, error: null };
   authFixture.refreshedCookies = [];
 
   if (originalSupabaseUrl === undefined) {
@@ -201,6 +217,127 @@ describe("Product host middleware boundary", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("location")).toBeNull();
+  });
+
+  it("keeps Field-only staff out of the Shop dashboard", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "user-1",
+      role: "technician",
+      shop_id: "shop-1",
+      completed_onboarding: true,
+    };
+    authFixture.productAccess.shop.data = false;
+
+    const response = await middleware(shopRequest("/dashboard"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://profixiq.com/shop/sign-in?access=shop_required",
+    );
+  });
+
+  it("preserves shared mobile work for Field-only staff", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "user-1",
+      role: "technician",
+      shop_id: "shop-1",
+      completed_onboarding: true,
+    };
+    authFixture.productAccess.shop.data = false;
+
+    const response = await middleware(shopRequest("/mobile/work-orders"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+  });
+
+  it("launches an installed Field-only session into Field", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "user-1",
+      role: "technician",
+      shop_id: "shop-1",
+      completed_onboarding: true,
+    };
+    authFixture.productAccess.shop.data = false;
+
+    const response = await middleware(shopRequest("/launch?source=pwa"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://profixiq.com/mobile/service",
+    );
+  });
+
+  it("keeps Shop-only staff out of the Field workspace", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "user-1",
+      role: "technician",
+      shop_id: "shop-1",
+      completed_onboarding: true,
+    };
+    authFixture.productAccess.field_service.data = false;
+
+    const response = await middleware(shopRequest("/mobile/service"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://profixiq.com/field/sign-in?access=field_required",
+    );
+  });
+
+  it("sends an inactive owner to the limited billing recovery page", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "user-1",
+      role: "owner",
+      shop_id: "shop-1",
+      completed_onboarding: true,
+    };
+    authFixture.productAccess.shop.data = false;
+
+    const response = await middleware(shopRequest("/dashboard"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://profixiq.com/account/billing",
+    );
+  });
+
+  it("fails closed when the existing entitlement RPC is unavailable", async () => {
+    process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "test-anon-key";
+    authFixture.user = { id: "user-1", app_metadata: {} };
+    authFixture.profile = {
+      id: "user-1",
+      role: "technician",
+      shop_id: "shop-1",
+      completed_onboarding: true,
+    };
+    authFixture.productAccess.shop = {
+      data: false,
+      error: { message: "database unavailable" },
+    };
+
+    const response = await middleware(shopRequest("/dashboard"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe(
+      "https://profixiq.com/shop/sign-in?access=unavailable",
+    );
   });
 
   it.each(["/customers/search", "/customers/directory", "/customers/all"])(
