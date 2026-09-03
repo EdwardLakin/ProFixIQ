@@ -406,6 +406,9 @@ describe("Shop Work Order product boundary", () => {
     );
     expect(source).toContain("v_actor_profile_id uuid;");
     expect(source).toContain("profile.user_id = p_actor_user_id");
+    expect(source).toMatch(
+      /create policy offline_mutation_receipts_actor_select[\s\S]+?profile\.id = auth\.uid\(\)[\s\S]+?profile\.user_id = auth\.uid\(\)/,
+    );
     expect(source).toContain(
       "assignment.technician_id = v_actor_profile_id",
     );

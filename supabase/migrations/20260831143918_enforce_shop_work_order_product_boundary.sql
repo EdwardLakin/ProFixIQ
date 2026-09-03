@@ -3458,6 +3458,27 @@ revoke all on function private.apply_offline_line_mutation_product_core(
   uuid, uuid, text, text, uuid, jsonb
 ) from public, anon, authenticated, service_role;
 
+-- Receipt ownership is stored as the authenticated subject. Imported accounts
+-- resolve Shop membership through profiles.user_id rather than profiles.id.
+drop policy if exists offline_mutation_receipts_actor_select
+  on public.offline_mutation_receipts;
+create policy offline_mutation_receipts_actor_select
+on public.offline_mutation_receipts
+for select
+to authenticated
+using (
+  actor_user_id = auth.uid()
+  and exists (
+    select 1
+    from public.profiles profile
+    where profile.shop_id = offline_mutation_receipts.shop_id
+      and (
+        profile.id = auth.uid()
+        or profile.user_id = auth.uid()
+      )
+  )
+);
+
 -- Offline callers send the authenticated subject, while assignments reference
 -- the canonical profile id. Resolve both identity shapes for authorization and
 -- continue recording the auth subject in the durable receipt.
