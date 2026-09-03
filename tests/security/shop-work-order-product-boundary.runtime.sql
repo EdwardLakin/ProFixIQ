@@ -259,13 +259,21 @@ values
 -- unrelated same-shop Work Order. The public wrappers must distinguish them
 -- before their SECURITY DEFINER implementations can mutate inventory.
 insert into public.parts (id, shop_id, name, part_number, sku)
-values (
-  '5a100000-0000-4000-8000-000000000003',
-  '59200000-0000-4000-8000-000000000003',
-  'Product Field Existing Part',
-  'PRODUCT-FIELD-EXISTING',
-  'PRODUCT-FIELD-EXISTING'
-);
+values
+  (
+    '5a100000-0000-4000-8000-000000000003',
+    '59200000-0000-4000-8000-000000000003',
+    'Product Field Existing Part',
+    'PRODUCT-FIELD-EXISTING',
+    'PRODUCT-FIELD-EXISTING'
+  ),
+  (
+    '5a100000-0000-4000-8000-000000000103',
+    '59200000-0000-4000-8000-000000000003',
+    'Product Field Attach Part',
+    'PRODUCT-FIELD-ATTACH',
+    'PRODUCT-FIELD-ATTACH'
+  );
 
 insert into public.part_requests (
   id, shop_id, work_order_id, job_id, status, notes
@@ -1300,10 +1308,10 @@ begin
 
   select public.parts_attach_inventory_to_request_item_atomic(
     '5a300000-0000-4000-8000-000000000103',
-    '5a100000-0000-4000-8000-000000000003'
+    '5a100000-0000-4000-8000-000000000103'
   ) into v_result;
   if v_result ->> 'part_id' is distinct from
-       '5a100000-0000-4000-8000-000000000003' then
+       '5a100000-0000-4000-8000-000000000103' then
     raise exception 'Field actor attached inventory to its linked Work Order incorrectly.';
   end if;
 
@@ -1311,7 +1319,7 @@ begin
   begin
     perform public.parts_attach_inventory_to_request_item_atomic(
       '5a300000-0000-4000-8000-000000000113',
-      '5a100000-0000-4000-8000-000000000003'
+      '5a100000-0000-4000-8000-000000000103'
     );
   exception when insufficient_privilege then
     v_denied := true;

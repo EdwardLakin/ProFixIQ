@@ -253,6 +253,7 @@ describe("Shop Work Order product boundary", () => {
     expect(runtime).toContain(
       "set_config('request.jwt.claim.role', 'authenticated', true)",
     );
+    expect(runtime).toContain("Product Field Attach Part");
     expect(
       runtime.match(/exception when others then/g)?.length,
     ).toBeGreaterThanOrEqual(3);
