@@ -8,6 +8,13 @@ const migrationPath = path.join(
   "supabase/migrations/20260822235000_establish_technician_assignment_contract.sql",
 );
 const migration = fs.readFileSync(migrationPath, "utf8");
+const triggerRetirementMigration = fs.readFileSync(
+  path.join(
+    process.cwd(),
+    "supabase/migrations/20260903140907_retire_legacy_assignment_mirror_triggers.sql",
+  ),
+  "utf8",
+);
 const runtime = fs.readFileSync(
   path.join(
     process.cwd(),
@@ -140,6 +147,20 @@ describe("PFX-004 atomic assignment SQL contract", () => {
         "utf8",
       ),
     ).toContain("v_line.assigned_to is not null");
+  });
+
+  it("retires only the legacy triggers that repopulated assigned_to", () => {
+    expect(triggerRetirementMigration).toContain(
+      "drop trigger if exists trg_sync_work_order_line_assignee",
+    );
+    expect(triggerRetirementMigration).toContain(
+      "drop trigger if exists trg_wol_sync_assigned_to",
+    );
+    expect(triggerRetirementMigration).not.toContain("drop function");
+    expect(runtime).toContain("runtime:replace-legacy-primary");
+    expect(runtime).toContain(
+      "A retired legacy assignment mirror trigger is still active.",
+    );
   });
 
   it("does not create labor, payroll, or notification side effects", () => {
