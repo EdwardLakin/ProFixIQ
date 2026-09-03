@@ -1476,8 +1476,13 @@ begin
       'runtime_test',
       'product-boundary:field-unlinked-media'
     );
-  exception when insufficient_privilege then
-    v_denied := true;
+  exception when others then
+    if sqlstate = '42501'
+       or sqlerrm = 'WORK_ORDER_MEDIA_SCOPE_MISMATCH' then
+      v_denied := true;
+    else
+      raise;
+    end if;
   end;
   if not v_denied then
     raise exception 'Field actor inserted media for an unrelated Work Order.';
@@ -1894,8 +1899,13 @@ begin
       'runtime_test',
       'product-boundary:null-media'
     );
-  exception when insufficient_privilege then
-    v_denied := true;
+  exception when others then
+    if sqlstate = '42501'
+       or sqlerrm = 'WORK_ORDER_MEDIA_SCOPE_MISMATCH' then
+      v_denied := true;
+    else
+      raise;
+    end if;
   end;
   if not v_denied then
     raise exception 'Null-package actor bypassed media-row product access.';

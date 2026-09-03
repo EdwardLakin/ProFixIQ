@@ -254,6 +254,7 @@ describe("Shop Work Order product boundary", () => {
       "set_config('request.jwt.claim.role', 'authenticated', true)",
     );
     expect(runtime).toContain("Product Field Attach Part");
+    expect(runtime).toContain("sqlerrm = 'WORK_ORDER_MEDIA_SCOPE_MISMATCH'");
     expect(
       runtime.match(/exception when others then/g)?.length,
     ).toBeGreaterThanOrEqual(3);
