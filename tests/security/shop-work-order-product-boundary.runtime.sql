@@ -882,6 +882,57 @@ begin
 end
 $product_boundary_acl_contract$;
 
+-- Test-only SECURITY DEFINER diagnostics keep fixture failures actionable even
+-- after the runtime switches to authenticated and RLS hides seed internals.
+create or replace function private.profixiq_product_boundary_fleet_debug()
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $fleet_debug$
+  select jsonb_build_object(
+    'uid', auth.uid(),
+    'shop', (
+      select jsonb_build_object(
+        'id', shop.id,
+        'package', shop.subscription_package,
+        'status', shop.stripe_subscription_status,
+        'pricingModel', shop.stripe_pricing_model,
+        'override', shop.billing_entitlement_override
+      )
+      from public.shops shop
+      where shop.id = '59200000-0000-4000-8000-000000000004'
+    ),
+    'profiles', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'id', profile.id,
+        'userId', profile.user_id,
+        'shopId', profile.shop_id,
+        'role', profile.role
+      )), '[]'::jsonb)
+      from public.profiles profile
+      where profile.id = '59110000-0000-4000-8000-000000000004'
+         or profile.user_id = '59100000-0000-4000-8000-000000000004'
+    ),
+    'members', (
+      select coalesce(jsonb_agg(jsonb_build_object(
+        'fleetId', member.fleet_id,
+        'shopId', member.shop_id,
+        'userId', member.user_id,
+        'role', member.role
+      )), '[]'::jsonb)
+      from public.fleet_members member
+      where member.fleet_id = '59a00000-0000-4000-8000-000000000004'
+    )
+  );
+$fleet_debug$;
+
+revoke all on function private.profixiq_product_boundary_fleet_debug()
+  from public, anon, authenticated, service_role;
+grant execute on function private.profixiq_product_boundary_fleet_debug()
+  to authenticated, service_role;
+
 select set_config('request.jwt.claim.role', 'authenticated', true);
 set local role authenticated;
 
@@ -1596,7 +1647,8 @@ begin
     '59200000-0000-4000-8000-000000000004',
     'fleet_maintenance'
   ) then
-    raise exception 'Fleet actor did not receive its Shop Fleet entitlement.';
+    raise exception 'Fleet actor did not receive its Shop Fleet entitlement: %',
+      private.profixiq_product_boundary_fleet_debug();
   end if;
   if not public.profixiq_fleet_has_product_access(
     '59a00000-0000-4000-8000-000000000004'
