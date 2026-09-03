@@ -10,6 +10,7 @@ import AuthStatus from "@/features/auth/components/AuthStatus";
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 import { signInWithIdentifier } from "@/features/auth/lib/signInClient";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { ACCOUNT_BILLING_RECOVERY_HREF } from "@/features/shared/lib/product-access";
 
 const inputClass =
   "w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3.5 py-3 text-base text-[color:var(--theme-input-text)] outline-none transition placeholder:text-[color:var(--theme-text-muted)] focus:border-[var(--accent-copper)] focus:ring-4 focus:ring-[color:color-mix(in_srgb,var(--accent-copper)_16%,transparent)]";
@@ -29,10 +30,19 @@ export default function MobileSignInPage() {
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(() =>
+    searchParams.get("access") === "unavailable"
+      ? "We couldn't verify Shop access right now. Try again shortly."
+      : searchParams.get("access") === "shop_required"
+        ? "This account does not currently include ProFixIQ Shop access."
+        : "",
+  );
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
+    const access = searchParams.get("access");
+    if (access === "shop_required" || access === "unavailable") return;
+
     let cancelled = false;
     void (async () => {
       const { data } = await supabase.auth.getUser();
@@ -41,7 +51,7 @@ export default function MobileSignInPage() {
     return () => {
       cancelled = true;
     };
-  }, [router, supabase]);
+  }, [router, searchParams, supabase]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -58,11 +68,15 @@ export default function MobileSignInPage() {
         setError(result.error);
         return;
       }
-      const destination = safeInternalRedirect(
-        searchParams.get("redirect"),
-        result.destination,
-        ["/mobile"],
-      );
+      const destination =
+        result.destination === ACCOUNT_BILLING_RECOVERY_HREF ||
+        result.destination.startsWith("/auth/set-password")
+          ? result.destination
+          : safeInternalRedirect(
+              searchParams.get("redirect"),
+              result.destination,
+              ["/mobile"],
+            );
       router.replace(destination);
       router.refresh();
     } finally {

@@ -22,6 +22,17 @@ import {
   resolveLegacyFleetRedirect,
 } from "@/features/fleet/lib/fleetProductRouting";
 import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
+import {
+  ACCOUNT_BILLING_RECOVERY_HREF,
+  FIELD_PRODUCT_CAPABILITIES,
+  type ProductAccessResult,
+  resolveShopProductAccess,
+  SHOP_PRODUCT_CAPABILITIES,
+} from "@/features/shared/lib/product-access";
+import {
+  resolveProductRouteBoundary,
+  type ProductRouteBoundary,
+} from "@/features/shared/lib/product-route-boundary";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
   hasSupabasePublicEnv,
@@ -366,6 +377,22 @@ export async function middleware(req: NextRequest) {
     isLegacyPortalConfirm ||
     isPublicPortalEnrollment;
 
+  const protectedProductBoundary = isPublic
+    ? null
+    : resolveProductRouteBoundary({
+        pathname,
+        fleetProductRequest,
+        opsProductRequest,
+      });
+  const requestedProductBoundary: ProductRouteBoundary = isFieldSignIn
+    ? "field"
+    : isShopSignIn || isMobileSignIn
+      ? "shop"
+      : protectedProductBoundary;
+  const isAccountBillingRoute =
+    pathname === ACCOUNT_BILLING_RECOVERY_HREF ||
+    pathname.startsWith(`${ACCOUNT_BILLING_RECOVERY_HREF}/`);
+
   if (isPublic && !hasSupabasePublicEnv()) {
     console.info("[auth/middleware-public-skip]", {
       pathname,
@@ -397,6 +424,9 @@ export async function middleware(req: NextRequest) {
 
   let completed = false;
   let canUseMobile = false;
+  let canManageBillingRecovery = false;
+  let shopProductAccess: ProductAccessResult | null = null;
+  let fieldProductAccess: ProductAccessResult | null = null;
   const isPortalOnlyAccount = user?.app_metadata?.profixiq_portal_only === true;
 
   if (user && !isPortal) {
@@ -416,9 +446,39 @@ export async function middleware(req: NextRequest) {
       const capabilities = getActorCapabilities({ role: profile?.role });
       canUseMobile =
         capabilities.isKnownRole && capabilities.canonicalRole !== "customer";
+      canManageBillingRecovery =
+        capabilities.canManageBilling &&
+        (capabilities.canonicalRole === "owner" ||
+          capabilities.canonicalRole === "admin");
+
+      if (profile?.shop_id && requestedProductBoundary) {
+        const [shopAccess, fieldAccess] = await Promise.all([
+          requestedProductBoundary === "shop" ||
+          requestedProductBoundary === "shared"
+            ? resolveShopProductAccess({
+                supabase,
+                shopId: profile.shop_id,
+                capabilities: SHOP_PRODUCT_CAPABILITIES,
+              })
+            : Promise.resolve(null),
+          requestedProductBoundary === "field" ||
+          requestedProductBoundary === "shared"
+            ? resolveShopProductAccess({
+                supabase,
+                shopId: profile.shop_id,
+                capabilities: FIELD_PRODUCT_CAPABILITIES,
+              })
+            : Promise.resolve(null),
+        ]);
+        shopProductAccess = shopAccess;
+        fieldProductAccess = fieldAccess;
+      }
     } catch {
       completed = false;
       canUseMobile = false;
+      canManageBillingRecovery = false;
+      shopProductAccess = null;
+      fieldProductAccess = null;
     }
   }
 
@@ -448,6 +508,44 @@ export async function middleware(req: NextRequest) {
             "/onboarding",
             fleetProductRequest,
           );
+          return redirectWithResponseHeaders(target, responseState.current);
+        }
+        if (
+          fieldProductAccess &&
+          !fieldProductAccess.error &&
+          !fieldProductAccess.entitled &&
+          canManageBillingRecovery
+        ) {
+          const target = productRequestUrl(
+            req,
+            ACCOUNT_BILLING_RECOVERY_HREF,
+            fleetProductRequest,
+          );
+          return redirectWithResponseHeaders(target, responseState.current);
+        }
+        return responseState.current;
+      }
+
+      if (completed && !shopProductAccess?.entitled) {
+        if (
+          shopProductAccess &&
+          !shopProductAccess.error &&
+          canManageBillingRecovery
+        ) {
+          const target = productRequestUrl(
+            req,
+            ACCOUNT_BILLING_RECOVERY_HREF,
+            fleetProductRequest,
+          );
+          return redirectWithResponseHeaders(target, responseState.current);
+        }
+
+        const access = shopProductAccess?.error
+          ? "unavailable"
+          : "shop_required";
+        if (req.nextUrl.searchParams.get("access") !== access) {
+          const target = productRequestUrl(req, pathname, fleetProductRequest);
+          target.searchParams.set("access", access);
           return redirectWithResponseHeaders(target, responseState.current);
         }
         return responseState.current;
@@ -583,6 +681,70 @@ export async function middleware(req: NextRequest) {
     return redirectWithResponseHeaders(target, responseState.current);
   }
 
+  if (completed && protectedProductBoundary) {
+    const productEntitled =
+      protectedProductBoundary === "shop"
+        ? shopProductAccess?.entitled === true
+        : protectedProductBoundary === "field"
+          ? fieldProductAccess?.entitled === true
+          : shopProductAccess?.entitled === true ||
+            fieldProductAccess?.entitled === true;
+
+    if (
+      pathname === "/launch" &&
+      fieldProductAccess?.entitled === true &&
+      shopProductAccess?.entitled !== true
+    ) {
+      const target = productRequestUrl(
+        req,
+        "/mobile/service",
+        fleetProductRequest,
+      );
+      return redirectWithResponseHeaders(target, responseState.current);
+    }
+
+    if (!productEntitled) {
+      const accessResolved =
+        protectedProductBoundary === "shop"
+          ? Boolean(shopProductAccess && !shopProductAccess.error)
+          : protectedProductBoundary === "field"
+            ? Boolean(fieldProductAccess && !fieldProductAccess.error)
+            : Boolean(
+                shopProductAccess &&
+                !shopProductAccess.error &&
+                fieldProductAccess &&
+                !fieldProductAccess.error,
+              );
+
+      if (accessResolved && canManageBillingRecovery) {
+        const target = productRequestUrl(
+          req,
+          ACCOUNT_BILLING_RECOVERY_HREF,
+          fleetProductRequest,
+        );
+        return redirectWithResponseHeaders(target, responseState.current);
+      }
+
+      const signInPath =
+        protectedProductBoundary === "field" ||
+        protectedProductBoundary === "shared"
+          ? "/field/sign-in"
+          : pathname.startsWith("/mobile")
+            ? "/mobile/sign-in"
+            : "/shop/sign-in";
+      const target = productRequestUrl(req, signInPath, fleetProductRequest);
+      target.searchParams.set(
+        "access",
+        accessResolved
+          ? protectedProductBoundary === "shop"
+            ? "shop_required"
+            : "field_required"
+          : "unavailable",
+      );
+      return redirectWithResponseHeaders(target, responseState.current);
+    }
+  }
+
   if (
     mobileDeviceRequest &&
     completed &&
@@ -637,7 +799,12 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  if (!isPortal && !completed && !pathname.startsWith("/onboarding")) {
+  if (
+    !isPortal &&
+    !completed &&
+    !isAccountBillingRoute &&
+    !pathname.startsWith("/onboarding")
+  ) {
     const target = productRequestUrl(req, "/onboarding", fleetProductRequest);
     return redirectWithResponseHeaders(target, responseState.current);
   }
@@ -693,6 +860,7 @@ export const config = {
     "/ops/:path*",
     "/dashboard/:path*",
     "/agent/:path*",
+    "/account/:path*",
     "/ai/assistant",
     "/assistant/:path*",
     "/billing/:path*",
