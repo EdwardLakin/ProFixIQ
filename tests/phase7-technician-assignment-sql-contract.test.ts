@@ -11,7 +11,7 @@ const migration = fs.readFileSync(migrationPath, "utf8");
 const triggerRetirementMigration = fs.readFileSync(
   path.join(
     process.cwd(),
-    "supabase/migrations/20260903140907_retire_legacy_assignment_mirror_triggers.sql",
+    "supabase/migrations/20260903143801_retire_legacy_assignment_mirror_triggers.sql",
   ),
   "utf8",
 );
