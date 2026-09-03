@@ -233,6 +233,220 @@ begin
 end;
 $function$;
 
+-- Shared only by the two compatibility wrappers below. Callers retain their
+-- existing role/assignment checks; this helper adds the missing product gate
+-- and holds a qualifying Field visit through the delegated mutation.
+create function private.work_order_command_product_access_locked(
+  p_shop_id uuid,
+  p_work_order_line_id uuid,
+  p_profile_id uuid,
+  p_role text
+) returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_visit_id uuid;
+begin
+  if public.profixiq_shop_has_product_access(p_shop_id, 'shop') is true then
+    return true;
+  end if;
+  if p_role is null
+     or p_role not in (
+       'owner', 'admin', 'manager', 'advisor',
+       'mechanic', 'lead_hand', 'foreman'
+     )
+     or public.mobile_profile_has_field_service_access(
+       p_shop_id,
+       p_profile_id
+     ) is not true
+  then
+    return false;
+  end if;
+
+  begin
+    select visit.id into v_visit_id
+    from public.service_visits visit
+    where visit.shop_id = p_shop_id
+      and visit.work_order_id = (
+        select line.work_order_id
+        from public.work_order_lines line
+        where line.id = p_work_order_line_id
+          and line.shop_id = p_shop_id
+      )
+      and visit.mode = 'mobile'
+      and visit.status in (
+        'scheduled', 'dispatched', 'en_route',
+        'arrived', 'working', 'paused'
+      )
+      and (
+        p_role in ('owner', 'admin', 'manager', 'advisor', 'lead_hand', 'foreman')
+        or visit.assigned_user_id = p_profile_id
+      )
+    order by visit.id
+    limit 1
+    for update nowait;
+  exception
+    when lock_not_available then
+      raise exception using
+        errcode = '55P03',
+        message = 'WORK_ORDER_PRODUCT_ACCESS_BUSY: command authority is changing; retry the command.';
+  end;
+
+  return found;
+end;
+$function$;
+
+revoke all on function private.work_order_command_product_access_locked(
+  uuid, uuid, uuid, text
+) from public, anon, authenticated, service_role;
+
+-- The specialized pre-labor parts Hold is a parallel public mutation. Keep
+-- its locked implementation and signature, adding only the product wrapper.
+alter function public.apply_pre_labor_parts_quote_hold_atomic(
+  uuid, uuid, uuid, text, timestamptz, text, text, text, jsonb, timestamptz
+) set schema private;
+alter function private.apply_pre_labor_parts_quote_hold_atomic(
+  uuid, uuid, uuid, text, timestamptz, text, text, text, jsonb, timestamptz
+) rename to apply_pre_labor_parts_quote_hold_product_core;
+revoke all on function private.apply_pre_labor_parts_quote_hold_product_core(
+  uuid, uuid, uuid, text, timestamptz, text, text, text, jsonb, timestamptz
+) from public, anon, authenticated, service_role;
+
+create function public.apply_pre_labor_parts_quote_hold_atomic(
+  p_shop_id uuid,
+  p_work_order_line_id uuid,
+  p_actor_user_id uuid,
+  p_operation_key text,
+  p_at timestamptz default now(),
+  p_hold_reason text default 'Awaiting parts quote',
+  p_notes text default null,
+  p_event text default null,
+  p_details jsonb default '{}'::jsonb,
+  p_expected_line_updated_at timestamptz default null
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_profile_id uuid;
+  v_auth_user_id uuid;
+  v_role text;
+begin
+  if exists (
+    select 1 from public.workforce_operation_keys operation
+    where operation.shop_id = p_shop_id
+      and operation.operation_name = 'pre_labor_parts_quote_hold'
+      and operation.operation_key = p_operation_key
+  ) or coalesce(auth.role(), '') = 'service_role' then
+    return private.apply_pre_labor_parts_quote_hold_product_core(
+      p_shop_id, p_work_order_line_id, p_actor_user_id, p_operation_key,
+      p_at, p_hold_reason, p_notes, p_event, p_details, p_expected_line_updated_at
+    );
+  end if;
+
+  select profile.id, coalesce(profile.user_id, profile.id),
+         public.canonical_shop_membership_role(profile.role::text)
+    into v_profile_id, v_auth_user_id, v_role
+  from public.profiles profile
+  where profile.shop_id = p_shop_id
+    and (profile.id = p_actor_user_id or profile.user_id = p_actor_user_id)
+  order by case when profile.id = p_actor_user_id then 0 else 1 end
+  limit 1;
+
+  if not found
+     or p_actor_user_id not in (v_profile_id, v_auth_user_id)
+     or not public.scheduler_actor_matches(v_auth_user_id)
+     or not private.work_order_command_product_access_locked(
+       p_shop_id, p_work_order_line_id, v_profile_id, v_role
+     )
+  then
+    raise exception using
+      errcode = '42501',
+      message = 'WORK_ORDER_PRODUCT_ACCESS_FORBIDDEN: actor cannot place a parts-quote Hold.';
+  end if;
+
+  return private.apply_pre_labor_parts_quote_hold_product_core(
+    p_shop_id, p_work_order_line_id, p_actor_user_id, p_operation_key,
+    p_at, p_hold_reason, p_notes, p_event, p_details, p_expected_line_updated_at
+  );
+end;
+$function$;
+
+-- CoPilot reaches a revoked adapter through a service-role bridge, so it must
+-- enforce the user-derived product boundary without the public bypass.
+alter function private.apply_technician_copilot_job_punch_transition_atomic(
+  uuid, uuid, text, uuid, uuid, text, boolean, timestamptz, text,
+  text, text, boolean, boolean, text, text, text, jsonb
+) rename to apply_technician_copilot_job_punch_transition_product_core;
+revoke all on function private.apply_technician_copilot_job_punch_transition_product_core(
+  uuid, uuid, text, uuid, uuid, text, boolean, timestamptz, text,
+  text, text, boolean, boolean, text, text, text, jsonb
+) from public, anon, authenticated, service_role;
+
+create function private.apply_technician_copilot_job_punch_transition_atomic(
+  p_shop_id uuid, p_work_order_line_id uuid, p_action text,
+  p_technician_id uuid, p_actor_user_id uuid, p_operation_key text,
+  p_allow_concurrent boolean default false, p_at timestamptz default now(),
+  p_start_source text default null, p_hold_reason text default null,
+  p_notes text default null, p_preserve_line_status boolean default false,
+  p_release_to_awaiting boolean default false, p_cause text default null,
+  p_correction text default null, p_event text default null,
+  p_details jsonb default '{}'::jsonb
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_action text := lower(trim(coalesce(p_action, '')));
+  v_profile_id uuid;
+  v_auth_user_id uuid;
+  v_role text;
+begin
+  if not exists (
+    select 1 from public.workforce_operation_keys operation
+    where operation.shop_id = p_shop_id
+      and operation.operation_name = 'job_punch:' || v_action
+      and operation.operation_key = p_operation_key
+  ) then
+    select profile.id, coalesce(profile.user_id, profile.id),
+           public.canonical_shop_membership_role(profile.role::text)
+      into v_profile_id, v_auth_user_id, v_role
+    from public.profiles profile
+    where profile.shop_id = p_shop_id
+      and (profile.id = p_technician_id or profile.user_id = p_technician_id)
+    order by case when profile.id = p_technician_id then 0 else 1 end
+    limit 1;
+
+    if not found
+       or p_actor_user_id not in (v_profile_id, v_auth_user_id)
+       or not private.work_order_command_product_access_locked(
+         p_shop_id, p_work_order_line_id, v_profile_id, v_role
+       )
+    then
+      raise exception using
+        errcode = '42501',
+        message = 'WORK_ORDER_PRODUCT_ACCESS_FORBIDDEN: CoPilot cannot execute this Work Order command.';
+    end if;
+  end if;
+
+  return private.apply_technician_copilot_job_punch_transition_product_core(
+    p_shop_id, p_work_order_line_id, p_action, p_technician_id,
+    p_actor_user_id, p_operation_key, p_allow_concurrent, p_at,
+    p_start_source, p_hold_reason, p_notes, p_preserve_line_status,
+    p_release_to_awaiting, p_cause, p_correction, p_event, p_details
+  );
+end;
+$function$;
+
+revoke all on function private.apply_technician_copilot_job_punch_transition_atomic(
+  uuid, uuid, text, uuid, uuid, text, boolean, timestamptz, text,
+  text, text, boolean, boolean, text, text, text, jsonb
+) from public, anon, authenticated, service_role;
+
 revoke all on function public.apply_job_punch_transition_atomic(
   uuid, uuid, text, uuid, uuid, text, boolean, timestamptz, text,
   text, text, boolean, boolean, text, text, text, jsonb
@@ -247,6 +461,18 @@ comment on function public.apply_job_punch_transition_atomic(
   text, text, boolean, boolean, text, text, text, jsonb
 ) is
   'Canonical punch boundary: committed receipts replay first; fresh authenticated commands require Shop entitlement or a locked active linked Field visit before the established assignment and labor mutation.';
+
+revoke all on function public.apply_pre_labor_parts_quote_hold_atomic(
+  uuid, uuid, uuid, text, timestamptz, text, text, text, jsonb, timestamptz
+) from public, anon;
+grant execute on function public.apply_pre_labor_parts_quote_hold_atomic(
+  uuid, uuid, uuid, text, timestamptz, text, text, text, jsonb, timestamptz
+) to authenticated, service_role;
+
+comment on function public.apply_pre_labor_parts_quote_hold_atomic(
+  uuid, uuid, uuid, text, timestamptz, text, text, text, jsonb, timestamptz
+) is
+  'Canonical parts-quote Hold boundary: committed receipts replay first; fresh authenticated commands require Shop entitlement or a locked active linked Field visit.';
 
 notify pgrst, 'reload schema';
 

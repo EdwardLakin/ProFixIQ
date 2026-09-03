@@ -79,6 +79,44 @@ describe("Work Order command product RPC boundary", () => {
     ).toHaveLength(4);
   });
 
+  it("guards the specialized parts-quote Hold with the shared product fence", () => {
+    expect(migration).toContain(
+      "rename to apply_pre_labor_parts_quote_hold_product_core",
+    );
+    expect(migration).toContain(
+      "create function public.apply_pre_labor_parts_quote_hold_atomic(",
+    );
+    expect(migration).toContain(
+      "operation.operation_name = 'pre_labor_parts_quote_hold'",
+    );
+    expect(migration).toContain(
+      "return private.apply_pre_labor_parts_quote_hold_product_core(",
+    );
+  });
+
+  it("guards CoPilot without trusting its service-role bridge", () => {
+    expect(migration).toContain(
+      "rename to apply_technician_copilot_job_punch_transition_product_core",
+    );
+    expect(migration).toContain(
+      "create function private.apply_technician_copilot_job_punch_transition_atomic(",
+    );
+    expect(migration).toContain(
+      "return private.apply_technician_copilot_job_punch_transition_product_core(",
+    );
+  });
+
+  it("keeps the shared helper private and locks only active linked visits", () => {
+    expect(migration).toContain(
+      "create function private.work_order_command_product_access_locked(",
+    );
+    expect(migration).toContain(
+      "revoke all on function private.work_order_command_product_access_locked(",
+    );
+    expect(migration).toContain("visit.assigned_user_id = p_profile_id");
+    expect(migration).toContain("for update nowait");
+  });
+
   it("does not introduce or reshape database tables", () => {
     expect(migration).not.toMatch(/\bcreate\s+table\b/i);
     expect(migration).not.toMatch(/\balter\s+table\b/i);
