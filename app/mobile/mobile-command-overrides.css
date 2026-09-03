@@ -26,6 +26,27 @@
   padding-bottom: 0;
 }
 
+/* Keep the navigation drawer within Safari's visible viewport. The header and
+ * sign-out footer remain fixed inside the drawer while only its center scrolls. */
+.mobile-command-drawer {
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: contain;
+}
+
+.mobile-command-drawer__header,
+.mobile-command-drawer > footer {
+  flex: 0 0 auto;
+}
+
+.mobile-command-drawer__scroll {
+  min-height: 0;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
 /*
  * The focused-job action dock is fixed to the visual viewport. A backdrop
  * filter on its current-state panel creates a fixed-position containing block

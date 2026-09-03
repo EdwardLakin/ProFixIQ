@@ -21,12 +21,23 @@ const workOrderQueue = read(
 describe("Field Hub workspace", () => {
   it("keeps the Field shell active while an operator moves through shared mobile workflows", () => {
     expect(mobileShell).toContain('pathname.startsWith("/mobile/service")');
-    expect(mobileShell).toContain("FIELD_SURFACE_SESSION_KEY");
+    expect(mobileShell).toContain("readFieldSurfaceSession");
+    expect(mobileShell).toContain("writeFieldSurfaceSession");
     expect(mobileShell).toContain(
       "<FieldWorkspaceShell>{children}</FieldWorkspaceShell>",
     );
     expect(mobileShell).toContain('pathname === "/mobile"');
     expect(fieldShell).toContain("Switch workspace");
+  });
+
+  it("keeps setup-required standalone Field owners inside the Field shell", () => {
+    expect(mobileShell).toContain(
+      'pathname.startsWith("/mobile/service/setup")',
+    );
+    expect(mobileShell).toContain("body?.standaloneFieldWorkspace");
+    expect(mobileShell).toContain("body?.canConfigure");
+    expect(mobileShell).toContain("else if (standaloneSetupSurface)");
+    expect(mobileShell).toContain("writeFieldSurfaceSession(verifiedScope)");
   });
 
   it("links the Hub to canonical mobile operations instead of duplicating their data flows", () => {

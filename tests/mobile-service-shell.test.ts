@@ -11,6 +11,7 @@ const routeGate = read(
 const fieldHub = read("features/mobile/service/FieldHub.tsx");
 const fieldAccessRoute = read("app/api/mobile/field-service/access/route.ts");
 const tiles = read("features/mobile/config/mobile-tiles.ts");
+const mobileNav = read("components/layout/MobileBottomNav.tsx");
 const activeRoute = read("app/api/mobile/service-visits/active/route.ts");
 const dispatchRoute = read("app/api/dispatch/visits/[id]/route.ts");
 
@@ -85,9 +86,18 @@ describe("Mobile Service shell", () => {
     expect(scopeGate).toContain('router.replace("/mobile")');
   });
 
-  it("exposes Field Service only to roles eligible for personal field assignment", () => {
+  it("shows one Field entry candidate and maps verified configurators to setup", () => {
     expect(tiles).toContain('href: "/mobile/service"');
     expect(tiles).toContain('title: "Field Service"');
-    expect(tiles).toContain('roles: ["mechanic", "lead_hand", "foreman"]');
+    expect(tiles).toContain("roles: ALL_MOBILE_ROLES");
+    expect(tiles.match(/href: "\/mobile\/service"/g)).toHaveLength(1);
+    expect(mobileNav).toContain("fieldAccess?.canAccessFieldService");
+    expect(mobileNav).toContain("fieldAccess?.canConfigure");
+    expect(mobileNav).toContain("verifiedSetupDestination");
+    expect(mobileNav).toContain("fieldAccessResponse?.status === 403");
+    expect(mobileNav).toContain('"/mobile/service/setup"');
+    expect(mobileNav).toContain(
+      'tile.href !== "/mobile/service" || fieldServiceHref',
+    );
   });
 });

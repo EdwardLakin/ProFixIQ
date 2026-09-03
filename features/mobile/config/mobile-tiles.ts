@@ -87,38 +87,10 @@ export const MOBILE_TILES: MobileTile[] = [
   {
     href: "/mobile/service",
     title: "Field Service",
-    subtitle: "Travel, active calls and next job",
-    roles: ["mechanic", "lead_hand", "foreman"],
-    scopes: ["home", "jobs", "work_orders", "all"],
-  },
-  {
-    href: "/mobile/parts/truck",
-    title: "Truck Inventory",
-    subtitle: "Stock on your assigned service truck",
-    roles: ["mechanic", "lead_hand", "foreman"],
-    scopes: ["home", "jobs", "work_orders", "all"],
-  },
-  {
-    href: "/mobile/service",
-    title: "Field Service",
-    subtitle: "Field setup, calls and closeout",
-    roles: ["owner", "admin"],
-    scopes: ["home", "jobs", "work_orders", "all"],
-  },
-  {
-    href: "/mobile/service/followups",
-    title: "Follow-ups",
-    subtitle: "Quote or contact future work",
-    roles: [
-      "owner",
-      "admin",
-      "manager",
-      "advisor",
-      "service",
-      "mechanic",
-      "lead_hand",
-      "foreman",
-    ],
+    subtitle: "Open the Field workspace",
+    // Role membership does not grant Field access. MobileBottomNav renders this
+    // candidate only after /api/mobile/field-service/access verifies the actor.
+    roles: ALL_MOBILE_ROLES,
     scopes: ["home", "jobs", "work_orders", "all"],
   },
   {
