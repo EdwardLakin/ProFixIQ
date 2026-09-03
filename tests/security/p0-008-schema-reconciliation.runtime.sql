@@ -1051,13 +1051,13 @@ begin
   if position(
       'voided_reason = trim(p_reason)'
       in pg_get_functiondef(
-        'public.parts_void_work_order_line_atomic(uuid,uuid,text,text,text,text,text,text,text,text,uuid)'::regprocedure
+        'private.parts_void_work_order_line_product_core(uuid,uuid,text,text,text,text,text,text,text,text,uuid)'::regprocedure
       )
     ) = 0
     or position(
       'voided_note = nullif(trim(p_note)'
       in pg_get_functiondef(
-        'public.parts_void_work_order_line_atomic(uuid,uuid,text,text,text,text,text,text,text,text,uuid)'::regprocedure
+        'private.parts_void_work_order_line_product_core(uuid,uuid,text,text,text,text,text,text,text,text,uuid)'::regprocedure
       )
     ) = 0
   then
