@@ -388,6 +388,53 @@ grant execute on function public.profixiq_current_actor_can_read_work_order_line
 grant execute on function public.profixiq_current_actor_has_shop_product_for_line(uuid)
   to authenticated, service_role;
 
+-- Estimate rows use restrictive read policies that predate the Field/Fleet
+-- product relationships. Preserve the estimate contract for ordinary actors,
+-- while allowing those same canonical relationships to satisfy the
+-- restrictive side of policy composition for their linked Work Order only.
+drop policy if exists work_orders_estimate_select on public.work_orders;
+create policy work_orders_estimate_select
+on public.work_orders
+as restrictive
+for select
+to authenticated
+using (
+  public.can_select_estimate_work_order(
+    shop_id, id, customer_id, estimate_number
+  )
+  or private.profixiq_current_actor_has_field_work_order_access(shop_id, id)
+  or private.profixiq_current_actor_has_fleet_work_order_access(shop_id, id)
+);
+
+drop policy if exists work_order_quote_lines_estimate_select
+  on public.work_order_quote_lines;
+create policy work_order_quote_lines_estimate_select
+on public.work_order_quote_lines
+as restrictive
+for select
+to authenticated
+using (
+  public.can_select_estimate_quote_line(
+    shop_id,
+    work_order_id,
+    status::text,
+    stage::text,
+    sent_to_customer_at,
+    approved_at,
+    declined_at,
+    deferred_at,
+    work_order_line_id
+  )
+  or private.profixiq_current_actor_has_field_work_order_access(
+    shop_id,
+    work_order_id
+  )
+  or private.profixiq_current_actor_has_fleet_work_order_access(
+    shop_id,
+    work_order_id
+  )
+);
+
 -- Restrictive policies compose with every existing role, capability,
 -- estimate, financial, Portal, and assignment policy.  They grant nothing by
 -- themselves; they only prevent a same-shop staff role from becoming a Shop

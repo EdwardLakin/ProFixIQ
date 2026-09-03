@@ -106,7 +106,7 @@ describe("Shop Work Order product boundary", () => {
       }
     }
 
-    expect(source.match(/as restrictive/g)).toHaveLength(25);
+    expect(source.match(/as restrictive/g)).toHaveLength(27);
     expect(source).toContain(
       "public.profixiq_current_actor_has_shop_product_access(shop_id)",
     );
@@ -134,6 +134,12 @@ describe("Shop Work Order product boundary", () => {
     );
     expect(source).toContain(
       "private.profixiq_current_actor_has_fleet_work_order_access",
+    );
+    expect(source).toMatch(
+      /create policy work_orders_estimate_select[\s\S]+?can_select_estimate_work_order[\s\S]+?profixiq_current_actor_has_field_work_order_access[\s\S]+?profixiq_current_actor_has_fleet_work_order_access[\s\S]+?\);/,
+    );
+    expect(source).toMatch(
+      /create policy work_order_quote_lines_estimate_select[\s\S]+?can_select_estimate_quote_line[\s\S]+?profixiq_current_actor_has_field_work_order_access[\s\S]+?profixiq_current_actor_has_fleet_work_order_access[\s\S]+?\);/,
     );
   });
 
