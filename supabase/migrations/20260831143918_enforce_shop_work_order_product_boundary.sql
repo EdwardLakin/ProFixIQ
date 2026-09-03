@@ -3,6 +3,47 @@ begin;
 set local lock_timeout = '5s';
 set local statement_timeout = '5min';
 
+-- The generated baseline still carries the original eight-value Work Order
+-- status constraint, while established lifecycle RPCs persist newer canonical
+-- states such as ready_to_invoice, invoiced, and cancelled. Preserve the full
+-- legacy vocabulary used by existing shops and admit the canonical states.
+-- NOT VALID avoids retroactively rejecting an older production-only alias;
+-- PostgreSQL still enforces this contract for every new or updated row.
+alter table public.work_orders
+  drop constraint if exists work_orders_status_check;
+alter table public.work_orders
+  add constraint work_orders_status_check
+  check (
+    status = any (array[
+      'new',
+      'awaiting',
+      'pending',
+      'awaiting_inspection',
+      'inspection',
+      'estimate',
+      'recommended',
+      'awaiting_approval',
+      'quote_sent',
+      'approved',
+      'authorized',
+      'in_progress',
+      'active',
+      'waiting_parts',
+      'on_hold',
+      'waiting',
+      'paused',
+      'ready_to_invoice',
+      'ready',
+      'queued',
+      'planned',
+      'invoiced',
+      'completed',
+      'done',
+      'cancelled',
+      'canceled'
+    ])
+  ) not valid;
+
 -- Fleet and Customer Portal profiles are stored in the same profile relation as
 -- Shop staff.  Keep the canonical staff predicate role-aware so the financial
 -- read boundary treats those durable relationship actors as non-staff rather

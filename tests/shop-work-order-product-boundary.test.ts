@@ -8,6 +8,21 @@ const CLEAN_REPLAY = ".github/workflows/supabase-clean-replay-audit.yml";
 const TYPES = "features/shared/types/types/supabase.ts";
 
 describe("Shop Work Order product boundary", () => {
+  it("keeps the Work Order status constraint aligned with canonical lifecycle writers", async () => {
+    const source = await readFile(MIGRATION, "utf8");
+
+    expect(source).toContain(
+      "drop constraint if exists work_orders_status_check",
+    );
+    expect(source).toContain("add constraint work_orders_status_check");
+    expect(source).toContain("'ready_to_invoice'");
+    expect(source).toContain("'invoiced'");
+    expect(source).toContain("'cancelled'");
+    expect(source).toMatch(
+      /add constraint work_orders_status_check[\s\S]+?\) not valid;/,
+    );
+  });
+
   it("binds Shop access to the current staff actor and canonical entitlement", async () => {
     const source = await readFile(MIGRATION, "utf8");
 
