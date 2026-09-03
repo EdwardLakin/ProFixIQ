@@ -1313,6 +1313,18 @@ begin
   select public.record_offline_photo_receipt_atomic(
     p_shop_id => '59200000-0000-4000-8000-000000000003',
     p_actor_user_id => '59100000-0000-4000-8000-000000000003',
+    p_operation_key => 'product-boundary:field-photo-fresh',
+    p_work_order_line_id => '59600000-0000-4000-8000-000000000003',
+    p_payload => '{"path":"wo/59500000-0000-4000-8000-000000000003/lines/59600000-0000-4000-8000-000000000003/field-photo-fresh.jpg"}'::jsonb
+  ) into v_result;
+  if coalesce((v_result ->> 'idempotent')::boolean, true)
+     or v_result ->> 'action_type' is distinct from 'upload_job_photo' then
+    raise exception 'Linked Field actor could not record a fresh photo receipt.';
+  end if;
+
+  select public.record_offline_photo_receipt_atomic(
+    p_shop_id => '59200000-0000-4000-8000-000000000003',
+    p_actor_user_id => '59100000-0000-4000-8000-000000000003',
     p_operation_key => 'product-boundary:field-photo-replay',
     p_work_order_line_id => '59600000-0000-4000-8000-000000000013',
     p_payload => '{"workOrderLineId":"59600000-0000-4000-8000-000000000013","path":"wo/59500000-0000-4000-8000-000000000013/lines/59600000-0000-4000-8000-000000000013/field-photo-replay.jpg"}'::jsonb
@@ -1337,6 +1349,22 @@ begin
   end;
   if not v_denied then
     raise exception 'Field actor applied an offline mutation to an unrelated Work Order.';
+  end if;
+
+  v_denied := false;
+  begin
+    perform public.record_offline_photo_receipt_atomic(
+      p_shop_id => '59200000-0000-4000-8000-000000000003',
+      p_actor_user_id => '59100000-0000-4000-8000-000000000003',
+      p_operation_key => 'product-boundary:field-photo-unlinked',
+      p_work_order_line_id => '59600000-0000-4000-8000-000000000013',
+      p_payload => '{"path":"wo/59500000-0000-4000-8000-000000000013/lines/59600000-0000-4000-8000-000000000013/field-photo-unlinked.jpg"}'::jsonb
+    );
+  exception when insufficient_privilege then
+    v_denied := true;
+  end;
+  if not v_denied then
+    raise exception 'Field actor recorded a fresh photo receipt for an unrelated Work Order.';
   end if;
 
   v_denied := false;
@@ -1649,23 +1677,30 @@ begin
     raise exception 'Imported Field auth subject did not switch.';
   end if;
 
+  if not public.profixiq_current_actor_can_read_work_order_product(
+    '59200000-0000-4000-8000-000000000002',
+    '59500000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'Imported Field actor did not retain actor-bound Work Order identity access.';
+  end if;
+
   select count(*) into v_count
   from public.work_orders
   where id = '59500000-0000-4000-8000-000000000002';
-  if v_count <> 1 then
-    raise exception 'Linked imported Field actor could not read its Work Order through financial RLS.';
+  if v_count <> 0 then
+    raise exception 'Imported mechanic bypassed financial RLS on the raw Work Order.';
   end if;
   select count(*) into v_count
   from public.work_order_lines
   where id = '59600000-0000-4000-8000-000000000002';
-  if v_count <> 1 then
-    raise exception 'Linked imported Field actor could not read its Work Order line through financial RLS.';
+  if v_count <> 0 then
+    raise exception 'Imported mechanic bypassed financial RLS on the raw Work Order line.';
   end if;
   select count(*) into v_count
   from public.work_order_quote_lines
   where id = '59700000-0000-4000-8000-000000000002';
-  if v_count <> 1 then
-    raise exception 'Linked imported Field actor could not read its quote line through financial RLS.';
+  if v_count <> 0 then
+    raise exception 'Imported mechanic bypassed financial RLS on the raw quote line.';
   end if;
 
   select public.apply_offline_line_mutation_atomic(

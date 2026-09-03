@@ -486,68 +486,6 @@ using (
   )
 );
 
--- Field operators are durable Shop profiles, so the earlier restrictive
--- financial policies would otherwise veto their relationship-scoped reads
--- even after the permissive Field policies match. Compose only the canonical
--- linked-visit predicate into those mixed operational/financial relations;
--- financial values remain served through the existing role-shaped projection.
-drop policy if exists work_orders_financial_capability_select
-  on public.work_orders;
-create policy work_orders_financial_capability_select
-on public.work_orders
-as restrictive
-for select
-to authenticated
-using (
-  not public.workspace_actor_is_staff_for_shop(shop_id)
-  or public.workspace_actor_has_capability(
-    shop_id,
-    'work_order.financial.sell.view'
-  )
-  or public.workspace_actor_has_capability(shop_id, 'work_order.invoice.view')
-  or private.profixiq_current_actor_has_field_work_order_access(shop_id, id)
-);
-
-drop policy if exists work_order_lines_financial_capability_select
-  on public.work_order_lines;
-create policy work_order_lines_financial_capability_select
-on public.work_order_lines
-as restrictive
-for select
-to authenticated
-using (
-  not public.workspace_actor_is_staff_for_shop(shop_id)
-  or public.workspace_actor_has_capability(
-    shop_id,
-    'work_order.financial.sell.view'
-  )
-  or public.workspace_actor_has_capability(shop_id, 'work_order.invoice.view')
-  or private.profixiq_current_actor_has_field_work_order_access(
-    shop_id,
-    work_order_id
-  )
-);
-
-drop policy if exists work_order_quote_lines_financial_capability_select
-  on public.work_order_quote_lines;
-create policy work_order_quote_lines_financial_capability_select
-on public.work_order_quote_lines
-as restrictive
-for select
-to authenticated
-using (
-  not public.workspace_actor_is_staff_for_shop(shop_id)
-  or public.workspace_actor_has_capability(
-    shop_id,
-    'work_order.financial.sell.view'
-  )
-  or public.workspace_actor_has_capability(shop_id, 'work_order.invoice.view')
-  or private.profixiq_current_actor_has_field_work_order_access(
-    shop_id,
-    work_order_id
-  )
-);
-
 -- Restrictive policies compose with every existing role, capability,
 -- estimate, financial, Portal, and assignment policy.  They grant nothing by
 -- themselves; they only prevent a same-shop staff role from becoming a Shop
@@ -3697,7 +3635,17 @@ exception when unique_violation then
 end;
 $function$;
 
-create or replace function public.record_offline_photo_receipt_atomic(
+alter function public.record_offline_photo_receipt_atomic(
+  uuid, uuid, text, uuid, jsonb
+) rename to record_offline_photo_receipt_product_core;
+alter function public.record_offline_photo_receipt_product_core(
+  uuid, uuid, text, uuid, jsonb
+) set schema private;
+revoke all on function private.record_offline_photo_receipt_product_core(
+  uuid, uuid, text, uuid, jsonb
+) from public, anon, authenticated, service_role;
+
+create or replace function private.record_offline_photo_receipt_product_core(
   p_shop_id uuid,
   p_actor_user_id uuid,
   p_operation_key text,
@@ -3863,6 +3811,83 @@ exception when unique_violation then
   raise exception using
     errcode = 'P0001',
     message = 'IDEMPOTENCY_KEY_REUSE: operation key belongs to different mutation data.';
+end;
+$function$;
+
+revoke all on function private.record_offline_photo_receipt_product_core(
+  uuid, uuid, text, uuid, jsonb
+) from public, anon, authenticated, service_role;
+
+create function public.record_offline_photo_receipt_atomic(
+  p_shop_id uuid,
+  p_actor_user_id uuid,
+  p_operation_key text,
+  p_work_order_line_id uuid,
+  p_payload jsonb
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_work_order_id uuid;
+begin
+  if coalesce(auth.role(), '') = 'service_role'
+     or public.profixiq_current_actor_has_shop_product_access(p_shop_id) then
+    return private.record_offline_photo_receipt_product_core(
+      p_shop_id,
+      p_actor_user_id,
+      p_operation_key,
+      p_work_order_line_id,
+      p_payload
+    );
+  end if;
+
+  -- A durable actor-bound receipt authorizes exact replay after assignment or
+  -- entitlement changes; it cannot authorize a new operation or another line.
+  if auth.uid() is not null
+     and exists (
+       select 1
+       from public.offline_mutation_receipts receipt
+       where receipt.shop_id = p_shop_id
+         and receipt.operation_key = p_operation_key
+         and receipt.actor_user_id = auth.uid()
+         and receipt.action_type = 'upload_job_photo'
+         and receipt.entity_type = 'work_order_line'
+         and receipt.entity_id = p_work_order_line_id
+     ) then
+    return private.record_offline_photo_receipt_product_core(
+      p_shop_id,
+      p_actor_user_id,
+      p_operation_key,
+      p_work_order_line_id,
+      p_payload
+    );
+  end if;
+
+  select line.work_order_id
+    into v_work_order_id
+  from public.work_order_lines line
+  where line.id = p_work_order_line_id
+    and line.shop_id = p_shop_id;
+
+  if v_work_order_id is null
+     or not private.profixiq_current_actor_can_mutate_work_order_product(
+       p_shop_id,
+       v_work_order_id
+     ) then
+    raise exception using
+      errcode = '42501',
+      message = 'Work Order product access is required.';
+  end if;
+
+  return private.record_offline_photo_receipt_product_core(
+    p_shop_id,
+    p_actor_user_id,
+    p_operation_key,
+    p_work_order_line_id,
+    p_payload
+  );
 end;
 $function$;
 
@@ -4089,6 +4114,7 @@ begin
     'private.profixiq_current_actor_can_mutate_work_order_product(uuid,uuid)'::regprocedure,
     'private.apply_job_punch_transition_product_core(uuid,uuid,text,uuid,uuid,text,boolean,timestamptz,text,text,text,boolean,boolean,text,text,text,jsonb)'::regprocedure,
     'private.apply_offline_line_mutation_product_core(uuid,uuid,text,text,uuid,jsonb)'::regprocedure,
+    'private.record_offline_photo_receipt_product_core(uuid,uuid,text,uuid,jsonb)'::regprocedure,
     'private.parts_attach_inventory_to_request_item_product_core(uuid,uuid)'::regprocedure,
     'private.parts_create_and_attach_inventory_product_core(uuid,text,text,text,text,text,text,numeric,numeric,numeric,uuid,text)'::regprocedure
   ]

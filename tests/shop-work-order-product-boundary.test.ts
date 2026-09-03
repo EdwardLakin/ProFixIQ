@@ -111,7 +111,7 @@ describe("Shop Work Order product boundary", () => {
       }
     }
 
-    expect(source.match(/as restrictive/g)).toHaveLength(30);
+    expect(source.match(/as restrictive/g)).toHaveLength(27);
     expect(source).toContain(
       "public.profixiq_current_actor_has_shop_product_access(shop_id)",
     );
@@ -146,18 +146,15 @@ describe("Shop Work Order product boundary", () => {
     expect(source).toMatch(
       /create policy work_order_quote_lines_estimate_select[\s\S]+?can_select_estimate_quote_line[\s\S]+?profixiq_current_actor_has_field_work_order_access[\s\S]+?profixiq_current_actor_has_fleet_work_order_access[\s\S]+?\);/,
     );
-    for (const policy of [
-      "work_orders_financial_capability_select",
-      "work_order_lines_financial_capability_select",
-      "work_order_quote_lines_financial_capability_select",
-    ]) {
-      expect(source).toContain(`create policy ${policy}`);
-    }
-    expect(
-      source.match(
-        /or private\.profixiq_current_actor_has_field_work_order_access/g,
-      )?.length,
-    ).toBeGreaterThanOrEqual(5);
+    expect(source).not.toContain(
+      "create policy work_orders_financial_capability_select",
+    );
+    expect(source).not.toContain(
+      "create policy work_order_lines_financial_capability_select",
+    );
+    expect(source).not.toContain(
+      "create policy work_order_quote_lines_financial_capability_select",
+    );
   });
 
   it("product-scopes canonical media and grants only mutation-authorized job-photo uploads", async () => {
@@ -223,6 +220,7 @@ describe("Shop Work Order product boundary", () => {
       "parts_void_work_order_line_product_core",
       "apply_job_punch_transition_product_core",
       "apply_offline_line_mutation_product_core",
+      "record_offline_photo_receipt_product_core",
       "parts_attach_inventory_to_request_item_product_core",
       "parts_create_and_attach_inventory_product_core",
       "import_inspection_quote_package_product_core",
@@ -413,10 +411,15 @@ describe("Shop Work Order product boundary", () => {
       "assignment.technician_id = v_actor_profile_id",
     );
     expect(source).toContain(
-      "create or replace function public.record_offline_photo_receipt_atomic",
+      "create function public.record_offline_photo_receipt_atomic",
     );
     expect(runtime).toContain("product-boundary:imported-field-offline");
     expect(runtime).toContain("product-boundary:imported-field-photo");
+    expect(runtime).toContain("product-boundary:field-photo-fresh");
+    expect(runtime).toContain("product-boundary:field-photo-unlinked");
+    expect(runtime).toContain(
+      "Field actor recorded a fresh photo receipt for an unrelated Work Order.",
+    );
     expect(runtime).toContain(
       "Imported Field receipts did not preserve the authenticated subject.",
     );
