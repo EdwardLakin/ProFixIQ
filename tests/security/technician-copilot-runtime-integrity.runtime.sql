@@ -57,23 +57,33 @@ update public.profiles
 set user_id = 'a1438000-0000-4000-8000-000000000003'
 where id = 'a1438000-0000-4000-8000-000000000004';
 
-insert into public.shops (id, owner_id, business_name, name, user_limit)
+insert into public.shops (
+  id,
+  owner_id,
+  business_name,
+  name,
+  user_limit,
+  billing_entitlement_override
+)
 values
   (
     'a1438000-0000-4000-8000-000000000010',
     'a1438000-0000-4000-8000-000000000001',
     'CoPilot Runtime Shop',
     'CoPilot Runtime Shop',
-    10
+    10,
+    'internal_demo'
   ),
   (
     'a1438000-0000-4000-8000-000000000011',
     'a1438000-0000-4000-8000-000000000001',
     'CoPilot Cross-Tenant Shop',
     'CoPilot Cross-Tenant Shop',
-    10
+    10,
+    'internal_demo'
   )
-on conflict (id) do nothing;
+on conflict (id) do update
+set billing_entitlement_override = 'internal_demo';
 
 update public.profiles
 set shop_id = 'a1438000-0000-4000-8000-000000000010'

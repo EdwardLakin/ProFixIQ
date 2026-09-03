@@ -123,6 +123,10 @@ describe("Technician CoPilot runtime integrity rescue", () => {
 
   it("ships an executable transaction-level lifecycle integration", () => {
     expect(runtimeIntegration).toContain(
+      "billing_entitlement_override",
+    );
+    expect(runtimeIntegration).toContain("'internal_demo'");
+    expect(runtimeIntegration).toContain(
       "copilot.technician_session_start_internal(",
     );
     expect(runtimeIntegration).toContain(
