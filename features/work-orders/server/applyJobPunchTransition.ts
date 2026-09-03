@@ -100,6 +100,7 @@ function errorStatus(message: string): number {
     return 503;
   }
   if (
+    normalized.includes("work_order_product_access_forbidden") ||
     normalized.includes("actor") ||
     normalized.includes("technician is not available") ||
     normalized.includes("not assigned") ||

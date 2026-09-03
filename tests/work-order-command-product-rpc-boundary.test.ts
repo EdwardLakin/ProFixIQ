@@ -106,6 +106,21 @@ describe("Work Order command product RPC boundary", () => {
     );
   });
 
+  it("routes CoPilot story saves through the same product fence", () => {
+    expect(migration).toContain(
+      "create function private.apply_technician_copilot_story_mutation_atomic(",
+    );
+    expect(migration).toContain(
+      "from public.offline_mutation_receipts receipt",
+    );
+    expect(migration).toContain(
+      "v_public_call constant text := 'public.apply_offline_line_mutation_atomic('",
+    );
+    expect(migration).toContain(
+      "v_private_call constant text := 'private.apply_technician_copilot_story_mutation_atomic('",
+    );
+  });
+
   it("keeps the shared helper private and locks only active linked visits", () => {
     expect(migration).toContain(
       "create function private.work_order_command_product_access_locked(",
@@ -115,6 +130,14 @@ describe("Work Order command product RPC boundary", () => {
     );
     expect(migration).toContain("visit.assigned_user_id = p_profile_id");
     expect(migration).toContain("for update nowait");
+    expect(migration).toContain("from public.profiles profile");
+  });
+
+  it("requires Field technicians to own the line or active labor segment", () => {
+    expect(migration).toContain("if not v_can_manage_field_work and not (");
+    expect(migration).toContain("assignment.technician_id = v_profile_id");
+    expect(migration).toContain("segment.technician_id = v_profile_id");
+    expect(migration).toContain("segment.ended_at is null");
   });
 
   it("does not introduce or reshape database tables", () => {

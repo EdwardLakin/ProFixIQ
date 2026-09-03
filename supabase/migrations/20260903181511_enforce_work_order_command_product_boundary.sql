@@ -186,6 +186,19 @@ begin
             message = 'WORK_ORDER_PRODUCT_ACCESS_FORBIDDEN: Shop entitlement or Field access is required.';
         end if;
 
+        perform 1
+        from public.work_order_line_technicians assignment
+        where assignment.work_order_line_id = p_work_order_line_id
+        order by assignment.id
+        for update nowait;
+
+        perform 1
+        from public.work_order_line_labor_segments segment
+        where segment.shop_id = p_shop_id
+          and segment.work_order_line_id = p_work_order_line_id
+        order by segment.id
+        for update nowait;
+
         select visit.id into v_visit_id
         from public.service_visits visit
         where visit.shop_id = p_shop_id
@@ -206,6 +219,34 @@ begin
           raise exception using
             errcode = '42501',
             message = 'WORK_ORDER_PRODUCT_ACCESS_FORBIDDEN: an active linked Field visit is required.';
+        end if;
+
+        if not v_can_manage_field_work and not (
+          v_line.assigned_tech_id = v_profile_id
+          or exists (
+            select 1 from public.work_order_line_technicians assignment
+            where assignment.work_order_line_id = p_work_order_line_id
+              and assignment.technician_id = v_profile_id
+          )
+          or (
+            v_line.assigned_tech_id is null
+            and v_line.assigned_to = v_profile_id
+            and not exists (
+              select 1 from public.work_order_line_technicians assignment
+              where assignment.work_order_line_id = p_work_order_line_id
+            )
+          )
+          or exists (
+            select 1 from public.work_order_line_labor_segments segment
+            where segment.shop_id = p_shop_id
+              and segment.work_order_line_id = p_work_order_line_id
+              and segment.technician_id = v_profile_id
+              and segment.ended_at is null
+          )
+        ) then
+          raise exception using
+            errcode = '42501',
+            message = 'WORK_ORDER_PRODUCT_ACCESS_FORBIDDEN: Field technician lacks authority for this line.';
         end if;
       end if;
 
@@ -240,7 +281,7 @@ create function private.work_order_command_product_access_locked(
   p_shop_id uuid,
   p_work_order_line_id uuid,
   p_profile_id uuid,
-  p_role text
+  p_actor_user_id uuid
 ) returns boolean
 language plpgsql
 security definer
@@ -248,12 +289,34 @@ set search_path = ''
 as $function$
 declare
   v_visit_id uuid;
+  v_auth_user_id uuid;
+  v_role text;
 begin
+  begin
+    select coalesce(profile.user_id, profile.id),
+           public.canonical_shop_membership_role(profile.role::text)
+      into v_auth_user_id, v_role
+    from public.profiles profile
+    where profile.id = p_profile_id
+      and profile.shop_id = p_shop_id
+    for update nowait;
+  exception
+    when lock_not_available then
+      raise exception using
+        errcode = '55P03',
+        message = 'WORK_ORDER_PRODUCT_ACCESS_BUSY: command authority is changing; retry the command.';
+  end;
+
+  if not found
+     or p_actor_user_id not in (p_profile_id, v_auth_user_id)
+  then
+    return false;
+  end if;
   if public.profixiq_shop_has_product_access(p_shop_id, 'shop') is true then
     return true;
   end if;
-  if p_role is null
-     or p_role not in (
+  if v_role is null
+     or v_role not in (
        'owner', 'admin', 'manager', 'advisor',
        'mechanic', 'lead_hand', 'foreman'
      )
@@ -281,7 +344,7 @@ begin
         'arrived', 'working', 'paused'
       )
       and (
-        p_role in ('owner', 'admin', 'manager', 'advisor', 'lead_hand', 'foreman')
+        v_role in ('owner', 'admin', 'manager', 'advisor', 'lead_hand', 'foreman')
         or visit.assigned_user_id = p_profile_id
       )
     order by visit.id
@@ -299,7 +362,7 @@ end;
 $function$;
 
 revoke all on function private.work_order_command_product_access_locked(
-  uuid, uuid, uuid, text
+  uuid, uuid, uuid, uuid
 ) from public, anon, authenticated, service_role;
 
 -- The specialized pre-labor parts Hold is a parallel public mutation. Keep
@@ -333,7 +396,6 @@ as $function$
 declare
   v_profile_id uuid;
   v_auth_user_id uuid;
-  v_role text;
 begin
   if exists (
     select 1 from public.workforce_operation_keys operation
@@ -347,9 +409,8 @@ begin
     );
   end if;
 
-  select profile.id, coalesce(profile.user_id, profile.id),
-         public.canonical_shop_membership_role(profile.role::text)
-    into v_profile_id, v_auth_user_id, v_role
+  select profile.id, coalesce(profile.user_id, profile.id)
+    into v_profile_id, v_auth_user_id
   from public.profiles profile
   where profile.shop_id = p_shop_id
     and (profile.id = p_actor_user_id or profile.user_id = p_actor_user_id)
@@ -360,7 +421,7 @@ begin
      or p_actor_user_id not in (v_profile_id, v_auth_user_id)
      or not public.scheduler_actor_matches(v_auth_user_id)
      or not private.work_order_command_product_access_locked(
-       p_shop_id, p_work_order_line_id, v_profile_id, v_role
+       p_shop_id, p_work_order_line_id, v_profile_id, p_actor_user_id
      )
   then
     raise exception using
@@ -404,7 +465,6 @@ declare
   v_action text := lower(trim(coalesce(p_action, '')));
   v_profile_id uuid;
   v_auth_user_id uuid;
-  v_role text;
 begin
   if not exists (
     select 1 from public.workforce_operation_keys operation
@@ -412,9 +472,8 @@ begin
       and operation.operation_name = 'job_punch:' || v_action
       and operation.operation_key = p_operation_key
   ) then
-    select profile.id, coalesce(profile.user_id, profile.id),
-           public.canonical_shop_membership_role(profile.role::text)
-      into v_profile_id, v_auth_user_id, v_role
+    select profile.id, coalesce(profile.user_id, profile.id)
+      into v_profile_id, v_auth_user_id
     from public.profiles profile
     where profile.shop_id = p_shop_id
       and (profile.id = p_technician_id or profile.user_id = p_technician_id)
@@ -424,7 +483,7 @@ begin
     if not found
        or p_actor_user_id not in (v_profile_id, v_auth_user_id)
        or not private.work_order_command_product_access_locked(
-         p_shop_id, p_work_order_line_id, v_profile_id, v_role
+         p_shop_id, p_work_order_line_id, v_profile_id, p_actor_user_id
        )
     then
       raise exception using
@@ -446,6 +505,85 @@ revoke all on function private.apply_technician_copilot_job_punch_transition_ato
   uuid, uuid, text, uuid, uuid, text, boolean, timestamptz, text,
   text, text, boolean, boolean, text, text, text, jsonb
 ) from public, anon, authenticated, service_role;
+
+-- Story saves use the canonical offline mutation rather than the punch
+-- adapter. Keep that mutation unchanged and fence only CoPilot's private call.
+create function private.apply_technician_copilot_story_mutation_atomic(
+  p_shop_id uuid,
+  p_actor_profile_id uuid,
+  p_operation_key text,
+  p_action_type text,
+  p_work_order_line_id uuid,
+  p_payload jsonb
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+begin
+  if p_action_type is distinct from 'save_story_draft' then
+    raise exception using errcode = '22023', message = 'Unsupported CoPilot story mutation.';
+  end if;
+
+  if not exists (
+    select 1 from public.offline_mutation_receipts receipt
+    where receipt.shop_id = p_shop_id
+      and receipt.operation_key = p_operation_key
+  ) and not private.work_order_command_product_access_locked(
+    p_shop_id,
+    p_work_order_line_id,
+    p_actor_profile_id,
+    p_actor_profile_id
+  ) then
+    raise exception using
+      errcode = '42501',
+      message = 'WORK_ORDER_PRODUCT_ACCESS_FORBIDDEN: CoPilot cannot update this Work Order line.';
+  end if;
+
+  return public.apply_offline_line_mutation_atomic(
+    p_shop_id, p_actor_profile_id, p_operation_key, p_action_type,
+    p_work_order_line_id, p_payload
+  );
+end;
+$function$;
+
+revoke all on function private.apply_technician_copilot_story_mutation_atomic(
+  uuid, uuid, text, text, uuid, jsonb
+) from public, anon, authenticated, service_role;
+
+do $bind_private_technician_copilot_story$
+declare
+  v_definition text;
+  v_public_call constant text := 'public.apply_offline_line_mutation_atomic(';
+  v_private_call constant text := 'private.apply_technician_copilot_story_mutation_atomic(';
+  v_call_count integer;
+begin
+  select pg_get_functiondef(
+    'copilot.technician_job_action_internal(uuid,uuid,uuid,text,uuid,text,text,text,timestamptz)'::regprocedure
+  ) into v_definition;
+  v_call_count := (
+    length(v_definition) - length(replace(v_definition, v_public_call, ''))
+  ) / length(v_public_call);
+  if v_definition is null or v_call_count <> 1 then
+    raise exception using
+      errcode = '55000',
+      message = 'Unexpected Technician CoPilot story bridge definition.';
+  end if;
+
+  execute replace(v_definition, v_public_call, v_private_call);
+
+  select pg_get_functiondef(
+    'copilot.technician_job_action_internal(uuid,uuid,uuid,text,uuid,text,text,text,timestamptz)'::regprocedure
+  ) into v_definition;
+  if position(v_public_call in v_definition) <> 0
+     or position(v_private_call in v_definition) = 0
+  then
+    raise exception using
+      errcode = '55000',
+      message = 'Technician CoPilot story bridge did not bind to its product wrapper.';
+  end if;
+end;
+$bind_private_technician_copilot_story$;
 
 revoke all on function public.apply_job_punch_transition_atomic(
   uuid, uuid, text, uuid, uuid, text, boolean, timestamptz, text,

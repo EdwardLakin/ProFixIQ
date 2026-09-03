@@ -659,6 +659,24 @@ describe("applyJobPunchTransition atomic boundary", () => {
     });
   });
 
+  it("maps locked product-access denials to forbidden", async () => {
+    const db = new FakeSupabase();
+    db.rpcError = {
+      message:
+        "WORK_ORDER_PRODUCT_ACCESS_FORBIDDEN: an active linked Field visit is required.",
+    };
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "start",
+      technicianId: "tech-1",
+      options: { operationKey: "product-boundary-forbidden" },
+    });
+
+    expect(result).toMatchObject({ ok: false, status: 403 });
+  });
+
   it("maps bounded database lock exhaustion to an offline-retryable response", async () => {
     const db = new FakeSupabase();
     db.setActor("advisor-1", "advisor");
