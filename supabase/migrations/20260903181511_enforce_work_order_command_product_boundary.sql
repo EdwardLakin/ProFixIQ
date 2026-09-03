@@ -178,6 +178,28 @@ begin
         raise exception using errcode = 'P0001', message = 'Parent work order not found for shop.';
       end if;
 
+      perform 1
+      from public.work_order_line_technicians assignment
+      where assignment.work_order_line_id = p_work_order_line_id
+      order by assignment.id
+      for update nowait;
+
+      perform 1
+      from public.work_order_line_labor_segments segment
+      where segment.shop_id = p_shop_id
+        and segment.work_order_line_id = p_work_order_line_id
+      order by segment.id
+      for update nowait;
+
+      if v_action = 'finish' then
+        perform 1
+        from public.inspections inspection
+        where inspection.work_order_line_id = p_work_order_line_id
+          and inspection.is_canonical
+        order by inspection.id
+        for update nowait;
+      end if;
+
       v_shop_entitled := public.profixiq_shop_has_product_access(
         p_shop_id,
         'shop'
@@ -202,19 +224,6 @@ begin
             errcode = '42501',
             message = 'WORK_ORDER_PRODUCT_ACCESS_FORBIDDEN: Shop entitlement or Field access is required.';
         end if;
-
-        perform 1
-        from public.work_order_line_technicians assignment
-        where assignment.work_order_line_id = p_work_order_line_id
-        order by assignment.id
-        for update nowait;
-
-        perform 1
-        from public.work_order_line_labor_segments segment
-        where segment.shop_id = p_shop_id
-          and segment.work_order_line_id = p_work_order_line_id
-        order by segment.id
-        for update nowait;
 
         select visit.id into v_visit_id
         from public.service_visits visit
@@ -640,6 +649,7 @@ declare
   v_receipt_actor_user_id uuid;
   v_receipt_action_type text;
   v_receipt_entity_id uuid;
+  v_result jsonb;
 begin
   if p_action_type is distinct from 'save_story_draft' then
     return private.apply_offline_line_mutation_product_core(
@@ -696,10 +706,30 @@ begin
       message = 'WORK_ORDER_PRODUCT_ACCESS_FORBIDDEN: actor cannot update this Work Order line.';
   end if;
 
-  return private.apply_offline_line_mutation_product_core(
+  v_result := private.apply_offline_line_mutation_product_core(
     p_shop_id, p_actor_user_id, p_operation_key, p_action_type,
     p_work_order_line_id, p_payload
   );
+
+  -- The retained core resolves a concurrent unique-key claim by returning the
+  -- winner. Re-read that durable receipt so a different actor or line cannot
+  -- inherit the winner's result when action and payload happen to match.
+  select receipt.actor_user_id, receipt.action_type, receipt.entity_id
+    into v_receipt_actor_user_id, v_receipt_action_type, v_receipt_entity_id
+  from public.offline_mutation_receipts receipt
+  where receipt.shop_id = p_shop_id
+    and receipt.operation_key = p_operation_key;
+  if not found
+     or v_receipt_actor_user_id is distinct from p_actor_user_id
+     or v_receipt_action_type is distinct from p_action_type
+     or v_receipt_entity_id is distinct from p_work_order_line_id
+  then
+    raise exception using
+      errcode = '23505',
+      message = 'IDEMPOTENCY_KEY_REUSE: operation key belongs to different mutation data.';
+  end if;
+
+  return v_result;
 end;
 $function$;
 

@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 const migrationPath =
   "supabase/migrations/20260903181511_enforce_work_order_command_product_boundary.sql";
 const migration = readFileSync(migrationPath, "utf8");
+const offlineRoute = readFileSync("app/api/offline/mutations/route.ts", "utf8");
 
 describe("Work Order command product RPC boundary", () => {
   it("keeps the public signature while hiding the prior implementation", () => {
@@ -143,6 +144,16 @@ describe("Work Order command product RPC boundary", () => {
     expect(migration).toContain(
       "v_receipt_entity_id is distinct from p_work_order_line_id",
     );
+    expect(migration).toContain(
+      "The retained core resolves a concurrent unique-key claim",
+    );
+    expect(offlineRoute).toContain(
+      'normalized.includes("work_order_product_access_busy")',
+    );
+    expect(offlineRoute).toContain("return 503");
+    expect(offlineRoute).toContain(
+      'normalized.includes("work_order_product_access_forbidden")',
+    );
   });
 
   it("keeps the shared helper private and locks only active linked visits", () => {
@@ -168,6 +179,15 @@ describe("Work Order command product RPC boundary", () => {
     expect(migration).toContain("assignment.technician_id = v_profile_id");
     expect(migration).toContain("segment.technician_id = v_profile_id");
     expect(migration).toContain("segment.ended_at is null");
+  });
+
+  it("includes canonical finish inspections in the outer retry lock set", () => {
+    expect(migration).toContain("if v_action = 'finish' then");
+    expect(migration).toContain("from public.inspections inspection");
+    expect(migration).toContain(
+      "inspection.work_order_line_id = p_work_order_line_id",
+    );
+    expect(migration).toContain("and inspection.is_canonical");
   });
 
   it("does not introduce or reshape database tables", () => {
