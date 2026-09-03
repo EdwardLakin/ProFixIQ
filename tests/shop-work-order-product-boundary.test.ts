@@ -267,7 +267,7 @@ describe("Shop Work Order product boundary", () => {
     );
     expect(runtime).toContain("Fleet auth subject did not switch:");
     expect(runtime).toContain(
-      "create or replace function public.profixiq_product_boundary_fleet_debug",
+      "set user_id = '59100000-0000-4000-8000-000000000004'\nwhere id = '59110000-0000-4000-8000-000000000004';",
     );
     expect(runtime).toContain(
       "Fleet actor did not resolve its linked Work Order relationship:",

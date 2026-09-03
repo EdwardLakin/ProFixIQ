@@ -40,6 +40,13 @@ set user_id = excluded.user_id,
     role = excluded.role,
     full_name = excluded.full_name;
 
+-- The baseline BEFORE INSERT trigger normalizes user_id to id before
+-- ON CONFLICT captures EXCLUDED. Restore the imported profile's canonical
+-- auth subject with a separate update so the fixture exercises both IDs.
+update public.profiles
+set user_id = '59100000-0000-4000-8000-000000000004'
+where id = '59110000-0000-4000-8000-000000000004';
+
 insert into public.shops (
   id, owner_id, business_name, name, user_limit,
   subscription_package, stripe_subscription_status,
@@ -882,72 +889,6 @@ begin
 end
 $product_boundary_acl_contract$;
 
--- Test-only SECURITY DEFINER diagnostics keep fixture failures actionable even
--- after the runtime switches to authenticated and RLS hides seed internals.
-create or replace function public.profixiq_product_boundary_fleet_debug()
-returns jsonb
-language sql
-stable
-security definer
-set search_path = ''
-as $fleet_debug$
-  select jsonb_build_object(
-    'uid', auth.uid(),
-    'shopAccess', public.profixiq_shop_has_product_access(
-      '59200000-0000-4000-8000-000000000004',
-      'fleet_maintenance'
-    ),
-    'fleetAccess', public.profixiq_fleet_has_product_access(
-      '59a00000-0000-4000-8000-000000000004'
-    ),
-    'linkedAccess', private.profixiq_current_actor_has_fleet_work_order_access(
-      '59200000-0000-4000-8000-000000000004',
-      '59500000-0000-4000-8000-000000000004'
-    ),
-    'unlinkedAccess', private.profixiq_current_actor_has_fleet_work_order_access(
-      '59200000-0000-4000-8000-000000000004',
-      '59500000-0000-4000-8000-000000000014'
-    ),
-    'shop', (
-      select jsonb_build_object(
-        'id', shop.id,
-        'package', shop.subscription_package,
-        'status', shop.stripe_subscription_status,
-        'pricingModel', shop.stripe_pricing_model,
-        'override', shop.billing_entitlement_override
-      )
-      from public.shops shop
-      where shop.id = '59200000-0000-4000-8000-000000000004'
-    ),
-    'profiles', (
-      select coalesce(jsonb_agg(jsonb_build_object(
-        'id', profile.id,
-        'userId', profile.user_id,
-        'shopId', profile.shop_id,
-        'role', profile.role
-      )), '[]'::jsonb)
-      from public.profiles profile
-      where profile.id = '59110000-0000-4000-8000-000000000004'
-         or profile.user_id = '59100000-0000-4000-8000-000000000004'
-    ),
-    'members', (
-      select coalesce(jsonb_agg(jsonb_build_object(
-        'fleetId', member.fleet_id,
-        'shopId', member.shop_id,
-        'userId', member.user_id,
-        'role', member.role
-      )), '[]'::jsonb)
-      from public.fleet_members member
-      where member.fleet_id = '59a00000-0000-4000-8000-000000000004'
-    )
-  );
-$fleet_debug$;
-
-revoke all on function public.profixiq_product_boundary_fleet_debug()
-  from public, anon, authenticated, service_role;
-grant execute on function public.profixiq_product_boundary_fleet_debug()
-  to authenticated, service_role;
-
 select set_config('request.jwt.claim.role', 'authenticated', true);
 set local role authenticated;
 
@@ -1658,22 +1599,30 @@ begin
       current_setting('request.jwt.claim.sub', true),
       current_setting('request.jwt.claims', true);
   end if;
-  select public.profixiq_product_boundary_fleet_debug() into v_result;
-  if coalesce((v_result ->> 'shopAccess')::boolean, false) is not true then
-    raise exception 'Fleet actor did not receive its Shop Fleet entitlement: %',
-      v_result;
+  if not public.profixiq_shop_has_product_access(
+    '59200000-0000-4000-8000-000000000004',
+    'fleet_maintenance'
+  ) then
+    raise exception 'Fleet actor did not receive its Shop Fleet entitlement.';
   end if;
-  if coalesce((v_result ->> 'fleetAccess')::boolean, false) is not true then
-    raise exception 'Imported Fleet profile did not resolve its canonical membership entitlement: %',
-      v_result;
+  if not public.profixiq_fleet_has_product_access(
+    '59a00000-0000-4000-8000-000000000004'
+  ) then
+    raise exception 'Imported Fleet profile did not resolve its canonical membership entitlement.';
   end if;
-  if coalesce((v_result ->> 'linkedAccess')::boolean, false) is not true then
-    raise exception 'Fleet actor did not resolve its linked Work Order relationship: %',
-      v_result;
+  select count(*) into v_count
+  from public.work_orders
+  where id = '59500000-0000-4000-8000-000000000004';
+  if v_count <> 1 then
+    raise exception 'Fleet actor did not resolve its linked Work Order relationship: row_count=%',
+      v_count;
   end if;
-  if coalesce((v_result ->> 'unlinkedAccess')::boolean, false) is true then
-    raise exception 'Fleet actor resolved an unrelated Work Order relationship: %',
-      v_result;
+  select count(*) into v_count
+  from public.work_orders
+  where id = '59500000-0000-4000-8000-000000000014';
+  if v_count <> 0 then
+    raise exception 'Fleet actor resolved an unrelated Work Order relationship: row_count=%',
+      v_count;
   end if;
   select count(*) into v_count
   from public.work_orders
