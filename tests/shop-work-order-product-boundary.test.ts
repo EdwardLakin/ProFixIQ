@@ -259,6 +259,12 @@ describe("Shop Work Order product boundary", () => {
     expect(runtime).toContain(
       "set_config('request.jwt.claim.role', 'authenticated', true)",
     );
+    expect(
+      runtime.match(/'request\.jwt\.claim\.sub'/g)?.length,
+    ).toBeGreaterThanOrEqual(9);
+    expect(runtime).toContain(
+      "Trusted wrappers may populate the legacy scalar subject",
+    );
     expect(runtime).toContain("Product Field Attach Part");
     expect(runtime).toContain("sqlerrm = 'WORK_ORDER_MEDIA_SCOPE_MISMATCH'");
     expect(

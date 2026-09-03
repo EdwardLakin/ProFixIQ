@@ -899,6 +899,11 @@ declare
 begin
   -- Shop Operations is fully entitled.
   perform set_config(
+    'request.jwt.claim.sub',
+    '59100000-0000-4000-8000-000000000001',
+    true
+  );
+  perform set_config(
     'request.jwt.claims',
     '{"sub":"59100000-0000-4000-8000-000000000001","role":"authenticated"}',
     true
@@ -1070,6 +1075,11 @@ begin
   -- Complete past_due remains intentionally entitled through the canonical
   -- product helper rather than a duplicated status list in this migration.
   perform set_config(
+    'request.jwt.claim.sub',
+    '59100000-0000-4000-8000-000000000002',
+    true
+  );
+  perform set_config(
     'request.jwt.claims',
     '{"sub":"59100000-0000-4000-8000-000000000002","role":"authenticated"}',
     true
@@ -1083,6 +1093,11 @@ begin
 
   -- Field can read only the Work Order linked to its mobile visit.  The same
   -- staff role must not make the unrelated same-shop Work Order visible.
+  perform set_config(
+    'request.jwt.claim.sub',
+    '59100000-0000-4000-8000-000000000003',
+    true
+  );
   perform set_config(
     'request.jwt.claims',
     '{"sub":"59100000-0000-4000-8000-000000000003","role":"authenticated"}',
@@ -1557,6 +1572,14 @@ begin
   end if;
 
   -- Fleet can read only the Work Order linked to its own service request.
+  -- Trusted wrappers may populate the legacy scalar subject, which auth.uid()
+  -- prefers over the JSON claims in some Supabase runtimes. Keep both forms in
+  -- sync whenever this fixture changes actors.
+  perform set_config(
+    'request.jwt.claim.sub',
+    '59100000-0000-4000-8000-000000000004',
+    true
+  );
   perform set_config(
     'request.jwt.claims',
     '{"sub":"59100000-0000-4000-8000-000000000004","role":"authenticated"}',
@@ -1714,6 +1737,11 @@ begin
   -- A Complete Operations tenant retains its legitimate Shop-side Fleet
   -- handoff without weakening the separate Fleet-only member fixture above.
   perform set_config(
+    'request.jwt.claim.sub',
+    '59100000-0000-4000-8000-000000000002',
+    true
+  );
+  perform set_config(
     'request.jwt.claims',
     '{"sub":"59100000-0000-4000-8000-000000000002","role":"authenticated"}',
     true
@@ -1731,6 +1759,11 @@ begin
 
   -- A product-catalog account with no package and explicit suspended/read-only
   -- overrides fail closed even though their owner roles are otherwise valid.
+  perform set_config(
+    'request.jwt.claim.sub',
+    '59100000-0000-4000-8000-000000000005',
+    true
+  );
   perform set_config(
     'request.jwt.claims',
     '{"sub":"59100000-0000-4000-8000-000000000005","role":"authenticated"}',
@@ -1928,6 +1961,11 @@ begin
   end if;
 
   perform set_config(
+    'request.jwt.claim.sub',
+    '59100000-0000-4000-8000-000000000006',
+    true
+  );
+  perform set_config(
     'request.jwt.claims',
     '{"sub":"59100000-0000-4000-8000-000000000006","role":"authenticated"}',
     true
@@ -1939,6 +1977,11 @@ begin
     raise exception 'Suspended actor inherited Shop Work Order access.';
   end if;
 
+  perform set_config(
+    'request.jwt.claim.sub',
+    '59100000-0000-4000-8000-000000000007',
+    true
+  );
   perform set_config(
     'request.jwt.claims',
     '{"sub":"59100000-0000-4000-8000-000000000007","role":"authenticated"}',
