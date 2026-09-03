@@ -884,7 +884,7 @@ $product_boundary_acl_contract$;
 
 -- Test-only SECURITY DEFINER diagnostics keep fixture failures actionable even
 -- after the runtime switches to authenticated and RLS hides seed internals.
-create or replace function private.profixiq_product_boundary_fleet_debug()
+create or replace function public.profixiq_product_boundary_fleet_debug()
 returns jsonb
 language sql
 stable
@@ -893,6 +893,21 @@ set search_path = ''
 as $fleet_debug$
   select jsonb_build_object(
     'uid', auth.uid(),
+    'shopAccess', public.profixiq_shop_has_product_access(
+      '59200000-0000-4000-8000-000000000004',
+      'fleet_maintenance'
+    ),
+    'fleetAccess', public.profixiq_fleet_has_product_access(
+      '59a00000-0000-4000-8000-000000000004'
+    ),
+    'linkedAccess', private.profixiq_current_actor_has_fleet_work_order_access(
+      '59200000-0000-4000-8000-000000000004',
+      '59500000-0000-4000-8000-000000000004'
+    ),
+    'unlinkedAccess', private.profixiq_current_actor_has_fleet_work_order_access(
+      '59200000-0000-4000-8000-000000000004',
+      '59500000-0000-4000-8000-000000000014'
+    ),
     'shop', (
       select jsonb_build_object(
         'id', shop.id,
@@ -928,9 +943,9 @@ as $fleet_debug$
   );
 $fleet_debug$;
 
-revoke all on function private.profixiq_product_boundary_fleet_debug()
+revoke all on function public.profixiq_product_boundary_fleet_debug()
   from public, anon, authenticated, service_role;
-grant execute on function private.profixiq_product_boundary_fleet_debug()
+grant execute on function public.profixiq_product_boundary_fleet_debug()
   to authenticated, service_role;
 
 select set_config('request.jwt.claim.role', 'authenticated', true);
@@ -1643,29 +1658,22 @@ begin
       current_setting('request.jwt.claim.sub', true),
       current_setting('request.jwt.claims', true);
   end if;
-  if not public.profixiq_shop_has_product_access(
-    '59200000-0000-4000-8000-000000000004',
-    'fleet_maintenance'
-  ) then
+  select public.profixiq_product_boundary_fleet_debug() into v_result;
+  if coalesce((v_result ->> 'shopAccess')::boolean, false) is not true then
     raise exception 'Fleet actor did not receive its Shop Fleet entitlement: %',
-      private.profixiq_product_boundary_fleet_debug();
+      v_result;
   end if;
-  if not public.profixiq_fleet_has_product_access(
-    '59a00000-0000-4000-8000-000000000004'
-  ) then
-    raise exception 'Imported Fleet profile did not resolve its canonical membership entitlement.';
+  if coalesce((v_result ->> 'fleetAccess')::boolean, false) is not true then
+    raise exception 'Imported Fleet profile did not resolve its canonical membership entitlement: %',
+      v_result;
   end if;
-  if not private.profixiq_current_actor_has_fleet_work_order_access(
-    '59200000-0000-4000-8000-000000000004',
-    '59500000-0000-4000-8000-000000000004'
-  ) then
-    raise exception 'Fleet actor did not resolve its linked Work Order relationship.';
+  if coalesce((v_result ->> 'linkedAccess')::boolean, false) is not true then
+    raise exception 'Fleet actor did not resolve its linked Work Order relationship: %',
+      v_result;
   end if;
-  if private.profixiq_current_actor_has_fleet_work_order_access(
-    '59200000-0000-4000-8000-000000000004',
-    '59500000-0000-4000-8000-000000000014'
-  ) then
-    raise exception 'Fleet actor resolved an unrelated Work Order relationship.';
+  if coalesce((v_result ->> 'unlinkedAccess')::boolean, false) is true then
+    raise exception 'Fleet actor resolved an unrelated Work Order relationship: %',
+      v_result;
   end if;
   select count(*) into v_count
   from public.work_orders
