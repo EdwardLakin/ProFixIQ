@@ -171,6 +171,27 @@ describe("Work Order command product RPC boundary", () => {
     expect(migration).toContain(
       "uuid, uuid, uuid, uuid, boolean, boolean",
     );
+    expect(migration).toContain("from public.shops shop");
+    expect(migration).toContain("from public.mobile_service_settings settings");
+    expect(migration).toContain("from public.mobile_field_operators operator");
+  });
+
+  it("locks mutable product entitlement through delegated commands", () => {
+    const shopLock = migration.indexOf("from public.shops shop");
+    const shopDecision = migration.indexOf(
+      "v_shop_entitled := public.profixiq_shop_has_product_access(",
+    );
+    const fieldSettingsLock = migration.indexOf(
+      "from public.mobile_service_settings settings",
+    );
+    const fieldDecision = migration.indexOf(
+      "v_field_entitled := public.mobile_profile_has_field_service_access(",
+    );
+
+    expect(shopLock).toBeGreaterThan(-1);
+    expect(shopLock).toBeLessThan(shopDecision);
+    expect(fieldSettingsLock).toBeGreaterThan(shopDecision);
+    expect(fieldSettingsLock).toBeLessThan(fieldDecision);
   });
 
   it("requires Field technicians to own the line or active labor segment", () => {

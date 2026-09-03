@@ -200,6 +200,17 @@ begin
         for update nowait;
       end if;
 
+      -- Stripe/package changes write this same canonical entitlement row.
+      -- Holding it through delegation makes the product decision and command
+      -- commit one serialized authorization unit.
+      perform 1
+      from public.shops shop
+      where shop.id = p_shop_id
+      for update nowait;
+      if not found then
+        raise exception using errcode = 'P0001', message = 'Shop not found.';
+      end if;
+
       v_shop_entitled := public.profixiq_shop_has_product_access(
         p_shop_id,
         'shop'
@@ -214,6 +225,17 @@ begin
             errcode = '42501',
             message = 'WORK_ORDER_PRODUCT_ACCESS_FORBIDDEN: actor cannot execute Field Work Order commands.';
         end if;
+
+        perform 1
+        from public.mobile_service_settings settings
+        where settings.shop_id = p_shop_id
+        for update nowait;
+
+        perform 1
+        from public.mobile_field_operators operator
+        where operator.shop_id = p_shop_id
+          and operator.profile_id = v_profile_id
+        for update nowait;
 
         v_field_entitled := public.mobile_profile_has_field_service_access(
           p_shop_id,
@@ -390,6 +412,14 @@ begin
         return false;
       end if;
 
+      perform 1
+      from public.shops shop
+      where shop.id = p_shop_id
+      for update nowait;
+      if not found then
+        return false;
+      end if;
+
       if public.profixiq_shop_has_product_access(p_shop_id, 'shop') is true then
         return true;
       end if;
@@ -398,11 +428,25 @@ begin
            'owner', 'admin', 'manager', 'advisor',
            'mechanic', 'lead_hand', 'foreman'
          )
-         or public.mobile_profile_has_field_service_access(
-           p_shop_id,
-           p_profile_id
-         ) is not true
       then
+        return false;
+      end if;
+
+      perform 1
+      from public.mobile_service_settings settings
+      where settings.shop_id = p_shop_id
+      for update nowait;
+
+      perform 1
+      from public.mobile_field_operators operator
+      where operator.shop_id = p_shop_id
+        and operator.profile_id = p_profile_id
+      for update nowait;
+
+      if public.mobile_profile_has_field_service_access(
+        p_shop_id,
+        p_profile_id
+      ) is not true then
         return false;
       end if;
 
