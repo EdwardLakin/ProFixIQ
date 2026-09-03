@@ -298,6 +298,12 @@ where id = 'a1438000-0000-4000-8000-000000000103';
 set constraints all immediate;
 set constraints all deferred;
 
+-- The production CoPilot command bridge runs with service-role JWT claims.
+-- Keep postgres as the fixture executor for direct assertions, while giving
+-- entitlement helpers the same request context as the real bridge.
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select set_config('request.jwt.claim.role', 'service_role', true);
+
 do $technician_copilot_runtime_lifecycle$
 declare
   v_first jsonb;
