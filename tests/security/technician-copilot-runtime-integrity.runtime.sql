@@ -57,21 +57,30 @@ update public.profiles
 set user_id = 'a1438000-0000-4000-8000-000000000003'
 where id = 'a1438000-0000-4000-8000-000000000004';
 
-insert into public.shops (id, owner_id, business_name, name, user_limit)
+insert into public.shops (
+  id, owner_id, business_name, name, user_limit,
+  subscription_package, stripe_subscription_status, stripe_pricing_model
+)
 values
   (
     'a1438000-0000-4000-8000-000000000010',
     'a1438000-0000-4000-8000-000000000001',
     'CoPilot Runtime Shop',
     'CoPilot Runtime Shop',
-    10
+    10,
+    'shop_operations',
+    'active',
+    'product_packages_v1'
   ),
   (
     'a1438000-0000-4000-8000-000000000011',
     'a1438000-0000-4000-8000-000000000001',
     'CoPilot Cross-Tenant Shop',
     'CoPilot Cross-Tenant Shop',
-    10
+    10,
+    'shop_operations',
+    'active',
+    'product_packages_v1'
   )
 on conflict (id) do nothing;
 
