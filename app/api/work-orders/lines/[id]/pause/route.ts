@@ -47,6 +47,7 @@ export async function POST(req: NextRequest) {
     lineId: id,
     technicianId: auth.user.id,
     operationKey,
+    enforceProductAccess: true,
     reason: body?.holdReason,
     expectedLineUpdatedAt: body?.expectedLineUpdatedAt,
     transitionIntent: body?.transitionIntent,

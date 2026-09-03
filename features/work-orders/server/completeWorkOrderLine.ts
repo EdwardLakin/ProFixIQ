@@ -13,6 +13,7 @@ type CompletionInput = {
   operationKey: string;
   /** Public technician routes opt into the locked assignment/segment guard. */
   enforceAssignedWork?: boolean;
+  enforceProductAccess?: boolean;
   cause?: string | null;
   correction?: string | null;
 };
@@ -22,6 +23,8 @@ export async function completeWorkOrderLine(input: CompletionInput) {
     input.enforceAssignedWork === true
       ? { enforceAssignedWork: input.enforceAssignedWork === true }
       : {};
+  const productAccessOptions =
+    input.enforceProductAccess === true ? { enforceProductAccess: true } : {};
 
   const result = await applyJobPunchTransition({
     supabase: input.supabase,
@@ -30,6 +33,7 @@ export async function completeWorkOrderLine(input: CompletionInput) {
     technicianId: input.technicianId,
     options: {
       operationKey: input.operationKey,
+      ...productAccessOptions,
       ...assignedWorkOptions,
       finish: {
         cause: input.cause,

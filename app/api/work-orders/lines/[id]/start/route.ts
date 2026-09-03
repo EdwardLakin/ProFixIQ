@@ -44,6 +44,7 @@ export async function POST(req: NextRequest) {
     lineId: id,
     technicianId: auth.user.id,
     operationKey,
+    enforceProductAccess: true,
     allowConcurrentJobPunches: body?.allowConcurrentJobPunches === true,
   });
 

@@ -37,11 +37,13 @@ function clean(value: unknown): string {
 
 function statusFor(message: string): number {
   const normalized = message.toLowerCase();
+  if (normalized.includes("work_order_product_access_busy")) return 503;
   if (normalized.includes("not found")) return 404;
   if (
     normalized.includes("not available") ||
     normalized.includes("not assigned") ||
     normalized.includes("authenticated actor") ||
+    normalized.includes("work_order_product_access_forbidden") ||
     normalized.includes("cannot add")
   )
     return 403;
