@@ -5,7 +5,7 @@ const mocks = vi.hoisted(() => ({
   requireShopScopedApiAccess: vi.fn(),
   loadMobileWorkOrderDetail: vi.fn(),
   resolveWorkOrderProductAuthority: vi.fn(),
-  resolveVisibleWorkOrderId: vi.fn(),
+  loadAuthorizedWorkOrderWorkspaceSnapshot: vi.fn(),
 }));
 
 vi.mock("@/features/shared/lib/server/admin-access", () => ({
@@ -27,7 +27,8 @@ vi.mock(
     ...(await importOriginal<
       typeof import("@/features/work-orders/workspace/server/loadWorkOrderWorkspaceSnapshot")
     >()),
-    resolveVisibleWorkOrderId: mocks.resolveVisibleWorkOrderId,
+    loadAuthorizedWorkOrderWorkspaceSnapshot:
+      mocks.loadAuthorizedWorkOrderWorkspaceSnapshot,
   }),
 );
 vi.mock(
@@ -41,6 +42,7 @@ vi.mock(
 );
 
 const WORK_ORDER_ID = "11111111-1111-4111-8111-111111111111";
+const ADMIN_SUPABASE = { from: vi.fn() };
 
 function allowedAccess() {
   return {
@@ -55,9 +57,11 @@ function allowedAccess() {
 describe("mobile work-order detail route", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.createAdminSupabase.mockReturnValue({ from: vi.fn() });
+    mocks.createAdminSupabase.mockReturnValue(ADMIN_SUPABASE);
     mocks.requireShopScopedApiAccess.mockResolvedValue(allowedAccess());
-    mocks.resolveVisibleWorkOrderId.mockResolvedValue(WORK_ORDER_ID);
+    mocks.loadAuthorizedWorkOrderWorkspaceSnapshot.mockResolvedValue({
+      workOrder: { id: WORK_ORDER_ID },
+    });
     mocks.resolveWorkOrderProductAuthority.mockResolvedValue({
       authorized: true,
       product: "shop",
@@ -159,15 +163,21 @@ describe("mobile work-order detail route", () => {
     });
 
     expect(response.status).toBe(200);
-    expect(mocks.resolveVisibleWorkOrderId).toHaveBeenCalledWith(
-      expect.objectContaining({ routeId: "WO-000014", shopId: "shop-1" }),
-    );
+    expect(mocks.loadAuthorizedWorkOrderWorkspaceSnapshot).toHaveBeenCalledWith({
+      dataSupabase: ADMIN_SUPABASE,
+      profileId: "profile-1",
+      routeId: "WO-000014",
+      shopId: "shop-1",
+    });
     expect(mocks.resolveWorkOrderProductAuthority).toHaveBeenCalledWith(
       expect.objectContaining({ profile: expect.any(Object) }),
       WORK_ORDER_ID,
     );
     expect(mocks.loadMobileWorkOrderDetail).toHaveBeenCalledWith(
-      expect.objectContaining({ routeId: "WO-000014" }),
+      expect.objectContaining({
+        dataSupabase: ADMIN_SUPABASE,
+        routeId: "WO-000014",
+      }),
     );
   });
 

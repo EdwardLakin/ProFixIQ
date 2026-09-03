@@ -11,7 +11,7 @@ import {
   loadMobileWorkOrderDetail,
   MOBILE_WORK_ORDER_DETAIL_ROLES,
 } from "@/features/work-orders/mobile/server/loadMobileWorkOrderDetail";
-import { resolveVisibleWorkOrderId } from "@/features/work-orders/workspace/server/loadWorkOrderWorkspaceSnapshot";
+import { loadAuthorizedWorkOrderWorkspaceSnapshot } from "@/features/work-orders/workspace/server/loadWorkOrderWorkspaceSnapshot";
 
 type RouteContext = {
   params: Promise<{ id: string }>;
@@ -33,11 +33,14 @@ export async function GET(_request: Request, context: RouteContext) {
   if (!routeId) return detailError("Work order not found.", 404);
 
   try {
-    const canonicalWorkOrderId = await resolveVisibleWorkOrderId({
-      supabase: access.supabase,
+    const dataSupabase = createAdminSupabase();
+    const identity = await loadAuthorizedWorkOrderWorkspaceSnapshot({
+      dataSupabase,
+      profileId: access.profile.id,
       shopId: access.profile.shop_id,
       routeId,
     });
+    const canonicalWorkOrderId = identity?.workOrder.id ?? null;
     if (!canonicalWorkOrderId) {
       return detailError("Work order not found.", 404);
     }
@@ -52,7 +55,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
     const snapshot = await loadMobileWorkOrderDetail({
       supabase: access.supabase,
-      dataSupabase: createAdminSupabase(),
+      dataSupabase,
       profileId: access.profile.id,
       shopId: access.profile.shop_id,
       routeId,

@@ -13,7 +13,8 @@ type TableName =
   | "profiles"
   | "customers"
   | "fleet_members"
-  | "fleet_vehicles";
+  | "fleet_vehicles"
+  | "fleet_service_requests";
 
 type Row = Record<string, unknown>;
 
@@ -24,6 +25,7 @@ const mocks = vi.hoisted(() => ({
     customers: [] as Row[],
     fleet_members: [] as Row[],
     fleet_vehicles: [] as Row[],
+    fleet_service_requests: [] as Row[],
   },
   filters: [] as Array<{
     table: TableName;
@@ -58,6 +60,7 @@ function queryFor(table: TableName) {
     eq: vi.fn(),
     in: vi.fn(),
     limit: vi.fn(),
+    order: vi.fn(),
     maybeSingle: vi.fn(),
     then: vi.fn(),
   };
@@ -73,6 +76,7 @@ function queryFor(table: TableName) {
     return query;
   });
   query.limit.mockReturnValue(query);
+  query.order.mockReturnValue(query);
   query.maybeSingle.mockImplementation(async () => ({
     data: resolveRows()[0] ?? null,
     error: null,
@@ -118,6 +122,7 @@ function sessionClient(userId: string | null): SupabaseClient<Database> {
         error: null,
       })),
     },
+    from: (table: TableName) => queryFor(table),
   } as unknown as SupabaseClient<Database>;
 }
 
@@ -128,6 +133,7 @@ function seedWorkOrder() {
       shop_id: "shop-a",
       customer_id: "customer-a",
       vehicle_id: "vehicle-a",
+      source_fleet_service_request_id: null,
     },
   ];
 }
@@ -197,6 +203,125 @@ describe("work-order line evidence authorization", () => {
       kind: "staff",
       shopId: "shop-a",
       canEdit: false,
+    });
+  });
+
+  it("allows Fleet evidence through a canonical service-request link", async () => {
+    mocks.rows.profiles = [
+      {
+        id: "fleet-profile",
+        user_id: "fleet-auth",
+        shop_id: "shop-a",
+        role: "fleet_manager",
+      },
+    ];
+    mocks.rows.fleet_members = [
+      {
+        user_id: "fleet-profile",
+        fleet_id: "fleet-a",
+        shop_id: "shop-a",
+        role: "manager",
+      },
+    ];
+    mocks.rows.fleet_service_requests = [
+      {
+        id: "request-a",
+        fleet_id: "fleet-a",
+        shop_id: "shop-a",
+        work_order_id: "work-order-a",
+      },
+    ];
+
+    const actor = await authorizeWorkOrderEvidence(
+      sessionClient("fleet-auth"),
+      "work-order-a",
+    );
+
+    expect(actor).toMatchObject({
+      kind: "fleet",
+      shopId: "shop-a",
+      workOrderId: "work-order-a",
+      canEdit: false,
+    });
+  });
+
+  it("does not expose evidence from a same-fleet vehicle without a request link", async () => {
+    mocks.rows.profiles = [
+      {
+        id: "fleet-profile",
+        user_id: "fleet-auth",
+        shop_id: "shop-a",
+        role: "fleet_manager",
+      },
+    ];
+    mocks.rows.fleet_members = [
+      {
+        user_id: "fleet-profile",
+        fleet_id: "fleet-a",
+        shop_id: "shop-a",
+        role: "manager",
+      },
+    ];
+    mocks.rows.fleet_vehicles = [
+      {
+        fleet_id: "fleet-a",
+        vehicle_id: "vehicle-a",
+        shop_id: "shop-a",
+      },
+    ];
+    mocks.rows.fleet_service_requests = [
+      {
+        id: "request-other",
+        fleet_id: "fleet-a",
+        shop_id: "shop-a",
+        work_order_id: "work-order-b",
+      },
+    ];
+
+    const actor = await authorizeWorkOrderEvidence(
+      sessionClient("fleet-auth"),
+      "work-order-a",
+    );
+
+    expect(actor).toBeNull();
+  });
+
+  it("accepts the canonical source Fleet request relationship", async () => {
+    mocks.rows.work_orders[0].source_fleet_service_request_id =
+      "request-source";
+    mocks.rows.profiles = [
+      {
+        id: "fleet-profile",
+        user_id: "fleet-auth",
+        shop_id: "shop-a",
+        role: "fleet_manager",
+      },
+    ];
+    mocks.rows.fleet_members = [
+      {
+        user_id: "fleet-profile",
+        fleet_id: "fleet-a",
+        shop_id: "shop-a",
+        role: "manager",
+      },
+    ];
+    mocks.rows.fleet_service_requests = [
+      {
+        id: "request-source",
+        fleet_id: "fleet-a",
+        shop_id: "shop-a",
+        work_order_id: null,
+      },
+    ];
+
+    const actor = await authorizeWorkOrderEvidence(
+      sessionClient("fleet-auth"),
+      "work-order-a",
+    );
+
+    expect(actor).toMatchObject({
+      kind: "fleet",
+      workOrderId: "work-order-a",
     });
   });
 

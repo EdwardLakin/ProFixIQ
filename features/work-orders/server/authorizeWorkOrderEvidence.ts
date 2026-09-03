@@ -38,7 +38,7 @@ export async function authorizeWorkOrderEvidence(
   const admin = createAdminSupabase();
   const { data: workOrder } = await admin
     .from("work_orders")
-    .select("id,shop_id,customer_id,vehicle_id")
+    .select("id,shop_id,customer_id,vehicle_id,source_fleet_service_request_id")
     .eq("id", workOrderId)
     .maybeSingle();
   if (!workOrder?.id || !workOrder.shop_id) return null;
@@ -110,8 +110,6 @@ export async function authorizeWorkOrderEvidence(
     };
   }
 
-  if (!workOrder.vehicle_id) return null;
-
   let fleetActor;
   try {
     fleetActor = await resolveFleetActorContext(sessionClient, {
@@ -128,14 +126,30 @@ export async function authorizeWorkOrderEvidence(
     .map((membership) => membership.fleetId);
   if (fleetIds.length === 0) return null;
 
-  const { data: fleetVehicle } = await admin
-    .from("fleet_vehicles")
+  const { data: directRequest, error: directRequestError } = await admin
+    .from("fleet_service_requests")
     .select("id")
-    .eq("vehicle_id", workOrder.vehicle_id)
+    .eq("shop_id", workOrder.shop_id)
     .in("fleet_id", fleetIds)
+    .eq("work_order_id", workOrder.id)
     .limit(1)
     .maybeSingle();
-  if (!fleetVehicle?.id) return null;
+  if (directRequestError) return null;
+
+  let hasFleetRequestLink = Boolean(directRequest?.id);
+  if (!hasFleetRequestLink && workOrder.source_fleet_service_request_id) {
+    const { data: sourceRequest, error: sourceRequestError } = await admin
+      .from("fleet_service_requests")
+      .select("id")
+      .eq("shop_id", workOrder.shop_id)
+      .in("fleet_id", fleetIds)
+      .eq("id", workOrder.source_fleet_service_request_id)
+      .limit(1)
+      .maybeSingle();
+    if (sourceRequestError) return null;
+    hasFleetRequestLink = Boolean(sourceRequest?.id);
+  }
+  if (!hasFleetRequestLink) return null;
 
   return {
     userId: user.id,
