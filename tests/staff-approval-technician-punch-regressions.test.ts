@@ -361,7 +361,7 @@ describe("assigned technician punch shop resolution", () => {
     expect(punchTransition).toContain("capabilities.canPerformAssignedWork");
     expect(punchTransition).toContain("isAssigned");
     expect(punchTransition).toContain(
-      '.select("id,shop_id,assigned_tech_id,assigned_to,status,approval_state")',
+      '.select("id,shop_id,assigned_tech_id,assigned_to,status,approval_state,work_order_id")',
     );
     expect(punchTransition).toContain("line.assigned_to === actorProfileId");
     expect(punchTransition).toContain("isLegacyOnlyAssignment");

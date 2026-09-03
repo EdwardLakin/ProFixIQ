@@ -3,6 +3,7 @@ import type { Database, Json } from "@shared/types/types/supabase";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { resolveWorkOrderCommandProductAccess } from "@/features/work-orders/server/authorizeWorkOrderCommandProduct";
 
 type DB = Database;
 
@@ -37,6 +38,8 @@ type TransitionOptions = {
   operationKey?: string;
   /** Opt-in authorization contract for public assigned-technician routes. */
   enforceAssignedWork?: boolean;
+  /** Opt-in product/resource boundary for public Work Order command routes. */
+  enforceProductAccess?: boolean;
   allowConcurrentJobPunches?: boolean;
   nowIso?: string;
   startSource?: string;
@@ -154,6 +157,9 @@ export async function applyJobPunchTransition({
   let shopId: string;
   let actorUserId: string;
   let actorProfileId: string;
+  let productAccessActor:
+    | Parameters<typeof resolveWorkOrderCommandProductAccess>[0]["access"]
+    | null = null;
 
   if (options?.trustedActor) {
     if (partsQuoteHoldManagementRequested) {
@@ -215,6 +221,12 @@ export async function applyJobPunchTransition({
     shopId = profile.shop_id;
     actorUserId = user.id;
     actorProfileId = profile.id;
+    productAccessActor = {
+      authUserId: user.id,
+      canonicalRole: capabilities.canonicalRole,
+      profile: { ...profile, shop_id: profile.shop_id },
+      supabase,
+    };
   }
 
   if (
@@ -269,12 +281,13 @@ export async function applyJobPunchTransition({
 
   const { data: line, error: lineError } = await admin
     .from("work_order_lines")
-    .select("id,shop_id,assigned_tech_id,assigned_to,status,approval_state")
+    .select("id,shop_id,assigned_tech_id,assigned_to,status,approval_state,work_order_id")
     .eq("id", lineId)
     .eq("shop_id", shopId)
     .maybeSingle<{
       id: string;
       shop_id: string | null;
+      work_order_id: string | null;
       assigned_tech_id: string | null;
       assigned_to: string | null;
       status: string | null;
@@ -283,6 +296,30 @@ export async function applyJobPunchTransition({
   if (lineError) return { ok: false, status: 400, error: lineError.message };
   if (!line) {
     return { ok: false, status: 404, error: "Work-order line not found for shop." };
+  }
+
+  if (options?.enforceProductAccess === true && productAccessActor) {
+    if (!line.work_order_id) {
+      return {
+        ok: false,
+        status: 404,
+        error: "Parent work order not found for shop.",
+      };
+    }
+
+    const productAccess = await resolveWorkOrderCommandProductAccess({
+      access: productAccessActor,
+      workOrderId: line.work_order_id,
+    });
+    if (!productAccess.authorized) {
+      return {
+        ok: false,
+        status: productAccess.error ? 503 : 403,
+        error: productAccess.error
+          ? "Unable to verify Work Order product access."
+          : "Work Order product access is required.",
+      };
+    }
   }
 
   if (!partsQuoteHoldManagementRequested && options?.enforceAssignedWork === true) {

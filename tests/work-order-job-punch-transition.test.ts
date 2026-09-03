@@ -4,11 +4,29 @@ import { startTechnicianJobLabor } from "@/features/work-orders/server/technicia
 
 const mocks = vi.hoisted(() => ({
   admin: null as unknown,
+  productAccess: vi.fn(
+    async (): Promise<{
+      authorized: boolean;
+      product: "shop" | "field" | null;
+      error: string | null;
+    }> => ({
+      authorized: true,
+      product: "shop",
+      error: null,
+    }),
+  ),
 }));
 
 vi.mock("@/features/shared/lib/supabase/server", () => ({
   createAdminSupabase: () => mocks.admin,
 }));
+
+vi.mock(
+  "@/features/work-orders/server/authorizeWorkOrderCommandProduct",
+  () => ({
+    resolveWorkOrderCommandProductAccess: mocks.productAccess,
+  }),
+);
 
 type RpcCall = {
   name: string;
@@ -30,6 +48,7 @@ class FakeSupabase {
   line: {
     id: string;
     shop_id: string | null;
+    work_order_id: string | null;
     assigned_tech_id: string | null;
     assigned_to: string | null;
     status: string | null;
@@ -37,6 +56,7 @@ class FakeSupabase {
   } | null = {
     id: "line-1",
     shop_id: "shop-1",
+    work_order_id: "work-order-1",
     assigned_tech_id: "tech-1",
     assigned_to: null,
     status: "awaiting_approval",
@@ -269,6 +289,7 @@ describe("applyJobPunchTransition atomic boundary", () => {
 
   it("returns a stored pause receipt before requiring a current active segment", async () => {
     const db = new FakeSupabase();
+    mocks.productAccess.mockClear();
     db.activeSegment = null;
     db.existingOperation = {
       actor_user_id: "tech-1",
@@ -281,12 +302,74 @@ describe("applyJobPunchTransition atomic boundary", () => {
       lineId: "line-1",
       action: "pause",
       technicianId: "tech-1",
-      options: { operationKey: "pause-retry" },
+      options: {
+        operationKey: "pause-retry",
+        enforceProductAccess: true,
+      },
     });
 
     expect(result).toEqual({
       ok: true,
       payload: { ok: true, action: "pause", idempotent: true },
+    });
+    expect(db.rpcCalls).toHaveLength(0);
+    expect(mocks.productAccess).not.toHaveBeenCalled();
+  });
+
+  it("denies a fresh command outside the Shop or linked Field boundary", async () => {
+    const db = new FakeSupabase();
+    mocks.productAccess.mockResolvedValueOnce({
+      authorized: false,
+      product: null,
+      error: null,
+    });
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "start",
+      technicianId: "tech-1",
+      options: {
+        operationKey: "unlinked-field-start",
+        enforceAssignedWork: true,
+        enforceProductAccess: true,
+      },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 403,
+      error: "Work Order product access is required.",
+    });
+    expect(mocks.productAccess).toHaveBeenCalledWith(
+      expect.objectContaining({ workOrderId: "work-order-1" }),
+    );
+    expect(db.rpcCalls).toHaveLength(0);
+  });
+
+  it("fails closed without misreporting an authorization outage as a denial", async () => {
+    const db = new FakeSupabase();
+    mocks.productAccess.mockResolvedValueOnce({
+      authorized: false,
+      product: null,
+      error: "lookup unavailable",
+    });
+
+    const result = await applyJobPunchTransition({
+      supabase: db as never,
+      lineId: "line-1",
+      action: "pause",
+      technicianId: "tech-1",
+      options: {
+        operationKey: "product-lookup-outage",
+        enforceProductAccess: true,
+      },
+    });
+
+    expect(result).toEqual({
+      ok: false,
+      status: 503,
+      error: "Unable to verify Work Order product access.",
     });
     expect(db.rpcCalls).toHaveLength(0);
   });
@@ -473,6 +556,7 @@ describe("applyJobPunchTransition atomic boundary", () => {
     db.line = {
       id: "line-1",
       shop_id: "shop-1",
+      work_order_id: "work-order-1",
       assigned_tech_id: null,
       assigned_to: "tech-1",
       status: "awaiting_approval",
@@ -502,6 +586,7 @@ describe("applyJobPunchTransition atomic boundary", () => {
     db.line = {
       id: "line-1",
       shop_id: "shop-1",
+      work_order_id: "work-order-1",
       assigned_tech_id: null,
       assigned_to: "tech-1",
       status: "awaiting_approval",
@@ -533,6 +618,7 @@ describe("applyJobPunchTransition atomic boundary", () => {
     db.line = {
       id: "line-1",
       shop_id: "shop-1",
+      work_order_id: "work-order-1",
       assigned_tech_id: null,
       assigned_to: "tech-1",
       status: "awaiting_approval",

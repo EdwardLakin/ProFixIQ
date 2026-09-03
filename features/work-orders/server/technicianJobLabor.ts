@@ -89,6 +89,7 @@ export async function startTechnicianJobLabor(params: {
   startedAtIso?: string;
   source?: "manual" | "break_resume" | "lunch_resume";
   allowConcurrentJobPunches?: boolean;
+  enforceProductAccess?: boolean;
   trustedActor?: TrustedActorContext;
 }): Promise<JobLaborResult> {
   const operationKey =
@@ -111,6 +112,9 @@ export async function startTechnicianJobLabor(params: {
       operationKey,
       enforceAssignedWork: true,
       allowConcurrentJobPunches: params.allowConcurrentJobPunches === true,
+      ...(params.enforceProductAccess === true
+        ? { enforceProductAccess: true }
+        : {}),
       nowIso: params.startedAtIso,
       startSource:
         params.source === "break_resume"
@@ -133,6 +137,7 @@ export async function stopTechnicianJobLabor(params: {
   expectedLineUpdatedAt?: string;
   reason?: string;
   transitionIntent?: "parts_quote_hold";
+  enforceProductAccess?: boolean;
   preserveLineStatus?: boolean;
   event?: string;
   details?: Json;
@@ -154,6 +159,9 @@ export async function stopTechnicianJobLabor(params: {
     technicianId: params.technicianId,
     options: {
       operationKey,
+      ...(params.enforceProductAccess === true
+        ? { enforceProductAccess: true }
+        : {}),
       // Preserve the established shared Hold behavior. Assignment is enforced
       // when labor starts; Hold itself remains on the canonical punch contract.
       enforceAssignedWork: false,

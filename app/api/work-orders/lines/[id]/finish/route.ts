@@ -56,6 +56,7 @@ export async function POST(req: NextRequest) {
     technicianId: user.id,
     actorUserId: user.id,
     operationKey,
+    enforceProductAccess: true,
     enforceAssignedWork: true,
     cause: body.cause,
     correction: body.correction,
