@@ -874,6 +874,7 @@ begin
 end
 $product_boundary_acl_contract$;
 
+select set_config('request.jwt.claim.role', 'authenticated', true);
 set local role authenticated;
 
 do $product_boundary_runtime$

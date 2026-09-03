@@ -250,6 +250,9 @@ describe("Shop Work Order product boundary", () => {
 
     const runtime = await readFile(RUNTIME, "utf8");
     expect(runtime).toContain("product-boundary:field-handoff-positive");
+    expect(runtime).toContain(
+      "set_config('request.jwt.claim.role', 'authenticated', true)",
+    );
     expect(
       runtime.match(/exception when others then/g)?.length,
     ).toBeGreaterThanOrEqual(3);
