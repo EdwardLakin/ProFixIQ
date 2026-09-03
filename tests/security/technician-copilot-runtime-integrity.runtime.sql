@@ -2,6 +2,12 @@
 
 begin;
 
+-- This fixture invokes revoked CoPilot implementation functions directly as a
+-- trusted database worker. Keep both JWT role forms aligned so nested public
+-- mutation wrappers observe the production service-role execution contract.
+select set_config('request.jwt.claim.role', 'service_role', true);
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+
 insert into auth.users (id, email, raw_user_meta_data)
 values
   (
