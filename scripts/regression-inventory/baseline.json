@@ -583,16 +583,6 @@
       "expiresOn": "2026-09-06"
     },
     {
-      "fingerprint": "7d2e29be63bcfa69ca12",
-      "rule": "missing-column",
-      "severity": "error",
-      "domain": "work-orders",
-      "file": "features/work-orders/server/authorizeWorkOrderEvidence.ts",
-      "subject": "fleet_vehicles.id",
-      "message": "select references missing column fleet_vehicles.id",
-      "expiresOn": "2026-09-06"
-    },
-    {
       "fingerprint": "0613af0573363ea682ba",
       "rule": "missing-column",
       "severity": "error",
