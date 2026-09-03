@@ -40,6 +40,12 @@ describe("Work Order command product RPC boundary", () => {
     expect(replay).toBeLessThan(serviceRole);
     expect(serviceRole).toBeLessThan(productCheck);
     expect(productCheck).toBeLessThan(fieldCheck);
+    expect(migration).toContain(
+      "A peer request may have committed while this attempt waited",
+    );
+    expect(migration).toContain(
+      "The contending request may have committed its receipt",
+    );
   });
 
   it("locks a current linked Field visit with technician ownership", () => {
@@ -76,7 +82,7 @@ describe("Work Order command product RPC boundary", () => {
     expect(serviceRole).toBeLessThan(profileRead);
     expect(
       migration.match(/private\.apply_job_punch_transition_product_core\(/g),
-    ).toHaveLength(4);
+    ).toHaveLength(6);
   });
 
   it("guards the specialized parts-quote Hold with the shared product fence", () => {
@@ -121,6 +127,24 @@ describe("Work Order command product RPC boundary", () => {
     );
   });
 
+  it("fences the public offline story mutation without changing notes", () => {
+    expect(migration).toContain(
+      "rename to apply_offline_line_mutation_product_core",
+    );
+    expect(migration).toContain(
+      "create function public.apply_offline_line_mutation_atomic(",
+    );
+    expect(migration).toContain(
+      "if p_action_type is distinct from 'save_story_draft' then",
+    );
+    expect(migration).toContain(
+      "return private.apply_offline_line_mutation_product_core(",
+    );
+    expect(migration).toContain(
+      "v_receipt_entity_id is distinct from p_work_order_line_id",
+    );
+  });
+
   it("keeps the shared helper private and locks only active linked visits", () => {
     expect(migration).toContain(
       "create function private.work_order_command_product_access_locked(",
@@ -131,10 +155,16 @@ describe("Work Order command product RPC boundary", () => {
     expect(migration).toContain("visit.assigned_user_id = p_profile_id");
     expect(migration).toContain("for update nowait");
     expect(migration).toContain("from public.profiles profile");
+    expect(migration).toContain("p_lock_parent_first boolean default false");
+    expect(migration).toContain("p_lock_segments boolean default false");
+    expect(migration).toContain(
+      "uuid, uuid, uuid, uuid, boolean, boolean",
+    );
   });
 
   it("requires Field technicians to own the line or active labor segment", () => {
-    expect(migration).toContain("if not v_can_manage_field_work and not (");
+    expect(migration).toContain("if not v_can_manage_field_work and (");
+    expect(migration).toContain(") is not true then");
     expect(migration).toContain("assignment.technician_id = v_profile_id");
     expect(migration).toContain("segment.technician_id = v_profile_id");
     expect(migration).toContain("segment.ended_at is null");
