@@ -1152,7 +1152,7 @@ begin
       p_operation_key => 'product-boundary:field-job-core'
     );
   exception when raise_exception then
-    if sqlerrm = 'Unsupported job punch action.' then
+    if position('Unsupported job punch action' in sqlerrm) > 0 then
       v_denied := true;
     else
       raise;
@@ -1203,7 +1203,7 @@ begin
       p_payload => '{}'::jsonb
     );
   exception when raise_exception then
-    if sqlerrm = 'Unsupported offline line mutation.' then
+    if position('Unsupported offline line mutation' in sqlerrm) > 0 then
       v_denied := true;
     else
       raise;
@@ -1268,7 +1268,7 @@ begin
       now()
     );
   exception when raise_exception then
-    if sqlerrm = 'Inspection not found for shop.' then
+    if position('Inspection not found for shop' in sqlerrm) > 0 then
       v_denied := true;
     else
       raise;

@@ -251,6 +251,15 @@ describe("Shop Work Order product boundary", () => {
     const runtime = await readFile(RUNTIME, "utf8");
     expect(runtime).toContain("product-boundary:field-handoff-positive");
     expect(runtime).toContain(
+      "position('Unsupported job punch action' in sqlerrm) > 0",
+    );
+    expect(runtime).toContain(
+      "position('Unsupported offline line mutation' in sqlerrm) > 0",
+    );
+    expect(runtime).toContain(
+      "position('Inspection not found for shop' in sqlerrm) > 0",
+    );
+    expect(runtime).toContain(
       "Annotation product wrapper broke idempotent replay.",
     );
     expect(runtime).toContain(
