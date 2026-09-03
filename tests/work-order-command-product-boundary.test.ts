@@ -32,6 +32,10 @@ class VisitSupabase {
         this.filters.push([column, value]);
         return query;
       },
+      in: (column: string, values: readonly unknown[]) => {
+        this.filters.push([column, values]);
+        return query;
+      },
       limit: () => query,
       maybeSingle: async () => ({
         data: this.visit,
@@ -115,6 +119,17 @@ describe("Work Order command product boundary", () => {
       ["shop_id", "shop-1"],
       ["work_order_id", "work-order-1"],
       ["mode", "mobile"],
+      [
+        "status",
+        [
+          "scheduled",
+          "dispatched",
+          "en_route",
+          "arrived",
+          "working",
+          "paused",
+        ],
+      ],
       ["assigned_user_id", "profile-1"],
     ]);
   });
@@ -137,6 +152,17 @@ describe("Work Order command product boundary", () => {
 
     expect(result.authorized).toBe(true);
     expect(db.filters).toContainEqual(["mode", "mobile"]);
+    expect(db.filters).toContainEqual([
+      "status",
+      [
+        "scheduled",
+        "dispatched",
+        "en_route",
+        "arrived",
+        "working",
+        "paused",
+      ],
+    ]);
     expect(db.filters).not.toContainEqual(["assigned_user_id", "profile-1"]);
   });
 

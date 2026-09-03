@@ -16,6 +16,15 @@ import {
 
 type DB = Database;
 
+const ACTIVE_FIELD_VISIT_STATUSES = [
+  "scheduled",
+  "dispatched",
+  "en_route",
+  "arrived",
+  "working",
+  "paused",
+] as const;
+
 type WorkOrderCommandActor = {
   authUserId: string;
   canonicalRole: CanonicalRole;
@@ -96,7 +105,8 @@ export async function resolveWorkOrderCommandProductAccess(input: {
     .select("id")
     .eq("shop_id", input.access.profile.shop_id)
     .eq("work_order_id", input.workOrderId)
-    .eq("mode", "mobile");
+    .eq("mode", "mobile")
+    .in("status", ACTIVE_FIELD_VISIT_STATUSES);
   if (!canManageLinkedFieldWork) {
     visitQuery = visitQuery.eq("assigned_user_id", input.access.profile.id);
   }

@@ -712,6 +712,30 @@ describe("applyJobPunchTransition atomic boundary", () => {
       error:
         "ASSIGNED_JOB_PUNCH_BUSY: assignment state is changing; retry the punch.",
     });
+
+    const productDb = new FakeSupabase();
+    productDb.rpcError = {
+      message:
+        "WORK_ORDER_PRODUCT_ACCESS_BUSY: command authority is changing; retry the command.",
+    };
+
+    const productResult = await applyJobPunchTransition({
+      supabase: productDb as never,
+      lineId: "line-1",
+      action: "start",
+      technicianId: "tech-1",
+      options: {
+        operationKey: "product-boundary-busy",
+        enforceProductAccess: true,
+      },
+    });
+
+    expect(productResult).toEqual({
+      ok: false,
+      status: 503,
+      error:
+        "WORK_ORDER_PRODUCT_ACCESS_BUSY: command authority is changing; retry the command.",
+    });
   });
 
   it("preserves trusted break auto-resume for a currently capable technician", async () => {
