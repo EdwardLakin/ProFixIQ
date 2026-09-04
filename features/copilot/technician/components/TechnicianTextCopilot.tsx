@@ -70,6 +70,12 @@ type Snapshot = {
   workOrder: WorkOrder | null;
   capabilities?: { documentation: boolean; voice?: boolean };
   reply?: string;
+  /**
+   * Deterministic "here's your day" opening line, present only when there's
+   * no active repair session yet. Not a model reply — see
+   * describeTechnicianDayAgenda.
+   */
+  greeting?: string | null;
   error?: string;
 };
 
@@ -166,6 +172,13 @@ export function TechnicianTextCopilot({
   const documentationEnabled =
     snapshot.capabilities?.documentation !== false;
   const voiceEnabled = snapshot.capabilities?.voice === true;
+  // The greeting only applies before the technician has said anything —
+  // once there's a real reply or conversation history it should never
+  // resurface, even if a stale snapshot still carries it.
+  const idleGreeting =
+    !snapshot.reply && !snapshot.context?.conversation?.length
+      ? snapshot.greeting?.trim() || null
+      : null;
 
   const applyTurnSnapshot = useCallback((body: Snapshot) => {
     setSnapshot((current) => ({
@@ -293,6 +306,7 @@ export function TechnicianTextCopilot({
     enabled: voiceEnabled,
     autoStart: active,
     onUtterance: handleVoiceUtterance,
+    greeting: idleGreeting,
   });
 
   useEffect(() => {
@@ -348,6 +362,7 @@ export function TechnicianTextCopilot({
       .reverse()
       .find((turn) => turn.role === "assistant")
       ?.text.trim() ||
+    snapshot.greeting?.trim() ||
     null;
   const visibleVoiceError = voice.error ?? error;
   const voiceContinuityMessage = voice.active

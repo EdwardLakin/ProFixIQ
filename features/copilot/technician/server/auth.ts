@@ -23,13 +23,13 @@ export async function requireTechnicianCopilotAccess() {
 
   let profileResult = await supabase
     .from("profiles")
-    .select("id,user_id,shop_id,role")
+    .select("id,user_id,shop_id,role,full_name")
     .eq("user_id", user.id)
     .maybeSingle();
   if (!profileResult.data && !profileResult.error) {
     profileResult = await supabase
       .from("profiles")
-      .select("id,user_id,shop_id,role")
+      .select("id,user_id,shop_id,role,full_name")
       .eq("id", user.id)
       .maybeSingle();
   }
@@ -94,6 +94,7 @@ export async function requireTechnicianCopilotAccess() {
     profileId: profile.id,
     shopId: profile.shop_id,
     role,
+    technicianName: profile.full_name?.trim() || null,
     capabilities,
   };
 }

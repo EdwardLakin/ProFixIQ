@@ -42,13 +42,13 @@ export function technicianWorkLineLabel(line: TechnicianWorkLine): string {
   return line.complaint ?? line.description ?? `job ${line.id.slice(0, 8)}`;
 }
 
-function workOrderLabel(workOrder: TechnicianWorkCandidate): string {
+export function workOrderLabel(workOrder: TechnicianWorkCandidate): string {
   return workOrder.customId
     ? `WO #${workOrder.customId}`
     : `work order ${workOrder.id.slice(0, 8)}`;
 }
 
-function statusLabel(value: string | null): string {
+export function statusLabel(value: string | null): string {
   return normalizeWorkOrderLineStatus(value).replaceAll("_", " ");
 }
 

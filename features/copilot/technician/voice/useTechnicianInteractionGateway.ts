@@ -22,6 +22,13 @@ type TechnicianInteractionGatewayOptions = {
   enabled: boolean;
   autoStart?: boolean;
   onUtterance: (text: string) => Promise<TechnicianVoiceTurnResult>;
+  /**
+   * Deterministic opening line to speak the first time voice starts with no
+   * repair session active yet (see describeTechnicianDayAgenda). Spoken via
+   * the same speakReply path a normal turn's reply uses, then listening
+   * resumes exactly as it would after any other spoken reply.
+   */
+  greeting?: string | null;
 };
 
 type RealtimeTransport = {
@@ -102,6 +109,7 @@ export function useTechnicianInteractionGateway({
   enabled,
   autoStart = false,
   onUtterance,
+  greeting = null,
 }: TechnicianInteractionGatewayOptions) {
   const [phase, setPhase] = useState<TechnicianVoicePhase>("idle");
   const [modeActive, setModeActive] = useState(false);
@@ -128,6 +136,8 @@ export function useTechnicianInteractionGateway({
   const wakeLockRef = useRef<ScreenWakeLockSentinel | null>(null);
   const wakeLockRequestPendingRef = useRef(false);
   const consecutiveRecoverableFailuresRef = useRef(0);
+  const greetingRef = useRef(greeting);
+  const greetingSpokenRef = useRef(false);
 
   const setVoicePhase = useCallback((next: TechnicianVoicePhase) => {
     phaseRef.current = next;
@@ -137,6 +147,13 @@ export function useTechnicianInteractionGateway({
   useEffect(() => {
     onUtteranceRef.current = onUtterance;
   }, [onUtterance]);
+
+  useEffect(() => {
+    greetingRef.current = greeting;
+    // A newly-arrived greeting (e.g. the technician finished a job and is
+    // back at an idle queue) should be eligible to speak again next start().
+    if (!greeting) greetingSpokenRef.current = false;
+  }, [greeting]);
 
   const clearSpeechWatchdog = useCallback(() => {
     if (speechWatchdogRef.current !== null) {
@@ -605,6 +622,16 @@ export function useTechnicianInteractionGateway({
     setModeActive(true);
     setError(null);
     void requestWakeLock();
+
+    const pendingGreeting = greetingRef.current;
+    if (pendingGreeting && !greetingSpokenRef.current) {
+      greetingSpokenRef.current = true;
+      // Same path a normal turn's spoken reply takes: speaks, then resumes
+      // listening on its own. No transcription session is opened until
+      // after the greeting finishes, so it can't transcribe itself.
+      speakReplyRef.current(pendingGreeting);
+      return;
+    }
     await startListeningRef.current();
   }, [enabled, invalidateGeneration, requestWakeLock]);
 
