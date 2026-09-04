@@ -16,6 +16,7 @@ import { SupplierQuoteLifecyclePanel } from "./SupplierQuoteLifecyclePanel";
 import type { CreateInventoryItemInput } from "./CreateInventoryItemModal";
 import type { OrderPartInput } from "./OrderPartModal";
 import { createInventoryDraftFromItem, createOrderDraftFromItem } from "./createWorkbenchDrafts";
+import { filterInventoryResultsByQuery } from "./inventorySearch";
 import type {
   AttachInventoryInput,
   PartsRequestInventoryResult,
@@ -226,6 +227,60 @@ export function PartsRequestWorkbench({
     });
   }
 
+  // Shared attach-inventory command used by both the full Inventory Picker
+  // modal and the inline per-field comboboxes on each row. Errors (e.g. a
+  // possible-mismatch conflict) propagate to the caller so each entry point
+  // can decide how to surface them.
+  async function attachInventoryPart(
+    itemId: string,
+    partId: string,
+    options?: { warningAccepted?: boolean },
+  ): Promise<void> {
+    setItems((current) =>
+      current.map((item) => (item.id === itemId ? { ...item, partId } : item)),
+    );
+
+    await onResetConflictOverride?.(itemId);
+
+    const updated = await onAttachInventory?.({
+      itemId,
+      partId,
+      warningAccepted: options?.warningAccepted,
+    });
+
+    if (updated) {
+      setItems((current) =>
+        current.map((item) =>
+          item.id === itemId
+            ? {
+                ...item,
+                ...updated,
+                partId: updated.partId ?? partId,
+                addedToWorkOrder: updated.addedToWorkOrder ?? item.addedToWorkOrder ?? false,
+              }
+            : item,
+        ),
+      );
+    }
+  }
+
+  // Inline combobox selection: the user explicitly picked a suggested
+  // inventory match while typing in Description / Part # / Manufacturer.
+  // This is never automatic — it only fires from a deliberate click/select.
+  async function selectInventoryMatch(
+    itemId: string,
+    result: PartsRequestInventoryResult,
+  ): Promise<void> {
+    try {
+      await attachInventoryPart(itemId, result.value);
+      toast.success(`Linked to ${result.label}.`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not attach inventory part.",
+      );
+    }
+  }
+
   return (
     <div className="space-y-4 p-4 text-[color:var(--theme-text-primary)]">
       <PartsRequestWorkbenchHeader
@@ -301,6 +356,7 @@ export function PartsRequestWorkbench({
           setActiveModal({ type: "inventory", itemId });
           await onUseInventory?.(itemId);
         }}
+        onSelectInventoryMatch={selectInventoryMatch}
         onConfirmConflict={(itemId) => setActiveModal({ type: "confirmConflict", itemId })}
         onResetConflictOverride={onResetConflictOverride}
         onOrder={async (itemId) => {
@@ -436,13 +492,7 @@ export function PartsRequestWorkbench({
       <InventoryPickerModal
         open={activeModal?.type === "inventory"}
         title={`Attach Part${activeItem ? ` — ${activeItem.description}` : ""}`}
-        results={inventoryResults.filter((part) => {
-          const q = inventoryQuery.trim().toLowerCase();
-          if (!q) return true;
-          return [part.label, part.sku, part.partNumber, part.manufacturer]
-            .filter(Boolean)
-            .some((value) => String(value).toLowerCase().includes(q));
-        })}
+        results={filterInventoryResultsByQuery(inventoryResults, inventoryQuery)}
         query={inventoryQuery}
         onQueryChange={setInventoryQuery}
         selectedPartId={selectedInventoryPartId}
@@ -450,39 +500,9 @@ export function PartsRequestWorkbench({
         onAttach={async (result) => {
           if (!activeItem) return;
 
-          setItems((current) =>
-            current.map((item) =>
-              item.id === activeItem.id
-                ? {
-                    ...item,
-                    partId: result.partId,
-                  }
-                : item,
-            ),
-          );
-
-          await onResetConflictOverride?.(activeItem.id);
-
-          const updated = await onAttachInventory?.({
-            itemId: activeItem.id,
-            partId: result.partId,
+          await attachInventoryPart(activeItem.id, result.partId, {
             warningAccepted: result.warningAccepted,
           });
-
-          if (updated) {
-            setItems((current) =>
-              current.map((item) =>
-                item.id === activeItem.id
-                  ? {
-                      ...item,
-                      ...updated,
-                      partId: updated.partId ?? result.partId,
-                      addedToWorkOrder: updated.addedToWorkOrder ?? item.addedToWorkOrder ?? false,
-                    }
-                  : item,
-              ),
-            );
-          }
 
           setSelectedInventoryPartId("");
           setInventoryQuery("");

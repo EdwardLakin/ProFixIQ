@@ -106,7 +106,7 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
     expect(onCommitPackage).toHaveBeenCalledTimes(1);
   });
 
-  it("hides Add to Work Order after the durable add state is loaded", () => {
+  it("hides Add to Work Order after the durable add state is loaded, but keeps Change Part available", () => {
     const attachedModel = model("part-2");
     attachedModel.items[0] = { ...attachedModel.items[0], addedToWorkOrder: true };
 
@@ -114,7 +114,7 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
 
     expect(screen.getByText("Saved to work order")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Add to Work Order" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Change Part" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Change Part" })).toBeInTheDocument();
   });
 
   it("does not perform Add to Work Order when mismatch acknowledgement is confirmed", async () => {
@@ -407,6 +407,48 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
       }),
     );
     expect(toast.error).not.toHaveBeenCalledWith("Select a supplier.");
+  });
+
+  it("searches inventory inline from the Description field and links the chosen match", async () => {
+    const user = userEvent.setup();
+    const onAttachInventory = vi.fn(async () => ({ partId: "part-2", addedToWorkOrder: false }));
+
+    render(<PartsRequestWorkbench model={model(null)} onAttachInventory={onAttachInventory} />);
+
+    const descriptionField = screen.getByRole("combobox", {
+      name: /Description for Oil filter/i,
+    });
+    await user.clear(descriptionField);
+    await user.type(descriptionField, "ACDelco");
+
+    const suggestion = await screen.findByRole("option", { name: /ACDelco Oil Filter/i });
+    await user.click(suggestion);
+
+    await waitFor(() =>
+      expect(onAttachInventory).toHaveBeenCalledWith({
+        itemId: "item-1",
+        partId: "part-2",
+        warningAccepted: undefined,
+      }),
+    );
+    expect(screen.getByText("Selected: ACDelco Oil Filter")).toBeInTheDocument();
+  });
+
+  it("searches inventory inline from the Part # field and does not auto-substitute on typing alone", async () => {
+    const user = userEvent.setup();
+    const onAttachInventory = vi.fn();
+
+    render(<PartsRequestWorkbench model={model(null)} onAttachInventory={onAttachInventory} />);
+
+    const partNumberField = screen.getByRole("combobox", {
+      name: /Part number for Oil filter/i,
+    });
+    await user.type(partNumberField, "OIL-FILTER-5");
+
+    expect(await screen.findByRole("option", { name: /ACDelco Oil Filter/i })).toBeInTheDocument();
+    // Typing alone must never attach a part — only an explicit pick does.
+    expect(onAttachInventory).not.toHaveBeenCalled();
+    expect(partNumberField).toHaveValue("OIL-FILTER-5");
   });
 
   it("still requires a supplier when creating a new PO", async () => {
