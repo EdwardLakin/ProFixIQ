@@ -1789,6 +1789,78 @@ type SmartMatchRow = {
       for (const command of commands) {
         if (guardLocked()) return;
 
+        const label = commandLabel(command);
+
+        // ✅ Session-level commands (finish/pause) have no inspection item to
+        // resolve, so handleTranscriptFn can never apply them. Handle them
+        // directly against the screen's own actions instead of dropping them.
+        if (label === "finish_inspection" || label === "pause_inspection") {
+          try {
+            if (label === "pause_inspection") {
+              pauseSession();
+
+              const okResult: VoiceCommandApplyResult = { command: label, ok: true };
+              applied.push(okResult);
+              if (!primaryFeedback) {
+                primaryFeedback = {
+                  spoken: "Inspection paused.",
+                  toast: "Inspection paused",
+                  followUp: { kind: "none" },
+                };
+              }
+            } else {
+              // A voice command can never capture the legally required
+              // signature, so "finish" submits any outstanding findings and
+              // hands the tech off to the signature panel instead of silently
+              // no-op'ing (or bypassing the required signature step).
+              const outstanding = findingSubmissionSummary.outstanding;
+
+              // Mirror submitFindings' own guards so voice never claims a
+              // submission succeeded when it would actually be rejected.
+              const blocked = outstanding.filter(
+                ({ sectionIndex, itemIndex }) =>
+                  !findingNote(sess.sections?.[sectionIndex]?.items?.[itemIndex]) ||
+                  pendingPhotoKeysRef.current[`${sectionIndex}:${itemIndex}`] === true,
+              );
+
+              if (outstanding.length > 0 && blocked.length === 0) {
+                await submitFindings(outstanding);
+              }
+
+              if (guardLocked()) return;
+
+              const okResult: VoiceCommandApplyResult = { command: label, ok: true };
+              applied.push(okResult);
+              if (!primaryFeedback) {
+                primaryFeedback = {
+                  spoken:
+                    outstanding.length === 0
+                      ? "All findings are already submitted. Sign the panel to finish the inspection."
+                      : blocked.length > 0
+                        ? `${blocked.length} finding${blocked.length === 1 ? "" : "s"} still need a note or photo before they can be submitted. Add those, then sign the panel to finish.`
+                        : `${outstanding.length} outstanding finding${outstanding.length === 1 ? "" : "s"} submitted. Sign the panel to finish the inspection.`,
+                  toast:
+                    outstanding.length === 0
+                      ? "Ready to sign — no outstanding findings"
+                      : blocked.length > 0
+                        ? `${blocked.length} finding${blocked.length === 1 ? "" : "s"} need a note or photo before submitting`
+                        : `${outstanding.length} finding${outstanding.length === 1 ? "" : "s"} submitted — sign to finish`,
+                  followUp: { kind: "none" },
+                };
+              }
+            }
+          } catch (err: unknown) {
+            // eslint-disable-next-line no-console
+            console.error("[voice] session command failed", err);
+            applied.push({
+              command: label,
+              ok: false,
+              reason: err instanceof Error ? err.message : "apply failed",
+            });
+          }
+          continue;
+        }
+
         // lightweight detection from parsed shape
         try {
           const result = await handleTranscriptFn({
