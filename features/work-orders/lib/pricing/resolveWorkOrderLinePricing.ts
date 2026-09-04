@@ -98,7 +98,7 @@ export function resolveWorkOrderLinePricing(args: {
   const stagedPartsTotal = activeStagedParts.reduce((sum, part) => {
     const total = toNum(part.total_price);
     if (total != null) return sum + total;
-    return sum + (toNum(part.quantity_requested) ?? toNum(part.quantity) ?? 0) * (toNum(part.unit_sell_price_snapshot) ?? toNum(part.unit_price) ?? 0);
+    return sum + (toNum(part.quantity) ?? toNum(part.quantity_requested) ?? 0) * (toNum(part.unit_sell_price_snapshot) ?? toNum(part.unit_price) ?? 0);
   }, 0);
 
   const allocPartsTotal = allocatedParts.reduce((sum, part) => {
