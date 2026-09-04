@@ -51,6 +51,15 @@ type NavigatorWithWakeLock = Navigator & {
 
 const COPILOT_SPEECH_TIMEOUT_MS = 20_000;
 
+// A recoverable turn failure (network blip, timeout, 5xx) resumes listening
+// silently apart from a transient error string, which is indistinguishable
+// from ordinary listening once it clears. If the underlying turn keeps
+// failing, that silent retry loop looks like "always listening, never
+// responding" with no actionable signal, instead of surfacing as an error.
+// Cap consecutive recoverable failures so a persistent failure escalates to a
+// clear, sticky error instead of retrying forever.
+const MAX_CONSECUTIVE_RECOVERABLE_FAILURES = 3;
+
 function normalizedTranscript(text: string): string | null {
   const value = text.trim();
   return value || null;
@@ -118,6 +127,7 @@ export function useTechnicianInteractionGateway({
   const speechPlaybackAttemptRef = useRef(0);
   const wakeLockRef = useRef<ScreenWakeLockSentinel | null>(null);
   const wakeLockRequestPendingRef = useRef(false);
+  const consecutiveRecoverableFailuresRef = useRef(0);
 
   const setVoicePhase = useCallback((next: TechnicianVoicePhase) => {
     phaseRef.current = next;
@@ -275,6 +285,7 @@ export function useTechnicianInteractionGateway({
           ) {
             return;
           }
+          consecutiveRecoverableFailuresRef.current = 0;
           const reply = normalizedTranscript(result.reply ?? "");
           if (reply) {
             speakReplyRef.current(reply);
@@ -292,13 +303,29 @@ export function useTechnicianInteractionGateway({
             caught instanceof Error
               ? caught.message
               : "Technician CoPilot could not process that voice turn.";
-          setError(failureMessage);
-          if (isRecoverableTurnFailure(caught)) {
+          const recoverable = isRecoverableTurnFailure(caught);
+          if (recoverable) {
+            consecutiveRecoverableFailuresRef.current += 1;
+          }
+          const exhausted =
+            recoverable &&
+            consecutiveRecoverableFailuresRef.current >=
+              MAX_CONSECUTIVE_RECOVERABLE_FAILURES;
+
+          if (recoverable && !exhausted) {
+            setError(failureMessage);
             await startListeningRef.current();
           } else {
             // Authorization, stale-session, capability, and configuration
-            // failures require user action. Stop the microphone instead of
-            // resubmitting every subsequent transcript into a terminal state.
+            // failures require user action, and so does a recoverable
+            // failure that never stops recurring: stop the microphone
+            // instead of resubmitting every subsequent transcript into a
+            // terminal (or endlessly retrying) state.
+            setError(
+              exhausted
+                ? "Technician CoPilot couldn't complete a voice turn after several tries. Check your connection, then start voice again."
+                : failureMessage,
+            );
             invalidateGeneration();
             activeRef.current = false;
             setModeActive(false);
@@ -572,6 +599,7 @@ export function useTechnicianInteractionGateway({
   const start = useCallback(async () => {
     if (!enabled || activeRef.current) return;
     invalidateGeneration();
+    consecutiveRecoverableFailuresRef.current = 0;
     utteranceRef.current = null;
     activeRef.current = true;
     setModeActive(true);
@@ -588,6 +616,7 @@ export function useTechnicianInteractionGateway({
 
   const stop = useCallback(() => {
     invalidateGeneration();
+    consecutiveRecoverableFailuresRef.current = 0;
     activeRef.current = false;
     setModeActive(false);
     setHeardTranscript("");
