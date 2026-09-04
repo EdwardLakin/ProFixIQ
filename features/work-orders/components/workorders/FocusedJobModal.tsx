@@ -279,6 +279,22 @@ export default function FocusedJobModal(props: {
     () => filterAllocationsNotBackedByCanonicalParts(allocs, requiredParts),
     [allocs, requiredParts],
   );
+  // "Attached" and "required" are different states, not interchangeable
+  // wording for the same count — a canonical part with nothing picked yet
+  // is required, not attached; once picked (fully or partially) it's
+  // attached. An orphan allocation (no canonical part) is always attached.
+  const partsFulfillmentCounts = useMemo(() => {
+    let attached = displayOnlyAllocations.length;
+    let required = 0;
+    for (const part of requiredParts) {
+      if (summarizeCanonicalPartAllocations(part, allocs).allocatedQuantity > 0) {
+        attached += 1;
+      } else {
+        required += 1;
+      }
+    }
+    return { attached, required };
+  }, [allocs, displayOnlyAllocations, requiredParts]);
   const [assignedTechProfile, setAssignedTechProfile] = useState<TechnicianOption | null>(null);
   const [projectedPrimaryTech, setProjectedPrimaryTech] =
     useState<TechnicianOption | null>(null);
@@ -1329,7 +1345,13 @@ export default function FocusedJobModal(props: {
           <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">
             {allocsLoading
               ? "Loading…"
-              : `${displayOnlyAllocations.length + requiredParts.length} attached or required`}
+              : partsFulfillmentCounts.attached === 0 && partsFulfillmentCounts.required === 0
+                ? "No parts yet"
+                : partsFulfillmentCounts.required === 0
+                  ? `${partsFulfillmentCounts.attached} attached`
+                  : partsFulfillmentCounts.attached === 0
+                    ? `${partsFulfillmentCounts.required} required`
+                    : `${partsFulfillmentCounts.attached} attached, ${partsFulfillmentCounts.required} required`}
           </div>
         </div>
         <div className="px-3 py-3">
