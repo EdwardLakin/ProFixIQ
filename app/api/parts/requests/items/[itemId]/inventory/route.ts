@@ -35,6 +35,13 @@ function clean(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+const ATTACH_ERROR_MESSAGES: Record<string, string> = {
+  PARTS_ORDERED_PART_ID_MISMATCH:
+    "This part is already on a purchase order line for a different inventory item. Remove it from the PO before changing the match.",
+  PARTS_REQUEST_ALREADY_MAPPED:
+    "This line has already been ordered or received against its current part and can no longer be re-matched.",
+};
+
 function isUuid(value: unknown): value is string {
   return typeof value === "string" &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
@@ -126,14 +133,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
     if (updateError || !attachResult?.part_id) {
       const stableError =
         updateError?.message?.match(/^PARTS_[A-Z0-9_]+$/)?.[0];
-      return NextResponse.json(
-        {
-          ok: false,
-          code: stableError ?? "PARTS_INVENTORY_ATTACH_FAILED",
-          error: stableError ?? "Inventory selection did not persist.",
-        },
-        { status: 409 },
-      );
+      const code = stableError ?? "PARTS_INVENTORY_ATTACH_FAILED";
+      const error = stableError
+        ? (ATTACH_ERROR_MESSAGES[stableError] ?? stableError)
+        : "Inventory selection did not persist.";
+      return NextResponse.json({ ok: false, code, error }, { status: 409 });
     }
     return NextResponse.json({
       ok: true,
