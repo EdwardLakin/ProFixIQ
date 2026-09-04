@@ -23,6 +23,7 @@ import OwnerSettingsHeader from "@/features/dashboard/components/owner-settings/
 import OwnerSettingsBusinessSection from "@/features/dashboard/components/owner-settings/OwnerSettingsBusinessSection";
 import OwnerSettingsOperationsSection from "@/features/dashboard/components/owner-settings/OwnerSettingsOperationsSection";
 import OwnerAiAutomationSection from "@/features/dashboard/components/owner-settings/OwnerAiAutomationSection";
+import TechnicianCopilotCapabilitiesSection from "@/features/dashboard/components/owner-settings/TechnicianCopilotCapabilitiesSection";
 import OwnerSettingsSchedulingSection from "@/features/dashboard/components/owner-settings/OwnerSettingsSchedulingSection";
 import OwnerSettingsSidebar from "@/features/dashboard/components/owner-settings/OwnerSettingsSidebar";
 import OwnerSettingsUsersSection from "@/features/dashboard/components/owner-settings/OwnerSettingsUsersSection";
@@ -1941,7 +1942,10 @@ export default function OwnerSettingsPage() {
             />
           ) : null}
           {activeSection === "automation" ? (
-            <OwnerAiAutomationSection isUnlocked={isUnlocked} />
+            <>
+              <OwnerAiAutomationSection isUnlocked={isUnlocked} />
+              <TechnicianCopilotCapabilitiesSection isUnlocked={isUnlocked} />
+            </>
           ) : null}
           {activeSection === "team" ? (
             <OwnerSettingsUsersSection
