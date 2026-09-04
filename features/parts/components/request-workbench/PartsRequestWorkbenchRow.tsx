@@ -2,6 +2,7 @@
 
 import React from "react";
 import { SmartInsightBadges } from "./SmartInsightBadges";
+import { InventoryFieldCombobox } from "./InventoryFieldCombobox";
 import { canonicalStatusLabel } from "../../lib/status-display";
 import type { PartsRequestInventoryResult, PartsRequestWorkbenchItem, SmartInsight } from "./types";
 
@@ -18,11 +19,13 @@ export function PartsRequestWorkbenchRow({
   selected = false,
   selectionDisabled = false,
   selectedPart,
+  inventoryResults = [],
   compactActions = false,
   onChange,
   onSelectedChange,
   onSave,
   onUseInventory,
+  onSelectInventoryMatch,
   onOrder,
   onConfirmConflict,
   onReceive,
@@ -35,11 +38,13 @@ export function PartsRequestWorkbenchRow({
   selected?: boolean;
   selectionDisabled?: boolean;
   selectedPart?: PartsRequestInventoryResult | null;
+  inventoryResults?: PartsRequestInventoryResult[];
   compactActions?: boolean;
   onChange?: (item: PartsRequestWorkbenchItem) => void;
   onSelectedChange?: (selected: boolean) => void;
   onSave?: (itemId: string) => void;
   onUseInventory?: (itemId: string) => void;
+  onSelectInventoryMatch?: (itemId: string, result: PartsRequestInventoryResult) => void;
   onOrder?: (itemId: string) => void;
   onConfirmConflict?: (itemId: string) => void;
   onReceive?: (itemId: string) => void;
@@ -80,11 +85,14 @@ export function PartsRequestWorkbenchRow({
         />
       </td>
       <td className="p-2">
-        <input
+        <InventoryFieldCombobox
           className={input}
           value={item.description}
           placeholder="Description"
-          onChange={(event) => onChange?.({ ...item, description: event.target.value })}
+          ariaLabel={`Description for ${item.description || "part request row"}`}
+          results={inventoryResults}
+          onChange={(value) => onChange?.({ ...item, description: value })}
+          onSelect={(result) => onSelectInventoryMatch?.(item.id, result)}
         />
       </td>
       <td className="p-2">
@@ -96,11 +104,14 @@ export function PartsRequestWorkbenchRow({
             ) : null}
           </div>
         ) : (
-          <input
+          <InventoryFieldCombobox
             className={input}
             value={item.requestedPartNumber ?? ""}
             placeholder="Part #"
-            onChange={(event) => onChange?.({ ...item, requestedPartNumber: event.target.value })}
+            ariaLabel={`Part number for ${item.description || "part request row"}`}
+            results={inventoryResults}
+            onChange={(value) => onChange?.({ ...item, requestedPartNumber: value })}
+            onSelect={(result) => onSelectInventoryMatch?.(item.id, result)}
           />
         )}
       </td>
@@ -113,11 +124,14 @@ export function PartsRequestWorkbenchRow({
             ) : null}
           </div>
         ) : (
-          <input
+          <InventoryFieldCombobox
             className={input}
             value={item.requestedManufacturer ?? ""}
             placeholder="Manufacturer"
-            onChange={(event) => onChange?.({ ...item, requestedManufacturer: event.target.value })}
+            ariaLabel={`Manufacturer for ${item.description || "part request row"}`}
+            results={inventoryResults}
+            onChange={(value) => onChange?.({ ...item, requestedManufacturer: value })}
+            onSelect={(result) => onSelectInventoryMatch?.(item.id, result)}
           />
         )}
       </td>
@@ -235,7 +249,7 @@ export function PartsRequestWorkbenchRow({
         ) : (
           <div className="flex min-w-[12rem] flex-wrap gap-1.5">
             <button type="button" className={action} onClick={() => onSave?.(item.id)}>Save</button>
-            {!isAddedToWorkOrder ? <button type="button" className={action} onClick={() => onUseInventory?.(item.id)}>{hasSelectedPart ? "Change Part" : "Attach Part"}</button> : null}
+            <button type="button" className={action} onClick={() => onUseInventory?.(item.id)}>{hasSelectedPart ? "Change Part" : "Attach Part"}</button>
             {!isAddedToWorkOrder && canOrder ? <button type="button" className={action} onClick={() => onOrder?.(item.id)}>Order</button> : null}
             {isAddedToWorkOrder ? <span className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-2.5 py-2 text-xs text-emerald-100">Saved to work order</span> : null}
             {item.poId || item.qtyReceived ? <button type="button" className={action} onClick={() => onReceive?.(item.id)}>Receive</button> : null}

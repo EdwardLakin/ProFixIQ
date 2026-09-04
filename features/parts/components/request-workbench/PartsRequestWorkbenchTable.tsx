@@ -13,6 +13,7 @@ export function PartsRequestWorkbenchTable({
   onSelectedItemIdsChange,
   onSave,
   onUseInventory,
+  onSelectInventoryMatch,
   onOrder,
   onConfirmConflict,
   onResetConflictOverride,
@@ -30,6 +31,7 @@ export function PartsRequestWorkbenchTable({
   onSelectedItemIdsChange?: (itemIds: string[]) => void;
   onSave?: (itemId: string) => void;
   onUseInventory?: (itemId: string) => void;
+  onSelectInventoryMatch?: (itemId: string, result: PartsRequestInventoryResult) => void;
   onOrder?: (itemId: string) => void;
   onConfirmConflict?: (itemId: string) => void;
   onResetConflictOverride?: (itemId: string) => void;
@@ -95,6 +97,7 @@ export function PartsRequestWorkbenchTable({
               selected={selected.has(item.id)}
               selectionDisabled={!selectable.has(item.id)}
               selectedPart={inventoryResults.find((part) => part.value === item.partId) ?? null}
+              inventoryResults={inventoryResults}
               onSelectedChange={(isSelected) => {
                 const next = new Set(selectedItemIds);
                 if (isSelected) next.add(item.id);
@@ -104,6 +107,7 @@ export function PartsRequestWorkbenchTable({
               onChange={updateItem}
               onSave={onSave}
               onUseInventory={onUseInventory}
+              onSelectInventoryMatch={onSelectInventoryMatch}
               onOrder={onOrder}
               onConfirmConflict={onConfirmConflict}
               onReceive={onReceive}
