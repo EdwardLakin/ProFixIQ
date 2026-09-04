@@ -1329,7 +1329,7 @@ export default function FocusedJobModal(props: {
           <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-primary)]">
             {allocsLoading
               ? "Loading…"
-              : `${allocs.length + requiredParts.length} attached or required`}
+              : `${displayOnlyAllocations.length + requiredParts.length} attached or required`}
           </div>
         </div>
         <div className="px-3 py-3">
@@ -1388,7 +1388,7 @@ export default function FocusedJobModal(props: {
       </div>
       {allocsLoading ? (
         <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading…</div>
-      ) : allocs.length + requiredParts.length === 0 ? (
+      ) : displayOnlyAllocations.length + requiredParts.length === 0 ? (
         <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] px-4 py-8 text-center text-sm text-[color:var(--theme-text-secondary)]">
           {partsBottleneckDisplay?.detail ?? "No parts used yet."}
         </div>
@@ -1401,8 +1401,12 @@ export default function FocusedJobModal(props: {
           </div>
           <ul className="divide-y divide-[color:var(--theme-border-soft)]">
             {requiredParts.map((part) => {
+              // A canonical required part and its Pick/allocation are the same
+              // line item — merge them into one row instead of listing both,
+              // which otherwise doubled every attached part on this card.
               const qty = getCanonicalPartQuantity(part);
               const unit = getCanonicalPartUnitPrice(part);
+              const allocation = summarizeCanonicalPartAllocations(part, allocs);
               return (
                 <li key={`cockpit-required-${part.id}`} className="grid grid-cols-12 items-center gap-2 px-3 py-3 text-sm">
                   <div className="col-span-7 min-w-0 text-[color:var(--theme-text-primary)]">
@@ -1411,12 +1415,18 @@ export default function FocusedJobModal(props: {
                       {[getCanonicalPartNumber(part), getCanonicalPartManufacturer(part), part.lifecycle_status ?? "requested"].filter(Boolean).join(" • ")}
                     </div>
                   </div>
-                  <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">{unit > 0 ? money(unit) : "—"}</div>
-                  <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">{qty}</div>
+                  <div className="col-span-3 truncate text-[color:var(--theme-text-secondary)]">
+                    {allocation.locations.length > 0
+                      ? allocation.locations.map((location) => `loc ${location.slice(0, 6)}…`).join(", ")
+                      : unit > 0 ? money(unit) : "—"}
+                  </div>
+                  <div className="col-span-2 text-right font-semibold text-[color:var(--theme-text-primary)]">
+                    {allocation.allocatedQuantity > 0 ? `${allocation.allocatedQuantity}/${qty}` : qty}
+                  </div>
                 </li>
               );
             })}
-            {allocs.map((allocation) => {
+            {displayOnlyAllocations.map((allocation) => {
               const qty =
                 (allocation as unknown as { qty?: number | null }).qty ??
                 (allocation as unknown as { quantity?: number | null }).quantity ??
