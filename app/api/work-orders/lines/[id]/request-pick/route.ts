@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 
 type RpcError = {
   message: string;
@@ -68,7 +71,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const { data: line, error: lineError } = await supabase
+  // A restrictive RLS policy on work_order_lines hides the whole row from a
+  // staff actor who lacks financial-view capability (e.g. a mechanic) — even
+  // for this non-financial id/shop_id lookup. The actual authorization for
+  // the pick request happens inside parts_request_pick_for_line_atomic
+  // itself (SECURITY DEFINER, re-resolves the line and checks the caller's
+  // role/assignment independently of RLS), so this lookup only needs to
+  // exist to build a shop-scoped operation key and return a friendly 404.
+  const { data: line, error: lineError } = await createAdminSupabase()
     .from("work_order_lines")
     .select("id, shop_id, work_order_id")
     .eq("id", lineId)
