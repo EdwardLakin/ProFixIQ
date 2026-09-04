@@ -38,7 +38,14 @@ function toNumber(value: unknown): number | null {
 }
 
 export function getCanonicalPartQuantity(part: Pick<CanonicalWorkOrderPart, "quantity" | "quantity_requested">): number {
-  return toNumber(part.quantity_requested) ?? toNumber(part.quantity) ?? 0;
+  // `quantity` is the stable "how much this line needs" total set when the
+  // canonical row is materialized/resynced. `quantity_requested` is used
+  // elsewhere as a live outstanding-need counter and legitimately drops
+  // toward 0 as the part is ordered/received/consumed -- it is never the
+  // right source for "how many were required" once any of that has
+  // happened. Prefer quantity; only fall back to quantity_requested for
+  // legacy/direct-use rows that never populated quantity.
+  return toNumber(part.quantity) ?? toNumber(part.quantity_requested) ?? 0;
 }
 
 export function getCanonicalPartUnitPrice(part: Pick<CanonicalWorkOrderPart, "unit_sell_price_snapshot" | "unit_price">): number {
