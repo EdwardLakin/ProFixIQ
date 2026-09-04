@@ -12,6 +12,8 @@ export type CanonicalWorkOrderPart = WorkOrderPart & {
   manufacturer_snapshot?: string | null;
   quantity_requested?: number | null;
   quantity: number;
+  quantity_consumed?: number | null;
+  quantity_received?: number | null;
   unit_sell_price_snapshot?: number | null;
   unit_price: number | null;
   total_price: number | null;
@@ -84,11 +86,16 @@ function isLinkedAllocation(
 }
 
 export function summarizeCanonicalPartAllocations(
-  part: { id?: string | null; source_parts_request_item_id?: string | null },
+  part: {
+    id?: string | null;
+    source_parts_request_item_id?: string | null;
+    quantity_consumed?: number | null;
+    quantity_received?: number | null;
+  },
   allocations: AllocationLink[],
 ): { allocatedQuantity: number; locations: string[] } {
   const linked = allocations.filter((allocation) => isLinkedAllocation(allocation, part));
-  const allocatedQuantity = linked.reduce(
+  const liveAllocated = linked.reduce(
     (sum, allocation) =>
       sum + (toNumber(allocation.qty) ?? toNumber(allocation.quantity) ?? 0),
     0,
@@ -100,6 +107,14 @@ export function summarizeCanonicalPartAllocations(
         .filter((location): location is string => Boolean(location)),
     ),
   );
+  // Consuming (installing) or receiving fully issues an allocation, deleting
+  // its work_order_part_allocations row -- there's no longer a "live"
+  // allocation to sum once that happens, even though the part is more done
+  // than "allocated," not less. Fold those quantities in so a fully
+  // installed part still reads as fulfilled instead of reverting to
+  // "required."
+  const allocatedQuantity =
+    liveAllocated + (toNumber(part.quantity_consumed) ?? 0) + (toNumber(part.quantity_received) ?? 0);
   return { allocatedQuantity, locations };
 }
 
