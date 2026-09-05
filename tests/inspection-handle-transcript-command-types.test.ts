@@ -1,11 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { handleTranscriptFn } from "@inspections/lib/inspection/handleTranscript";
+import { handleTranscriptFn } from "@/features/inspections/lib/inspection/handleTranscript";
 import type {
   InspectionItem,
   InspectionSession,
   ParsedCommandIndexed,
-} from "@inspections/lib/inspection/types";
+} from "@/features/inspections/lib/inspection/types";
 
 function makeSession(item: Partial<InspectionItem> = {}): InspectionSession {
   return {

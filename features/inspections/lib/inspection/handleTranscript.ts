@@ -5,7 +5,7 @@ import {
   ParsedInspectionFindingCommand,
   InspectionItemStatus,
   InspectionSession,
-} from "@inspections/lib/inspection/types";
+} from "@/features/inspections/lib/inspection/types";
 
 type UpdateInspectionFn = (updates: Partial<InspectionSession>) => void;
 type UpdateItemFn = (

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const durableGuard = vi.hoisted(() => ({
   claimDurableAIRouteQuota: vi.fn(),
@@ -32,6 +32,10 @@ const baseConfig = {
 };
 
 describe("withDurableAIQuota", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
   it("runs the operation and records success when the claim is allowed", async () => {
     durableGuard.claimDurableAIRouteQuota.mockResolvedValueOnce({
       allowed: true,
