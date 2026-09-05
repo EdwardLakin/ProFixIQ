@@ -148,17 +148,34 @@ export type ParsedCommandIndexed = {
     | "update_value"
     | "add_note"
     | "recommend"
+    | "section_status"
+    | "oneshot_item"
+    | "add_part"
+    | "add_labor"
     | "complete_item"
     | "skip_item"
     | "pause_inspection"
     | "finish_inspection";
+  section?: string;
+  item?: string;
   sectionIndex?: number;
   itemIndex?: number;
   status?: InspectionItemStatus;
   value?: string | number;
   unit?: string;
+  note?: string;
   notes?: string;
   recommend?: string;
+  /** oneshot_item: a bundled parts list reported in the same utterance. */
+  parts?: Array<{ description: string; qty: number }>;
+  /** oneshot_item / add_labor: labor hours reported alongside a finding. */
+  laborHours?: number | null;
+  /** add_part: a single incrementally-reported part. */
+  partName?: string;
+  quantity?: number;
+  /** add_labor: a single incrementally-reported labor line. */
+  hours?: number;
+  label?: string;
 };
 
 export type ParsedCommand =
