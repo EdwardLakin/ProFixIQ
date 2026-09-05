@@ -44,6 +44,7 @@ const checkoutSchema = z
     flow: z.enum(["acquisition", "owner"]).optional(),
     source: z.enum(["pricing_cta"]).optional(),
     interval: z.literal("monthly").optional(),
+    checkoutMode: z.enum(["trial", "paid"]).optional(),
     // Rolling-deploy compatibility only. These values are never trusted.
     priceId: z.string().optional(),
     shopId: z.string().nullable().optional(),
@@ -308,10 +309,12 @@ export async function POST(req: Request) {
     const selection = resolveCheckoutSelection(parsed.data);
     const priceId = await resolveCheckoutPriceId(stripe, selection);
     const baseUrl = getBaseUrl();
-    const trialDays = configuredTrialDays();
+    const configuredDays = configuredTrialDays();
     const attemptId = parsed.data.checkoutAttemptId ?? randomUUID();
 
     if (isAcquisition) {
+      const trialDays =
+        parsed.data.checkoutMode === "paid" ? 0 : configuredDays;
       const admin = createAdminSupabase();
       const intent = await beginStripeAcquisitionIntent({
         admin,
@@ -408,6 +411,7 @@ export async function POST(req: Request) {
       shop,
       actorId: access.profile.id,
     });
+    const trialDays = configuredDays;
     const enableTrial = ownerTrialEligible(shop);
     const metadata: Stripe.MetadataParam = {
       app: "profixiq",
