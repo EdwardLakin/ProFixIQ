@@ -509,18 +509,25 @@ function localFallbackCommands(text: string): ParsedCommand[] {
   return [];
 }
 
-function speakLocal(text: string): void {
+function speakLocal(text: string, onDone?: () => void): void {
   try {
     if (typeof window === "undefined") return;
     const synth = window.speechSynthesis;
-    if (!synth) return;
+    if (!synth) {
+      onDone?.();
+      return;
+    }
     const u = new SpeechSynthesisUtterance(text);
     u.rate = 1;
     u.pitch = 1;
+    if (onDone) {
+      u.onend = () => onDone();
+      u.onerror = () => onDone();
+    }
     synth.cancel();
     synth.speak(u);
   } catch {
-    // ignore
+    onDone?.();
   }
 }
 
@@ -1635,7 +1642,7 @@ type SmartMatchRow = {
           photoRequested: true,
         } as ItemPatch);
         toast.success("Open photo capture from the item card.");
-        speakLocal("Open photo capture.");
+        speak("Open photo capture.");
         appendVoiceTrace({
           rawFinal: text,
           wakeCommand: text,
@@ -1652,7 +1659,7 @@ type SmartMatchRow = {
           findingReviewed: false,
         } as ItemPatch);
         toast.success("Okay, skipping photos for now.");
-        speakLocal("Okay.");
+        speak("Okay.");
         appendVoiceTrace({
           rawFinal: text,
           wakeCommand: text,
@@ -1937,7 +1944,7 @@ type SmartMatchRow = {
       }
 
       if (feedback.spoken) {
-        speakLocal(feedback.spoken);
+        speak(feedback.spoken);
       }
 
       if (feedback.followUp.kind === "photo_prompt" && lastAppliedTarget) {
@@ -2009,7 +2016,7 @@ type SmartMatchRow = {
       voiceHeldRef.current = false;
       setVoiceHeld(false);
       toast.success("Free-form voice resumed.");
-      speakLocal("Listening.");
+      speak("Listening.");
       return null;
     }
 
@@ -2019,14 +2026,14 @@ type SmartMatchRow = {
       voiceHeldRef.current = true;
       setVoiceHeld(true);
       toast.success("Voice is on hold. Say Buster resume to continue.");
-      speakLocal("Voice on hold.");
+      speak("Voice on hold.");
       return null;
     }
 
     if (stopCommand) {
       window.setTimeout(() => stopListening(), 0);
       toast.success("Voice session stopped.");
-      speakLocal("Voice stopped.");
+      speak("Voice stopped.");
       return null;
     }
 
@@ -2048,6 +2055,22 @@ type SmartMatchRow = {
       },
     },
   );
+
+  /**
+   * Speaks feedback through the shared Realtime transport (see
+   * features/shared/voice/useRealtimeTranscription.ts). Mutes the mic first
+   * so the transport never transcribes its own spoken reply back into a new
+   * voice command, then unmutes once speech finishes — the same self-hearing
+   * guard the Technician CoPilot's voice bridge relies on. `voice.pause()`
+   * returns false when there's no live session to mute (idle/error), in
+   * which case there's nothing to resume either.
+   */
+  const speak = (text: string): void => {
+    const paused = voice.pause();
+    speakLocal(text, () => {
+      if (paused) voice.resume();
+    });
+  };
 
   const startListening = async (): Promise<void> => {
     if (isListening) return;
