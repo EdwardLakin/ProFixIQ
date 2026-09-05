@@ -129,3 +129,16 @@ describe("parseTechnicianCopilotAction: inspection.start", () => {
     });
   });
 });
+
+describe("parseTechnicianCopilotAction: shift.break/lunch punches", () => {
+  it("parses each punch type with no extra fields", () => {
+    for (const type of [
+      "shift.break.start",
+      "shift.break.end",
+      "shift.lunch.start",
+      "shift.lunch.end",
+    ] as const) {
+      expect(parseTechnicianCopilotAction({ type })).toEqual({ type });
+    }
+  });
+});

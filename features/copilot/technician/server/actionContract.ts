@@ -9,6 +9,10 @@ export const TECHNICIAN_COPILOT_ACTION_TYPES = [
   "job.parts.request",
   "message.reply",
   "inspection.start",
+  "shift.break.start",
+  "shift.break.end",
+  "shift.lunch.start",
+  "shift.lunch.end",
 ] as const;
 
 export type TechnicianCopilotActionType =
@@ -47,7 +51,11 @@ export type TechnicianCopilotAction =
       conversationId: string | null;
       content: string | null;
     }
-  | { type: "inspection.start"; workOrderLineId: string | null };
+  | { type: "inspection.start"; workOrderLineId: string | null }
+  | { type: "shift.break.start" }
+  | { type: "shift.break.end" }
+  | { type: "shift.lunch.start" }
+  | { type: "shift.lunch.end" };
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -123,6 +131,11 @@ export function parseTechnicianCopilotAction(
       };
     case "inspection.start":
       return { type, workOrderLineId };
+    case "shift.break.start":
+    case "shift.break.end":
+    case "shift.lunch.start":
+    case "shift.lunch.end":
+      return { type };
     default:
       return { type: "none" };
   }

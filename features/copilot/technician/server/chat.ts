@@ -33,6 +33,7 @@ import { extractTechnicianDocumentationTurn } from "./documentation";
 import { decideTechnicianCopilotTurn } from "./model";
 import { deriveCopilotOperationId } from "./operationId";
 import { sendTechnicianCopilotMessage } from "./messages";
+import { respondToShiftPunch } from "./shiftPunch";
 import {
   sendCopilotServerCommand,
   type CopilotServerCommandAction,
@@ -178,13 +179,18 @@ function storedActionTurn(
   const action = parseTechnicianCopilotAction(pending.payload?.request);
   const key =
     typeof pending.payload?.key === "string" ? pending.payload.key.trim() : "";
-  // message.reply never creates an action.pending event in the first place
-  // (see respondToMessageReply) — this branch only exists so the type
-  // narrows correctly below; in practice it's unreachable for this type.
+  // message.reply and the shift.* punches never create an action.pending
+  // event in the first place (see respondToMessageReply/respondToShiftPunch)
+  // — this branch only exists so the type narrows correctly below; in
+  // practice it's unreachable for these types.
   if (
     action.type === "none" ||
     action.type === "work.next" ||
     action.type === "message.reply" ||
+    action.type === "shift.break.start" ||
+    action.type === "shift.break.end" ||
+    action.type === "shift.lunch.start" ||
+    action.type === "shift.lunch.end" ||
     !key
   ) {
     return null;
@@ -427,6 +433,28 @@ export type RecentConversationHint = {
   conversationId: string;
   title: string | null;
 };
+
+type ShiftPunchAction = Extract<
+  TechnicianCopilotAction,
+  {
+    type:
+      | "shift.break.start"
+      | "shift.break.end"
+      | "shift.lunch.start"
+      | "shift.lunch.end";
+  }
+>;
+
+function isShiftPunchAction(
+  action: TechnicianCopilotAction | null | undefined,
+): action is ShiftPunchAction {
+  return (
+    action?.type === "shift.break.start" ||
+    action?.type === "shift.break.end" ||
+    action?.type === "shift.lunch.start" ||
+    action?.type === "shift.lunch.end"
+  );
+}
 
 /**
  * message.reply is orthogonal to the repair session entirely — it doesn't
@@ -705,6 +733,21 @@ export async function runTechnicianCopilotTurn(input: {
         clientAction: null,
       };
     }
+    if (isShiftPunchAction(decision.action)) {
+      return {
+        sessionId: null,
+        reply: await respondToShiftPunch({
+          identity: input.identity,
+          turnId: input.turnId,
+          action: decision.action,
+        }),
+        context: null,
+        workOrder: null,
+        capabilities,
+        replayed: false,
+        clientAction: null,
+      };
+    }
     if (decision.action?.type === "work.next") {
       return {
         sessionId: null,
@@ -966,6 +1009,15 @@ export async function runTechnicianCopilotTurn(input: {
           turnId: input.turnId,
           action: decidedAction,
           recentConversations,
+        });
+      } else if (isShiftPunchAction(decidedAction)) {
+        // Same reasoning as message.reply just above: attendance, not job
+        // work, so it's orthogonal to the repair session and its ledger
+        // entirely — see respondToShiftPunch.
+        reply = await respondToShiftPunch({
+          identity: input.identity,
+          turnId: input.turnId,
+          action: decidedAction,
         });
       } else {
         const prepared = await prepareTechnicianCopilotAction({
