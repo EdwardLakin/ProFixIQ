@@ -88,6 +88,8 @@ Phase 4 does not route through the legacy `VoiceProvider`, command phrase rewrit
 
 The CoPilot owns its Realtime transport under `features/copilot/technician/voice`. It does not import, wrap, or modify the existing inspection Realtime hook. This intentional isolation keeps the first collaborator rollout from changing inspection or ordinary dictation behavior. A later consolidation can happen only after both paths have direct browser/device regression coverage.
 
+> **Update (inspection-voice-to-CoPilot conversion, Phase A):** that consolidation has since happened. `features/copilot/technician/voice/useTechnicianRealtimeVoice.ts` and `features/inspections/lib/inspection/useRealtimeVoice.ts` are now both thin re-exports of one shared implementation, `features/shared/voice/useRealtimeTranscription.ts` — the CoPilot's hardened transport (pause/resume around spoken output, generation-safe startup/teardown, TTS playback) instead of two independently-maintained copies. The isolation this section actually protects — the CoPilot's turn/gateway abstraction (`useTechnicianInteractionGateway`) never being imported by inspection code, and vice versa — is unchanged and still enforced by `tests/technician-copilot-voice-runtime-contract.test.ts`. Inspection command interpretation (`interpretCommand`, `GenericInspectionScreen`'s apply/feedback pipeline) is untouched by this move; only the underlying WebSocket/audio transport is now shared, and inspection voice control also gained mic pause/resume around its own spoken feedback as a direct result.
+
 ## Safety and rollback
 
 - No canonical work-order mutation behavior changes.
