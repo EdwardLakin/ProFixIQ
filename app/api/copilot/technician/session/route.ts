@@ -66,24 +66,29 @@ async function snapshot(
       })
     : null;
 
+  // The full assigned queue is computed regardless of session state, not
+  // just when idle: the client uses it both for the idle-state greeting
+  // below and to notice newly-assigned work while a job is already active
+  // (see dayAgendaAnnouncements on the client). It's one cheap, already
+  // shop/technician-scoped query either way.
+  const candidates = await listTechnicianWorkCandidates({
+    supabase: createAdminSupabase(),
+    shopId: access.shopId,
+    technicianIds: [access.authUserId, access.profileId],
+  });
+  const dayAgenda = buildTechnicianDayAgenda(candidates);
+
   // No active repair session yet: this is the CoPilot's idle state, so this
   // is also when it has something proactive to say — the technician's full
   // assigned queue for the day, not just the next single line. Once a
   // session starts, the ordinary turn runtime takes over and this stops
   // being computed, which naturally limits it to "once per idle open"
   // rather than needing separate once-a-day tracking.
-  let greeting: string | null = null;
-  if (!envelope.session) {
-    const candidates = await listTechnicianWorkCandidates({
-      supabase: createAdminSupabase(),
-      shopId: access.shopId,
-      technicianIds: [access.authUserId, access.profileId],
-    });
-    const agenda = buildTechnicianDayAgenda(candidates);
-    greeting = describeTechnicianDayAgenda(agenda, access.technicianName);
-  }
+  const greeting = envelope.session
+    ? null
+    : describeTechnicianDayAgenda(dayAgenda, access.technicianName);
 
-  return { envelope, context, workOrder, access, greeting };
+  return { envelope, context, workOrder, access, greeting, dayAgenda };
 }
 
 function capabilities(
@@ -108,6 +113,8 @@ export async function GET(request: NextRequest) {
       context: result.context,
       workOrder: result.workOrder,
       greeting: result.greeting,
+      dayAgenda: result.dayAgenda,
+      shopId: result.access.shopId,
       capabilities: capabilities(result.access),
     });
   } catch (error) {
@@ -171,6 +178,8 @@ export async function POST(request: NextRequest) {
       context: result.context,
       workOrder: result.workOrder,
       greeting: result.greeting,
+      dayAgenda: result.dayAgenda,
+      shopId: result.access.shopId,
       capabilities: capabilities(result.access),
     });
   } catch (error) {

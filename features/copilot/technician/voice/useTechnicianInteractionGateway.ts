@@ -699,6 +699,32 @@ export function useTechnicianInteractionGateway({
 
   useEffect(() => stop, [stop]);
 
+  /**
+   * Speaks arbitrary text (a proactive notice, not a reply to something the
+   * technician said) through the same speak-then-resume-listening path a
+   * normal turn's reply uses. Only proceeds while the gateway is idle and
+   * actually listening — never while a turn is in flight or already
+   * speaking — so this can never talk over the technician or over another
+   * reply. Returns false when it isn't safe to speak right now; the caller
+   * is expected to hold the text and retry once phase returns to
+   * "listening" rather than treat false as a failure.
+   *
+   * This is turn-boundary-safe delivery, not acoustic barge-in: the
+   * microphone is still never open at the same time as playback, exactly
+   * as documented for this first voice bridge. True interruption-while-
+   * speaking remains future work.
+   */
+  const announce = useCallback((text: string): boolean => {
+    if (!activeRef.current || phaseRef.current !== "listening") return false;
+    const paused = realtimeRef.current?.pause?.() ?? false;
+    if (!paused) {
+      realtimeRef.current?.stop();
+      transportStartedRef.current = false;
+    }
+    speakReplyRef.current(text);
+    return true;
+  }, []);
+
   return {
     phase,
     active: modeActive,
@@ -709,5 +735,6 @@ export function useTechnicianInteractionGateway({
     start,
     stop,
     interrupt,
+    announce,
   };
 }

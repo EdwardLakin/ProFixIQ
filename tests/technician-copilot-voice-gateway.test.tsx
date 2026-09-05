@@ -586,4 +586,66 @@ describe("Technician CoPilot voice interaction gateway", () => {
     expect(result.current.phase).toBe("listening");
     expect(realtime.start).toHaveBeenCalledTimes(2);
   });
+
+  it("refuses to announce anything before voice has started", () => {
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({
+        enabled: true,
+        onUtterance: vi.fn(async () => ({ reply: null })),
+      }),
+    );
+
+    expect(result.current.announce("You've just been assigned a new job.")).toBe(
+      false,
+    );
+    expect(realtime.pause).not.toHaveBeenCalled();
+    expect(speechFetch).not.toHaveBeenCalled();
+  });
+
+  it("speaks a proactive announcement only while idly listening, then resumes listening", async () => {
+    const onUtterance = vi.fn(async () => ({ reply: null }));
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({ enabled: true, onUtterance }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    expect(result.current.phase).toBe("listening");
+
+    let announced = false;
+    act(() => {
+      announced = result.current.announce(
+        "You've just been assigned a new job.",
+      );
+    });
+    expect(announced).toBe(true);
+    expect(realtime.pause).toHaveBeenCalledTimes(1);
+    expect(realtime.stop).not.toHaveBeenCalled();
+
+    await waitFor(() => {
+      expect(result.current.phase).toBe("speaking");
+    });
+    const speechRequest = speechFetch.mock.calls[0]?.[1] as
+      | RequestInit
+      | undefined;
+    expect(JSON.parse(String(speechRequest?.body))).toEqual({
+      text: "You've just been assigned a new job.",
+    });
+
+    // Mid-turn — this is the "never talk over an in-flight turn" guarantee
+    // the whole point of turn-boundary gating exists for.
+    expect(result.current.announce("A second notice.")).toBe(false);
+
+    await act(async () => {
+      generatedPlayback.resolve();
+      await generatedPlayback.promise;
+    });
+
+    await waitFor(() => {
+      expect(realtime.resume).toHaveBeenCalledTimes(1);
+      expect(result.current.phase).toBe("listening");
+    });
+    expect(onUtterance).not.toHaveBeenCalled();
+  });
 });

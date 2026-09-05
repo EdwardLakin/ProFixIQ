@@ -11,6 +11,12 @@ import {
 import { Mic, Square, VolumeX } from "lucide-react";
 
 import { useTechnicianInteractionGateway } from "@/features/copilot/technician/voice/useTechnicianInteractionGateway";
+import {
+  describeNewTechnicianAssignments,
+  detectNewTechnicianAssignments,
+  type AnnouncementAgendaItem,
+} from "@/features/copilot/technician/client/dayAgendaAnnouncements";
+import { useOperationsLiveRefresh } from "@/features/work-orders/hooks/useOperationsLiveRefresh";
 import { cn } from "@/features/shared/utils/cn";
 
 type Turn = {
@@ -77,6 +83,10 @@ type Snapshot = {
    */
   greeting?: string | null;
   error?: string;
+  shopId?: string | null;
+  /** The technician's full assigned queue, refreshed on every fetch — used
+   * to notice newly-assigned work while the CoPilot is already open. */
+  dayAgenda?: { items: AnnouncementAgendaItem[] } | null;
 };
 
 type InputMode = "ui" | "voice";
@@ -143,6 +153,39 @@ export function TechnicianTextCopilot({
   const [error, setError] = useState<string | null>(null);
   const pendingTurnRef = useRef<TurnRequest | null>(null);
 
+  // Tracks the assigned-line IDs seen on the last agenda fetch so a new
+  // fetch can tell "just assigned" apart from "already knew about this".
+  // Starts null so the very first fetch establishes a baseline instead of
+  // announcing the technician's entire existing queue as if it were new.
+  const previousAssignmentIdsRef = useRef<Set<string> | null>(null);
+  // Accumulates new-assignment items across fetches until they're actually
+  // delivered, so a second realtime tick before delivery adds to the
+  // announcement instead of replacing or losing the first one.
+  const pendingAssignmentItemsRef = useRef<AnnouncementAgendaItem[]>([]);
+  const [pendingAnnouncement, setPendingAnnouncement] = useState<string | null>(
+    null,
+  );
+  const [notices, setNotices] = useState<string[]>([]);
+
+  const ingestDayAgenda = useCallback((dayAgenda: Snapshot["dayAgenda"]) => {
+    const items = dayAgenda?.items ?? [];
+    const newlyAssigned = detectNewTechnicianAssignments(
+      previousAssignmentIdsRef.current,
+      items,
+    );
+    previousAssignmentIdsRef.current = new Set(
+      items.map((item) => item.workOrderLineId),
+    );
+    if (newlyAssigned.length === 0) return;
+    pendingAssignmentItemsRef.current = [
+      ...pendingAssignmentItemsRef.current,
+      ...newlyAssigned,
+    ];
+    setPendingAnnouncement(
+      describeNewTechnicianAssignments(pendingAssignmentItemsRef.current),
+    );
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     void fetch("/api/copilot/technician/session", { cache: "no-store" })
@@ -151,7 +194,10 @@ export function TechnicianTextCopilot({
         if (!response.ok) {
           throw new Error(body.error || "Unable to load CoPilot.");
         }
-        if (!cancelled) setSnapshot(body);
+        if (!cancelled) {
+          setSnapshot(body);
+          ingestDayAgenda(body.dayAgenda);
+        }
       })
       .catch((reason) => {
         if (!cancelled) {
@@ -166,7 +212,21 @@ export function TechnicianTextCopilot({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [ingestDayAgenda]);
+
+  const refreshAgenda = useCallback(async () => {
+    try {
+      const response = await fetch("/api/copilot/technician/session", {
+        cache: "no-store",
+      });
+      if (!response.ok) return;
+      const body = (await response.json()) as Snapshot;
+      ingestDayAgenda(body.dayAgenda);
+    } catch {
+      // Best-effort background refresh: a missed tick just means the next
+      // realtime event, or the technician's next turn, tries again.
+    }
+  }, [ingestDayAgenda]);
 
   const sessionId = snapshot.session?.id ?? snapshot.sessionId ?? null;
   const documentationEnabled =
@@ -179,6 +239,16 @@ export function TechnicianTextCopilot({
     !snapshot.reply && !snapshot.context?.conversation?.length
       ? snapshot.greeting?.trim() || null
       : null;
+
+  // Notices a new assignment the moment it lands, whether or not a job is
+  // already active, by re-fetching the agenda whenever the shop's work
+  // orders/lines change. Reuses the same shop-scoped realtime hook the
+  // operations dashboard already relies on rather than standing up a new
+  // subscription — this table set is already proven to be realtime-enabled.
+  useOperationsLiveRefresh({
+    shopId: active ? (snapshot.shopId ?? null) : null,
+    onRefresh: () => void refreshAgenda(),
+  });
 
   const applyTurnSnapshot = useCallback((body: Snapshot) => {
     setSnapshot((current) => ({
@@ -313,6 +383,26 @@ export function TechnicianTextCopilot({
     if (!active && voice.active) voice.stop();
   }, [active, voice]);
 
+  // Delivers a queued "you've just been assigned..." notice at the next
+  // safe turn boundary instead of interrupting speech or an in-flight turn.
+  // With voice active, that means waiting for the gateway to report
+  // "listening" (mic open, nothing being said or spoken) before speaking
+  // it — voice.announce() itself refuses anything else. Without voice
+  // active, it only needs the text turn to be free. Either way it's always
+  // also added to the visible notice list so it isn't voice-only.
+  useEffect(() => {
+    if (!pendingAnnouncement) return;
+    if (voice.active) {
+      if (voice.phase !== "listening") return;
+      if (!voice.announce(pendingAnnouncement)) return;
+    } else if (busy) {
+      return;
+    }
+    setNotices((current) => [...current, pendingAnnouncement]);
+    pendingAssignmentItemsRef.current = [];
+    setPendingAnnouncement(null);
+  }, [pendingAnnouncement, voice, busy]);
+
   const vehicleLabel = useMemo(() => {
     const workOrder = snapshot.workOrder;
     if (!workOrder) return null;
@@ -439,6 +529,20 @@ export function TechnicianTextCopilot({
             </div>
           ) : null}
 
+          {notices.length > 0 ? (
+            <div
+              className="rounded-xl border px-3 py-2 text-sm"
+              style={{
+                borderColor: "var(--theme-border-soft)",
+                background: "var(--theme-surface-subtle)",
+              }}
+              aria-live="polite"
+            >
+              <span className="font-semibold">Heads up:</span>{" "}
+              {notices[notices.length - 1]}
+            </div>
+          ) : null}
+
           {latestAssistantReply ? (
             <div
               className="max-h-24 overflow-y-auto rounded-xl px-3 py-2 text-sm"
@@ -558,6 +662,19 @@ export function TechnicianTextCopilot({
               {voice.error}
             </div>
           ) : null}
+        </section>
+      ) : null}
+
+      {notices.length > 0 ? (
+        <section className="rounded-2xl border bg-card p-4" aria-live="polite">
+          <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            Heads up
+          </div>
+          <ul className="mt-2 space-y-1 text-sm">
+            {notices.map((notice, index) => (
+              <li key={`${index}-${notice}`}>{notice}</li>
+            ))}
+          </ul>
         </section>
       ) : null}
 
