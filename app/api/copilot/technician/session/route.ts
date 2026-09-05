@@ -7,12 +7,19 @@ import type {
   RepairSessionStatus,
 } from "@/features/copilot/technician/session/types";
 import { projectTechnicianContext } from "@/features/copilot/technician/session/projectTechnicianContext";
-import { loadTechnicianWorkCandidateForWorkOrder } from "@/features/copilot/technician/server/assignedWork";
+import {
+  listTechnicianWorkCandidates,
+  loadTechnicianWorkCandidateForWorkOrder,
+} from "@/features/copilot/technician/server/assignedWork";
 import {
   requireTechnicianCopilotAccess,
   TechnicianCopilotAccessError,
 } from "@/features/copilot/technician/server/auth";
 import { sendCopilotServerCommand } from "@/features/copilot/technician/server/transport";
+import {
+  buildTechnicianDayAgenda,
+  describeTechnicianDayAgenda,
+} from "@/features/copilot/technician/server/dayAgenda";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -58,7 +65,25 @@ async function snapshot(
         events: envelope.events,
       })
     : null;
-  return { envelope, context, workOrder, access };
+
+  // No active repair session yet: this is the CoPilot's idle state, so this
+  // is also when it has something proactive to say — the technician's full
+  // assigned queue for the day, not just the next single line. Once a
+  // session starts, the ordinary turn runtime takes over and this stops
+  // being computed, which naturally limits it to "once per idle open"
+  // rather than needing separate once-a-day tracking.
+  let greeting: string | null = null;
+  if (!envelope.session) {
+    const candidates = await listTechnicianWorkCandidates({
+      supabase: createAdminSupabase(),
+      shopId: access.shopId,
+      technicianIds: [access.authUserId, access.profileId],
+    });
+    const agenda = buildTechnicianDayAgenda(candidates);
+    greeting = describeTechnicianDayAgenda(agenda, access.technicianName);
+  }
+
+  return { envelope, context, workOrder, access, greeting };
 }
 
 function capabilities(
@@ -82,6 +107,7 @@ export async function GET(request: NextRequest) {
       session: result.envelope.session,
       context: result.context,
       workOrder: result.workOrder,
+      greeting: result.greeting,
       capabilities: capabilities(result.access),
     });
   } catch (error) {
@@ -144,6 +170,7 @@ export async function POST(request: NextRequest) {
       session: result.envelope.session,
       context: result.context,
       workOrder: result.workOrder,
+      greeting: result.greeting,
       capabilities: capabilities(result.access),
     });
   } catch (error) {
