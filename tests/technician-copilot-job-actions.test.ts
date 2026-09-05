@@ -86,12 +86,13 @@ describe("Technician CoPilot canonical job actions", () => {
     expect(selected?.id).toBe("line-running");
   });
 
-  it("uses the repair session's active line when natural language omits an ID", () => {
-    const prepared = prepareTechnicianCopilotAction({
+  it("uses the repair session's active line when natural language omits an ID", async () => {
+    const prepared = await prepareTechnicianCopilotAction({
       action: { type: "job.start", workOrderLineId: null },
       activeWorkOrder: workOrder,
       assignedWork: [workOrder],
       activeWorkOrderLineId: workOrder.lines[0].id,
+      supabase: {} as never,
     });
 
     expect(prepared).toMatchObject({
@@ -100,12 +101,13 @@ describe("Technician CoPilot canonical job actions", () => {
     });
   });
 
-  it("asks which line instead of guessing when multiple assigned lines are possible", () => {
-    const prepared = prepareTechnicianCopilotAction({
+  it("asks which line instead of guessing when multiple assigned lines are possible", async () => {
+    const prepared = await prepareTechnicianCopilotAction({
       action: { type: "job.hold", workOrderLineId: null, reason: "Awaiting parts" },
       activeWorkOrder: workOrder,
       assignedWork: [workOrder],
       activeWorkOrderLineId: null,
+      supabase: {} as never,
     });
 
     expect(prepared).toEqual({
@@ -114,8 +116,8 @@ describe("Technician CoPilot canonical job actions", () => {
     });
   });
 
-  it("rejects a model-selected line outside the technician's assigned work", () => {
-    const prepared = prepareTechnicianCopilotAction({
+  it("rejects a model-selected line outside the technician's assigned work", async () => {
+    const prepared = await prepareTechnicianCopilotAction({
       action: {
         type: "job.start",
         workOrderLineId: "00000000-0000-4000-8000-000000009999",
@@ -123,6 +125,7 @@ describe("Technician CoPilot canonical job actions", () => {
       activeWorkOrder: workOrder,
       assignedWork: [workOrder],
       activeWorkOrderLineId: workOrder.lines[0].id,
+      supabase: {} as never,
     });
 
     expect(prepared).toMatchObject({
@@ -131,8 +134,8 @@ describe("Technician CoPilot canonical job actions", () => {
     });
   });
 
-  it("does not release a line that is no longer on hold", () => {
-    const prepared = prepareTechnicianCopilotAction({
+  it("does not release a line that is no longer on hold", async () => {
+    const prepared = await prepareTechnicianCopilotAction({
       action: {
         type: "job.release_hold",
         workOrderLineId: workOrder.lines[0].id,
@@ -140,6 +143,7 @@ describe("Technician CoPilot canonical job actions", () => {
       activeWorkOrder: workOrder,
       assignedWork: [workOrder],
       activeWorkOrderLineId: workOrder.lines[0].id,
+      supabase: {} as never,
     });
 
     expect(prepared).toEqual({
@@ -148,8 +152,8 @@ describe("Technician CoPilot canonical job actions", () => {
     });
   });
 
-  it("requires the technician to be punched into a job before completing it", () => {
-    const prepared = prepareTechnicianCopilotAction({
+  it("requires the technician to be punched into a job before completing it", async () => {
+    const prepared = await prepareTechnicianCopilotAction({
       action: {
         type: "job.complete",
         workOrderLineId: workOrder.lines[0].id,
@@ -159,6 +163,7 @@ describe("Technician CoPilot canonical job actions", () => {
       activeWorkOrder: workOrder,
       assignedWork: [workOrder],
       activeWorkOrderLineId: workOrder.lines[0].id,
+      supabase: {} as never,
     });
 
     expect(prepared).toEqual({
@@ -167,8 +172,8 @@ describe("Technician CoPilot canonical job actions", () => {
     });
   });
 
-  it("asks only for the missing story facts before completing an active job", () => {
-    const prepared = prepareTechnicianCopilotAction({
+  it("asks only for the missing story facts before completing an active job", async () => {
+    const prepared = await prepareTechnicianCopilotAction({
       action: {
         type: "job.complete",
         workOrderLineId: workOrder.lines[1].id,
@@ -178,6 +183,7 @@ describe("Technician CoPilot canonical job actions", () => {
       activeWorkOrder: workOrder,
       assignedWork: [workOrder],
       activeWorkOrderLineId: workOrder.lines[1].id,
+      supabase: {} as never,
     });
 
     expect(prepared).toEqual({
@@ -187,11 +193,12 @@ describe("Technician CoPilot canonical job actions", () => {
   });
 
   it("starts through the canonical atomic job-labor service with a stable replay key", async () => {
-    const prepared = prepareTechnicianCopilotAction({
+    const prepared = await prepareTechnicianCopilotAction({
       action: { type: "job.start", workOrderLineId: workOrder.lines[0].id },
       activeWorkOrder: workOrder,
       assignedWork: [workOrder],
       activeWorkOrderLineId: workOrder.lines[0].id,
+      supabase: {} as never,
     });
     if (prepared.kind !== "execute") throw new Error("Expected executable action");
 
@@ -234,7 +241,7 @@ describe("Technician CoPilot canonical job actions", () => {
   });
 
   it("preserves the existing correction when voice updates only the cause", async () => {
-    const prepared = prepareTechnicianCopilotAction({
+    const prepared = await prepareTechnicianCopilotAction({
       action: {
         type: "job.story.save",
         workOrderLineId: workOrder.lines[0].id,
@@ -244,6 +251,7 @@ describe("Technician CoPilot canonical job actions", () => {
       activeWorkOrder: workOrder,
       assignedWork: [workOrder],
       activeWorkOrderLineId: workOrder.lines[0].id,
+      supabase: {} as never,
     });
     if (prepared.kind !== "execute") throw new Error("Expected executable action");
 
@@ -281,7 +289,7 @@ describe("Technician CoPilot canonical job actions", () => {
         index === 0 ? { ...line, status: "in_progress" } : line,
       ),
     };
-    const prepared = prepareTechnicianCopilotAction({
+    const prepared = await prepareTechnicianCopilotAction({
       action: {
         type: "job.complete",
         workOrderLineId: activeWorkOrder.lines[0].id,
@@ -291,6 +299,7 @@ describe("Technician CoPilot canonical job actions", () => {
       activeWorkOrder,
       assignedWork: [activeWorkOrder],
       activeWorkOrderLineId: activeWorkOrder.lines[0].id,
+      supabase: {} as never,
     });
     if (prepared.kind !== "execute") throw new Error("Expected executable action");
 
@@ -327,11 +336,12 @@ describe("Technician CoPilot canonical job actions", () => {
   });
 
   it("replays the same durable operation after an unknown transport outcome", async () => {
-    const prepared = prepareTechnicianCopilotAction({
+    const prepared = await prepareTechnicianCopilotAction({
       action: { type: "job.start", workOrderLineId: workOrder.lines[0].id },
       activeWorkOrder: workOrder,
       assignedWork: [workOrder],
       activeWorkOrderLineId: workOrder.lines[0].id,
+      supabase: {} as never,
     });
     if (prepared.kind !== "execute") throw new Error("Expected executable action");
 
@@ -359,7 +369,7 @@ describe("Technician CoPilot canonical job actions", () => {
   });
 
   it("returns a safe retry response when another device changed the story", async () => {
-    const prepared = prepareTechnicianCopilotAction({
+    const prepared = await prepareTechnicianCopilotAction({
       action: {
         type: "job.story.save",
         workOrderLineId: workOrder.lines[0].id,
@@ -369,6 +379,7 @@ describe("Technician CoPilot canonical job actions", () => {
       activeWorkOrder: workOrder,
       assignedWork: [workOrder],
       activeWorkOrderLineId: workOrder.lines[0].id,
+      supabase: {} as never,
     });
     if (prepared.kind !== "execute") throw new Error("Expected executable action");
 
@@ -404,7 +415,7 @@ describe("Technician CoPilot canonical job actions", () => {
         index === 0 ? { ...line, status: "in_progress" } : line,
       ),
     };
-    const prepared = prepareTechnicianCopilotAction({
+    const prepared = await prepareTechnicianCopilotAction({
       action: {
         type: "job.complete",
         workOrderLineId: activeWorkOrder.lines[0].id,
@@ -414,6 +425,7 @@ describe("Technician CoPilot canonical job actions", () => {
       activeWorkOrder,
       assignedWork: [activeWorkOrder],
       activeWorkOrderLineId: activeWorkOrder.lines[0].id,
+      supabase: {} as never,
     });
     if (prepared.kind !== "execute") throw new Error("Expected executable action");
 

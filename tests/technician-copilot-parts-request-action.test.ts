@@ -55,8 +55,8 @@ describe("job.parts.request", () => {
     vi.clearAllMocks();
   });
 
-  it("asks for parts and quantities instead of requesting nothing", () => {
-    const prepared = prepareTechnicianCopilotAction({
+  it("asks for parts and quantities instead of requesting nothing", async () => {
+    const prepared = await prepareTechnicianCopilotAction({
       action: {
         type: "job.parts.request",
         workOrderLineId: workOrder.lines[0].id,
@@ -66,6 +66,7 @@ describe("job.parts.request", () => {
       activeWorkOrder: workOrder,
       assignedWork: [workOrder],
       activeWorkOrderLineId: workOrder.lines[0].id,
+      supabase: {} as never,
     });
 
     expect(prepared).toEqual({
@@ -76,7 +77,7 @@ describe("job.parts.request", () => {
 
   it("submits through the same atomic RPC the manual Request Parts screen uses, not the job-action command", async () => {
     const rpc = vi.fn().mockResolvedValue({ data: { requestId: "req-1" }, error: null });
-    const prepared = prepareTechnicianCopilotAction({
+    const prepared = await prepareTechnicianCopilotAction({
       action: {
         type: "job.parts.request",
         workOrderLineId: workOrder.lines[0].id,
@@ -89,6 +90,7 @@ describe("job.parts.request", () => {
       activeWorkOrder: workOrder,
       assignedWork: [workOrder],
       activeWorkOrderLineId: workOrder.lines[0].id,
+      supabase: {} as never,
     });
     if (prepared.kind !== "execute") throw new Error("Expected executable action");
 
@@ -139,7 +141,7 @@ describe("job.parts.request", () => {
       data: null,
       error: { message: "Technician is not assigned to this work-order line." },
     });
-    const prepared = prepareTechnicianCopilotAction({
+    const prepared = await prepareTechnicianCopilotAction({
       action: {
         type: "job.parts.request",
         workOrderLineId: workOrder.lines[0].id,
@@ -149,6 +151,7 @@ describe("job.parts.request", () => {
       activeWorkOrder: workOrder,
       assignedWork: [workOrder],
       activeWorkOrderLineId: workOrder.lines[0].id,
+      supabase: {} as never,
     });
     if (prepared.kind !== "execute") throw new Error("Expected executable action");
 

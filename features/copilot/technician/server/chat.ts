@@ -17,6 +17,7 @@ import {
   selectNextTechnicianWorkLine,
   technicianWorkLineLabel,
   type BoundTechnicianCopilotAction,
+  type TechnicianCopilotActionResult,
 } from "./actions";
 import {
   parseTechnicianCopilotAction,
@@ -148,11 +149,19 @@ type StoredActionTurn = {
   lineCause: string | null;
   lineCorrection: string | null;
   lineUpdatedAt: string | null;
+  /** inspection.start only. See PreparedTechnicianCopilotAction's doc. */
+  templateId: string | null;
   result: {
     ok: boolean;
     reply: string;
     eventLabel: string | null;
     eventDetail: string | null;
+    /** inspection.start only — the client's navigation target, if any. */
+    clientAction: {
+      workOrderId: string;
+      workOrderLineId: string;
+      templateId: string;
+    } | null;
   } | null;
 };
 
@@ -192,6 +201,20 @@ function storedActionTurn(
       ? completed.payload.reply.trim()
       : "";
 
+  const rawClientAction = completed?.payload?.clientAction;
+  const clientAction =
+    rawClientAction &&
+    typeof rawClientAction === "object" &&
+    typeof (rawClientAction as Record<string, unknown>).workOrderId === "string" &&
+    typeof (rawClientAction as Record<string, unknown>).workOrderLineId === "string" &&
+    typeof (rawClientAction as Record<string, unknown>).templateId === "string"
+      ? {
+          workOrderId: (rawClientAction as Record<string, string>).workOrderId,
+          workOrderLineId: (rawClientAction as Record<string, string>).workOrderLineId,
+          templateId: (rawClientAction as Record<string, string>).templateId,
+        }
+      : null;
+
   return {
     action,
     key,
@@ -219,6 +242,10 @@ function storedActionTurn(
       typeof pending.payload?.lineUpdatedAt === "string"
         ? pending.payload.lineUpdatedAt
         : null,
+    templateId:
+      typeof pending.payload?.templateId === "string"
+        ? pending.payload.templateId
+        : null,
     result:
       completed && completedReply
         ? {
@@ -232,6 +259,7 @@ function storedActionTurn(
               typeof completed.payload?.eventDetail === "string"
                 ? completed.payload.eventDetail
                 : null,
+            clientAction,
           }
         : null,
   };
@@ -259,6 +287,7 @@ function boundActionFromStored(
     lineCorrection: storedAction.lineCorrection,
     lineUpdatedAt: storedAction.lineUpdatedAt,
     workOrderId: storedAction.workOrderId,
+    templateId: storedAction.templateId,
   };
 }
 
@@ -614,6 +643,7 @@ export async function runTechnicianCopilotTurn(input: {
         workOrder: null,
         capabilities,
         replayed: true,
+        clientAction: null,
       };
     }
     throw new TechnicianCopilotConflictError(
@@ -648,6 +678,7 @@ export async function runTechnicianCopilotTurn(input: {
       workOrder: activeWorkOrder,
       capabilities,
       replayed: true,
+      clientAction: storedAction?.result?.clientAction ?? null,
     };
   }
 
@@ -671,6 +702,7 @@ export async function runTechnicianCopilotTurn(input: {
         workOrder: null,
         capabilities,
         replayed: false,
+        clientAction: null,
       };
     }
     if (decision.action?.type === "work.next") {
@@ -681,18 +713,54 @@ export async function runTechnicianCopilotTurn(input: {
         workOrder: null,
         capabilities,
         replayed: false,
+        clientAction: null,
       };
     }
-    const selected =
-      decision.mode === "start"
-        ? candidateFor(candidates, decision.workOrderId)
-        : null;
+    // inspection.start resolves its own target across every assigned work
+    // order (it isn't scoped to whatever the model's own mode/workOrderId
+    // fields say — see prepareTechnicianCopilotAction), so it's checked
+    // before the generic mode==="start" path. Finding one here anchors a
+    // session to it exactly like mode==="start" does below, then falls
+    // through into the normal active-session flow, which re-decides the
+    // turn and — now with that session active — actually executes
+    // inspection.start (see the active-session branch) rather than just
+    // replying with whatever the first decision call said.
+    let selected: TechnicianWorkCandidate | null = null;
+    let lineId: string | null = null;
+    if (decision.action?.type === "inspection.start") {
+      const prepared = await prepareTechnicianCopilotAction({
+        action: decision.action,
+        activeWorkOrder: null,
+        assignedWork: candidates,
+        activeWorkOrderLineId: null,
+        supabase: input.identity.supabase,
+      });
+      if (prepared.kind === "reply") {
+        return {
+          sessionId: null,
+          reply: prepared.reply,
+          context: null,
+          workOrder: null,
+          capabilities,
+          replayed: false,
+          clientAction: null,
+        };
+      }
+      if (prepared.kind === "execute") {
+        selected = prepared.workOrder;
+        lineId = prepared.line.id;
+      }
+    } else if (decision.mode === "start") {
+      selected = candidateFor(candidates, decision.workOrderId);
+    }
+
     if (!selected) {
-      const prepared = prepareTechnicianCopilotAction({
+      const prepared = await prepareTechnicianCopilotAction({
         action: decision.action ?? { type: "none" },
         activeWorkOrder: null,
         assignedWork: candidates,
         activeWorkOrderLineId: null,
+        supabase: input.identity.supabase,
       });
       return {
         sessionId: null,
@@ -701,16 +769,19 @@ export async function runTechnicianCopilotTurn(input: {
         workOrder: null,
         capabilities,
         replayed: false,
+        clientAction: null,
       };
     }
 
-    const lineId =
-      decision.workOrderLineId &&
-      selected.lineIds.includes(decision.workOrderLineId)
-        ? decision.workOrderLineId
-        : selected.lineIds.length === 1
-          ? selected.lineIds[0]
-          : null;
+    if (lineId === null) {
+      lineId =
+        decision.workOrderLineId &&
+        selected.lineIds.includes(decision.workOrderLineId)
+          ? decision.workOrderLineId
+          : selected.lineIds.length === 1
+            ? selected.lineIds[0]
+            : null;
+    }
     const started = await command<{ sessionId: string }>(
       input.identity,
       "session.start",
@@ -874,6 +945,8 @@ export async function runTechnicianCopilotTurn(input: {
     storedAction?.result?.reply ??
     decision?.reply ??
     "I'm with you.";
+  let clientAction: TechnicianCopilotActionResult["clientAction"] =
+    storedAction?.result?.clientAction ?? null;
   if (!existingAssistant && !storedAction?.result) {
     let actionKey =
       storedAction?.key ??
@@ -895,11 +968,12 @@ export async function runTechnicianCopilotTurn(input: {
           recentConversations,
         });
       } else {
-        const prepared = prepareTechnicianCopilotAction({
+        const prepared = await prepareTechnicianCopilotAction({
           action: decidedAction,
           activeWorkOrder,
           assignedWork: candidates,
           activeWorkOrderLineId: session.activeWorkOrderLineId,
+          supabase: input.identity.supabase,
         });
 
         if (prepared.kind === "reply") {
@@ -934,6 +1008,7 @@ export async function runTechnicianCopilotTurn(input: {
               lineCause: prepared.line.cause,
               lineCorrection: prepared.line.correction,
               lineUpdatedAt: prepared.line.updatedAt,
+              templateId: prepared.templateId,
             },
           });
 
@@ -950,6 +1025,7 @@ export async function runTechnicianCopilotTurn(input: {
           actionWorkOrderId = storedAction.workOrderId ?? actionWorkOrderId;
           if (storedAction.result) {
             reply = storedAction.result.reply;
+            clientAction = storedAction.result.clientAction ?? null;
             replayedActionResult = true;
           } else {
             boundAction = boundActionFromStored(storedAction);
@@ -1003,6 +1079,7 @@ export async function runTechnicianCopilotTurn(input: {
         expectedLineUpdatedAt: storedAction?.lineUpdatedAt,
       });
       reply = actionResult.reply;
+      clientAction = actionResult.clientAction ?? null;
 
       await append(input.identity, {
         sessionId: session.id,
@@ -1023,6 +1100,7 @@ export async function runTechnicianCopilotTurn(input: {
           tool: boundAction.action.type,
           workOrderId: actionWorkOrderId,
           workOrderLineId: boundAction.lineId,
+          clientAction: actionResult.clientAction ?? null,
         },
       });
 
@@ -1115,5 +1193,6 @@ export async function runTechnicianCopilotTurn(input: {
     workOrder: activeWorkOrder,
     capabilities,
     replayed: Boolean(existingAssistant || replayedActionResult),
+    clientAction,
   };
 }

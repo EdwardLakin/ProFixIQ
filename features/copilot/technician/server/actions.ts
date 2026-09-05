@@ -34,6 +34,13 @@ export type PreparedTechnicianCopilotAction =
       action: ExecutableAction;
       workOrder: TechnicianWorkCandidate;
       line: TechnicianWorkLine;
+      /**
+       * inspection.start only: the template resolved server-side (the model
+       * never picks one). Threaded through the action.pending/completed
+       * ledger via BoundTechnicianCopilotAction, the same way
+       * job.parts.request threads workOrderId through.
+       */
+      templateId?: string | null;
     };
 
 export type TechnicianCopilotActionResult = {
@@ -41,6 +48,15 @@ export type TechnicianCopilotActionResult = {
   reply: string;
   eventLabel?: string;
   eventDetail?: string;
+  /**
+   * inspection.start only: tells the client which inspection to navigate
+   * to. Every other action leaves this unset.
+   */
+  clientAction?: {
+    workOrderId: string;
+    workOrderLineId: string;
+    templateId: string;
+  } | null;
 };
 
 export function technicianWorkLineLabel(line: TechnicianWorkLine): string {
@@ -148,17 +164,165 @@ export function describeNextTechnicianWork(
   return `Next is ${label} on ${order}. It is ${statusLabel(next.line.status)} and ready for you.`;
 }
 
-export function prepareTechnicianCopilotAction(input: {
+function findLineAcrossAssignedWork(
+  assignedWork: readonly TechnicianWorkCandidate[],
+  lineId: string,
+): { workOrder: TechnicianWorkCandidate; line: TechnicianWorkLine } | null {
+  for (const workOrder of assignedWork) {
+    const line = workOrder.lines.find((candidate) => candidate.id === lineId);
+    if (line) return { workOrder, line };
+  }
+  return null;
+}
+
+/**
+ * A technician can only be actively punched into one job line at a time
+ * (the shared job-action RPC already enforces this — see safeFailure's
+ * "already punched into another job" case). Used to detect whether
+ * starting a different line for an inspection needs to hold this one
+ * first.
+ */
+function findInProgressLine(
+  assignedWork: readonly TechnicianWorkCandidate[],
+): { workOrder: TechnicianWorkCandidate; line: TechnicianWorkLine } | null {
+  for (const workOrder of assignedWork) {
+    const line = workOrder.lines.find(
+      (candidate) => normalizeWorkOrderLineStatus(candidate.status) === "in_progress",
+    );
+    if (line) return { workOrder, line };
+  }
+  return null;
+}
+
+type InspectionTemplateLookupClient = {
+  from: (table: string) => {
+    select: (columns: string) => {
+      eq: (
+        column: string,
+        value: string,
+      ) => {
+        maybeSingle: () => PromiseLike<{
+          data: { inspection_template_id: string | null } | null;
+          error: { message: string } | null;
+        }>;
+      };
+    };
+  };
+};
+
+async function lookupInspectionTemplateId(
+  supabase: TechnicianWorkScope["supabase"],
+  lineId: string,
+): Promise<string | null> {
+  const client = supabase as unknown as InspectionTemplateLookupClient;
+  const { data, error } = await client
+    .from("work_order_lines")
+    .select("inspection_template_id")
+    .eq("id", lineId)
+    .maybeSingle();
+  if (error || !data) return null;
+  const id = data.inspection_template_id;
+  return typeof id === "string" && id.trim() ? id.trim() : null;
+}
+
+type InspectionStartTarget =
+  | { kind: "reply"; reply: string }
+  | {
+      kind: "execute";
+      workOrder: TechnicianWorkCandidate;
+      line: TechnicianWorkLine;
+      templateId: string;
+    };
+
+/**
+ * Resolves inspection.start to either a plain reply (ambiguous line, no
+ * template attached, or another job already in progress elsewhere) or a
+ * concrete line + template to open. Searches across every assigned work
+ * order, not just the currently active one — a standalone inspection line
+ * (e.g. a CVIP) can live on a different work order than whatever the
+ * technician is currently punched into.
+ *
+ * A technician can only be punched into one job at a time, and every
+ * inspection needs a punch event first (see model.ts's inspection.start
+ * guidance). Rather than silently holding whatever the technician is
+ * already working on, this asks them to put it on hold or finish it
+ * first — holding a job they didn't explicitly mention is a real state
+ * change this shouldn't make unprompted.
+ */
+async function resolveInspectionStartTarget(input: {
+  supabase: TechnicianWorkScope["supabase"];
+  action: Extract<TechnicianCopilotAction, { type: "inspection.start" }>;
+  assignedWork: readonly TechnicianWorkCandidate[];
+}): Promise<InspectionStartTarget> {
+  const requestedId = input.action.workOrderLineId;
+  const target = requestedId
+    ? findLineAcrossAssignedWork(input.assignedWork, requestedId)
+    : null;
+
+  if (!target) {
+    const allLines = input.assignedWork.flatMap((workOrder) => workOrder.lines);
+    if (allLines.length === 0) {
+      return {
+        kind: "reply",
+        reply: "You don't have an assigned job line to inspect right now.",
+      };
+    }
+    return { kind: "reply", reply: choiceReply(allLines) };
+  }
+
+  const { workOrder, line } = target;
+  const label = technicianWorkLineLabel(line);
+  const status = normalizeWorkOrderLineStatus(line.status);
+
+  if (status !== "in_progress") {
+    const conflicting = findInProgressLine(input.assignedWork);
+    if (conflicting && conflicting.line.id !== line.id) {
+      return {
+        kind: "reply",
+        reply: `You're currently working on ${technicianWorkLineLabel(conflicting.line)}. Put that on hold or finish it, then ask me to start ${label}.`,
+      };
+    }
+  }
+
+  const templateId = await lookupInspectionTemplateId(input.supabase, line.id);
+  if (!templateId) {
+    return {
+      kind: "reply",
+      reply: `${label} doesn't have an inspection template attached yet. Build or attach a custom inspection first.`,
+    };
+  }
+
+  return { kind: "execute", workOrder, line, templateId };
+}
+
+export async function prepareTechnicianCopilotAction(input: {
   action: PreparableAction;
   activeWorkOrder: TechnicianWorkCandidate | null;
   assignedWork: readonly TechnicianWorkCandidate[];
   activeWorkOrderLineId: string | null;
-}): PreparedTechnicianCopilotAction {
+  supabase: TechnicianWorkScope["supabase"];
+}): Promise<PreparedTechnicianCopilotAction> {
   if (input.action.type === "none") return { kind: "none" };
   if (input.action.type === "work.next") {
     return {
       kind: "reply",
       reply: describeNextTechnicianWork(input.assignedWork),
+    };
+  }
+
+  if (input.action.type === "inspection.start") {
+    const target = await resolveInspectionStartTarget({
+      supabase: input.supabase,
+      action: input.action,
+      assignedWork: input.assignedWork,
+    });
+    if (target.kind === "reply") return target;
+    return {
+      kind: "execute",
+      action: { type: "inspection.start", workOrderLineId: target.line.id },
+      workOrder: target.workOrder,
+      line: target.line,
+      templateId: target.templateId,
     };
   }
 
@@ -355,6 +519,11 @@ export type BoundTechnicianCopilotAction = {
    * never needed it threaded through here.
    */
   workOrderId?: string | null;
+  /**
+   * inspection.start only: the template resolved when the action was
+   * prepared. See PreparedTechnicianCopilotAction's templateId doc.
+   */
+  templateId?: string | null;
 };
 
 type AdminRpcClient = {
@@ -454,6 +623,82 @@ async function executePartsRequestAction(input: {
   };
 }
 
+/**
+ * inspection.start reuses the exact job.start mutation (idempotent retry
+ * included) to punch the technician into the target line, then hands the
+ * client the resolved template to navigate to. resolveInspectionStartTarget
+ * has already confirmed no *other* line is in progress before this ever
+ * runs, so "already has active labor on this line" here means the
+ * technician was already punched into this exact line (e.g. reopening the
+ * inspection after a refresh) — that's success, not a conflict, and is
+ * distinguished from "already has an active job punch" (a different line),
+ * which is a real failure this shouldn't be able to reach given the
+ * resolve-time check, but is handled safely regardless.
+ */
+async function executeInspectionStartAction(input: {
+  identity: CopilotMutationIdentity;
+  sessionId: string;
+  bound: BoundTechnicianCopilotAction;
+  operationId: string;
+  expectedLineUpdatedAt?: string | null;
+}): Promise<TechnicianCopilotActionResult> {
+  const label = input.bound.lineLabel;
+  const workOrderId = input.bound.workOrderId;
+  const templateId = input.bound.templateId;
+  if (!workOrderId || !templateId) {
+    return {
+      ok: false,
+      reply: `I couldn't confirm the inspection template for ${label}. Refresh and try again.`,
+    };
+  }
+
+  const startAction = { type: "job.start" as const, workOrderLineId: input.bound.lineId };
+  const startCommand = {
+    authUserId: input.identity.authUserId,
+    profileId: input.identity.profileId,
+    shopId: input.identity.shopId,
+    action: "job.action" as const,
+    args: {
+      sessionId: input.sessionId,
+      workOrderLineId: input.bound.lineId,
+      jobAction: "job.start" as const,
+      operationId: input.operationId,
+      reason: null,
+      cause: null,
+      correction: null,
+      expectedLineUpdatedAt:
+        input.expectedLineUpdatedAt === undefined
+          ? input.bound.lineUpdatedAt
+          : input.expectedLineUpdatedAt,
+    },
+  };
+
+  try {
+    try {
+      await sendCopilotServerCommand<Record<string, unknown>>(startCommand);
+    } catch {
+      await sendCopilotServerCommand<Record<string, unknown>>(startCommand);
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    if (!message.toLowerCase().includes("already has active labor on this line")) {
+      console.error("[technician-copilot] inspection start punch failed", {
+        workOrderLineId: input.bound.lineId,
+        error: message,
+      });
+      return { ok: false, reply: safeFailure(startAction, message) };
+    }
+  }
+
+  return {
+    ok: true,
+    reply: `Opening the inspection for ${label}.`,
+    eventLabel: "Started inspection",
+    eventDetail: label,
+    clientAction: { workOrderId, workOrderLineId: input.bound.lineId, templateId },
+  };
+}
+
 export async function executeBoundTechnicianCopilotAction(input: {
   identity: CopilotMutationIdentity;
   sessionId: string;
@@ -469,6 +714,16 @@ export async function executeBoundTechnicianCopilotAction(input: {
       bound: input.bound,
       action,
       operationId: input.operationId,
+    });
+  }
+
+  if (action.type === "inspection.start") {
+    return executeInspectionStartAction({
+      identity: input.identity,
+      sessionId: input.sessionId,
+      bound: input.bound,
+      operationId: input.operationId,
+      expectedLineUpdatedAt: input.expectedLineUpdatedAt,
     });
   }
 
@@ -576,7 +831,7 @@ export async function executeTechnicianCopilotAction(input: {
   operationId: string;
   expectedLineUpdatedAt?: string | null;
 }): Promise<TechnicianCopilotActionResult> {
-  const { action, line, workOrder } = input.prepared;
+  const { action, line, workOrder, templateId } = input.prepared;
   return executeBoundTechnicianCopilotAction({
     identity: input.identity,
     sessionId: input.sessionId,
@@ -590,6 +845,7 @@ export async function executeTechnicianCopilotAction(input: {
       lineCorrection: line.correction,
       lineUpdatedAt: line.updatedAt,
       workOrderId: workOrder.id,
+      templateId,
     },
   });
 }
