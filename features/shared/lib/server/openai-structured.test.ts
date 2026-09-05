@@ -160,7 +160,10 @@ describe("runOpenAIStructuredJson", () => {
     });
 
     expect(create).toHaveBeenCalledTimes(1);
-    const [, options] = create.mock.calls[0] as [unknown, { signal?: unknown }];
+    const [, options] = create.mock.calls[0] as unknown as [
+      unknown,
+      { signal?: unknown },
+    ];
     expect(options?.signal).toBeInstanceOf(AbortSignal);
   });
 });
