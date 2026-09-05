@@ -198,7 +198,8 @@
   content: "✓ ";
 }
 
-/* The dominant job-state panel is raised and its action group stays in reach. */
+/* The dominant job-state panel is raised; its actions render in normal flow
+ * right inside the panel instead of floating over the rest of the page. */
 .profixiq-mobile-command
   .app-shell
   main.mobile-tech-page
@@ -217,22 +218,9 @@
   > div
   > .mobile-tech-panel:first-of-type
   > .flex.flex-col.gap-2 {
-  position: fixed;
-  z-index: 55;
-  right: 0.75rem;
-  bottom: calc(0.7rem + env(safe-area-inset-bottom, 0px));
-  left: 0.75rem;
   display: grid !important;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.55rem !important;
-  max-width: 50rem;
-  margin-inline: auto;
-  padding: 0.65rem;
-  border: 1px solid color-mix(in srgb, var(--theme-border-strong) 72%, transparent);
-  border-radius: 1.1rem;
-  background: color-mix(in srgb, var(--theme-surface-panel) 94%, transparent);
-  box-shadow: 0 22px 58px rgba(3, 13, 32, 0.26);
-  backdrop-filter: blur(22px);
 }
 
 .profixiq-mobile-command
@@ -257,34 +245,7 @@
 }
 
 .profixiq-mobile-command .app-shell main.mobile-tech-page {
-  padding-bottom: calc(7.6rem + env(safe-area-inset-bottom, 0px)) !important;
-}
-
-/* Standalone focused jobs add a story rail below the shared primary actions. */
-.profixiq-mobile-command .mobile-focused-job-route {
-  --mobile-job-primary-dock-bottom: calc(
-    4.2625rem + max(0.75rem, env(safe-area-inset-bottom, 0px))
-  );
-  --mobile-job-workflow-bottom-safe-zone: calc(
-    var(--mobile-job-primary-dock-bottom) + 8.75rem
-  );
-}
-
-.profixiq-mobile-command
-  .mobile-focused-job-route
-  .app-shell
-  main.mobile-tech-page
-  > div
-  > .mobile-tech-panel:first-of-type
-  > .flex.flex-col.gap-2 {
-  bottom: var(--mobile-job-primary-dock-bottom);
-}
-
-.profixiq-mobile-command
-  .mobile-focused-job-route
-  .app-shell
-  main.mobile-tech-page {
-  padding-bottom: var(--mobile-job-workflow-bottom-safe-zone) !important;
+  padding-bottom: calc(1.5rem + env(safe-area-inset-bottom, 0px));
 }
 
 /* Secondary operational actions read as a compact tool grid. */
@@ -318,16 +279,4 @@
   color: var(--theme-text-secondary) !important;
   box-shadow: none !important;
   opacity: 0.76 !important;
-}
-
-@media (min-width: 700px) {
-  .profixiq-mobile-command
-    .app-shell
-    main.mobile-tech-page
-    > div
-    > .mobile-tech-panel:first-of-type
-    > .flex.flex-col.gap-2 {
-    right: max(1rem, calc((100vw - 50rem) / 2));
-    left: max(1rem, calc((100vw - 50rem) / 2));
-  }
 }
