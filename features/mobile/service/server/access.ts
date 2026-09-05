@@ -43,6 +43,7 @@ export function resolveFieldWorkspaceCapabilities(input: {
       canManageOperations: standaloneOwner,
       canManageInspectionTemplates: standaloneOwner,
       canConfigureFieldService: standaloneOwner,
+      canInviteFleetMembers: standaloneOwner,
       canSwitchWorkspace: input.canSwitchWorkspace,
     };
   }
@@ -57,6 +58,7 @@ export function resolveFieldWorkspaceCapabilities(input: {
       ROLE_GROUPS.billingOperators,
     ),
     canConfigureFieldService: input.canConfigureFieldService,
+    canInviteFleetMembers: actor.canInviteFleetMembers,
     canSwitchWorkspace: input.canSwitchWorkspace,
   };
 }
