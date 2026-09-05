@@ -13,6 +13,10 @@ import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 import { runWithProviderTimeout } from "@/features/shared/lib/server/provider-timeout";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import {
+  parseInspectionVoiceCommandList,
+  type InspectionVoiceCommand,
+} from "@/features/inspections/server/voiceCommandContract";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,7 +37,6 @@ const requestSchema = z.object({
   mode: z.enum(["open", "strict_context"]).optional().default("open"),
 });
 
-type CommandStatus = "ok" | "fail" | "na" | "recommend";
 type InterpretMode = "open" | "strict_context";
 
 type InterpretContext = {
@@ -41,90 +44,6 @@ type InterpretContext = {
   sectionTitles?: string[];
   items?: string[];
 };
-
-type OneShotPart = { description: string; qty: number };
-
-type VoiceCommand =
-  | {
-      command: "update_status";
-      section?: string;
-      item?: string;
-      side?: "left" | "right";
-      status: CommandStatus;
-      note?: string;
-      notes?: string;
-    }
-  | {
-      command: "update_value";
-      section?: string;
-      item?: string;
-      side?: "left" | "right";
-      value: number | string;
-      unit?: string;
-      note?: string;
-      notes?: string;
-    }
-  | {
-      command: "add_note";
-      section?: string;
-      item?: string;
-      side?: "left" | "right";
-      note: string;
-      notes?: string;
-    }
-  | {
-      command: "recommend";
-      section?: string;
-      item?: string;
-      side?: "left" | "right";
-      note: string;
-      notes?: string;
-    }
-  | {
-      command: "add_part";
-      section?: string;
-      item?: string;
-      side?: "left" | "right";
-      partName: string;
-      quantity?: number;
-      note?: string;
-      notes?: string;
-    }
-  | {
-      command: "add_labor";
-      section?: string;
-      item?: string;
-      side?: "left" | "right";
-      hours: number;
-      label?: string;
-      note?: string;
-      notes?: string;
-    }
-  | {
-      /** ✅ apply status to ALL items in a section */
-      command: "section_status";
-      section: string;
-      status: CommandStatus;
-      note?: string;
-      notes?: string;
-    }
-  | {
-      /**
-       * ✅ One-shot item mutation (status + notes + parts + labor in one command).
-       */
-      command: "oneshot_item";
-      section?: string;
-      item?: string;
-      status: CommandStatus;
-      note?: string;
-      notes?: string;
-      parts?: OneShotPart[];
-      laborHours?: number | null;
-    }
-  | { command: "complete_item"; section?: string; item?: string; side?: "left" | "right" }
-  | { command: "skip_item"; section?: string; item?: string; side?: "left" | "right" }
-  | { command: "pause_inspection" }
-  | { command: "finish_inspection" };
 
 function norm(s: unknown): string {
   return String(s ?? "").trim();
@@ -134,23 +53,6 @@ function parseInterpretMode(input: unknown): InterpretMode {
   const v = norm(input).toLowerCase();
   if (v === "strict_context") return "strict_context";
   return "open";
-}
-
-function isRecord(x: unknown): x is Record<string, unknown> {
-  return typeof x === "object" && x !== null;
-}
-
-function safeJsonParseArray(input: string): VoiceCommand[] {
-  try {
-    const parsed: unknown = JSON.parse(input);
-    if (!Array.isArray(parsed)) return [];
-    return parsed.slice(0, 50).filter((x): x is VoiceCommand => {
-      if (!isRecord(x)) return false;
-      return typeof x.command === "string";
-    });
-  } catch {
-    return [];
-  }
 }
 
 function findExactAllowedItem(allowed: string[], candidate: string): string | null {
@@ -164,28 +66,12 @@ function findExactAllowedItem(allowed: string[], candidate: string): string | nu
   return hit ?? null;
 }
 
-function withExactItem(cmd: VoiceCommand, exactItem: string): VoiceCommand {
+function withExactItem(
+  cmd: InspectionVoiceCommand,
+  exactItem: string,
+): InspectionVoiceCommand {
   if (!("item" in cmd)) return cmd;
-  return { ...cmd, item: exactItem } as VoiceCommand;
-}
-
-/**
- * Normalize notes -> note (client prefers note, but we keep both fields for compatibility)
- */
-function normalizeNoteFields(cmd: VoiceCommand): VoiceCommand {
-  if (!isRecord(cmd)) return cmd;
-
-  const note = "note" in cmd ? cmd.note : undefined;
-  const notes = "notes" in cmd ? cmd.notes : undefined;
-
-  const noteStr = typeof note === "string" ? note : "";
-  const notesStr = typeof notes === "string" ? notes : "";
-
-  if (!noteStr && notesStr) {
-    return { ...cmd, note: notesStr } as VoiceCommand;
-  }
-
-  return cmd;
+  return { ...cmd, item: exactItem } as InspectionVoiceCommand;
 }
 
 /* -------------------------------------------------------------------------------------------------
@@ -485,13 +371,13 @@ Optional section hint (may be empty): ${norm(ctx?.sectionTitle ?? "")}
     }
 
     const raw = completion.choices[0]?.message?.content?.trim() ?? "[]";
-    let commands = safeJsonParseArray(raw).map(normalizeNoteFields);
+    let commands = parseInspectionVoiceCommandList(raw);
 
     // strict_context: map unknown items -> best allowed match (or drop)
     if (mode === "strict_context" && hasContext) {
       const allowed = allowedItems;
 
-      const filtered: VoiceCommand[] = [];
+      const filtered: InspectionVoiceCommand[] = [];
       for (const cmd of commands) {
         if ("item" in cmd) {
           const itemVal = cmd.item;
