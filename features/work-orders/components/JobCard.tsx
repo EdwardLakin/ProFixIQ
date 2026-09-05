@@ -79,6 +79,13 @@ type JobCardProps = {
   reviewIssues?: ReviewIssue[];
   reviewOk?: boolean;
   compact?: boolean;
+  /**
+   * Narrow-viewport layout tweaks (meta tiles at 2-up instead of stacking to
+   * 1-up below the `sm:` breakpoint, action row wraps left-aligned instead of
+   * right-aligned). Opt-in and independent of `compact` so the desktop shop
+   * view — which also uses `compact` — is unaffected.
+   */
+  mobileCompact?: boolean;
   display?: "card" | "navigator";
   selected?: boolean;
   hideExecutionStageCompletenessPills?: boolean;
@@ -421,6 +428,7 @@ export function JobCard({
   reviewIssues,
   reviewOk,
   compact = false,
+  mobileCompact = false,
   display = "card",
   selected = false,
   hideExecutionStageCompletenessPills = false,
@@ -757,7 +765,8 @@ export function JobCard({
 
               <div
                 className={cn(
-                  "flex max-w-full flex-wrap items-center justify-end",
+                  "flex max-w-full flex-wrap items-center",
+                  mobileCompact ? "justify-start" : "justify-end",
                   compact ? "gap-1" : "gap-1.5",
                   statusVisual.muted && "opacity-80",
                 )}
@@ -936,7 +945,12 @@ export function JobCard({
 
             {!collapsed ? (
               <>
-                <div className="grid gap-2.5 sm:grid-cols-3">
+                <div
+                  className={cn(
+                    "grid gap-2.5",
+                    mobileCompact ? "grid-cols-2" : "sm:grid-cols-3",
+                  )}
+                >
                   <MetaTile
                     label="Labor"
                     value={formatLaborSummary(
@@ -958,14 +972,16 @@ export function JobCard({
                       .filter(Boolean)
                       .join(" · ")}
                   />
-                  <MetaTile
-                    label="Line Total"
-                    value={
-                      lineTotal > 0
-                        ? formatCurrency(lineTotal)
-                        : "Estimate pending"
-                    }
-                  />
+                  <div className={cn(mobileCompact && "col-span-2")}>
+                    <MetaTile
+                      label="Line Total"
+                      value={
+                        lineTotal > 0
+                          ? formatCurrency(lineTotal)
+                          : "Estimate pending"
+                      }
+                    />
+                  </div>
                 </div>
 
                 {evidence.length > 0 ? (

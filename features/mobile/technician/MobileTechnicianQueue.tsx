@@ -380,15 +380,15 @@ export default function MobileTechnicianQueue() {
     syncSummary.conflicted;
 
   return (
-    <div className="mobile-tech-page mx-auto w-full max-w-3xl space-y-4 px-3 py-3 sm:px-4">
-      <section className="mobile-tech-panel p-4">
+    <div className="mobile-tech-page mx-auto w-full max-w-3xl min-w-0 space-y-4 overflow-x-hidden px-3 py-3 sm:px-4">
+      <section className="mobile-tech-panel min-w-0 p-4">
         <div className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
           Technician
         </div>
         <h1 className="mt-2 text-2xl font-semibold text-[color:var(--theme-text-primary)]">
           My jobs
         </h1>
-        <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
+        <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)] break-words">
           Tap a job to review its work order, then open the focused job or inspection.
         </p>
         <div className="mt-4 grid grid-cols-3 gap-2">
@@ -579,7 +579,7 @@ function QueueMetric({
 }) {
   return (
     <div
-      className={`rounded-xl border px-2 py-2 text-center ${
+      className={`min-w-0 rounded-xl border px-2 py-2 text-center ${
         accent
           ? "border-[var(--accent-copper-soft)]/60 bg-[color:var(--theme-surface-overlay)]"
           : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]"

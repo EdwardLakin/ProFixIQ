@@ -453,6 +453,16 @@
 .profixiq-mobile-command .mobile-tech-page {
   display: grid;
   gap: 0.85rem;
+  overflow-x: hidden;
+}
+
+/* Grid items default to a content-based minimum width, so a single stray
+ * unbreakable string (a long status word, a run of numerals) in any section
+ * can silently blow the whole page wider than the viewport. Force every
+ * direct child back to the track's own width so it wraps/truncates inside
+ * itself instead of pushing the page into horizontal scroll. */
+.profixiq-mobile-command .mobile-tech-page > * {
+  min-width: 0;
 }
 
 .profixiq-mobile-command .mobile-tech-page > .mobile-tech-panel:first-child {

@@ -2259,6 +2259,7 @@ export default function MobileWorkOrderClient({
                         }
                         onAddPart={undefined}
                         compact
+                        mobileCompact
                         hideExecutionStageCompletenessPills
                       />
                       {inspectionTemplateId ? (
@@ -2420,14 +2421,14 @@ export default function MobileWorkOrderClient({
                 </span>
               )}
             </div>
-          </section>
 
-          <section className="metal-panel metal-panel--card rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3">
-            <h2 className="text-sm font-semibold sm:text-base">
-              Supporting utilities
-            </h2>
-            <div className="mt-2">
-              <AskAssistantEntry mobile placement="dock" />
+            <div className="mt-3 border-t border-[color:var(--theme-border-soft)] pt-3">
+              <h2 className="text-sm font-semibold sm:text-base">
+                Supporting utilities
+              </h2>
+              <div className="mt-2">
+                <AskAssistantEntry mobile placement="dock" />
+              </div>
             </div>
           </section>
         </div>

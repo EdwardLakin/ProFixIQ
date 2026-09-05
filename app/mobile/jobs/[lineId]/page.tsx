@@ -217,7 +217,7 @@ export default function MobileJobPage() {
     line?.complaint?.trim() || line?.description?.trim() || "Job story";
 
   return (
-    <div className="mobile-focused-job-route pb-20">
+    <div className="mobile-focused-job-route">
       <MobileFocusedJob
         workOrderLineId={lineId}
         canAddJob={canAddJob}
@@ -231,13 +231,13 @@ export default function MobileJobPage() {
         }
       />
 
-      <div className="mobile-focused-job-story-rail fixed inset-x-0 bottom-0 z-[120] border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]/95 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-2 shadow-[0_-12px_30px_rgba(0,0,0,0.22)] backdrop-blur-xl">
+      <div className="mobile-focused-job-story-rail px-3 pb-4">
         <button
           type="button"
           onClick={openStory}
           aria-label="Open cause and correction editor"
           disabled={loadingStory}
-          className="mx-auto flex min-h-12 w-full max-w-3xl items-center justify-center rounded-2xl border border-[var(--accent-copper-soft)]/70 bg-[color:var(--theme-surface-panel-strong)] px-4 text-sm font-semibold text-[color:var(--theme-text-primary)] active:scale-[0.99] disabled:opacity-50"
+          className="mx-auto flex min-h-12 w-full max-w-4xl items-center justify-center rounded-2xl border border-[var(--accent-copper-soft)]/70 bg-[color:var(--theme-surface-panel-strong)] px-4 text-sm font-semibold text-[color:var(--theme-text-primary)] active:scale-[0.99] disabled:opacity-50"
         >
           {loadingStory ? "Loading job story…" : "Cause & Correction"}
         </button>

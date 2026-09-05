@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const mobileLayout = readFileSync("app/mobile/layout.tsx", "utf8");
-const mobileCommandCss = readFileSync("app/mobile/mobile-command.css", "utf8");
 const mobileCommandOverridesCss = readFileSync(
   "app/mobile/mobile-command-overrides.css",
   "utf8",
@@ -43,66 +42,32 @@ describe("mobile focused-job viewport layout", () => {
     ".profixiq-mobile-command .app-shell main.mobile-tech-page > div > .mobile-tech-panel:first-of-type";
   const actionDockSelector =
     `${currentStatePanelSelector} > .flex.flex-col.gap-2`;
-  const standaloneRouteSelector =
-    ".profixiq-mobile-command .mobile-focused-job-route";
-  const standaloneActionDockSelector =
-    `${standaloneRouteSelector} .app-shell main.mobile-tech-page > div > .mobile-tech-panel:first-of-type > .flex.flex-col.gap-2`;
-  const standalonePageSelector =
-    `${standaloneRouteSelector} .app-shell main.mobile-tech-page`;
 
-  it("keeps inline work-order primary actions at the base viewport offset", () => {
+  it("keeps the primary work-order actions in normal document flow, not pinned to the viewport", () => {
     const dock = ruleBody(mobileWorkCommandCss, actionDockSelector);
 
-    expect(dock).toContain("position: fixed;");
-    expect(dock).toContain("bottom: calc(0.7rem + env(safe-area-inset-bottom, 0px));");
+    expect(dock).not.toContain("position: fixed");
+    expect(dock).not.toContain("position:fixed");
   });
 
-  it("moves standalone job actions above the story rail using one safe-area offset", () => {
+  it("renders the standalone job's cause-and-correction entry point inline, not as a fixed rail", () => {
     expect(standaloneJobPage).toContain(
-      'className="mobile-focused-job-route pb-20"',
+      'className="mobile-focused-job-route"',
     );
-    expect(standaloneJobPage).toContain(
-      "mobile-focused-job-story-rail fixed",
+    expect(standaloneJobPage).toContain("mobile-focused-job-story-rail");
+    expect(standaloneJobPage).not.toMatch(
+      /mobile-focused-job-story-rail[^"]*\bfixed\b/,
     );
     expect(mobileWorkOrderClient).not.toContain("mobile-focused-job-route");
-
-    const route = ruleBody(mobileWorkCommandCss, standaloneRouteSelector);
-    expect(route).toContain(
-      "--mobile-job-primary-dock-bottom: calc( 4.2625rem + max(0.75rem, env(safe-area-inset-bottom, 0px)) );",
-    );
-    expect(route).toContain(
-      "--mobile-job-workflow-bottom-safe-zone: calc( var(--mobile-job-primary-dock-bottom) + 8.75rem );",
-    );
-
-    const dock = ruleBody(
-      mobileWorkCommandCss,
-      standaloneActionDockSelector,
-    );
-    expect(dock).toContain(
-      "bottom: var(--mobile-job-primary-dock-bottom);",
-    );
-
-    const page = ruleBody(mobileWorkCommandCss, standalonePageSelector);
-    expect(page).toContain(
-      "padding-bottom: var(--mobile-job-workflow-bottom-safe-zone) !important;",
-    );
   });
 
-  it("prevents the current-state panel from becoming the WebKit fixed-position containing block", () => {
-    const sharedPanelRule = ruleBody(
-      mobileCommandCss,
-      ".profixiq-mobile-command .metal-panel, .profixiq-mobile-command .metal-card, .profixiq-mobile-command .mobile-tech-panel, .profixiq-mobile-command .mobile-tech-subpanel, .profixiq-mobile-command .mobile-command-panel, .profixiq-mobile-command .mobile-command-row",
+  it("does not reserve extra page padding for a removed fixed action dock", () => {
+    const page = ruleBody(
+      mobileWorkCommandCss,
+      ".profixiq-mobile-command .app-shell main.mobile-tech-page",
     );
-    expect(sharedPanelRule).toContain("backdrop-filter: blur(18px);");
-
-    const focusedPanelOverride = ruleBody(
-      mobileCommandOverridesCss,
-      currentStatePanelSelector,
-    );
-    expect(focusedPanelOverride).toContain(
-      "-webkit-backdrop-filter: none !important;",
-    );
-    expect(focusedPanelOverride).toContain("backdrop-filter: none !important;");
+    expect(page).not.toContain("7.6rem");
+    expect(page).not.toContain("!important");
   });
 
   it("loads the focused-job containment override after the shared mobile surface styles", () => {
@@ -113,5 +78,14 @@ describe("mobile focused-job viewport layout", () => {
 
     expect(baseIndex).toBeGreaterThanOrEqual(0);
     expect(overrideIndex).toBeGreaterThan(baseIndex);
+  });
+
+  it("no longer neutralizes backdrop-filter to protect a fixed-position containing block", () => {
+    // That workaround existed only because the action dock above was
+    // position: fixed inside a blurred panel. With the dock back in normal
+    // flow there is nothing left pinning it, so the override should be gone.
+    expect(mobileCommandOverridesCss).not.toContain(
+      "fixed-position containing block",
+    );
   });
 });
