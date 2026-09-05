@@ -8,6 +8,7 @@ export const TECHNICIAN_COPILOT_ACTION_TYPES = [
   "job.complete",
   "job.parts.request",
   "message.reply",
+  "inspection.start",
 ] as const;
 
 export type TechnicianCopilotActionType =
@@ -45,7 +46,8 @@ export type TechnicianCopilotAction =
       type: "message.reply";
       conversationId: string | null;
       content: string | null;
-    };
+    }
+  | { type: "inspection.start"; workOrderLineId: string | null };
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -119,6 +121,8 @@ export function parseTechnicianCopilotAction(
         conversationId: text(value?.conversationId, 128),
         content: text(value?.content, 4_000),
       };
+    case "inspection.start":
+      return { type, workOrderLineId };
     default:
       return { type: "none" };
   }

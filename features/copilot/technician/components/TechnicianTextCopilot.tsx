@@ -8,9 +8,12 @@ import {
   useRef,
   useState,
 } from "react";
+import { useRouter } from "next/navigation";
 import { Mic, Square, VolumeX } from "lucide-react";
 
 import { useTechnicianInteractionGateway } from "@/features/copilot/technician/voice/useTechnicianInteractionGateway";
+import { prepareInspectionNavigation } from "@/features/inspections/lib/inspection/startInspectionNavigation";
+import { supabaseBrowser } from "@/features/shared/lib/supabase/client";
 import {
   describeNewTechnicianAssignments,
   detectNewTechnicianAssignments,
@@ -96,6 +99,13 @@ type Snapshot = {
   /** The technician's conversations with their latest message, refreshed on
    * every fetch — used to notice a new incoming message. */
   conversationDigest?: ConversationDigestItem[] | null;
+  /** Set only by inspection.start: where to navigate to open the resolved
+   * inspection. See prepareInspectionNavigation. */
+  clientAction?: {
+    workOrderId: string;
+    workOrderLineId: string;
+    templateId: string;
+  } | null;
 };
 
 type InputMode = "ui" | "voice";
@@ -153,6 +163,7 @@ export function TechnicianTextCopilot({
   active?: boolean;
   compact?: boolean;
 }) {
+  const router = useRouter();
   const [snapshot, setSnapshot] = useState<Snapshot>({
     context: null,
     workOrder: null,
@@ -323,18 +334,50 @@ export function TechnicianTextCopilot({
     onMessage: () => void refreshCopilotSignals(),
   });
 
-  const applyTurnSnapshot = useCallback((body: Snapshot) => {
-    setSnapshot((current) => ({
-      ...current,
-      ...body,
-      session:
-        Object.prototype.hasOwnProperty.call(body, "session")
-          ? body.session
-          : body.sessionId
-            ? { id: body.sessionId }
-            : current.session,
-    }));
-  }, []);
+  // inspection.start doesn't open anything itself — the server only
+  // resolves and punches into the target line, then hands back which
+  // template to open. This is the client half: fetch that template (the
+  // exact same query app/work-orders/[id]/Client.tsx's openInspectionForLine
+  // makes), stage it into sessionStorage, and navigate. The CoPilot shell is
+  // mounted above the route tree (AppShell/MobileShell), so this survives
+  // regardless of which page the technician was on when they asked.
+  const openResolvedInspection = useCallback(
+    async (clientAction: NonNullable<Snapshot["clientAction"]>) => {
+      const result = await prepareInspectionNavigation({
+        supabase: supabaseBrowser,
+        workOrderId: clientAction.workOrderId,
+        workOrderLineId: clientAction.workOrderLineId,
+        templateId: clientAction.templateId,
+      });
+      if (result.ok) {
+        router.push(result.url);
+      } else {
+        console.error("[technician-copilot] inspection navigation failed", {
+          reason: result.reason,
+        });
+      }
+    },
+    [router],
+  );
+
+  const applyTurnSnapshot = useCallback(
+    (body: Snapshot) => {
+      setSnapshot((current) => ({
+        ...current,
+        ...body,
+        session:
+          Object.prototype.hasOwnProperty.call(body, "session")
+            ? body.session
+            : body.sessionId
+              ? { id: body.sessionId }
+              : current.session,
+      }));
+      if (body.clientAction) {
+        void openResolvedInspection(body.clientAction);
+      }
+    },
+    [openResolvedInspection],
+  );
 
   const requestTurn = useCallback(async (request: TurnRequest) => {
     const controller = new AbortController();

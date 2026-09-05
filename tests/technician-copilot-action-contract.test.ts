@@ -111,3 +111,21 @@ describe("parseTechnicianCopilotAction: message.reply", () => {
     expect(action.content).toHaveLength(4000);
   });
 });
+
+describe("parseTechnicianCopilotAction: inspection.start", () => {
+  it("keeps a given workOrderLineId", () => {
+    expect(
+      parseTechnicianCopilotAction({
+        type: "inspection.start",
+        workOrderLineId: "line-1",
+      }),
+    ).toEqual({ type: "inspection.start", workOrderLineId: "line-1" });
+  });
+
+  it("allows a null workOrderLineId so the caller can resolve it", () => {
+    expect(parseTechnicianCopilotAction({ type: "inspection.start" })).toEqual({
+      type: "inspection.start",
+      workOrderLineId: null,
+    });
+  });
+});
