@@ -70,3 +70,44 @@ describe("parseTechnicianCopilotAction: job.parts.request", () => {
     });
   });
 });
+
+describe("parseTechnicianCopilotAction: message.reply", () => {
+  it("keeps conversationId and content when both are given", () => {
+    const action = parseTechnicianCopilotAction({
+      type: "message.reply",
+      conversationId: "conv-1",
+      content: "  On it, five minutes out.  ",
+    });
+
+    expect(action).toEqual({
+      type: "message.reply",
+      conversationId: "conv-1",
+      content: "On it, five minutes out.",
+    });
+  });
+
+  it("allows a null conversationId so the caller can resolve it from recent context", () => {
+    const action = parseTechnicianCopilotAction({
+      type: "message.reply",
+      content: "On it.",
+    });
+
+    expect(action).toEqual({
+      type: "message.reply",
+      conversationId: null,
+      content: "On it.",
+    });
+  });
+
+  it("never lets content silently exceed a sane length", () => {
+    const action = parseTechnicianCopilotAction({
+      type: "message.reply",
+      conversationId: "conv-1",
+      content: "x".repeat(5000),
+    });
+
+    expect(action.type).toBe("message.reply");
+    if (action.type !== "message.reply") throw new Error("unreachable");
+    expect(action.content).toHaveLength(4000);
+  });
+});

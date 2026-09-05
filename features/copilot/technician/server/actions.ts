@@ -16,10 +16,15 @@ type CopilotMutationIdentity = {
   supabase: TechnicianWorkScope["supabase"];
 };
 
+// message.reply is orthogonal to a work order/job line entirely (it's
+// handled directly in chat.ts, before any job-line resolution here), so
+// it's excluded the same way none/work.next already are.
 type ExecutableAction = Exclude<
   TechnicianCopilotAction,
-  { type: "none" | "work.next" }
+  { type: "none" | "work.next" | "message.reply" }
 >;
+
+type PreparableAction = Exclude<TechnicianCopilotAction, { type: "message.reply" }>;
 
 export type PreparedTechnicianCopilotAction =
   | { kind: "none" }
@@ -144,7 +149,7 @@ export function describeNextTechnicianWork(
 }
 
 export function prepareTechnicianCopilotAction(input: {
-  action: TechnicianCopilotAction;
+  action: PreparableAction;
   activeWorkOrder: TechnicianWorkCandidate | null;
   assignedWork: readonly TechnicianWorkCandidate[];
   activeWorkOrderLineId: string | null;

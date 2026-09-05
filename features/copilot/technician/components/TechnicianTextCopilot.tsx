@@ -105,6 +105,7 @@ type TurnRequest = {
   sessionId: string | null;
   turnId: string;
   inputMode: InputMode;
+  recentConversations: { conversationId: string; title: string | null }[];
 };
 
 const COPILOT_TURN_TIMEOUT_MS = 45_000;
@@ -175,6 +176,15 @@ export function TechnicianTextCopilot({
   // adds to the announcement instead of replacing or losing the first one.
   const pendingAssignmentItemsRef = useRef<AnnouncementAgendaItem[]>([]);
   const pendingMessageItemsRef = useRef<ConversationDigestItem[]>([]);
+  // The conversation(s) from the most recent new-message notice, sent back
+  // on every subsequent turn so "reply: ..." has something concrete and
+  // real to target — never a conversation the technician wasn't actually
+  // just told about. Replaced (not merged) by the next notice, and persists
+  // across turns until then so a few back-and-forth turns composing a
+  // reply don't lose the target.
+  const recentConversationsRef = useRef<
+    { conversationId: string; title: string | null }[]
+  >([]);
   const [pendingAnnouncement, setPendingAnnouncement] = useState<string | null>(
     null,
   );
@@ -225,6 +235,10 @@ export function TechnicianTextCopilot({
         ...pendingMessageItemsRef.current,
         ...newMessages,
       ];
+      recentConversationsRef.current = newMessages.map((item) => ({
+        conversationId: item.conversationId,
+        title: item.title,
+      }));
       updatePendingAnnouncement();
     },
     [updatePendingAnnouncement],
@@ -406,6 +420,7 @@ export function TechnicianTextCopilot({
           sessionId: activeSessionId,
           turnId: crypto.randomUUID(),
           inputMode,
+          recentConversations: recentConversationsRef.current,
         });
         applyTurnSnapshot(body);
         return body;

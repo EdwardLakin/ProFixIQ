@@ -13,6 +13,29 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 export const runtime = "nodejs";
 
+const MAX_RECENT_CONVERSATIONS = 5;
+
+type RecentConversationHint = { conversationId: string; title: string | null };
+
+function parseRecentConversations(value: unknown): RecentConversationHint[] {
+  if (!Array.isArray(value)) return [];
+  const hints: RecentConversationHint[] = [];
+  for (const candidate of value) {
+    if (hints.length >= MAX_RECENT_CONVERSATIONS) break;
+    if (!candidate || typeof candidate !== "object") continue;
+    const record = candidate as Record<string, unknown>;
+    const conversationId =
+      typeof record.conversationId === "string"
+        ? record.conversationId.trim().slice(0, 128)
+        : "";
+    if (!conversationId) continue;
+    const title =
+      typeof record.title === "string" ? record.title.trim().slice(0, 200) : null;
+    hints.push({ conversationId, title: title || null });
+  }
+  return hints;
+}
+
 function runtimeConflict(error: unknown): TechnicianCopilotConflictError | null {
   if (error instanceof TechnicianCopilotConflictError) return error;
   const message = error instanceof Error ? error.message : "";
@@ -62,6 +85,9 @@ export async function POST(request: NextRequest) {
         : randomUUID();
     const sessionId =
       typeof body.sessionId === "string" ? body.sessionId : null;
+    const recentConversations = parseRecentConversations(
+      body.recentConversations,
+    );
 
     const result = await runTechnicianCopilotTurn({
       identity: {
@@ -76,6 +102,7 @@ export async function POST(request: NextRequest) {
       turnId,
       sessionId,
       inputSource,
+      recentConversations,
     });
 
     return NextResponse.json({ ...result, turnId });
