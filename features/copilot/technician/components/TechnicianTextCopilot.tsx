@@ -16,6 +16,12 @@ import {
   detectNewTechnicianAssignments,
   type AnnouncementAgendaItem,
 } from "@/features/copilot/technician/client/dayAgendaAnnouncements";
+import {
+  describeNewTechnicianMessages,
+  detectNewTechnicianMessages,
+  type ConversationDigestItem,
+} from "@/features/copilot/technician/client/messageAnnouncements";
+import { useTechnicianMessageWatch } from "@/features/copilot/technician/client/useTechnicianMessageWatch";
 import { useOperationsLiveRefresh } from "@/features/work-orders/hooks/useOperationsLiveRefresh";
 import { cn } from "@/features/shared/utils/cn";
 
@@ -87,6 +93,9 @@ type Snapshot = {
   /** The technician's full assigned queue, refreshed on every fetch — used
    * to notice newly-assigned work while the CoPilot is already open. */
   dayAgenda?: { items: AnnouncementAgendaItem[] } | null;
+  /** The technician's conversations with their latest message, refreshed on
+   * every fetch — used to notice a new incoming message. */
+  conversationDigest?: ConversationDigestItem[] | null;
 };
 
 type InputMode = "ui" | "voice";
@@ -158,33 +167,68 @@ export function TechnicianTextCopilot({
   // Starts null so the very first fetch establishes a baseline instead of
   // announcing the technician's entire existing queue as if it were new.
   const previousAssignmentIdsRef = useRef<Set<string> | null>(null);
-  // Accumulates new-assignment items across fetches until they're actually
-  // delivered, so a second realtime tick before delivery adds to the
-  // announcement instead of replacing or losing the first one.
+  // Same idea, keyed by conversation id -> its latest message id, so a
+  // conversation whose latest message changes is noticed as a new message.
+  const previousMessageIdsRef = useRef<Map<string, string> | null>(null);
+  // Accumulates new-assignment/new-message items across fetches until
+  // they're actually delivered, so a second realtime tick before delivery
+  // adds to the announcement instead of replacing or losing the first one.
   const pendingAssignmentItemsRef = useRef<AnnouncementAgendaItem[]>([]);
+  const pendingMessageItemsRef = useRef<ConversationDigestItem[]>([]);
   const [pendingAnnouncement, setPendingAnnouncement] = useState<string | null>(
     null,
   );
   const [notices, setNotices] = useState<string[]>([]);
 
-  const ingestDayAgenda = useCallback((dayAgenda: Snapshot["dayAgenda"]) => {
-    const items = dayAgenda?.items ?? [];
-    const newlyAssigned = detectNewTechnicianAssignments(
-      previousAssignmentIdsRef.current,
-      items,
-    );
-    previousAssignmentIdsRef.current = new Set(
-      items.map((item) => item.workOrderLineId),
-    );
-    if (newlyAssigned.length === 0) return;
-    pendingAssignmentItemsRef.current = [
-      ...pendingAssignmentItemsRef.current,
-      ...newlyAssigned,
-    ];
-    setPendingAnnouncement(
+  const updatePendingAnnouncement = useCallback(() => {
+    const combined = [
       describeNewTechnicianAssignments(pendingAssignmentItemsRef.current),
-    );
+      describeNewTechnicianMessages(pendingMessageItemsRef.current),
+    ]
+      .filter((text): text is string => Boolean(text))
+      .join(" ");
+    setPendingAnnouncement(combined || null);
   }, []);
+
+  const ingestDayAgenda = useCallback(
+    (dayAgenda: Snapshot["dayAgenda"]) => {
+      const items = dayAgenda?.items ?? [];
+      const newlyAssigned = detectNewTechnicianAssignments(
+        previousAssignmentIdsRef.current,
+        items,
+      );
+      previousAssignmentIdsRef.current = new Set(
+        items.map((item) => item.workOrderLineId),
+      );
+      if (newlyAssigned.length === 0) return;
+      pendingAssignmentItemsRef.current = [
+        ...pendingAssignmentItemsRef.current,
+        ...newlyAssigned,
+      ];
+      updatePendingAnnouncement();
+    },
+    [updatePendingAnnouncement],
+  );
+
+  const ingestConversationDigest = useCallback(
+    (conversationDigest: Snapshot["conversationDigest"]) => {
+      const items = conversationDigest ?? [];
+      const newMessages = detectNewTechnicianMessages(
+        previousMessageIdsRef.current,
+        items,
+      );
+      previousMessageIdsRef.current = new Map(
+        items.map((item) => [item.conversationId, item.latestMessageId]),
+      );
+      if (newMessages.length === 0) return;
+      pendingMessageItemsRef.current = [
+        ...pendingMessageItemsRef.current,
+        ...newMessages,
+      ];
+      updatePendingAnnouncement();
+    },
+    [updatePendingAnnouncement],
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -197,6 +241,7 @@ export function TechnicianTextCopilot({
         if (!cancelled) {
           setSnapshot(body);
           ingestDayAgenda(body.dayAgenda);
+          ingestConversationDigest(body.conversationDigest);
         }
       })
       .catch((reason) => {
@@ -212,9 +257,9 @@ export function TechnicianTextCopilot({
     return () => {
       cancelled = true;
     };
-  }, [ingestDayAgenda]);
+  }, [ingestConversationDigest, ingestDayAgenda]);
 
-  const refreshAgenda = useCallback(async () => {
+  const refreshCopilotSignals = useCallback(async () => {
     try {
       const response = await fetch("/api/copilot/technician/session", {
         cache: "no-store",
@@ -222,11 +267,12 @@ export function TechnicianTextCopilot({
       if (!response.ok) return;
       const body = (await response.json()) as Snapshot;
       ingestDayAgenda(body.dayAgenda);
+      ingestConversationDigest(body.conversationDigest);
     } catch {
       // Best-effort background refresh: a missed tick just means the next
       // realtime event, or the technician's next turn, tries again.
     }
-  }, [ingestDayAgenda]);
+  }, [ingestConversationDigest, ingestDayAgenda]);
 
   const sessionId = snapshot.session?.id ?? snapshot.sessionId ?? null;
   const documentationEnabled =
@@ -247,7 +293,20 @@ export function TechnicianTextCopilot({
   // subscription — this table set is already proven to be realtime-enabled.
   useOperationsLiveRefresh({
     shopId: active ? (snapshot.shopId ?? null) : null,
-    onRefresh: () => void refreshAgenda(),
+    onRefresh: () => void refreshCopilotSignals(),
+  });
+
+  // Same idea for messages: watch exactly the conversations the technician
+  // is currently in (mirroring the chat inbox's own proven per-conversation
+  // realtime filter) and re-fetch on any new message.
+  const conversationIds = useMemo(
+    () =>
+      (snapshot.conversationDigest ?? []).map((item) => item.conversationId),
+    [snapshot.conversationDigest],
+  );
+  useTechnicianMessageWatch({
+    conversationIds: active ? conversationIds : [],
+    onMessage: () => void refreshCopilotSignals(),
   });
 
   const applyTurnSnapshot = useCallback((body: Snapshot) => {
@@ -383,13 +442,13 @@ export function TechnicianTextCopilot({
     if (!active && voice.active) voice.stop();
   }, [active, voice]);
 
-  // Delivers a queued "you've just been assigned..." notice at the next
-  // safe turn boundary instead of interrupting speech or an in-flight turn.
-  // With voice active, that means waiting for the gateway to report
-  // "listening" (mic open, nothing being said or spoken) before speaking
-  // it — voice.announce() itself refuses anything else. Without voice
-  // active, it only needs the text turn to be free. Either way it's always
-  // also added to the visible notice list so it isn't voice-only.
+  // Delivers a queued "you've just been assigned..."/"new message..." notice
+  // at the next safe turn boundary instead of interrupting speech or an
+  // in-flight turn. With voice active, that means waiting for the gateway
+  // to report "listening" (mic open, nothing being said or spoken) before
+  // speaking it — voice.announce() itself refuses anything else. Without
+  // voice active, it only needs the text turn to be free. Either way it's
+  // always also added to the visible notice list so it isn't voice-only.
   useEffect(() => {
     if (!pendingAnnouncement) return;
     if (voice.active) {
@@ -400,6 +459,7 @@ export function TechnicianTextCopilot({
     }
     setNotices((current) => [...current, pendingAnnouncement]);
     pendingAssignmentItemsRef.current = [];
+    pendingMessageItemsRef.current = [];
     setPendingAnnouncement(null);
   }, [pendingAnnouncement, voice, busy]);
 
