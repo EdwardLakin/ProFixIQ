@@ -3,9 +3,7 @@ import {
   createAdminSupabase,
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
-import {
-  resolveFleetActorContext,
-} from "@/features/fleet/lib/resolveFleetActorContext";
+import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 
 export const dynamic = "force-dynamic";
@@ -59,6 +57,8 @@ export async function POST(request: Request) {
       preferMembershipFleet: !actor.isInternal,
     });
     const dispatcherView = actor.actorType === "fleet_dispatcher";
+    const isCanonicalFleetManager =
+      actor.isInternal || actor.actorType === "fleet_manager";
 
     if (!actor.userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -69,18 +69,33 @@ export async function POST(request: Request) {
         { status: 403 },
       );
     }
+
+    const admin = createAdminSupabase();
+
+    // A verified Field operator (a Field Service-entitled shop's enabled
+    // operator, or a standalone Field shop's canonical owner) can see and
+    // accept requests themselves alongside the existing internal-staff and
+    // Fleet-side roles — Field is a full operations workspace with no
+    // separate advisor/manager to hand this off to.
+    let hasFieldAccess = false;
     if (
-      !actor.isInternal &&
-      actor.actorType !== "fleet_manager" &&
-      actor.actorType !== "fleet_dispatcher"
+      !isCanonicalFleetManager &&
+      !dispatcherView &&
+      actor.profileShopId === scope.shopId
     ) {
+      const { data } = await admin.rpc(
+        "mobile_profile_has_field_service_access",
+        { p_shop_id: scope.shopId, p_profile_id: actor.userId },
+      );
+      hasFieldAccess = data === true;
+    }
+
+    if (!isCanonicalFleetManager && !dispatcherView && !hasFieldAccess) {
       return NextResponse.json(
         { error: "Fleet manager or dispatcher access required" },
         { status: 403 },
       );
     }
-
-    const admin = createAdminSupabase();
     let enrollmentQuery = admin
       .from("fleet_vehicles")
       .select("fleet_id,vehicle_id,nickname,active")
@@ -103,7 +118,7 @@ export async function POST(request: Request) {
 
     if (!vehicleIds.length || !fleetIds.length) {
       return NextResponse.json({
-        canManage: actor.isInternal || actor.actorType === "fleet_manager",
+        canManage: isCanonicalFleetManager || hasFieldAccess,
         summary: { open: 0, scheduled: 0, awaitingApproval: 0, completed: 0 },
         requests: [],
       });
@@ -275,7 +290,7 @@ export async function POST(request: Request) {
     });
 
     return NextResponse.json({
-      canManage: actor.isInternal || actor.actorType === "fleet_manager",
+      canManage: isCanonicalFleetManager || hasFieldAccess,
       summary: {
         open: payload.filter((item) => item.status === "open").length,
         scheduled: payload.filter((item) => item.status === "scheduled").length,
