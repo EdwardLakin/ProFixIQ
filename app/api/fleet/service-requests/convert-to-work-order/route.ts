@@ -1,7 +1,7 @@
 // app/api/fleet/service-requests/convert-to-work-order/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { isFleetProductHostname } from "@/features/fleet/lib/fleetProductRouting";
-import { SHOP_FLEET_REQUEST_INTAKE_ROLES } from "@/features/fleet/lib/shopFleetRequestIntake";
+import { canAcceptFleetServiceRequests } from "@/features/fleet/lib/shopFleetRequestIntake";
 import { mapFleetServiceRequestError } from "@/features/fleet/lib/fleetServiceRequestError";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
@@ -43,10 +43,17 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const access = await requireShopScopedApiAccess({
-      allowRoles: SHOP_FLEET_REQUEST_INTAKE_ROLES,
-    });
+    const access = await requireShopScopedApiAccess();
     if (!access.ok) return access.response;
+
+    // The database function enforces the same boundary independently, so
+    // this is a fast-path rejection, not the real gate.
+    if (!(await canAcceptFleetServiceRequests(access))) {
+      return NextResponse.json(
+        { error: "Fleet request intake access required." },
+        { status: 403 },
+      );
+    }
 
     const body = (await req.json().catch(() => null)) as ConvertBody | null;
 

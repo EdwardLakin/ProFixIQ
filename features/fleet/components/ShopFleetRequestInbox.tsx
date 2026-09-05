@@ -33,7 +33,16 @@ function isPending(item: FleetServiceRequestItem) {
   return !item.workOrder && !TERMINAL_STATUSES.has(item.status);
 }
 
-export default function ShopFleetRequestInbox() {
+export default function ShopFleetRequestInbox({
+  workOrderBasePath = "/work-orders",
+}: {
+  /**
+   * Base path for the created/linked work order. Defaults to the desktop
+   * Shop route; Field mounts this at "/mobile/work-orders" so accepting a
+   * request keeps the operator inside their own workspace shell.
+   */
+  workOrderBasePath?: string;
+} = {}) {
   const router = useRouter();
   const [payload, setPayload] = useState<FleetServiceRequestsPayload | null>(
     null,
@@ -98,7 +107,7 @@ export default function ShopFleetRequestInbox() {
     setError(null);
     try {
       const workOrderId = await convertFleetServiceRequest(item.id);
-      router.push(`/work-orders/${encodeURIComponent(workOrderId)}`);
+      router.push(`${workOrderBasePath}/${encodeURIComponent(workOrderId)}`);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -231,7 +240,7 @@ export default function ShopFleetRequestInbox() {
               <div className="flex flex-wrap items-center gap-2 lg:justify-end">
                 {item.workOrder ? (
                   <Link
-                    href={`/work-orders/${encodeURIComponent(item.workOrder.id)}`}
+                    href={`${workOrderBasePath}/${encodeURIComponent(item.workOrder.id)}`}
                     className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-semibold"
                   >
                     <ClipboardCheck className="h-4 w-4" />

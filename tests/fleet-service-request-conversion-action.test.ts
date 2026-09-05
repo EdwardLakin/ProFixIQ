@@ -4,12 +4,16 @@ import { convertFleetServiceRequest } from "@/features/fleet/lib/convertFleetSer
 
 const routeMocks = vi.hoisted(() => ({
   requireShopScopedApiAccess: vi.fn(),
+  getMobileFieldServiceAccess: vi.fn(),
   rpc: vi.fn(),
 }));
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/features/shared/lib/server/admin-access", () => ({
   requireShopScopedApiAccess: routeMocks.requireShopScopedApiAccess,
+}));
+vi.mock("@/features/mobile/service/server/access", () => ({
+  getMobileFieldServiceAccess: routeMocks.getMobileFieldServiceAccess,
 }));
 
 const componentPath = "features/fleet/components/ShopFleetRequestInbox.tsx";
@@ -19,6 +23,7 @@ describe("fleet service-request conversion action", () => {
     vi.clearAllMocks();
     routeMocks.requireShopScopedApiAccess.mockResolvedValue({
       ok: true,
+      canonicalRole: "owner",
       supabase: { rpc: routeMocks.rpc },
     });
   });
@@ -46,7 +51,7 @@ describe("fleet service-request conversion action", () => {
     expect(fleetPage).not.toContain("convertFleetServiceRequest");
     expect(fleetPage).not.toContain("Create work order");
     expect(conversionRoute).toContain("requireShopScopedApiAccess");
-    expect(conversionRoute).toContain("SHOP_FLEET_REQUEST_INTAKE_ROLES");
+    expect(conversionRoute).toContain("canAcceptFleetServiceRequests");
     expect(conversionRoute).toContain(
       "convert_owned_fleet_service_request_to_work_order_atomic",
     );
@@ -150,5 +155,70 @@ describe("fleet service-request conversion action", () => {
       error: "Failed to create a structured work order from this request.",
     });
     consoleError.mockRestore();
+  });
+
+  it("rejects a non-intake role without verified Field access", async () => {
+    routeMocks.requireShopScopedApiAccess.mockResolvedValue({
+      ok: true,
+      canonicalRole: "mechanic",
+      supabase: { rpc: routeMocks.rpc },
+    });
+    routeMocks.getMobileFieldServiceAccess.mockResolvedValue({
+      canAccessFieldService: false,
+    });
+
+    const { POST } = await import(
+      "../app/api/fleet/service-requests/convert-to-work-order/route"
+    );
+
+    const response = await POST(
+      new Request(
+        "https://profixiq.test/api/fleet/service-requests/convert-to-work-order",
+        {
+          method: "POST",
+          body: JSON.stringify({ serviceRequestId: "request-1" }),
+        },
+      ) as never,
+    );
+
+    expect(response.status).toBe(403);
+    expect(routeMocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it("lets a verified Field operator accept a request", async () => {
+    routeMocks.requireShopScopedApiAccess.mockResolvedValue({
+      ok: true,
+      canonicalRole: "mechanic",
+      supabase: { rpc: routeMocks.rpc },
+    });
+    routeMocks.getMobileFieldServiceAccess.mockResolvedValue({
+      canAccessFieldService: true,
+    });
+    routeMocks.rpc.mockResolvedValue({
+      data: [
+        { work_order_id: "work-order-9", conversion_status: "converted" },
+      ],
+      error: null,
+    });
+
+    const { POST } = await import(
+      "../app/api/fleet/service-requests/convert-to-work-order/route"
+    );
+
+    const response = await POST(
+      new Request(
+        "https://profixiq.test/api/fleet/service-requests/convert-to-work-order",
+        {
+          method: "POST",
+          body: JSON.stringify({ serviceRequestId: "request-1" }),
+        },
+      ) as never,
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({
+      workOrderId: "work-order-9",
+      status: "converted",
+    });
   });
 });

@@ -16,7 +16,7 @@ import {
 } from "@/features/shared/lib/rbac";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
-type ShopAccess = Extract<
+export type ShopAccess = Extract<
   Awaited<ReturnType<typeof requireShopScopedApiAccess>>,
   { ok: true }
 >;

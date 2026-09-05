@@ -6,6 +6,7 @@ import {
   CalendarDays,
   ClipboardCheck,
   Home,
+  Inbox,
   LogOut,
   Menu,
   PackageOpen,
@@ -59,6 +60,11 @@ const WORK_NAV: FieldNavItem[] = [
     href: "/mobile/service/dispatch",
     icon: RadioTower,
     requiredCapability: "canManageScheduling",
+  },
+  {
+    label: "Fleet requests",
+    href: "/mobile/service/fleet-requests",
+    icon: Inbox,
   },
   {
     label: "Work orders",
@@ -132,6 +138,9 @@ function pageTitle(pathname: string): string {
   if (pathname.startsWith("/mobile/service/new")) return "New service call";
   if (pathname.startsWith("/mobile/service/jobs")) return "Active field work";
   if (pathname.startsWith("/mobile/service/dispatch")) return "Dispatch";
+  if (pathname.startsWith("/mobile/service/fleet-requests")) {
+    return "Fleet requests";
+  }
   if (pathname.startsWith("/mobile/service/invoices")) {
     return "Invoices & history";
   }
