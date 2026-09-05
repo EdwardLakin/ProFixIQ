@@ -78,11 +78,18 @@ describe("Technician CoPilot runtime integrity rescue", () => {
     expect(assignedWork).toContain("MAX_WORK_ORDER_CANDIDATES");
   });
 
-  it("hydrates existing sessions through the targeted assigned-work loader", () => {
+  it("hydrates existing sessions through the targeted assigned-work loader, and always refreshes the full queue for proactive assignment/message watch", () => {
     expect(sessionRoute).toContain(
       "loadTechnicianWorkCandidateForWorkOrder({",
     );
-    expect(sessionRoute).not.toContain("listTechnicianWorkCandidates({");
+    // The targeted loader above still hydrates the active session's own
+    // work order - it is not replaced. listTechnicianWorkCandidates is now
+    // intentionally also called on every fetch, active session or not, so
+    // the client can notice a newly-assigned job or message while the
+    // technician is already mid-job, not only at the idle greeting. See
+    // features/copilot/technician/server/dayAgenda.ts and
+    // client/dayAgendaAnnouncements.ts.
+    expect(sessionRoute).toContain("listTechnicianWorkCandidates({");
   });
 
   it("rejects stale sessions and conflicting turn reuse with a 409", () => {

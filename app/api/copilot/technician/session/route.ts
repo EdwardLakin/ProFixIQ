@@ -20,6 +20,7 @@ import {
   buildTechnicianDayAgenda,
   describeTechnicianDayAgenda,
 } from "@/features/copilot/technician/server/dayAgenda";
+import { listTechnicianConversationDigest } from "@/features/copilot/technician/server/messages";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -88,7 +89,25 @@ async function snapshot(
     ? null
     : describeTechnicianDayAgenda(dayAgenda, access.technicianName);
 
-  return { envelope, context, workOrder, access, greeting, dayAgenda };
+  // Conversation participation is keyed by the true auth user id
+  // (conversation_participants.user_id), not the profiles row id — the two
+  // are distinct in this schema, unlike the work-order assignment queries
+  // above which accept either.
+  const conversationDigest = await listTechnicianConversationDigest({
+    supabase: createAdminSupabase(),
+    shopId: access.shopId,
+    actorUserId: access.authUserId,
+  });
+
+  return {
+    envelope,
+    context,
+    workOrder,
+    access,
+    greeting,
+    dayAgenda,
+    conversationDigest,
+  };
 }
 
 function capabilities(
@@ -114,6 +133,7 @@ export async function GET(request: NextRequest) {
       workOrder: result.workOrder,
       greeting: result.greeting,
       dayAgenda: result.dayAgenda,
+      conversationDigest: result.conversationDigest,
       shopId: result.access.shopId,
       capabilities: capabilities(result.access),
     });
@@ -179,6 +199,7 @@ export async function POST(request: NextRequest) {
       workOrder: result.workOrder,
       greeting: result.greeting,
       dayAgenda: result.dayAgenda,
+      conversationDigest: result.conversationDigest,
       shopId: result.access.shopId,
       capabilities: capabilities(result.access),
     });
