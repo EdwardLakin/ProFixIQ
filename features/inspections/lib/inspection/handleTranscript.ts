@@ -5,7 +5,7 @@ import {
   ParsedInspectionFindingCommand,
   InspectionItemStatus,
   InspectionSession,
-} from "@inspections/lib/inspection/types";
+} from "@/features/inspections/lib/inspection/types";
 
 type UpdateInspectionFn = (updates: Partial<InspectionSession>) => void;
 type UpdateItemFn = (
@@ -654,6 +654,24 @@ function coerceLaborHoursFromUnknown(v: unknown): number | null | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+// add_part reports one part at a time as the technician mentions it, so it
+// accumulates onto whatever the item already has instead of replacing the
+// list the way oneshot_item's bundled `parts` array does. A repeated
+// mention of the same part (by description) adds to its quantity rather
+// than creating a duplicate line.
+function mergeParts(existing: unknown, incoming: PartLine): PartLine[] {
+  const existingParts = coercePartsFromUnknown(existing) ?? [];
+  const idx = existingParts.findIndex(
+    (p) => norm(p.description) === norm(incoming.description),
+  );
+  if (idx >= 0) {
+    const merged = [...existingParts];
+    merged[idx] = { ...merged[idx], qty: merged[idx].qty + incoming.qty };
+    return merged;
+  }
+  return [...existingParts, incoming];
+}
+
 function isThisSectionName(sectionName: string | undefined): boolean {
   const s = norm(sectionName ?? "");
   if (!s) return true;
@@ -788,6 +806,13 @@ async function applySingleCommand(args: {
   let parts: PartLine[] | undefined;
   let laborHours: number | null | undefined;
 
+  // add_part / add_labor: a single incrementally-reported line, distinct
+  // from oneshot_item's bundled `parts` array / `laborHours` above.
+  let partName: string | undefined;
+  let quantity: number | undefined;
+  let hours: number | undefined;
+  let label: string | undefined;
+
   let explicitSectionIndex: number | undefined;
   let explicitItemIndex: number | undefined;
 
@@ -819,6 +844,11 @@ async function applySingleCommand(args: {
 
       parts = coercePartsFromUnknown(rec.parts);
       laborHours = coerceLaborHoursFromUnknown(rec.laborHours);
+
+      if (typeof rec.partName === "string") partName = rec.partName;
+      quantity = coerceNumericValue(rec.quantity);
+      hours = coerceNumericValue(rec.hours);
+      if (typeof rec.label === "string") label = rec.label;
     }
   } else {
     const c = command as ParsedCommandNameBased | ParsedInspectionFindingCommand;
@@ -1058,6 +1088,77 @@ async function applySingleCommand(args: {
         }
         break;
 
+      // A bundled status + reason (+ parts/labor, applied generically below)
+      // reported in one utterance — the same shape as inspection_finding.
+      case "oneshot_item":
+        if (status) itemUpdates.status = status;
+        if (note) {
+          itemUpdates.notes = mergeNotes(
+            (targetRow as { notes?: unknown }).notes,
+            note,
+          );
+        }
+        break;
+
+      // A single incrementally-reported part, distinct from oneshot_item's
+      // bundled `parts` array: accumulate onto whatever the item already
+      // has instead of replacing it.
+      case "add_part": {
+        const desc = partName ? partName.trim() : "";
+        if (desc) {
+          const qty =
+            quantity !== undefined && quantity > 0 ? Math.floor(quantity) : 1;
+          itemUpdates.parts = mergeParts(
+            (targetRow as { parts?: unknown }).parts,
+            { description: desc, qty },
+          );
+        }
+        break;
+      }
+
+      // A single incrementally-reported labor line: add to whatever hours
+      // the item already has rather than overwrite them, and keep the
+      // technician's own label text rather than dropping it.
+      case "add_labor": {
+        if (hours !== undefined && hours >= 0) {
+          const existingHours =
+            typeof (targetRow as { laborHours?: unknown }).laborHours ===
+            "number"
+              ? (targetRow as { laborHours: number }).laborHours
+              : 0;
+          itemUpdates.laborHours = existingHours + hours;
+        }
+        if (label && label.trim()) {
+          itemUpdates.notes = mergeNotes(
+            (targetRow as { notes?: unknown }).notes,
+            `Labor: ${label.trim()}`,
+          );
+        }
+        break;
+      }
+
+      // Acknowledges an already-recorded fail/recommend finding. Never
+      // invents a status: an item with nothing wrong recorded has nothing
+      // for "complete" to acknowledge, so it no-ops rather than guessing ok.
+      case "complete_item": {
+        const currentStatus = (targetRow as { status?: unknown }).status;
+        if (currentStatus === "fail" || currentStatus === "recommend") {
+          (itemUpdates as Record<string, unknown>).findingReviewed = true;
+        }
+        break;
+      }
+
+      // Marks an item not applicable. Never overwrites an existing
+      // fail/recommend finding — "skip" should not be able to erase a real
+      // finding the technician already reported.
+      case "skip_item": {
+        const currentStatus = (targetRow as { status?: unknown }).status;
+        if (currentStatus !== "fail" && currentStatus !== "recommend") {
+          itemUpdates.status = "na";
+        }
+        break;
+      }
+
       default:
         break;
     }
@@ -1255,6 +1356,65 @@ async function applySingleCommand(args: {
         itemUpdates.recommend = [note];
       }
       break;
+
+    // See the mirrored cases above (explicit sectionIndex/itemIndex branch)
+    // for the reasoning behind each of these five.
+    case "oneshot_item":
+      if (status) itemUpdates.status = status;
+      if (note) {
+        itemUpdates.notes = mergeNotes(
+          (targetRow as { notes?: unknown }).notes,
+          note,
+        );
+      }
+      break;
+
+    case "add_part": {
+      const desc = partName ? partName.trim() : "";
+      if (desc) {
+        const qty =
+          quantity !== undefined && quantity > 0 ? Math.floor(quantity) : 1;
+        itemUpdates.parts = mergeParts(
+          (targetRow as { parts?: unknown }).parts,
+          { description: desc, qty },
+        );
+      }
+      break;
+    }
+
+    case "add_labor": {
+      if (hours !== undefined && hours >= 0) {
+        const existingHours =
+          typeof (targetRow as { laborHours?: unknown }).laborHours ===
+          "number"
+            ? (targetRow as { laborHours: number }).laborHours
+            : 0;
+        itemUpdates.laborHours = existingHours + hours;
+      }
+      if (label && label.trim()) {
+        itemUpdates.notes = mergeNotes(
+          (targetRow as { notes?: unknown }).notes,
+          `Labor: ${label.trim()}`,
+        );
+      }
+      break;
+    }
+
+    case "complete_item": {
+      const currentStatus = (targetRow as { status?: unknown }).status;
+      if (currentStatus === "fail" || currentStatus === "recommend") {
+        (itemUpdates as Record<string, unknown>).findingReviewed = true;
+      }
+      break;
+    }
+
+    case "skip_item": {
+      const currentStatus = (targetRow as { status?: unknown }).status;
+      if (currentStatus !== "fail" && currentStatus !== "recommend") {
+        itemUpdates.status = "na";
+      }
+      break;
+    }
 
     default:
       break;
