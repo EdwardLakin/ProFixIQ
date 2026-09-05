@@ -4,6 +4,7 @@ export type FieldWorkspaceCapabilities = {
   canManageOperations: boolean;
   canManageInspectionTemplates: boolean;
   canConfigureFieldService: boolean;
+  canInviteFleetMembers: boolean;
   canSwitchWorkspace: boolean;
 };
 
@@ -13,6 +14,7 @@ export const EMPTY_FIELD_WORKSPACE_CAPABILITIES: FieldWorkspaceCapabilities = {
   canManageOperations: false,
   canManageInspectionTemplates: false,
   canConfigureFieldService: false,
+  canInviteFleetMembers: false,
   canSwitchWorkspace: false,
 };
 
@@ -31,6 +33,7 @@ export function normalizeFieldWorkspaceCapabilities(
     canManageInspectionTemplates:
       capabilities?.canManageInspectionTemplates === true,
     canConfigureFieldService: capabilities?.canConfigureFieldService === true,
+    canInviteFleetMembers: capabilities?.canInviteFleetMembers === true,
     canSwitchWorkspace: capabilities?.canSwitchWorkspace === true,
   };
 }

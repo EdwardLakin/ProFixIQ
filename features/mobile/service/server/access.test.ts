@@ -69,6 +69,7 @@ describe("resolveFieldWorkspaceCapabilities", () => {
       canManageOperations: false,
       canManageInspectionTemplates: false,
       canConfigureFieldService: false,
+      canInviteFleetMembers: false,
       canSwitchWorkspace: false,
     });
   });

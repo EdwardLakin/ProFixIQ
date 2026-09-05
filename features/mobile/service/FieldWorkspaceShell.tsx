@@ -15,6 +15,7 @@ import {
   ReceiptText,
   Settings2,
   Truck,
+  UserPlus,
   Wrench,
   X,
   type LucideIcon,
@@ -106,6 +107,12 @@ const OPERATIONS_NAV: FieldNavItem[] = [
     href: "/mobile/service/followups",
     icon: Wrench,
   },
+  {
+    label: "Invite a fleet",
+    href: "/mobile/service/fleet-invites",
+    icon: UserPlus,
+    requiredCapability: "canInviteFleetMembers",
+  },
 ];
 
 function isActive(pathname: string, item: FieldNavItem): boolean {
@@ -133,6 +140,9 @@ function pageTitle(pathname: string): string {
   }
   if (pathname.startsWith("/mobile/service/my-truck")) return "My Truck";
   if (pathname.startsWith("/mobile/service/followup")) return "Follow-ups";
+  if (pathname.startsWith("/mobile/service/fleet-invites")) {
+    return "Invite a fleet";
+  }
   if (pathname.startsWith("/mobile/service/closeout")) return "Field closeout";
   if (pathname.startsWith("/mobile/appointments")) return "Appointments";
   if (pathname.startsWith("/mobile/work-orders")) return "Work orders";

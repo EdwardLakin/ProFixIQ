@@ -38,6 +38,7 @@ describe("standalone Field owner boundary", () => {
       canManageOperations: true,
       canManageInspectionTemplates: true,
       canConfigureFieldService: true,
+      canInviteFleetMembers: true,
       canSwitchWorkspace: false,
     });
   });
@@ -89,6 +90,7 @@ describe("standalone Field owner boundary", () => {
       canManageOperations: false,
       canManageInspectionTemplates: false,
       canConfigureFieldService: false,
+      canInviteFleetMembers: false,
       canSwitchWorkspace: true,
     });
   });
