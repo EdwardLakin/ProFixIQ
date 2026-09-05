@@ -2,17 +2,16 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { readBoundedJson } from "@/features/shared/lib/server/bounded-json";
-import {
-  claimDurableAIRouteQuota,
-  completeDurableAIRouteQuota,
-} from "@/features/shared/lib/server/durable-ai-guard";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
-import { estimateAICostUsd, registerAIUsageEvent } from "@/features/shared/lib/server/ai-ops-guard";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 import { runWithProviderTimeout } from "@/features/shared/lib/server/provider-timeout";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import {
+  AIQuotaExceededError,
+  AIQuotaUnavailableError,
+  withDurableAIQuota,
+} from "@/features/shared/lib/server/ai-route-quota";
 import {
   parseInspectionVoiceCommandList,
   type InspectionVoiceCommand,
@@ -164,7 +163,6 @@ function findBestAllowedItem(allowed: string[], candidate: string): string | nul
 /* ------------------------------------------------------------------------------------------------- */
 
 export async function POST(req: Request) {
-  const startedAt = Date.now();
   try {
     const access = await requireShopScopedApiAccess({
       requiredCapability: "canRunInspections",
@@ -265,176 +263,113 @@ Optional section hint (may be empty): ${norm(ctx?.sectionTitle ?? "")}
       .join("\n\n");
 
     const admin = createAdminSupabase();
-    let claim: Awaited<ReturnType<typeof claimDurableAIRouteQuota>>;
-    try {
-      claim = await claimDurableAIRouteQuota({
-        admin,
-        actorId: access.profile.id,
-        feature: FEATURE,
-        shopId: access.profile.shop_id,
-      });
-    } catch (error) {
-      console.error("inspection_interpret_quota_failed", {
-        shopId: access.profile.shop_id,
-        error: error instanceof Error ? error.message : "unknown",
-      });
-      return NextResponse.json([], {
-        status: 503,
-        headers: { "Cache-Control": "no-store" },
-      });
-    }
-
-    if (!claim.allowed) {
-      return NextResponse.json([], {
-        status: 429,
-        headers: {
-          "Cache-Control": "no-store",
-          "Retry-After": String(claim.retryAfterSeconds),
-          "X-Profixiq-AI-Limit": claim.reason,
-        },
-      });
-    }
-
     const policy = getAIPolicy(FEATURE);
     const model = getOpenAIModelForPurpose(policy.modelPurpose);
-    let completion: Awaited<
-      ReturnType<ReturnType<typeof getOpenAIClient>["chat"]["completions"]["create"]>
-    >;
+
+    let commands: InspectionVoiceCommand[];
     try {
-      const openai = getOpenAIClient();
-      completion = await runWithProviderTimeout(policy.timeoutMs, (signal) =>
-        openai.chat.completions.create(
-          {
+      commands = await withDurableAIQuota(
+        {
+          admin,
+          durableFeature: FEATURE,
+          telemetryFeature: FEATURE,
+          endpoint: ENDPOINT,
+          actorId: access.profile.id,
+          shopId: access.profile.shop_id,
+        },
+        async () => {
+          const callStartedAt = Date.now();
+          const openai = getOpenAIClient();
+          const completion: Awaited<
+            ReturnType<ReturnType<typeof getOpenAIClient>["chat"]["completions"]["create"]>
+          > = await runWithProviderTimeout(policy.timeoutMs, (signal) =>
+            openai.chat.completions.create(
+              {
+                model,
+                ...openAITemperatureParam(model, 0.2),
+                max_completion_tokens: policy.maxTokens,
+                messages: [
+                  { role: "system", content: systemPrompt },
+                  { role: "user", content: transcript },
+                ],
+              },
+              { signal },
+            ),
+          );
+
+          const raw = completion.choices[0]?.message?.content?.trim() ?? "[]";
+          let parsedCommands = parseInspectionVoiceCommandList(raw);
+
+          // strict_context: map unknown items -> best allowed match (or drop)
+          if (mode === "strict_context" && hasContext) {
+            const allowed = allowedItems;
+
+            const filtered: InspectionVoiceCommand[] = [];
+            for (const cmd of parsedCommands) {
+              if ("item" in cmd) {
+                const itemVal = cmd.item;
+                if (!itemVal) {
+                  filtered.push(cmd);
+                  continue;
+                }
+
+                const best = findBestAllowedItem(allowed, String(itemVal));
+                if (!best) continue;
+
+                filtered.push(withExactItem(cmd, best));
+                continue;
+              }
+
+              filtered.push(cmd);
+            }
+
+            parsedCommands = filtered;
+          }
+
+          return {
+            output: parsedCommands,
             model,
-            ...openAITemperatureParam(model, 0.2),
-            max_completion_tokens: policy.maxTokens,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: transcript },
-            ],
-          },
-          { signal },
-        ),
+            latencyMs: Date.now() - callStartedAt,
+            usage: {
+              promptTokens: completion.usage?.prompt_tokens ?? null,
+              completionTokens: completion.usage?.completion_tokens ?? null,
+              totalTokens: completion.usage?.total_tokens ?? null,
+            },
+          };
+        },
       );
     } catch (error) {
-      await completeDurableAIRouteQuota({
-        admin,
-        actorId: access.profile.id,
-        actualCostUsd: 0,
-        feature: FEATURE,
-        receiptId: claim.receiptId,
-        shopId: access.profile.shop_id,
-        succeeded: false,
-      });
-      recordAITelemetry({
-        feature: FEATURE,
-        endpoint: ENDPOINT,
-        shop_id: access.profile.shop_id,
-        user_id: access.profile.id,
-        model,
-        latency_ms: Date.now() - startedAt,
-        prompt_tokens: null,
-        completion_tokens: null,
-        total_tokens: null,
-        estimated_cost_usd: 0,
-        status: "error",
-        error_code: "inspection_interpret_failed",
-      error_message:
-        error instanceof Error && error.message.includes("timed out")
-          ? "provider_timeout"
-          : "provider_error",
-      });
-      registerAIUsageEvent({
-        feature: FEATURE,
-        endpoint: ENDPOINT,
-        shopId: access.profile.shop_id,
-        model,
-        totalTokens: null,
-        estimatedCostUsd: 0,
-        status: "error",
-        errorCode: "inspection_interpret_failed",
-      });
+      if (error instanceof AIQuotaExceededError) {
+        return NextResponse.json([], {
+          status: 429,
+          headers: {
+            "Cache-Control": "no-store",
+            "Retry-After": String(error.retryAfterSeconds),
+            "X-Profixiq-AI-Limit": error.reason,
+          },
+        });
+      }
+      if (error instanceof AIQuotaUnavailableError) {
+        console.error("inspection_interpret_quota_failed", {
+          shopId: access.profile.shop_id,
+          error: error.cause instanceof Error ? error.cause.message : "unknown",
+        });
+        return NextResponse.json([], {
+          status: 503,
+          headers: { "Cache-Control": "no-store" },
+        });
+      }
+
+      const isTimeout = error instanceof Error && error.message.includes("timed out");
       console.error("inspection_interpret_provider_failed", {
         shopId: access.profile.shop_id,
-        kind:
-          error instanceof Error && error.message.includes("timed out")
-            ? "timeout"
-            : "provider",
+        kind: isTimeout ? "timeout" : "provider",
       });
       return NextResponse.json([], {
-        status:
-          error instanceof Error && error.message.includes("timed out")
-            ? 504
-            : 502,
+        status: isTimeout ? 504 : 502,
         headers: { "Cache-Control": "no-store" },
       });
     }
-
-    const raw = completion.choices[0]?.message?.content?.trim() ?? "[]";
-    let commands = parseInspectionVoiceCommandList(raw);
-
-    // strict_context: map unknown items -> best allowed match (or drop)
-    if (mode === "strict_context" && hasContext) {
-      const allowed = allowedItems;
-
-      const filtered: InspectionVoiceCommand[] = [];
-      for (const cmd of commands) {
-        if ("item" in cmd) {
-          const itemVal = cmd.item;
-          if (!itemVal) {
-            filtered.push(cmd);
-            continue;
-          }
-
-          const best = findBestAllowedItem(allowed, String(itemVal));
-          if (!best) continue;
-
-          filtered.push(withExactItem(cmd, best));
-          continue;
-        }
-
-        filtered.push(cmd);
-      }
-
-      commands = filtered;
-    }
-
-    const totalTokens = completion.usage?.total_tokens ?? null;
-    const estimatedCostUsd = estimateAICostUsd(FEATURE, totalTokens);
-    await completeDurableAIRouteQuota({
-      admin,
-      actorId: access.profile.id,
-      actualCostUsd: estimatedCostUsd,
-      feature: FEATURE,
-      receiptId: claim.receiptId,
-      shopId: access.profile.shop_id,
-      succeeded: true,
-    });
-    recordAITelemetry({
-      feature: FEATURE,
-      endpoint: ENDPOINT,
-      shop_id: access.profile.shop_id,
-      user_id: access.profile.id,
-      model,
-      latency_ms: Date.now() - startedAt,
-      prompt_tokens: completion.usage?.prompt_tokens ?? null,
-      completion_tokens: completion.usage?.completion_tokens ?? null,
-      total_tokens: totalTokens,
-      estimated_cost_usd: estimatedCostUsd,
-      status: "success",
-      error_code: null,
-      error_message: null,
-    });
-    registerAIUsageEvent({
-      feature: FEATURE,
-      endpoint: ENDPOINT,
-      shopId: access.profile.shop_id,
-      model,
-      totalTokens,
-      estimatedCostUsd,
-      status: "success",
-      errorCode: null,
-    });
 
     return NextResponse.json(commands, {
       headers: { "Cache-Control": "no-store" },

@@ -89,4 +89,78 @@ describe("runOpenAIStructuredJson", () => {
     expect(result.mode).toBe("fallback");
     expect(result.output).toEqual({ value: 0 });
   });
+
+  it("reads usage from the Responses API's input_tokens/output_tokens fields", async () => {
+    vi.mocked(isOpenAIConfigured).mockReturnValue(true);
+    vi.mocked(getOpenAIClient).mockReturnValue({
+      responses: {
+        create: vi.fn(async () => ({
+          output_text: '{"value":1}',
+          usage: { input_tokens: 40, output_tokens: 10, total_tokens: 50 },
+        })),
+      },
+    } as never);
+
+    const result = await runOpenAIStructuredJson({
+      purpose: "extraction",
+      feature: "test",
+      system: "system",
+      user: { ok: true },
+      schemaName: "Test",
+      fallback: () => ({ value: 0 }),
+    });
+
+    expect(result.usage).toEqual({
+      promptTokens: 40,
+      completionTokens: 10,
+      totalTokens: 50,
+    });
+    expect(result.latencyMs).toBeGreaterThanOrEqual(0);
+  });
+
+  it("never throws when the response carries no usage field at all", async () => {
+    vi.mocked(isOpenAIConfigured).mockReturnValue(true);
+    vi.mocked(getOpenAIClient).mockReturnValue({
+      responses: {
+        create: vi.fn(async () => ({ output_text: '{"value":1}' })),
+      },
+    } as never);
+
+    const result = await runOpenAIStructuredJson({
+      purpose: "extraction",
+      feature: "test",
+      system: "system",
+      user: { ok: true },
+      schemaName: "Test",
+      fallback: () => ({ value: 0 }),
+    });
+
+    expect(result.usage).toEqual({
+      promptTokens: null,
+      completionTokens: null,
+      totalTokens: null,
+    });
+  });
+
+  it("passes an AbortSignal through to the model call when timeoutMs is set", async () => {
+    vi.mocked(isOpenAIConfigured).mockReturnValue(true);
+    const create = vi.fn(async () => ({ output_text: '{"value":1}' }));
+    vi.mocked(getOpenAIClient).mockReturnValue({
+      responses: { create },
+    } as never);
+
+    await runOpenAIStructuredJson({
+      purpose: "extraction",
+      feature: "test",
+      system: "system",
+      user: { ok: true },
+      schemaName: "Test",
+      fallback: () => ({ value: 0 }),
+      timeoutMs: 5_000,
+    });
+
+    expect(create).toHaveBeenCalledTimes(1);
+    const [, options] = create.mock.calls[0] as [unknown, { signal?: unknown }];
+    expect(options?.signal).toBeInstanceOf(AbortSignal);
+  });
 });
