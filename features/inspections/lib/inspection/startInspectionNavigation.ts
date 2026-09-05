@@ -24,7 +24,12 @@
 // the real template.
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
+// Relative, not the "@inspections/..." alias other callers use: that alias
+// is only wired up in tsconfig.json, not in vitest.config.ts's resolver, and
+// this file (unlike GenericInspectionScreen.tsx et al.) is reachable from a
+// component under test (TechnicianTextCopilot.tsx), so an aliased import
+// here broke vitest's module graph for any test that renders it.
+import { prepareSectionsWithCornerGrid } from "./prepareSectionsWithCornerGrid";
 
 type TemplateSectionItem = { item: string; unit?: string | null };
 type TemplateSection = { title: string; items: TemplateSectionItem[] };

@@ -20,6 +20,12 @@ vi.mock(
   }),
 );
 
+// TechnicianTextCopilot navigates to a resolved inspection.start clientAction
+// via useRouter(), which throws outside an App Router tree unless mocked.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+}));
+
 import { TechnicianTextCopilot } from "@/features/copilot/technician/components/TechnicianTextCopilot";
 
 describe("compact Technician CoPilot dock", () => {

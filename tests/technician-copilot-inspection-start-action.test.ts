@@ -118,10 +118,18 @@ describe("inspection.start: resolving the target", () => {
   });
 
   it("declines when the line has no inspection template attached", async () => {
+    // Nothing else in progress here, on purpose — using the shared
+    // `workOrder` fixture (whose oilChangeLine is in_progress) would trip
+    // the conflict check before the resolver ever reaches the template
+    // check, and this test wants the template check.
+    const idleWorkOrder: TechnicianWorkCandidate = {
+      ...workOrder,
+      lines: [cvipLine, { ...oilChangeLine, status: "awaiting" }],
+    };
     const prepared = await prepareTechnicianCopilotAction({
       action: { type: "inspection.start", workOrderLineId: cvipLine.id },
       activeWorkOrder: null,
-      assignedWork: [workOrder],
+      assignedWork: [idleWorkOrder],
       activeWorkOrderLineId: null,
       supabase: fakeSupabase(null),
     });
