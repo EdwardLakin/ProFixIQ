@@ -2,7 +2,10 @@ import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/features/shared/types/types/supabase";
-import { getActorConversationIds } from "@/features/ai/lib/chat/authorization";
+import {
+  authorizeConversationActor,
+  getActorConversationIds,
+} from "@/features/ai/lib/chat/authorization";
 
 const MAX_CONVERSATIONS = 50;
 
@@ -95,4 +98,73 @@ export async function listTechnicianConversationDigest(input: {
 
   items.sort((left, right) => right.latestMessageAt.localeCompare(left.latestMessageAt));
   return items;
+}
+
+export type SendTechnicianCopilotMessageResult =
+  | { ok: true; idempotent: boolean }
+  | { ok: false; status: number; error: string };
+
+/**
+ * Sends a technician's spoken/typed reply into an existing conversation.
+ * Mirrors sendMessage()'s core logic (features/ai/lib/chat/sendMessage.ts)
+ * but takes the actor id explicitly instead of deriving it from
+ * supabase.auth.getUser() - the CoPilot always calls through the admin
+ * client, which has no session to derive from - and reuses the exact same
+ * authorizeConversationActor participant check that function already
+ * relies on, so a technician can only ever reply into a conversation
+ * they're really part of, independent of anything the model claims.
+ *
+ * clientMessageId should be the turn's turnId: idempotency here is a
+ * best-effort check-before-insert (messages.client_message_id has no
+ * unique constraint to enforce it atomically), which matches the
+ * idempotency the existing manual chat send already has - none - rather
+ * than a new, unenforceable guarantee.
+ */
+export async function sendTechnicianCopilotMessage(input: {
+  supabase: SupabaseClient<Database>;
+  actorUserId: string;
+  conversationId: string;
+  content: string;
+  clientMessageId: string;
+}): Promise<SendTechnicianCopilotMessageResult> {
+  const access = await authorizeConversationActor({
+    supabase: input.supabase,
+    conversationId: input.conversationId,
+    actorUserId: input.actorUserId,
+  });
+  if (!access.ok) {
+    return { ok: false, status: access.status, error: access.error };
+  }
+
+  const { data: existing, error: existingError } = await input.supabase
+    .from("messages")
+    .select("id")
+    .eq("conversation_id", input.conversationId)
+    .eq("client_message_id", input.clientMessageId)
+    .maybeSingle();
+  if (existingError) {
+    return { ok: false, status: 500, error: existingError.message };
+  }
+  if (existing) {
+    return { ok: true, idempotent: true };
+  }
+
+  const recipients = access.participantUserIds.filter(
+    (userId) => userId !== input.actorUserId,
+  );
+  const { error: insertError } = await input.supabase.from("messages").insert({
+    conversation_id: input.conversationId,
+    sender_id: input.actorUserId,
+    client_message_id: input.clientMessageId,
+    recipients,
+    content: input.content,
+    sent_at: new Date().toISOString(),
+    attachments: [],
+    metadata: { source: "technician_copilot" },
+  });
+  if (insertError) {
+    return { ok: false, status: 500, error: insertError.message };
+  }
+
+  return { ok: true, idempotent: false };
 }

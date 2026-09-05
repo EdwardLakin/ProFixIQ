@@ -31,6 +31,7 @@ import {
 import { extractTechnicianDocumentationTurn } from "./documentation";
 import { decideTechnicianCopilotTurn } from "./model";
 import { deriveCopilotOperationId } from "./operationId";
+import { sendTechnicianCopilotMessage } from "./messages";
 import {
   sendCopilotServerCommand,
   type CopilotServerCommandAction,
@@ -168,7 +169,15 @@ function storedActionTurn(
   const action = parseTechnicianCopilotAction(pending.payload?.request);
   const key =
     typeof pending.payload?.key === "string" ? pending.payload.key.trim() : "";
-  if (action.type === "none" || action.type === "work.next" || !key) {
+  // message.reply never creates an action.pending event in the first place
+  // (see respondToMessageReply) — this branch only exists so the type
+  // narrows correctly below; in practice it's unreachable for this type.
+  if (
+    action.type === "none" ||
+    action.type === "work.next" ||
+    action.type === "message.reply" ||
+    !key
+  ) {
     return null;
   }
 
@@ -385,6 +394,66 @@ async function extractDocumentation(input: {
   }
 }
 
+export type RecentConversationHint = {
+  conversationId: string;
+  title: string | null;
+};
+
+/**
+ * message.reply is orthogonal to the repair session entirely — it doesn't
+ * touch the session ledger, doesn't need a work order, and works whether or
+ * not a session is active. Executed and returned immediately wherever the
+ * model selects it, before any of the job/session-specific logic below
+ * runs. Idempotency is its own (client_message_id = turnId), independent
+ * of the repair-session replay machinery job actions use, since this has
+ * no session event to key that machinery off of.
+ */
+export async function respondToMessageReply(input: {
+  identity: CopilotIdentity;
+  turnId: string;
+  action: Extract<TechnicianCopilotAction, { type: "message.reply" }>;
+  recentConversations: readonly RecentConversationHint[];
+}): Promise<string> {
+  if (input.recentConversations.length === 0) {
+    return "There's no recent message for me to reply to.";
+  }
+  const target = input.action.conversationId
+    ? input.recentConversations.find(
+        (conversation) => conversation.conversationId === input.action.conversationId,
+      )
+    : input.recentConversations.length === 1
+      ? input.recentConversations[0]
+      : null;
+  if (!target) {
+    if (input.recentConversations.length > 1) {
+      const choices = input.recentConversations
+        .map((conversation) => conversation.title ?? "a conversation")
+        .join(", ");
+      return `Which conversation do you mean: ${choices}?`;
+    }
+    return "I couldn't match that to a recent conversation. Ask what's new to refresh it.";
+  }
+  if (!input.action.content) {
+    return `What should I tell them in ${target.title ?? "that conversation"}?`;
+  }
+
+  const result = await sendTechnicianCopilotMessage({
+    supabase: input.identity.supabase,
+    actorUserId: input.identity.authUserId,
+    conversationId: target.conversationId,
+    content: input.action.content,
+    clientMessageId: input.turnId,
+  });
+  if (!result.ok) {
+    console.error("[technician-copilot] message reply failed", {
+      conversationId: target.conversationId,
+      error: result.error,
+    });
+    return `I couldn't send that reply${target.title ? ` in ${target.title}` : ""}. Try again.`;
+  }
+  return `Sent to ${target.title ?? "that conversation"}.`;
+}
+
 export async function runTechnicianCopilotTurn(input: {
   identity: CopilotIdentity;
   message: string;
@@ -394,6 +463,7 @@ export async function runTechnicianCopilotTurn(input: {
   requiredWorkOrderId?: string | null;
   requiredWorkOrderLineId?: string | null;
   requiredWorkOrderLineUpdatedAt?: string | null;
+  recentConversations?: readonly RecentConversationHint[];
 }) {
   const requestedMessage = input.message.trim();
   const inputSource: TechnicianTurnSource =
@@ -401,6 +471,7 @@ export async function runTechnicianCopilotTurn(input: {
   if (inputSource === "voice" && !input.identity.voiceEnabled) {
     throw new Error("Technician CoPilot voice is not enabled.");
   }
+  const recentConversations = input.recentConversations ?? [];
 
   const capabilities = {
     documentation: input.identity.documentationEnabled,
@@ -585,7 +656,23 @@ export async function runTechnicianCopilotTurn(input: {
       message: requestedMessage,
       activeSession: null,
       assignedWork: candidates,
+      recentConversations,
     });
+    if (decision.action?.type === "message.reply") {
+      return {
+        sessionId: null,
+        reply: await respondToMessageReply({
+          identity: input.identity,
+          turnId: input.turnId,
+          action: decision.action,
+          recentConversations,
+        }),
+        context: null,
+        workOrder: null,
+        capabilities,
+        replayed: false,
+      };
+    }
     if (decision.action?.type === "work.next") {
       return {
         sessionId: null,
@@ -795,64 +882,78 @@ export async function runTechnicianCopilotTurn(input: {
     let boundAction = storedAction ? boundActionFromStored(storedAction) : null;
 
     if (!storedAction) {
-      const prepared = prepareTechnicianCopilotAction({
-        action: decision?.action ?? { type: "none" },
-        activeWorkOrder,
-        assignedWork: candidates,
-        activeWorkOrderLineId: session.activeWorkOrderLineId,
-      });
-
-      if (prepared.kind === "reply") {
-        reply = prepared.reply;
-      } else if (prepared.kind === "execute") {
-        if (
-          (input.requiredWorkOrderId &&
-            prepared.workOrder.id !== input.requiredWorkOrderId) ||
-          (input.requiredWorkOrderLineId &&
-            prepared.line.id !== input.requiredWorkOrderLineId)
-        ) {
-          throw new TechnicianCopilotConflictError(
-            "technician_copilot_confirmed_target_conflict",
-            "The interpreted CoPilot action did not match the exact job shown for confirmation.",
-          );
-        }
-        actionWorkOrderId = prepared.workOrder.id;
-        await append(input.identity, {
-          sessionId: session.id,
-          eventType: "action.pending",
+      const decidedAction = decision?.action ?? ({ type: "none" } as const);
+      if (decidedAction.type === "message.reply") {
+        // Orthogonal to the repair session entirely: no work order/line, no
+        // action.pending/action.completed ledger entries, own idempotency
+        // (see respondToMessageReply). Just sets the reply text; the
+        // ordinary conversation.assistant append below still records it.
+        reply = await respondToMessageReply({
+          identity: input.identity,
           turnId: input.turnId,
-          suffix: "canonical-action-pending",
-          origin: "system",
-          details: {
-            action: prepared.action.type,
-            key: actionKey,
-            turnId: input.turnId,
-            request: prepared.action,
-            workOrderId: prepared.workOrder.id,
-            workOrderLineId: prepared.line.id,
-            lineLabel: technicianWorkLineLabel(prepared.line),
-            lineCause: prepared.line.cause,
-            lineCorrection: prepared.line.correction,
-            lineUpdatedAt: prepared.line.updatedAt,
-          },
+          action: decidedAction,
+          recentConversations,
+        });
+      } else {
+        const prepared = prepareTechnicianCopilotAction({
+          action: decidedAction,
+          activeWorkOrder,
+          assignedWork: candidates,
+          activeWorkOrderLineId: session.activeWorkOrderLineId,
         });
 
-        const bindingEnvelope = await read(input.identity, session.id);
-        assertActiveSession(bindingEnvelope.session);
-        storedAction = storedActionTurn(bindingEnvelope.events, input.turnId);
-        if (!storedAction) {
-          throw new TechnicianCopilotConflictError(
-            "technician_copilot_action_binding_failed",
-            "The spoken action could not be bound safely. Try that request again.",
-          );
-        }
-        actionKey = storedAction.key;
-        actionWorkOrderId = storedAction.workOrderId ?? actionWorkOrderId;
-        if (storedAction.result) {
-          reply = storedAction.result.reply;
-          replayedActionResult = true;
-        } else {
-          boundAction = boundActionFromStored(storedAction);
+        if (prepared.kind === "reply") {
+          reply = prepared.reply;
+        } else if (prepared.kind === "execute") {
+          if (
+            (input.requiredWorkOrderId &&
+              prepared.workOrder.id !== input.requiredWorkOrderId) ||
+            (input.requiredWorkOrderLineId &&
+              prepared.line.id !== input.requiredWorkOrderLineId)
+          ) {
+            throw new TechnicianCopilotConflictError(
+              "technician_copilot_confirmed_target_conflict",
+              "The interpreted CoPilot action did not match the exact job shown for confirmation.",
+            );
+          }
+          actionWorkOrderId = prepared.workOrder.id;
+          await append(input.identity, {
+            sessionId: session.id,
+            eventType: "action.pending",
+            turnId: input.turnId,
+            suffix: "canonical-action-pending",
+            origin: "system",
+            details: {
+              action: prepared.action.type,
+              key: actionKey,
+              turnId: input.turnId,
+              request: prepared.action,
+              workOrderId: prepared.workOrder.id,
+              workOrderLineId: prepared.line.id,
+              lineLabel: technicianWorkLineLabel(prepared.line),
+              lineCause: prepared.line.cause,
+              lineCorrection: prepared.line.correction,
+              lineUpdatedAt: prepared.line.updatedAt,
+            },
+          });
+
+          const bindingEnvelope = await read(input.identity, session.id);
+          assertActiveSession(bindingEnvelope.session);
+          storedAction = storedActionTurn(bindingEnvelope.events, input.turnId);
+          if (!storedAction) {
+            throw new TechnicianCopilotConflictError(
+              "technician_copilot_action_binding_failed",
+              "The spoken action could not be bound safely. Try that request again.",
+            );
+          }
+          actionKey = storedAction.key;
+          actionWorkOrderId = storedAction.workOrderId ?? actionWorkOrderId;
+          if (storedAction.result) {
+            reply = storedAction.result.reply;
+            replayedActionResult = true;
+          } else {
+            boundAction = boundActionFromStored(storedAction);
+          }
         }
       }
     }
