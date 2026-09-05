@@ -181,8 +181,8 @@ describe("ProFixIQ product package billing contract", () => {
     );
     expect(checkout).toContain("surface=${selection.acquisitionSurface}");
     expect(checkout).not.toContain("payment_method_types");
-    expect(checkout).toContain("payment_method_collection");
-    expect(checkout).toContain('"if_required"');
+    expect(checkout).toContain('payment_method_collection: "always"');
+    expect(checkout).not.toContain('"if_required"');
     expect(checkout).toContain("missing_payment_method");
     expect(checkout).toContain('"cancel"');
     expect(migration).toContain("profixiq_shop_has_product_access");

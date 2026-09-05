@@ -258,7 +258,7 @@ function buildCheckoutParams(input: {
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
     allow_promotion_codes: true,
-    payment_method_collection: input.trialDays > 0 ? "if_required" : "always",
+    payment_method_collection: "always",
     ...(input.clientReferenceId
       ? { client_reference_id: input.clientReferenceId }
       : {}),
