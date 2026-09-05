@@ -152,15 +152,23 @@ export default function ProFixIQLanding() {
     packageKey,
     interval,
     checkoutAttemptId,
+    checkoutMode,
   }: {
     packageKey: ProductPackageKey;
     interval: Interval;
     checkoutAttemptId: string;
+    checkoutMode: "trial" | "paid";
   }) => {
     const response = await fetch("/api/stripe/checkout", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ flow: "acquisition", packageKey, interval, checkoutAttemptId }),
+      body: JSON.stringify({
+        flow: "acquisition",
+        packageKey,
+        interval,
+        checkoutAttemptId,
+        checkoutMode,
+      }),
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok || !data?.url) throw new Error(String(data?.error ?? data?.details ?? "Unable to start checkout"));

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { Check } from "lucide-react";
 
 import {
@@ -15,6 +15,7 @@ export type CheckoutPayload = {
   packageKey: ProductPackageKey;
   interval: BillingInterval;
   checkoutAttemptId: string;
+  checkoutMode: "trial" | "paid";
 };
 
 export type PricingSectionProps = {
@@ -98,19 +99,20 @@ export default function PricingSection({
   surface,
 }: PricingSectionProps) {
   const [busyKey, setBusyKey] = useState<ProductPackageKey | null>(null);
-  const attemptIds = useRef<Partial<Record<ProductPackageKey, string>>>({});
 
-  const startCheckout = async (packageKey: ProductPackageKey) => {
+  const startCheckout = async (
+    packageKey: ProductPackageKey,
+    checkoutMode: "trial" | "paid",
+  ) => {
     if (busyKey) return;
     setBusyKey(packageKey);
     try {
-      const checkoutAttemptId =
-        attemptIds.current[packageKey] ??
-        (attemptIds.current[packageKey] = crypto.randomUUID());
+      const checkoutAttemptId = crypto.randomUUID();
       await onCheckout({
         packageKey,
         interval: "monthly",
         checkoutAttemptId,
+        checkoutMode,
       });
     } catch (error) {
       console.error("[PricingSection] checkout failed", error);
@@ -166,17 +168,29 @@ export default function PricingSection({
                 {plan.boundary}
               </div>
 
-              <button
-                type="button"
-                onClick={() => void startCheckout(plan.key)}
-                disabled={Boolean(busyKey)}
-                aria-busy={isBusy}
-                className={`${styles.button} ${
-                  plan.featured ? styles.primaryButton : styles.secondaryButton
-                } mt-6 rounded-xl border px-4 py-3 text-sm font-bold transition`}
-              >
-                {isBusy ? "Starting…" : "Start 7-day free trial"}
-              </button>
+              <div className="mt-6 grid gap-2">
+                <button
+                  type="button"
+                  onClick={() => void startCheckout(plan.key, "trial")}
+                  disabled={Boolean(busyKey)}
+                  aria-busy={isBusy}
+                  className={`${styles.button} ${
+                    plan.featured
+                      ? styles.primaryButton
+                      : styles.secondaryButton
+                  } rounded-xl border px-4 py-3 text-sm font-bold transition`}
+                >
+                  {isBusy ? "Starting…" : "Start 7-day free trial"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void startCheckout(plan.key, "paid")}
+                  disabled={Boolean(busyKey)}
+                  className={`${styles.button} ${styles.secondaryButton} rounded-xl border px-4 py-3 text-sm font-bold transition`}
+                >
+                  Subscribe now
+                </button>
+              </div>
 
               <div className={`${styles.divider} my-6 h-px`} />
               <div

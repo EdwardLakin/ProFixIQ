@@ -86,6 +86,9 @@ describe("PricingSection theme contract", () => {
     expect(
       screen.getAllByRole("button", { name: "Start 7-day free trial" }),
     ).toHaveLength(4);
+    expect(
+      screen.getAllByRole("button", { name: "Subscribe now" }),
+    ).toHaveLength(4);
   });
 
   it("keeps text readable on both explicit card surfaces", () => {

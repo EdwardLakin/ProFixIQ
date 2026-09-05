@@ -105,6 +105,11 @@ describe("P0-006 Stripe identity boundary", () => {
       "profixiq:shop-checkout:${shop.id}:${attemptId}",
     );
     expect(landing).not.toContain("enableTrial:");
+    expect(landing).not.toContain("trialDays:");
+    expect(landing).toContain("checkoutMode");
+    expect(checkout).toContain(
+      'parsed.data.checkoutMode === "paid" ? 0 : configuredDays',
+    );
     expect(landing).not.toContain("applyFoundingDiscount:");
     expect(comparison).not.toContain("cancelPath:");
     expect(comparison).not.toContain("priceId:");

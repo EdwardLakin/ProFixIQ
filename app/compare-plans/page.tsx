@@ -29,10 +29,12 @@ export default function ComparePlansPage() {
     packageKey,
     interval,
     checkoutAttemptId,
+    checkoutMode,
   }: {
     packageKey: string;
     interval: Interval;
     checkoutAttemptId: string;
+    checkoutMode: "trial" | "paid";
   }) => {
     try {
       const res = await fetch("/api/stripe/checkout", {
@@ -43,6 +45,7 @@ export default function ComparePlansPage() {
           packageKey,
           interval,
           checkoutAttemptId,
+          checkoutMode,
         }),
       });
 
