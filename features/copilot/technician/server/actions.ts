@@ -189,6 +189,16 @@ export function prepareTechnicianCopilotAction(input: {
   }
 
   if (
+    input.action.type === "job.parts.request" &&
+    input.action.items.length === 0
+  ) {
+    return {
+      kind: "reply",
+      reply: `What parts and quantities do you need for ${technicianWorkLineLabel(line)}?`,
+    };
+  }
+
+  if (
     input.action.type === "job.release_hold" &&
     !["on_hold", "waiting_parts"].includes(
       normalizeWorkOrderLineStatus(line.status),
@@ -332,7 +342,112 @@ export type BoundTechnicianCopilotAction = {
   lineCause: string | null;
   lineCorrection: string | null;
   lineUpdatedAt: string | null;
+  /**
+   * Only required by actions whose execution needs the parent work order
+   * directly (e.g. job.parts.request, which calls a work-order-scoped RPC
+   * rather than the shared job-action command). Nullable because the
+   * existing job.* actions resolve their work order from the line and have
+   * never needed it threaded through here.
+   */
+  workOrderId?: string | null;
 };
+
+type AdminRpcClient = {
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<{
+    data: unknown;
+    error: {
+      message: string;
+      details?: string | null;
+      hint?: string | null;
+    } | null;
+  }>;
+};
+
+/**
+ * Parts requests go through the same atomic, idempotent RPC the manual
+ * "Request Parts" screen already submits to
+ * (materialize_offline_parts_request_draft_atomic), not the shared
+ * job-action command used by job.start/hold/complete. It's a different
+ * mutation domain — creating a parts request, not transitioning job/punch
+ * state — so it deliberately doesn't touch that shared state machine.
+ * The RPC itself re-checks shop/work-order/assignment authorization
+ * independent of this call.
+ */
+async function executePartsRequestAction(input: {
+  identity: CopilotMutationIdentity;
+  bound: BoundTechnicianCopilotAction;
+  action: Extract<TechnicianCopilotAction, { type: "job.parts.request" }>;
+  operationId: string;
+}): Promise<TechnicianCopilotActionResult> {
+  const label = input.bound.lineLabel;
+  const workOrderId = input.bound.workOrderId;
+  if (!workOrderId) {
+    return {
+      ok: false,
+      reply: `I couldn't confirm the work order for ${label}. Refresh and try again.`,
+    };
+  }
+
+  const payload = {
+    notes: input.action.notes ?? "",
+    items: input.action.items.map((item) => ({
+      description: item.description,
+      qty: item.qty,
+      partNumber: null,
+      manufacturer: null,
+    })),
+  };
+
+  const rpc = input.identity.supabase as unknown as AdminRpcClient;
+  const { error } = await rpc.rpc(
+    "materialize_offline_parts_request_draft_atomic",
+    {
+      p_shop_id: input.identity.shopId,
+      p_actor_user_id: input.identity.authUserId,
+      p_operation_key: `copilot:${input.operationId}:parts-request`,
+      p_work_order_id: workOrderId,
+      p_work_order_line_id: input.bound.lineId,
+      p_payload: payload,
+    },
+  );
+
+  if (error) {
+    console.error("[technician-copilot] parts request failed", {
+      workOrderLineId: input.bound.lineId,
+      error: error.message,
+    });
+    const message = error.message.toLowerCase();
+    if (message.includes("not assigned")) {
+      return {
+        ok: false,
+        reply: `You're not assigned to ${label}, so I can't request parts for it.`,
+      };
+    }
+    if (message.includes("not found")) {
+      return {
+        ok: false,
+        reply: `I couldn't find ${label} to attach that parts request to. Refresh and try again.`,
+      };
+    }
+    return {
+      ok: false,
+      reply: `I couldn't submit that parts request for ${label}. Refresh and try again.`,
+    };
+  }
+
+  const summary = input.action.items
+    .map((item) => `${item.qty} ${item.description}`)
+    .join(", ");
+  return {
+    ok: true,
+    reply: `Requested ${summary} for ${label}.`,
+    eventLabel: "Requested parts",
+    eventDetail: `${label}: ${summary}`,
+  };
+}
 
 export async function executeBoundTechnicianCopilotAction(input: {
   identity: CopilotMutationIdentity;
@@ -342,6 +457,16 @@ export async function executeBoundTechnicianCopilotAction(input: {
   expectedLineUpdatedAt?: string | null;
 }): Promise<TechnicianCopilotActionResult> {
   const { action } = input.bound;
+
+  if (action.type === "job.parts.request") {
+    return executePartsRequestAction({
+      identity: input.identity,
+      bound: input.bound,
+      action,
+      operationId: input.operationId,
+    });
+  }
+
   const command = {
     authUserId: input.identity.authUserId,
     profileId: input.identity.profileId,
@@ -446,7 +571,7 @@ export async function executeTechnicianCopilotAction(input: {
   operationId: string;
   expectedLineUpdatedAt?: string | null;
 }): Promise<TechnicianCopilotActionResult> {
-  const { action, line } = input.prepared;
+  const { action, line, workOrder } = input.prepared;
   return executeBoundTechnicianCopilotAction({
     identity: input.identity,
     sessionId: input.sessionId,
@@ -459,6 +584,7 @@ export async function executeTechnicianCopilotAction(input: {
       lineCause: line.cause,
       lineCorrection: line.correction,
       lineUpdatedAt: line.updatedAt,
+      workOrderId: workOrder.id,
     },
   });
 }

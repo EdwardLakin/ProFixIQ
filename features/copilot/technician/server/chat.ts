@@ -249,6 +249,7 @@ function boundActionFromStored(
     lineCause: storedAction.lineCause,
     lineCorrection: storedAction.lineCorrection,
     lineUpdatedAt: storedAction.lineUpdatedAt,
+    workOrderId: storedAction.workOrderId,
   };
 }
 
