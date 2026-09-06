@@ -314,33 +314,23 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
           (item.status === "fail" ||
             item.status === "recommend" ||
             showEvidenceFields) && (
-            <div className="mt-1">
-              <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                    Photos
-                  </div>
-
-                  <PhotoUploadButton
-                    inspectionId={inspectionId}
-                    workOrderId={workOrderId}
-                    workOrderLineId={workOrderLineId}
-                    draftKey={draftKey}
-                    sectionIndex={sectionIndex}
-                    itemIndex={itemIndex}
-                    itemName={label || null}
-                    photoUrls={item.photoUrls ?? []}
-                    readOnly={readOnly}
-                    onPendingChange={(pending) =>
-                      onPhotoPendingChange?.(sectionIndex, itemIndex, pending)
-                    }
-                    onChange={(urls: string[]) =>
-                      onUpdatePhotos(sectionIndex, itemIndex, urls)
-                    }
-                  />
-                </div>
-              </div>
-            </div>
+            <PhotoUploadButton
+              inspectionId={inspectionId}
+              workOrderId={workOrderId}
+              workOrderLineId={workOrderLineId}
+              draftKey={draftKey}
+              sectionIndex={sectionIndex}
+              itemIndex={itemIndex}
+              itemName={label || null}
+              photoUrls={item.photoUrls ?? []}
+              readOnly={readOnly}
+              onPendingChange={(pending) =>
+                onPhotoPendingChange?.(sectionIndex, itemIndex, pending)
+              }
+              onChange={(urls: string[]) =>
+                onUpdatePhotos(sectionIndex, itemIndex, urls)
+              }
+            />
           )}
       </div>
     );
@@ -421,30 +411,23 @@ export default function InspectionItemCard(props: InspectionItemCardProps) {
           item.status === "recommend" ||
           showEvidenceFields) && (
           <div className="mt-2">
-            <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                  Photos
-                </div>
-                <PhotoUploadButton
-                  inspectionId={inspectionId}
-                  workOrderId={workOrderId}
-                  workOrderLineId={workOrderLineId}
-                  draftKey={draftKey}
-                  sectionIndex={sectionIndex}
-                  itemIndex={itemIndex}
-                  itemName={label || null}
-                  photoUrls={item.photoUrls ?? []}
-                  readOnly={readOnly}
-                  onPendingChange={(pending) =>
-                    onPhotoPendingChange?.(sectionIndex, itemIndex, pending)
-                  }
-                  onChange={(urls: string[]) =>
-                    onUpdatePhotos(sectionIndex, itemIndex, urls)
-                  }
-                />
-              </div>
-            </div>
+            <PhotoUploadButton
+              inspectionId={inspectionId}
+              workOrderId={workOrderId}
+              workOrderLineId={workOrderLineId}
+              draftKey={draftKey}
+              sectionIndex={sectionIndex}
+              itemIndex={itemIndex}
+              itemName={label || null}
+              photoUrls={item.photoUrls ?? []}
+              readOnly={readOnly}
+              onPendingChange={(pending) =>
+                onPhotoPendingChange?.(sectionIndex, itemIndex, pending)
+              }
+              onChange={(urls: string[]) =>
+                onUpdatePhotos(sectionIndex, itemIndex, urls)
+              }
+            />
           </div>
         )}
     </div>

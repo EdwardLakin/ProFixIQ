@@ -21,9 +21,12 @@ import {
 } from "@/features/shared/lib/offline/mutations";
 import { replayAndReconcileOfflineMutations } from "@/features/shared/lib/offline/replay";
 
-type Props = { userId: string };
+type Props = { userId: string; compact?: boolean };
 
-export default function MobileShiftTracker({ userId }: Props) {
+export default function MobileShiftTracker({
+  userId,
+  compact = false,
+}: Props) {
   const [shiftId, setShiftId] = useState<string | null>(null);
   const [startTime, setStartTime] = useState<string | null>(null);
   const [shiftState, setShiftState] = useState<MobileShiftState | null>(null);
@@ -184,22 +187,52 @@ export default function MobileShiftTracker({ userId }: Props) {
     syncSummary.syncing > 0 ||
     syncSummary.conflicted > 0;
 
+  const elapsed =
+    mode !== "none" && mode !== "ended" && startTime
+      ? formatDistanceToNow(new Date(startTime), { includeSeconds: false })
+      : null;
+
   return (
-    <section className="mobile-command-device-card" aria-label="Shift tracker">
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="inline-grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.08] text-[#7dcfff]">
-            <Clock3 aria-hidden className="h-5 w-5" />
+    <section
+      className={[
+        "mobile-command-device-card",
+        compact ? "mobile-command-device-card--compact" : "",
+      ].join(" ")}
+      aria-label="Shift tracker"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span
+            className={[
+              "inline-grid shrink-0 place-items-center rounded-xl bg-white/[0.08] text-[#7dcfff]",
+              compact ? "h-8 w-8" : "h-10 w-10",
+            ].join(" ")}
+          >
+            <Clock3 aria-hidden className={compact ? "h-4 w-4" : "h-5 w-5"} />
           </span>
           <div className="min-w-0">
-            <div className="text-[0.64rem] font-extrabold uppercase tracking-[0.17em] text-slate-400">
-              Shift tracker
+            {!compact ? (
+              <div className="text-[0.64rem] font-extrabold uppercase tracking-[0.17em] text-slate-400">
+                Shift tracker
+              </div>
+            ) : null}
+            <div
+              className={[
+                "font-bold text-white",
+                compact ? "text-sm" : "mt-1 text-base",
+              ].join(" ")}
+            >
+              {niceStatus}
+              {elapsed ? (
+                <span className="ml-1.5 font-medium text-slate-400">
+                  · {elapsed}
+                </span>
+              ) : null}
             </div>
-            <div className="mt-1 text-base font-bold text-white">{niceStatus}</div>
           </div>
         </div>
         <span
-          className={`mt-1 h-2.5 w-2.5 shrink-0 rounded-full ${
+          className={`h-2.5 w-2.5 shrink-0 rounded-full ${
             mode === "shift"
               ? "bg-emerald-400"
               : mode === "break" || mode === "lunch"
@@ -209,7 +242,7 @@ export default function MobileShiftTracker({ userId }: Props) {
         />
       </div>
 
-      {mode !== "none" && startTime && mode !== "ended" ? (
+      {!compact && mode !== "none" && startTime && mode !== "ended" ? (
         <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-black/15 p-2.5 text-xs">
           <div>
             <div className="text-[0.62rem] uppercase tracking-[0.12em] text-slate-400">
@@ -234,14 +267,14 @@ export default function MobileShiftTracker({ userId }: Props) {
       ) : null}
 
       {hasSyncAttention ? (
-        <div className="mt-3 rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-[0.68rem] leading-4 text-amber-100">
+        <div className="mt-2 rounded-xl border border-amber-300/25 bg-amber-400/10 px-3 py-2 text-[0.68rem] leading-4 text-amber-100">
           Shift changes pending {syncSummary.queued + syncSummary.syncing} · failed{" "}
           {syncSummary.failed} · conflicted {syncSummary.conflicted}
         </div>
       ) : null}
 
       {err ? (
-        <div className="mt-3 rounded-xl border border-rose-300/25 bg-rose-400/10 px-3 py-2 text-[0.68rem] leading-4 text-rose-100">
+        <div className="mt-2 rounded-xl border border-rose-300/25 bg-rose-400/10 px-3 py-2 text-[0.68rem] leading-4 text-rose-100">
           {err}
         </div>
       ) : null}
@@ -251,7 +284,10 @@ export default function MobileShiftTracker({ userId }: Props) {
           type="button"
           onClick={startShift}
           disabled={busy || !online}
-          className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#32b9f3] px-3 text-sm font-extrabold text-[#041022] shadow-lg disabled:opacity-55"
+          className={[
+            "inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#32b9f3] px-3 font-extrabold text-[#041022] shadow-lg disabled:opacity-55",
+            compact ? "mt-2 min-h-9 text-xs" : "mt-3 min-h-11 text-sm",
+          ].join(" ")}
         >
           <Play aria-hidden className="h-4 w-4 fill-current" />
           {busy ? "Starting…" : online ? "Clock in" : "Connect to clock in"}
@@ -259,41 +295,49 @@ export default function MobileShiftTracker({ userId }: Props) {
       ) : null}
 
       {mode !== "none" && mode !== "ended" ? (
-        <div className="mt-3 grid grid-cols-2 gap-2">
+        <div className={compact ? "mt-2 grid grid-cols-3 gap-1.5" : "mt-3 grid grid-cols-2 gap-2"}>
           <button
             type="button"
             onClick={toggleBreak}
             disabled={busy || mode === "lunch"}
-            className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border px-2 text-xs font-bold disabled:opacity-45 ${
+            className={`inline-flex items-center justify-center gap-1.5 rounded-xl border font-bold disabled:opacity-45 ${
+              compact ? "min-h-8 px-1.5 text-[10px]" : "min-h-10 px-2 text-xs"
+            } ${
               mode === "break"
                 ? "border-amber-300/40 bg-amber-400/15 text-amber-100"
                 : "border-white/15 bg-white/[0.06] text-white"
             }`}
           >
-            <Coffee aria-hidden className="h-4 w-4" />
-            {mode === "break" ? "End break" : "Break"}
+            <Coffee aria-hidden className="h-3.5 w-3.5" />
+            {mode === "break" ? "End" : "Break"}
           </button>
           <button
             type="button"
             onClick={toggleLunch}
             disabled={busy || mode === "break"}
-            className={`inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border px-2 text-xs font-bold disabled:opacity-45 ${
+            className={`inline-flex items-center justify-center gap-1.5 rounded-xl border font-bold disabled:opacity-45 ${
+              compact ? "min-h-8 px-1.5 text-[10px]" : "min-h-10 px-2 text-xs"
+            } ${
               mode === "lunch"
                 ? "border-amber-300/40 bg-amber-400/15 text-amber-100"
                 : "border-white/15 bg-white/[0.06] text-white"
             }`}
           >
-            <Utensils aria-hidden className="h-4 w-4" />
-            {mode === "lunch" ? "End lunch" : "Lunch"}
+            <Utensils aria-hidden className="h-3.5 w-3.5" />
+            {mode === "lunch" ? "End" : "Lunch"}
           </button>
           <button
             type="button"
             onClick={endShift}
             disabled={busy}
-            className="col-span-2 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-rose-300/25 bg-rose-400/10 px-3 text-xs font-bold text-rose-100 disabled:opacity-45"
+            className={`inline-flex items-center justify-center gap-1.5 rounded-xl border border-rose-300/25 bg-rose-400/10 font-bold text-rose-100 disabled:opacity-45 ${
+              compact
+                ? "min-h-8 px-1.5 text-[10px]"
+                : "col-span-2 min-h-10 px-3 text-xs"
+            }`}
           >
-            <LogOut aria-hidden className="h-4 w-4" />
-            End shift
+            <LogOut aria-hidden className="h-3.5 w-3.5" />
+            End
           </button>
         </div>
       ) : null}
@@ -303,7 +347,10 @@ export default function MobileShiftTracker({ userId }: Props) {
           type="button"
           onClick={startShift}
           disabled={busy}
-          className="mt-3 inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#32b9f3] px-3 text-sm font-extrabold text-[#041022] disabled:opacity-55"
+          className={[
+            "inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#32b9f3] px-3 font-extrabold text-[#041022] disabled:opacity-55",
+            compact ? "mt-2 min-h-9 text-xs" : "mt-3 min-h-11 text-sm",
+          ].join(" ")}
         >
           <Play aria-hidden className="h-4 w-4 fill-current" />
           {busy ? "Starting…" : "Start new shift"}

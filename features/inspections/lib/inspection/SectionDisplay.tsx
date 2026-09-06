@@ -277,18 +277,27 @@ export default function SectionDisplay(props: SectionDisplayProps) {
     typeof onUpdateLaborHours === "function" ||
     typeof onUpdateNoPartsRequired === "function";
 
-  // ✅ per-item UI state: collapse
-  const [partsOpenByKey, setPartsOpenByKey] = useState<Record<string, boolean>>(
-    {},
-  );
+  // ✅ per-item UI state: has the tech started adding a part yet?
+  const [partsAddingByKey, setPartsAddingByKey] = useState<
+    Record<string, boolean>
+  >({});
+
+  // ✅ per-item UI state: expand a submitted finding's summary row into
+  // its full (read-only) detail view.
+  const [expandedSubmittedByKey, setExpandedSubmittedByKey] = useState<
+    Record<string, boolean>
+  >({});
 
   // ✅ Qty filler state (string) so it can be blank until typed
   const [qtyDraftByKey, setQtyDraftByKey] = useState<Record<string, string>>(
     {},
   );
 
-  const setPartsOpen = (k: string, v: boolean) =>
-    setPartsOpenByKey((p) => ({ ...p, [k]: v }));
+  const setPartsAdding = (k: string, v: boolean) =>
+    setPartsAddingByKey((p) => ({ ...p, [k]: v }));
+
+  const setExpandedSubmitted = (k: string, v: boolean) =>
+    setExpandedSubmittedByKey((p) => ({ ...p, [k]: v }));
 
   const setQtyDraft = (k: string, v: string) =>
     setQtyDraftByKey((p) => ({ ...p, [k]: v }));
@@ -320,11 +329,11 @@ export default function SectionDisplay(props: SectionDisplayProps) {
       }
     >
       {/* Header */}
-      <div className="grid gap-4 border-b border-[var(--theme-card-border,var(--theme-border-soft))] pb-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+      <div className="grid gap-2.5 border-b border-[var(--theme-card-border,var(--theme-border-soft))] pb-3 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
         <div className="min-w-0">
           {gridSection ? (
             <div>
-              <div className="text-left text-lg font-semibold tracking-[-0.02em] text-[var(--theme-text-primary,var(--theme-text-primary))] md:text-xl">
+              <div className="text-left text-base font-semibold tracking-[-0.02em] text-[var(--theme-text-primary,var(--theme-text-primary))] md:text-lg">
                 {showGridFindings ? "Finding details" : resolvedTitle}
               </div>
               {showGridFindings ? (
@@ -337,7 +346,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
           ) : (
             <button
               onClick={toggleOpen}
-              className="text-left text-lg font-semibold tracking-[-0.02em] text-[var(--theme-text-primary,var(--theme-text-primary))] transition-opacity hover:opacity-80 md:text-xl"
+              className="text-left text-base font-semibold tracking-[-0.02em] text-[var(--theme-text-primary,var(--theme-text-primary))] transition-opacity hover:opacity-80 md:text-lg"
               aria-expanded={open}
               type="button"
             >
@@ -347,7 +356,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
           {!showGridFindings ? (
             <div
-              className="mt-3 flex flex-wrap items-center gap-1.5"
+              className="mt-2 flex flex-wrap items-center gap-1.5"
               aria-label="Section item counts"
             >
               <StatusBadge variant="success">{stats.ok} OK</StatusBadge>
@@ -420,7 +429,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
       {/* Body */}
       {open && (
-        <div className="pt-3">
+        <div className="pt-2.5">
           {/* Grid sections render their own UI elsewhere */}
           {gridSection && !showGridFindings ? (
             <div />
@@ -476,7 +485,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
 
                   const submitted = isSubmittedItem(item);
                   const k = `${sectionIndex}:${itemIndex}`;
-                  const partsOpen = partsOpenByKey[k] ?? !submitted;
+                  const partsAdding = partsAddingByKey[k] ?? false;
                   const submitting =
                     isSubmittingAI?.(sectionIndex, itemIndex) === true;
                   const lockInputs = submitted || submitting;
@@ -491,17 +500,86 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                     smartMatch?.pricingStatus,
                   );
 
+                  // Once a finding is submitted, collapse it to a compact
+                  // summary row so long inspections stay scannable. The tech
+                  // can tap it to review the full read-only detail.
+                  const itemLabel = String(
+                    item.item ?? item.name ?? "",
+                  ).trim();
+                  const isSummaryCollapsed =
+                    submitted && !(expandedSubmittedByKey[k] ?? false);
+
+                  if (isSummaryCollapsed) {
+                    const photoCount = Array.isArray(item.photoUrls)
+                      ? item.photoUrls.length
+                      : 0;
+                    const partsCount = getParts(item).length;
+                    const laborHours = getLaborHours(item);
+                    const summaryBits = [
+                      isFail ? "FAIL" : isRec ? "REC" : status.toUpperCase(),
+                      `${photoCount} photo${photoCount === 1 ? "" : "s"}`,
+                      `${partsCount} part${partsCount === 1 ? "" : "s"}`,
+                      ...(laborHours ? [`${laborHours}h`] : []),
+                      "Submitted",
+                    ];
+
+                    return (
+                      <div
+                        key={keyBase}
+                        className={[
+                          "relative",
+                          isFailOrRec ? "lg:col-span-2" : "",
+                          "before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:content-['']",
+                          rail,
+                          "ring-1 ring-emerald-500/35",
+                        ].join(" ")}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setExpandedSubmitted(k, true)}
+                          className="flex w-full min-w-0 items-center justify-between gap-2 px-3 py-2.5 text-left hover:bg-[color:var(--theme-surface-subtle)]"
+                        >
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-[13px] font-semibold text-[color:var(--theme-text-primary)]">
+                              {itemLabel || "—"}
+                            </span>
+                            <span className="mt-0.5 block truncate text-[11px] text-[color:var(--theme-text-secondary)]">
+                              {summaryBits.join(" · ")}
+                            </span>
+                          </span>
+                          <span className="shrink-0 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
+                            View
+                          </span>
+                        </button>
+                      </div>
+                    );
+                  }
+
                   return (
                     <div
                       key={keyBase}
                       className={[
-                        "relative px-3 py-3.5",
+                        "relative px-3 py-2.5",
                         isFailOrRec ? "lg:col-span-2" : "",
                         "before:absolute before:left-0 before:top-0 before:h-full before:w-[3px] before:content-['']",
                         rail,
                         submitted ? "ring-1 ring-emerald-500/35" : "",
                       ].join(" ")}
                     >
+                      {submitted ? (
+                        <div className="mb-2 flex items-center justify-between gap-2">
+                          <span className="rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200">
+                            Submitted
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setExpandedSubmitted(k, false)}
+                            className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
+                          >
+                            Collapse
+                          </button>
+                        </div>
+                      ) : null}
                       <InspectionItemCard
                         item={{
                           ...item,
@@ -699,64 +777,99 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         };
 
                         const submittedStamp = submittedAt(item);
+                        const showPartsFields =
+                          currentParts.length > 0 ||
+                          partsAdding ||
+                          lockInputs;
 
                         return (
-                          <div className="mt-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
-                            <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex items-center gap-2">
-                                <span className="text-[12px] font-semibold text-[color:var(--theme-text-primary)]">
-                                  Parts &amp; Labor
-                                </span>
-
-                                {submitted && (
-                                  <span className="rounded-full border border-emerald-500/50 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-emerald-200">
-                                    Submitted
-                                  </span>
-                                )}
-
-                                {submittedStamp && (
-                                  <span className="text-[10px] text-[color:var(--theme-text-muted)]">
-                                    {new Date(submittedStamp).toLocaleString()}
-                                  </span>
-                                )}
-                              </div>
-
-                              <div className="flex items-center gap-2">
-                                {submitted && (
-                                  <button
-                                    type="button"
-                                    className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
-                                    onClick={() => setPartsOpen(k, !partsOpen)}
-                                  >
-                                    {partsOpen ? "Collapse" : "Expand"}
-                                  </button>
-                                )}
-                              </div>
-                            </div>
-
-                            <label className="mb-2 flex min-h-10 cursor-pointer items-center gap-2 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+                          <div className="mt-2 space-y-2">
+                            {/* Labor stays a simple, always-visible compact field */}
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-[11px] text-[color:var(--theme-text-secondary)]">
+                                Labor
+                              </span>
                               <input
-                                type="checkbox"
-                                checked={noPartsRequired}
                                 disabled={lockInputs}
-                                onChange={(event) =>
-                                  handleNoPartsRequiredChange(
-                                    event.currentTarget.checked,
+                                className={[
+                                  "h-8 w-16 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 text-[11px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]",
+                                  "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
+                                  lockInputs
+                                    ? "opacity-60 cursor-not-allowed"
+                                    : "",
+                                ].join(" ")}
+                                placeholder="0.0"
+                                type="number"
+                                min={0}
+                                step={0.1}
+                                value={currentLabor ?? ""}
+                                onChange={(e) =>
+                                  handleLaborChange(
+                                    e.target.value === ""
+                                      ? null
+                                      : Number(e.target.value) || 0,
                                   )
                                 }
-                                className="h-4 w-4 rounded border-[color:var(--theme-border-soft)] accent-[var(--brand-primary,#C1663B)]"
                               />
-                              <span>
-                                No parts required
-                                <span className="ml-2 font-normal text-[color:var(--theme-text-muted)]">
-                                  Blank parts also skip Parts workflow.
-                                </span>
+                              <span className="text-[10px] text-[color:var(--theme-text-muted)]">
+                                hrs
                               </span>
-                            </label>
 
-                            {partsOpen && (
+                              {submittedStamp && (
+                                <span className="text-[10px] text-[color:var(--theme-text-muted)]">
+                                  {new Date(submittedStamp).toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Parts: progressive disclosure — starts as just "+ Add part" */}
+                            {!showPartsFields ? (
+                              <div className="flex flex-wrap items-center gap-3">
+                                <button
+                                  type="button"
+                                  onClick={() => setPartsAdding(k, true)}
+                                  className="inline-flex min-h-9 items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:border-accent/80 hover:text-accent"
+                                >
+                                  + Add part
+                                </button>
+                                <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
+                                  <input
+                                    type="checkbox"
+                                    checked={noPartsRequired}
+                                    disabled={lockInputs}
+                                    onChange={(event) =>
+                                      handleNoPartsRequiredChange(
+                                        event.currentTarget.checked,
+                                      )
+                                    }
+                                    className="h-4 w-4 rounded border-[color:var(--theme-border-soft)] accent-[var(--brand-primary,#C1663B)]"
+                                  />
+                                  No parts required
+                                </label>
+                              </div>
+                            ) : (
                               <>
-                                <div className="space-y-2">
+                                <label className="flex min-h-9 cursor-pointer items-center gap-2 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+                                  <input
+                                    type="checkbox"
+                                    checked={noPartsRequired}
+                                    disabled={lockInputs}
+                                    onChange={(event) =>
+                                      handleNoPartsRequiredChange(
+                                        event.currentTarget.checked,
+                                      )
+                                    }
+                                    className="h-4 w-4 rounded border-[color:var(--theme-border-soft)] accent-[var(--brand-primary,#C1663B)]"
+                                  />
+                                  <span>
+                                    No parts required
+                                    <span className="ml-2 font-normal text-[color:var(--theme-text-muted)]">
+                                      Blank parts also skip Parts workflow.
+                                    </span>
+                                  </span>
+                                </label>
+
+                                <div className="space-y-1.5">
                                   {currentParts.map((p, pIdx) => {
                                     const qtyKey = `${k}:part:${pIdx}:qty`;
                                     const draft = qtyDraftByKey[qtyKey];
@@ -861,51 +974,15 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                     );
                                   })}
 
-                                  <button
-                                    type="button"
-                                    disabled={lockInputs || noPartsRequired}
-                                    onClick={addEmptyPart}
-                                    className={[
-                                      "mt-1 inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]",
-                                      "hover:border-accent/80 hover:text-accent",
-                                      lockInputs || noPartsRequired
-                                        ? "opacity-50 cursor-not-allowed hover:border-[color:var(--theme-border-soft)] hover:text-[color:var(--theme-text-primary)]"
-                                        : "",
-                                    ].join(" ")}
-                                  >
-                                    + Add Part
-                                  </button>
-                                </div>
-
-                                <div className="mt-3 flex flex-wrap items-center gap-2">
-                                  <span className="text-[11px] text-[color:var(--theme-text-secondary)]">
-                                    Labor hours
-                                  </span>
-                                  <input
-                                    disabled={lockInputs}
-                                    className={[
-                                      "w-20 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1 text-[11px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]",
-                                      "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
-                                      lockInputs
-                                        ? "opacity-60 cursor-not-allowed"
-                                        : "",
-                                    ].join(" ")}
-                                    placeholder="0.0"
-                                    type="number"
-                                    min={0}
-                                    step={0.1}
-                                    value={currentLabor ?? ""}
-                                    onChange={(e) =>
-                                      handleLaborChange(
-                                        e.target.value === ""
-                                          ? null
-                                          : Number(e.target.value) || 0,
-                                      )
-                                    }
-                                  />
-                                  <span className="text-[10px] text-[color:var(--theme-text-muted)]">
-                                    (rate + pricing handled later)
-                                  </span>
+                                  {!lockInputs && !noPartsRequired ? (
+                                    <button
+                                      type="button"
+                                      onClick={addEmptyPart}
+                                      className="mt-1 inline-flex min-h-9 items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:border-accent/80 hover:text-accent"
+                                    >
+                                      + Add another
+                                    </button>
+                                  ) : null}
                                 </div>
                               </>
                             )}

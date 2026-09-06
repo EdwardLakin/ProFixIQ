@@ -134,6 +134,16 @@
   border-radius: 0.8rem !important;
 }
 
+/* The next-action strip is the actual destination of the WO screen: it
+ * should visually outrank the identity/detail chrome above it. */
+.mobile-work-order-next-action {
+  border-color: rgba(61, 113, 255, 0.42) !important;
+  background:
+    radial-gradient(circle at 100% 0%, rgba(25, 183, 255, 0.16), transparent 14rem),
+    var(--theme-surface-panel);
+  box-shadow: 0 14px 34px rgba(3, 13, 32, 0.14);
+}
+
 /* Focused-job header owns the safe area and reads as app chrome. */
 .profixiq-mobile-command .app-shell > .metal-bar {
   min-height: calc(4rem + env(safe-area-inset-top, 0px));

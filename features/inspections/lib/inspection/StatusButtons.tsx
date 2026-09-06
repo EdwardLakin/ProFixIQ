@@ -76,17 +76,19 @@ export default function StatusButtons(_props: StatusButtonsProps) {
     "select-none " +
     "font-semibold uppercase tracking-[0.16em] " +
     "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] text-[color:var(--theme-text-primary)] " +
-    "transition-colors duration-150 " +
+    "transition-[background-color,border-color,box-shadow] duration-150 " +
     "focus:outline-none focus:ring-2 focus:ring-[rgba(184,115,51,0.55)] " + // copper focus ring
     "focus:ring-offset-2 focus:ring-offset-[color:var(--theme-surface-page)]";
 
+  // Selected status should visually outrank the surrounding chrome: a bit
+  // more saturation plus a matching ring, not just a border tint.
   const cls = (key: InspectionItemStatus) => {
     const isSel = selected === key;
 
     switch (key) {
       case "ok": {
         const selectedClasses =
-          " border-emerald-400/80 bg-emerald-50 text-emerald-800 dark:bg-emerald-950/45 dark:text-emerald-100";
+          " border-emerald-500 bg-emerald-100 text-emerald-900 shadow-[0_0_0_1px_rgba(16,185,129,0.45)] dark:bg-emerald-900/55 dark:text-emerald-50";
         const hover =
           " hover:border-emerald-400/80 hover:bg-emerald-50 hover:text-emerald-800 dark:hover:bg-emerald-950/35 dark:hover:text-emerald-100";
         return base + hover + (isSel ? " " + selectedClasses : "");
@@ -94,7 +96,7 @@ export default function StatusButtons(_props: StatusButtonsProps) {
 
       case "fail": {
         const selectedClasses =
-          " border-red-400/80 bg-red-50 text-red-800 dark:bg-red-950/45 dark:text-red-100";
+          " border-red-500 bg-red-100 text-red-900 shadow-[0_0_0_1px_rgba(239,68,68,0.45)] dark:bg-red-900/55 dark:text-red-50";
         const hover =
           " hover:border-red-400/80 hover:bg-red-50 hover:text-red-800 dark:hover:bg-red-950/35 dark:hover:text-red-100";
         return base + hover + (isSel ? " " + selectedClasses : "");
@@ -102,7 +104,7 @@ export default function StatusButtons(_props: StatusButtonsProps) {
 
       case "recommend": {
         const selectedClasses =
-          " border-amber-400/80 bg-amber-50 text-amber-900 dark:bg-amber-950/45 dark:text-amber-100";
+          " border-amber-500 bg-amber-100 text-amber-950 shadow-[0_0_0_1px_rgba(245,158,11,0.45)] dark:bg-amber-900/55 dark:text-amber-50";
         const hover =
           " hover:border-amber-400/80 hover:bg-amber-50 hover:text-amber-900 dark:hover:bg-amber-950/35 dark:hover:text-amber-100";
         return base + hover + (isSel ? " " + selectedClasses : "");
@@ -111,7 +113,7 @@ export default function StatusButtons(_props: StatusButtonsProps) {
       case "na":
       default: {
         const selectedClasses =
-          " border-sky-400/80 bg-sky-50 text-sky-800 dark:bg-sky-950/45 dark:text-sky-100";
+          " border-sky-500 bg-sky-100 text-sky-900 shadow-[0_0_0_1px_rgba(14,165,233,0.45)] dark:bg-sky-900/55 dark:text-sky-50";
         const hover =
           " hover:border-sky-400/80 hover:bg-sky-50 hover:text-sky-800 dark:hover:bg-sky-950/35 dark:hover:text-sky-100";
         return base + hover + (isSel ? " " + selectedClasses : "");

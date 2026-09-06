@@ -84,6 +84,10 @@ describe("inspection early finding submission UI", () => {
       />,
     );
 
+    // A submitted finding first collapses to a compact summary row; tap it
+    // to review the full read-only detail.
+    fireEvent.click(screen.getByRole("button", { name: /Submitted/i }));
+
     expect(
       screen.getByRole("button", { name: "Submitted to Quote Review" }),
     ).toBeDisabled();

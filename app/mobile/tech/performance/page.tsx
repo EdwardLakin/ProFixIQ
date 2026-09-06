@@ -11,7 +11,6 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { toast } from "sonner";
 
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { Button } from "@shared/components/ui/Button";
@@ -47,6 +46,7 @@ export default function MobileTechPerformancePage() {
   const [error, setError] = useState<string | null>(null);
   const [aiSummary, setAiSummary] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [aiUnavailable, setAiUnavailable] = useState(false);
 
   useEffect(() => {
     void (async () => {
@@ -96,6 +96,7 @@ export default function MobileTechPerformancePage() {
       setLoading(true);
       setError(null);
       setAiSummary(null);
+      setAiUnavailable(false);
 
       try {
         const result = await getTechLeaderboard(shopId, range, userId ?? undefined);
@@ -127,6 +128,7 @@ export default function MobileTechPerformancePage() {
 
     void (async () => {
       setAiLoading(true);
+      setAiUnavailable(false);
       try {
         const response = await fetch("/api/ai/summarize-tech-performance", {
           method: "POST",
@@ -152,10 +154,16 @@ export default function MobileTechPerformancePage() {
         }
 
         const json = (await response.json()) as { summary?: string };
-        if (json.summary) setAiSummary(json.summary);
+        if (json.summary) {
+          setAiSummary(json.summary);
+        } else {
+          setAiUnavailable(true);
+        }
       } catch (caught) {
+        // One graceful unavailable state below covers this — no toast, so
+        // the tech isn't told about the same failure twice.
         console.error(caught);
-        toast.error("AI performance summary could not be generated.");
+        setAiUnavailable(true);
       } finally {
         setAiLoading(false);
       }
@@ -292,12 +300,14 @@ export default function MobileTechPerformancePage() {
               <p className="whitespace-pre-wrap text-sm leading-6 text-[color:var(--theme-text-primary)]">
                 {aiSummary}
               </p>
-            ) : !aiLoading ? (
-              <p className="text-sm text-[color:var(--theme-text-secondary)]">
-                No summary is available for this range.
-              </p>
-            ) : (
+            ) : aiLoading ? (
               <div className="h-20 animate-pulse rounded-xl bg-[color:var(--theme-surface-subtle)]" />
+            ) : (
+              <p className="text-sm text-[color:var(--theme-text-secondary)]">
+                {aiUnavailable
+                  ? "A plain-language summary isn't available right now — the metrics above are still accurate."
+                  : "No summary is available for this range."}
+              </p>
             )}
           </div>
         </section>

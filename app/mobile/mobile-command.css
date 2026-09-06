@@ -644,6 +644,22 @@
   }
 }
 
+/* iPad/tablet: these single-column flows keep their layout but stop
+ * capping out at a narrow desktop-style column once there's real width
+ * to use — job details, inspection findings, performance and vehicle
+ * history all benefit from the extra room. Mobile phones (<820px) are
+ * untouched. */
+@media (min-width: 820px) {
+  .mobile-dashboard-page,
+  .profixiq-mobile-command .mobile-tech-page,
+  .profixiq-mobile-command .mobile-work-order-queue,
+  .mobile-work-order-command-detail .relative.space-y-5,
+  .profixiq-mobile-command .max-w-3xl,
+  .profixiq-mobile-command .max-w-4xl {
+    max-width: 68rem;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .profixiq-mobile-command *,
   .profixiq-mobile-command *::before,

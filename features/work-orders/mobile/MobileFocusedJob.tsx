@@ -997,14 +997,14 @@ export default function MobileFocusedJob(props: {
 
         {/* Body */}
         <main className="mobile-tech-page flex-1 overflow-y-auto px-3 py-3">
-          <div className="mx-auto max-w-4xl space-y-4">
+          <div className="mx-auto max-w-4xl space-y-3">
             {busy && !line ? (
               <div className="grid gap-3">
                 <div className="h-6 w-40 animate-pulse rounded-full bg-[color:var(--theme-surface-subtle)]" />
                 <div className="h-24 animate-pulse rounded-2xl bg-[color:var(--theme-surface-subtle)]" />
               </div>
             ) : !line ? (
-              <div className={`${panel} px-4 py-4 text-sm text-[color:var(--theme-text-secondary)]`}>
+              <div className={`${panel} px-3 py-3 text-sm text-[color:var(--theme-text-secondary)]`}>
                 No job found.
               </div>
             ) : (
@@ -1144,7 +1144,7 @@ export default function MobileFocusedJob(props: {
                 </details>
 
                 {/* vehicle & customer */}
-                <div className={`${panel} px-4 py-4 text-sm`}>
+                <div className={`${panel} px-3 py-3 text-sm`}>
                   <div className="grid gap-3 md:grid-cols-2">
                     <div>
                       <div className={fieldLabel}>Vehicle</div>
@@ -1177,7 +1177,7 @@ export default function MobileFocusedJob(props: {
                 </div>
 
                 {/* controls */}
-                <div className={`${panel} px-4 py-4`}>
+                <div className={`${panel} px-3 py-3`}>
                   <div className="mb-2 text-[11px] uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">Operational actions</div>
                   <div className="grid gap-2 md:grid-cols-3">
                   {mode === "tech" ? (
@@ -1276,7 +1276,7 @@ export default function MobileFocusedJob(props: {
                 </div>
 
                 {workOrder?.id ? (
-                  <div className={`${panel} px-4 py-4`}>
+                  <div className={`${panel} px-3 py-3`}>
                     <WorkOrderMediaGallery
                       workOrderId={workOrder.id}
                       workOrderLineId={workOrderLineId}
@@ -1287,7 +1287,7 @@ export default function MobileFocusedJob(props: {
 
                 {/* offline sync queue */}
                 {(stagedPhotos.length > 0 || offlineMutations.length > 0) && (
-                  <div className={`${panel} px-4 py-4`}>
+                  <div className={`${panel} px-3 py-3`}>
                     <div className="mb-2 text-sm font-medium text-[color:var(--theme-text-primary)]">Offline sync queue</div>
                     {stagedPhotos.map((photo) => (
                       <div
@@ -1338,7 +1338,7 @@ export default function MobileFocusedJob(props: {
                 )}
 
                 {/* parts used */}
-                <div className={`${panel} px-4 py-4`}>
+                <div className={`${panel} px-3 py-3`}>
                   <div className="mb-2 text-sm font-medium text-[color:var(--theme-text-primary)]">
                     Parts used
                   </div>
@@ -1406,7 +1406,7 @@ export default function MobileFocusedJob(props: {
                 </div>
 
                 {/* tech notes */}
-                <div className={`${panel} px-4 py-4`}>
+                <div className={`${panel} px-3 py-3`}>
                   <div className="mb-2 flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <label className="block text-sm font-medium text-[color:var(--theme-text-primary)]">
@@ -1450,7 +1450,7 @@ export default function MobileFocusedJob(props: {
                 </div>
 
                 {/* AI suggestions */}
-                <div className={`${panel} px-4 py-4`}>
+                <div className={`${panel} px-3 py-3`}>
                   <h3 className="mb-2 text-sm font-medium text-[color:var(--theme-text-primary)]">
                     AI Suggested Repairs
                   </h3>
@@ -1472,7 +1472,10 @@ export default function MobileFocusedJob(props: {
                 </div>
 
                 <div className="pb-16 text-[11px] text-[color:var(--theme-text-secondary)]">
-                  Job ID: {line.id}
+                  {workOrder?.custom_id?.trim() ||
+                    (workOrder?.id
+                      ? `WO-${workOrder.id.slice(0, 8)}`
+                      : "Job")}
                   {typeof line.labor_time === "number"
                     ? ` • Labor: ${line.labor_time.toFixed(1)}h`
                     : ""}
