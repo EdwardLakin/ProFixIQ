@@ -3272,9 +3272,9 @@ type SmartMatchRow = {
                                 }
                                 disabled={isLocked}
                               />
-                              <div className="flex items-center gap-2 md:w-auto">
+                              <div className="flex min-w-0 flex-wrap items-center gap-2 md:w-auto md:flex-nowrap">
                                 <select
-                                  className="rounded-lg border border-[var(--theme-card-border,var(--theme-border-soft))] bg-[color:color-mix(in_srgb,var(--theme-surface-2,var(--theme-surface-page))_80%,transparent)] px-2 py-1.5 text-sm text-[var(--theme-text-primary,var(--theme-text-primary))] focus:border-[var(--brand-accent,#E39A6E)] focus:outline-none focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_55%,transparent)]"
+                                  className="min-w-0 flex-1 rounded-lg border border-[var(--theme-card-border,var(--theme-border-soft))] bg-[color:color-mix(in_srgb,var(--theme-surface-2,var(--theme-surface-page))_80%,transparent)] px-2 py-1.5 text-sm text-[var(--theme-text-primary,var(--theme-text-primary))] focus:border-[var(--brand-accent,#E39A6E)] focus:outline-none focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-accent,#E39A6E)_55%,transparent)] md:flex-none md:w-auto"
                                   value={newUnit}
                                   onChange={(e) =>
                                     setNewItemUnits((prev) => ({
