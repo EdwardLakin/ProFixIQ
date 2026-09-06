@@ -772,41 +772,43 @@ export default function NewChatModal({
     });
   }, [visibleRecentConversationIds, buildRecentLabel]);
 
+  const currentRoleLabel =
+    ROLE_OPTIONS.find((r) => r.value === role)?.label ?? "All roles";
+
   return (
-    <ModalShell isOpen={isOpen} onClose={onClose} title="Team chat" size="xl">
+    <ModalShell isOpen={isOpen} onClose={onClose} title="Team chat" size="lg">
       {/* helper row */}
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="text-xs text-[color:var(--theme-text-secondary)]">
-          Pick recipients → type → send. Conversation is created automatically.
+      <div className="mb-2.5 flex items-center justify-between gap-3">
+        <div className="text-[11px] text-[color:var(--theme-text-secondary)]">
+          Pick recipients → type → send.
         </div>
         <a
           href={historyHref}
-          className="text-xs text-amber-300 hover:text-amber-200"
+          className="text-[11px] text-amber-300 hover:text-amber-200"
         >
-          Open conversation history →
+          History →
         </a>
       </div>
 
-      {/* Controls row: Recipients + Roles (equal size) */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        {/* Recipients */}
-        <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3">
-          {apiError ? (
-            <div className="mb-2 rounded border border-red-500/30 bg-red-950/30 px-3 py-2 text-xs text-red-100">
-              {apiError}
-            </div>
-          ) : null}
+      {apiError ? (
+        <div className="mb-2 rounded border border-red-500/30 bg-red-950/30 px-3 py-2 text-xs text-red-100">
+          {apiError}
+        </div>
+      ) : null}
 
-          <div className="flex flex-wrap items-center gap-2">
+      {/* Compact toolbar: recipients (flexible) + role filter (fixed) */}
+      <div className="flex flex-col gap-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-2 sm:flex-row sm:items-start">
+        <div ref={pickerRef} className="relative min-w-0 flex-1">
+          <div className="flex flex-wrap items-center gap-1.5">
             <button
               type="button"
               onClick={() => {
                 setPickerOpen((o) => !o);
                 setRoleOpen(false);
               }}
-              className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-1.5 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]"
+              className="shrink-0 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-2.5 py-1.5 text-[11px] font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]"
             >
-              {pickerOpen ? "Close recipients" : "Select recipients"}
+              {pickerOpen ? "Close" : "Recipients"}
             </button>
 
             {selectedUsers.length === 0 ? (
@@ -835,129 +837,115 @@ export default function NewChatModal({
           </div>
 
           {pickerOpen && (
-            <div ref={pickerRef} className="relative mt-2">
-              <div className="absolute z-[520] w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2 shadow-xl">
-                <div className="flex gap-2">
-                  <input
-                    value={search}
-                    onChange={(e) => setSearch(e.target.value)}
-                    placeholder="Search name, role, or email…"
-                    className="flex-1 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-amber-400 focus:outline-none"
-                  />
-                </div>
+            <div className="absolute z-[520] mt-2 w-[min(90vw,22rem)] rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2 shadow-xl">
+              <div className="flex gap-2">
+                <input
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  placeholder="Search name, role, or email…"
+                  className="flex-1 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-amber-400 focus:outline-none"
+                />
+              </div>
 
-                <div className="mt-2 max-h-56 overflow-y-auto rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]">
-                  {loadingUsers ? (
-                    <div className="p-3 text-xs text-[color:var(--theme-text-secondary)]">
-                      Loading…
-                    </div>
-                  ) : filtered.length === 0 ? (
-                    <div className="p-3 text-xs text-[color:var(--theme-text-secondary)]">
-                      No users match this filter.
-                    </div>
-                  ) : (
-                    <ul className="divide-y divide-[color:var(--theme-border-soft)] text-sm">
-                      {filtered.map((u) => {
-                        const checked = selectedIds.includes(u.id);
-                        return (
-                          <li key={u.id}>
-                            <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]">
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 accent-amber-500"
-                                checked={checked}
-                                onChange={() => toggle(u.id)}
-                              />
-                              <div className="min-w-0">
-                                <div className="truncate">
-                                  {u.full_name ?? "(no name)"}
-                                </div>
-                                <div className="truncate text-[10px] text-[color:var(--theme-text-secondary)]">
-                                  {u.role ?? "—"}
-                                  {u.email ? ` • ${u.email}` : ""}
-                                </div>
+              <div className="mt-2 max-h-56 overflow-y-auto rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]">
+                {loadingUsers ? (
+                  <div className="p-3 text-xs text-[color:var(--theme-text-secondary)]">
+                    Loading…
+                  </div>
+                ) : filtered.length === 0 ? (
+                  <div className="p-3 text-xs text-[color:var(--theme-text-secondary)]">
+                    No users match this filter.
+                  </div>
+                ) : (
+                  <ul className="divide-y divide-[color:var(--theme-border-soft)] text-sm">
+                    {filtered.map((u) => {
+                      const checked = selectedIds.includes(u.id);
+                      return (
+                        <li key={u.id}>
+                          <label className="flex cursor-pointer items-center gap-2 px-3 py-2 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]">
+                            <input
+                              type="checkbox"
+                              className="h-4 w-4 accent-amber-500"
+                              checked={checked}
+                              onChange={() => toggle(u.id)}
+                            />
+                            <div className="min-w-0">
+                              <div className="truncate">
+                                {u.full_name ?? "(no name)"}
                               </div>
-                            </label>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  )}
-                </div>
+                              <div className="truncate text-[10px] text-[color:var(--theme-text-secondary)]">
+                                {u.role ?? "—"}
+                                {u.email ? ` • ${u.email}` : ""}
+                              </div>
+                            </div>
+                          </label>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
 
-                <div className="mt-2 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setPickerOpen(false)}
-                    className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] px-2 py-1 text-[11px] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-hover)]"
-                  >
-                    Done
-                  </button>
-                </div>
+              <div className="mt-2 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setPickerOpen(false)}
+                  className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] px-2 py-1 text-[11px] text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-hover)]"
+                >
+                  Done
+                </button>
               </div>
             </div>
           )}
         </div>
 
-        {/* Roles (separate dropdown, equal size) */}
-        <div className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setRoleOpen((o) => !o);
-                setPickerOpen(false);
-              }}
-              className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-1.5 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]"
-            >
-              {roleOpen ? "Close role filter" : "Filter roles"}
-            </button>
-            <div className="text-[11px] text-[color:var(--theme-text-muted)]">
-              Current:{" "}
-              {ROLE_OPTIONS.find((r) => r.value === role)?.label ?? "All roles"}
-            </div>
-          </div>
+        {/* Role filter — compact, anchored to the right */}
+        <div ref={roleRef} className="relative shrink-0">
+          <button
+            type="button"
+            onClick={() => {
+              setRoleOpen((o) => !o);
+              setPickerOpen(false);
+            }}
+            className="rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-2.5 py-1.5 text-[11px] font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]"
+          >
+            {currentRoleLabel}
+          </button>
 
           {roleOpen && (
-            <div ref={roleRef} className="relative mt-2">
-              <div className="absolute z-[520] w-full rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2 shadow-xl">
-                <ul className="max-h-56 overflow-auto divide-y divide-[color:var(--theme-border-soft)]">
-                  {ROLE_OPTIONS.map((r) => (
-                    <li key={r.value}>
-                      <label className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]">
-                        <span>{r.label}</span>
-                        <input
-                          type="radio"
-                          name="role-filter"
-                          className="h-4 w-4 accent-amber-500"
-                          checked={role === r.value}
-                          onChange={() => {
-                            setRole(r.value);
-                            setRoleOpen(false);
-                          }}
-                        />
-                      </label>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+            <div className="absolute right-0 z-[520] mt-2 w-48 rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-2 shadow-xl">
+              <ul className="max-h-56 overflow-auto divide-y divide-[color:var(--theme-border-soft)]">
+                {ROLE_OPTIONS.map((r) => (
+                  <li key={r.value}>
+                    <label className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel-strong)]">
+                      <span>{r.label}</span>
+                      <input
+                        type="radio"
+                        name="role-filter"
+                        className="h-4 w-4 accent-amber-500"
+                        checked={role === r.value}
+                        onChange={() => {
+                          setRole(r.value);
+                          setRoleOpen(false);
+                        }}
+                      />
+                    </label>
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
         </div>
       </div>
 
-      {/* Recents */}
-      <div className="mt-3 flex items-center gap-2">
-        <div className="text-[11px] text-[color:var(--theme-text-muted)]">
-          Recent:
-        </div>
-        <div className="flex flex-wrap gap-2">
-          {visibleRecentConversationIds.length === 0 ? (
-            <div className="text-[11px] text-[color:var(--theme-text-muted)]">
-              No recent threads.
-            </div>
-          ) : (
-            visibleRecentConversationIds.slice(0, 12).map((id) => {
+      {/* Recents — only takes space when there's something to show */}
+      {visibleRecentConversationIds.length > 0 ? (
+        <div className="mt-2 flex items-center gap-2 overflow-x-auto">
+          <div className="shrink-0 text-[10px] uppercase tracking-[0.1em] text-[color:var(--theme-text-muted)]">
+            Recent
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {visibleRecentConversationIds.slice(0, 12).map((id) => {
               const active = id === activeConvoId;
               const label = recentLabels[id] || id.slice(0, 8);
               return (
@@ -978,36 +966,31 @@ export default function NewChatModal({
                   {label}
                 </button>
               );
-            })
-          )}
-        </div>
-      </div>
-
-      {/* CHAT — full width */}
-      <div className="mt-3 flex min-h-[360px] flex-col rounded border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]">
-        <div className="flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] px-4 py-2">
-          <div className="flex items-center gap-2">
-            <div className="text-sm font-medium text-[color:var(--theme-text-primary)]">
-              {activeConvoId
-                ? "Conversation"
-                : "New conversation (not saved until you send)"}
-            </div>
+            })}
           </div>
-          {activeConvoId ? (
-            <div className="text-[10px] text-[color:var(--theme-text-muted)]">
-              ID: {activeConvoId.slice(0, 8)}
-            </div>
-          ) : null}
+        </div>
+      ) : null}
+
+      {/* CHAT — bounded height so an empty conversation doesn't reserve a
+          huge blank panel, while an active one gets a comfortable, scrollable
+          message list with the composer always anchored below it. */}
+      <div className="mt-2.5 flex h-[min(58vh,28rem)] flex-col overflow-hidden rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]">
+        <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] px-3 py-2">
+          <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">
+            {activeConvoId
+              ? "Conversation"
+              : "New conversation (not saved until you send)"}
+          </div>
         </div>
 
         {/* messages */}
-        <div className="flex-1 space-y-2 overflow-y-auto px-3 py-3">
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto px-3 py-3">
           {messagesLoading ? (
-            <div className="py-6 text-center text-xs text-[color:var(--theme-text-muted)]">
+            <div className="flex h-full items-center justify-center text-center text-xs text-[color:var(--theme-text-muted)]">
               Loading messages…
             </div>
           ) : messages.length === 0 ? (
-            <div className="py-6 text-center text-xs text-[color:var(--theme-text-muted)]">
+            <div className="flex h-full items-center justify-center text-center text-xs text-[color:var(--theme-text-muted)]">
               {activeConvoId
                 ? "No messages yet."
                 : "Pick recipients and send a message to start."}
@@ -1053,8 +1036,8 @@ export default function NewChatModal({
           <div ref={bottomRef} />
         </div>
 
-        {/* composer */}
-        <div className="flex items-end gap-2 border-t border-[color:var(--theme-border-soft)] p-3">
+        {/* composer — always anchored at the bottom of the fixed-height panel */}
+        <div className="flex shrink-0 items-end gap-2 border-t border-[color:var(--theme-border-soft)] p-2.5">
           <textarea
             value={sendText}
             onChange={(e) => setSendText(e.target.value)}

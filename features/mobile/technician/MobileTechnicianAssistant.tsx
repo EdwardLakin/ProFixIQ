@@ -68,6 +68,7 @@ export default function MobileTechnicianAssistant({
     () => Boolean(vehicle?.year && vehicle?.make && vehicle?.model),
     [vehicle],
   );
+  const hasConversation = messages.length > 0 || sending || partial.length > 0;
   const currentVehicle = vehicleLabel(vehicle);
   const inputClass =
     "w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] outline-none transition focus:border-[var(--accent-copper-soft)] focus:ring-2 focus:ring-[var(--accent-copper-soft)]/35";
@@ -226,9 +227,17 @@ export default function MobileTechnicianAssistant({
       </details>
 
       <section className="overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] shadow-[var(--theme-shadow-soft)]">
+        {/* An empty conversation only needs a compact ~40-50% sheet; once a
+            conversation exists it expands toward a full, comfortably
+            scrollable height rather than reserving all that space up front. */}
         <div
           ref={scrollRef}
-          className="max-h-[46dvh] min-h-[220px] space-y-3 overflow-y-auto p-3"
+          className={[
+            "space-y-3 overflow-y-auto p-3",
+            hasConversation
+              ? "max-h-[65dvh] min-h-[220px]"
+              : "max-h-[42dvh] min-h-[140px]",
+          ].join(" ")}
           style={{ WebkitOverflowScrolling: "touch" }}
         >
           {messages.length === 0 && !sending ? (
