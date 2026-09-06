@@ -1,6 +1,9 @@
 // app/api/ai/summarize-tech-performance/route.ts
 import { NextResponse } from "next/server";
-import { openai } from "lib/server/openai";
+import {
+  getOpenAIClient,
+  isOpenAIConfigured,
+} from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
@@ -81,6 +84,26 @@ export async function POST(req: Request) {
     const productivityPct = safeNumber(tech.productivityPct);
     const overallPerformancePct = safeNumber(tech.overallPerformancePct);
 
+    // Deterministic fallback so the UI always has something to show, even
+    // when OpenAI isn't configured or the completion call fails.
+    const peerComparison =
+      peerCount > 0
+        ? efficiencyPct >= avgPeerEff
+          ? `That's at or above the shop average of ${avgPeerEff.toFixed(1)}%.`
+          : `That's below the shop average of ${avgPeerEff.toFixed(1)}%.`
+        : "";
+    const fallbackSummary = [
+      `${tech.name || "You"} logged ${tech.jobs} job${tech.jobs === 1 ? "" : "s"} and ${flaggedHours.toFixed(1)} flagged hours against ${attendanceHours.toFixed(1)} attendance hours ${timeLabel}.`,
+      `Efficiency is ${efficiencyPct.toFixed(1)}% and productivity is ${productivityPct.toFixed(1)}%. ${peerComparison}`,
+      "Keep logging job time promptly and flag completed work as soon as it's done to keep these numbers accurate.",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    if (!isOpenAIConfigured()) {
+      return NextResponse.json({ summary: fallbackSummary }, { status: 200 });
+    }
+
     const userPrompt = [
       `You are helping an auto repair shop summarize one technician's performance ${timeLabel}.`,
       "",
@@ -109,25 +132,31 @@ export async function POST(req: Request) {
       "Do NOT use bullet points. Keep it under 120 words. No greetings or sign-offs.",
     ].join("\n");
 
-    const completion = await openai.chat.completions.create({
-      model: getOpenAIModelForPurpose("fast"),
-      ...openAITemperatureParam(getOpenAIModelForPurpose("fast"), 0.4),
-      max_completion_tokens: 260,
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an auto repair shop performance coach. You speak clearly and concisely to technicians about their numbers.",
-        },
-        { role: "user", content: userPrompt },
-      ],
-    });
+    try {
+      const model = getOpenAIModelForPurpose("fast");
+      const completion = await getOpenAIClient().chat.completions.create({
+        model,
+        ...openAITemperatureParam(model, 0.4),
+        max_completion_tokens: 260,
+        messages: [
+          {
+            role: "system",
+            content:
+              "You are an auto repair shop performance coach. You speak clearly and concisely to technicians about their numbers.",
+          },
+          { role: "user", content: userPrompt },
+        ],
+      });
 
-    const summary =
-      completion.choices[0]?.message?.content?.trim() ??
-      "No AI summary could be generated.";
+      const summary =
+        completion.choices[0]?.message?.content?.trim() || fallbackSummary;
 
-    return NextResponse.json({ summary }, { status: 200 });
+      return NextResponse.json({ summary }, { status: 200 });
+    } catch (aiError) {
+      // eslint-disable-next-line no-console
+      console.error("[AI] summarize-tech-performance completion error:", aiError);
+      return NextResponse.json({ summary: fallbackSummary }, { status: 200 });
+    }
   } catch (error) {
     // eslint-disable-next-line no-console
     console.error("[AI] summarize-tech-performance error:", error);
