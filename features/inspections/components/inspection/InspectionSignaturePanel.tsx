@@ -279,20 +279,18 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
     Boolean(validUuid(inspectionId)) || Boolean(resolvedWorkOrderLineId);
 
   return (
-    <div className="flex flex-col gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] p-4 text-xs text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-soft)]">
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-            {header}
-          </div>
-          <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
-            {roleSubtext(role)}
-          </div>
+    <div className="flex min-w-0 max-w-full flex-col gap-2.5 overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] p-3 text-xs text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-soft)] sm:p-4">
+      <div className="min-w-0">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+          {header}
+        </div>
+        <div className="mt-0.5 break-words text-[11px] text-[color:var(--theme-text-secondary)]">
+          {roleSubtext(role)}
         </div>
       </div>
 
       <label
-        className="mt-1 text-[11px] font-medium text-[color:var(--theme-text-secondary)]"
+        className="block min-w-0 text-[11px] font-medium text-[color:var(--theme-text-secondary)]"
         onClick={() => {
           if (!nameLocked) nameInputRef.current?.focus();
         }}
@@ -305,7 +303,7 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
           onChange={(event) => setName(event.target.value)}
           disabled={nameLocked}
           className={[
-            "mt-1 h-10 w-full rounded-lg border px-3 py-2 text-sm outline-none transition",
+            "mt-1 h-9 w-full min-w-0 rounded-lg border px-2.5 py-1.5 text-sm outline-none transition",
             nameLocked
               ? "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]"
               : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)] focus:border-[color:var(--brand-primary)] focus:ring-2 focus:ring-[color:color-mix(in_srgb,var(--brand-primary)_24%,transparent)]",
@@ -317,32 +315,34 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
           }
         />
         {role === "technician" && nameLocked ? (
-          <div className="mt-1.5 text-[10px] text-[color:var(--theme-text-secondary)]">
+          <div className="mt-1.5 break-words text-[10px] text-[color:var(--theme-text-secondary)]">
             Tech name is pulled from your profile (edit in your account settings
             if needed).
           </div>
         ) : null}
       </label>
 
-      <label className="flex items-start gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5 text-[11px] text-[color:var(--theme-text-secondary)]">
+      <label className="flex min-w-0 flex-wrap items-start gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5 text-[11px] text-[color:var(--theme-text-secondary)]">
         <input
           type="checkbox"
           checked={confirm}
           onChange={(event) => setConfirm(event.target.checked)}
-          className="mt-[1px] h-3.5 w-3.5 rounded border border-[color:var(--theme-border-strong)] bg-[color:var(--theme-surface-page)] text-[color:var(--brand-primary)]"
+          className="mt-[1px] h-3.5 w-3.5 shrink-0 rounded border border-[color:var(--theme-border-strong)] bg-[color:var(--theme-surface-page)] text-[color:var(--brand-primary)]"
         />
-        <span>{confirmText(role)}</span>
+        <span className="min-w-0 flex-1 break-words">
+          {confirmText(role)}
+        </span>
       </label>
 
       {!canResolveInspection && (
-        <p className="rounded-xl border border-amber-500/30 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:bg-amber-950/35 dark:text-amber-200">
+        <p className="min-w-0 break-words rounded-xl border border-amber-500/30 bg-amber-50 px-3 py-2 text-[11px] text-amber-800 dark:bg-amber-950/35 dark:text-amber-200">
           This inspection has not been anchored to a work-order line yet. Save
           or reopen it before signing.
         </p>
       )}
 
       {role === "technician" ? (
-        <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
+        <p className="min-w-0 break-words text-[11px] text-[color:var(--theme-text-secondary)]">
           Your saved profile signature is applied automatically when you sign.
           {techSettingsHref ? (
             <>

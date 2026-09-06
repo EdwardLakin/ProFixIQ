@@ -785,46 +785,48 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                         return (
                           <div className="mt-2 space-y-2">
                             {/* Labor stays a simple, always-visible compact field */}
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-[11px] text-[color:var(--theme-text-secondary)]">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="shrink-0 text-[11px] text-[color:var(--theme-text-secondary)]">
                                 Labor
                               </span>
-                              <input
-                                disabled={lockInputs}
-                                className={[
-                                  "h-8 w-16 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 text-[11px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]",
-                                  "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
-                                  lockInputs
-                                    ? "opacity-60 cursor-not-allowed"
-                                    : "",
-                                ].join(" ")}
-                                placeholder="0.0"
-                                type="number"
-                                min={0}
-                                step={0.1}
-                                value={currentLabor ?? ""}
-                                onChange={(e) =>
-                                  handleLaborChange(
-                                    e.target.value === ""
-                                      ? null
-                                      : Number(e.target.value) || 0,
-                                  )
-                                }
-                              />
-                              <span className="text-[10px] text-[color:var(--theme-text-muted)]">
-                                hrs
-                              </span>
-
-                              {submittedStamp && (
+                              <div className="flex shrink-0 items-center gap-1.5">
+                                <input
+                                  disabled={lockInputs}
+                                  className={[
+                                    "pfx-inline-field h-9 w-16 shrink-0 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 text-[13px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]",
+                                    "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
+                                    lockInputs
+                                      ? "opacity-60 cursor-not-allowed"
+                                      : "",
+                                  ].join(" ")}
+                                  placeholder="0.0"
+                                  type="number"
+                                  min={0}
+                                  step={0.1}
+                                  value={currentLabor ?? ""}
+                                  onChange={(e) =>
+                                    handleLaborChange(
+                                      e.target.value === ""
+                                        ? null
+                                        : Number(e.target.value) || 0,
+                                    )
+                                  }
+                                />
                                 <span className="text-[10px] text-[color:var(--theme-text-muted)]">
-                                  {new Date(submittedStamp).toLocaleString()}
+                                  hrs
                                 </span>
-                              )}
+                              </div>
                             </div>
+
+                            {submittedStamp && (
+                              <div className="text-[10px] text-[color:var(--theme-text-muted)]">
+                                {new Date(submittedStamp).toLocaleString()}
+                              </div>
+                            )}
 
                             {/* Parts: progressive disclosure — starts as just "+ Add part" */}
                             {!showPartsFields ? (
-                              <div className="flex flex-wrap items-center gap-3">
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
                                 <button
                                   type="button"
                                   onClick={() => setPartsAdding(k, true)}
@@ -832,7 +834,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                 >
                                   + Add part
                                 </button>
-                                <label className="flex cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
+                                <label className="flex min-w-0 cursor-pointer items-center gap-1.5 text-[11px] text-[color:var(--theme-text-secondary)]">
                                   <input
                                     type="checkbox"
                                     checked={noPartsRequired}
@@ -842,14 +844,16 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                         event.currentTarget.checked,
                                       )
                                     }
-                                    className="h-4 w-4 rounded border-[color:var(--theme-border-soft)] accent-[var(--brand-primary,#C1663B)]"
+                                    className="pfx-inline-field h-4 w-4 shrink-0 rounded border-[color:var(--theme-border-soft)] accent-[var(--brand-primary,#C1663B)]"
                                   />
-                                  No parts required
+                                  <span className="min-w-0">
+                                    No parts required
+                                  </span>
                                 </label>
                               </div>
                             ) : (
                               <>
-                                <label className="flex min-h-9 cursor-pointer items-center gap-2 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+                                <label className="flex min-w-0 cursor-pointer items-start gap-2 text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
                                   <input
                                     type="checkbox"
                                     checked={noPartsRequired}
@@ -859,11 +863,11 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                         event.currentTarget.checked,
                                       )
                                     }
-                                    className="h-4 w-4 rounded border-[color:var(--theme-border-soft)] accent-[var(--brand-primary,#C1663B)]"
+                                    className="pfx-inline-field mt-0.5 h-4 w-4 shrink-0 rounded border-[color:var(--theme-border-soft)] accent-[var(--brand-primary,#C1663B)]"
                                   />
-                                  <span>
+                                  <span className="min-w-0 break-words">
                                     No parts required
-                                    <span className="ml-2 font-normal text-[color:var(--theme-text-muted)]">
+                                    <span className="ml-1.5 font-normal text-[color:var(--theme-text-muted)]">
                                       Blank parts also skip Parts workflow.
                                     </span>
                                   </span>
@@ -885,83 +889,85 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                     return (
                                       <div
                                         key={pIdx}
-                                        className="flex flex-wrap items-center gap-2 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-2"
+                                        className="rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-1.5"
                                       >
-                                        <input
-                                          disabled={lockInputs}
-                                          className={[
-                                            "min-w-0 flex-1 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1 text-[11px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]",
-                                            "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
-                                            lockInputs
-                                              ? "opacity-60 cursor-not-allowed"
-                                              : "",
-                                          ].join(" ")}
-                                          placeholder="Part description"
-                                          value={p.description}
-                                          onChange={(e) =>
-                                            updatePart(pIdx, {
-                                              description: e.target.value,
-                                            })
-                                          }
-                                        />
-
-                                        {/* ✅ Qty filler (blank until typed) */}
-                                        <input
-                                          disabled={lockInputs}
-                                          className={[
-                                            "w-16 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1 text-[11px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]",
-                                            "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
-                                            lockInputs
-                                              ? "opacity-60 cursor-not-allowed"
-                                              : "",
-                                          ].join(" ")}
-                                          placeholder="Qty"
-                                          inputMode="numeric"
-                                          type="number"
-                                          min={0}
-                                          step={1}
-                                          value={displayQty}
-                                          onChange={(e) => {
-                                            const raw = e.target.value;
-
-                                            // keep the typed string so it can be blank
-                                            setQtyDraft(qtyKey, raw);
-
-                                            if (raw === "") {
-                                              // ✅ blank qty => store 0 (no default)
-                                              updatePart(pIdx, { qty: 0 });
-                                              return;
+                                        <div className="flex items-center gap-1.5">
+                                          <input
+                                            disabled={lockInputs}
+                                            className={[
+                                              "min-w-0 flex-1 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1 text-[13px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]",
+                                              "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
+                                              lockInputs
+                                                ? "opacity-60 cursor-not-allowed"
+                                                : "",
+                                            ].join(" ")}
+                                            placeholder="Part description"
+                                            value={p.description}
+                                            onChange={(e) =>
+                                              updatePart(pIdx, {
+                                                description: e.target.value,
+                                              })
                                             }
+                                          />
 
-                                            const n = Number(raw);
-                                            if (!Number.isFinite(n)) {
-                                              updatePart(pIdx, { qty: 0 });
-                                              return;
-                                            }
+                                          {/* ✅ Qty filler (blank until typed) */}
+                                          <input
+                                            disabled={lockInputs}
+                                            className={[
+                                              "pfx-inline-field h-9 w-14 shrink-0 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1 text-center text-[13px] text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]",
+                                              "focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/60",
+                                              lockInputs
+                                                ? "opacity-60 cursor-not-allowed"
+                                                : "",
+                                            ].join(" ")}
+                                            placeholder="Qty"
+                                            inputMode="numeric"
+                                            type="number"
+                                            min={0}
+                                            step={1}
+                                            value={displayQty}
+                                            onChange={(e) => {
+                                              const raw = e.target.value;
 
-                                            updatePart(pIdx, {
-                                              qty: Math.max(0, Math.floor(n)),
-                                            });
-                                          }}
-                                          onBlur={() => {
-                                            // If user typed a number, you can drop draft and rely on qty.
-                                            // If blank, keep draft "" so placeholder behavior remains.
-                                            const raw = qtyDraftByKey[qtyKey];
-                                            if (raw && raw.trim() !== "") {
-                                              setQtyDraft(qtyKey, "");
-                                              setQtyDraftByKey((prev) => {
-                                                const next = { ...prev };
-                                                delete next[qtyKey];
-                                                return next;
+                                              // keep the typed string so it can be blank
+                                              setQtyDraft(qtyKey, raw);
+
+                                              if (raw === "") {
+                                                // ✅ blank qty => store 0 (no default)
+                                                updatePart(pIdx, { qty: 0 });
+                                                return;
+                                              }
+
+                                              const n = Number(raw);
+                                              if (!Number.isFinite(n)) {
+                                                updatePart(pIdx, { qty: 0 });
+                                                return;
+                                              }
+
+                                              updatePart(pIdx, {
+                                                qty: Math.max(0, Math.floor(n)),
                                               });
-                                            }
-                                          }}
-                                        />
+                                            }}
+                                            onBlur={() => {
+                                              // If user typed a number, you can drop draft and rely on qty.
+                                              // If blank, keep draft "" so placeholder behavior remains.
+                                              const raw = qtyDraftByKey[qtyKey];
+                                              if (raw && raw.trim() !== "") {
+                                                setQtyDraft(qtyKey, "");
+                                                setQtyDraftByKey((prev) => {
+                                                  const next = { ...prev };
+                                                  delete next[qtyKey];
+                                                  return next;
+                                                });
+                                              }
+                                            }}
+                                          />
+                                        </div>
 
                                         <button
                                           type="button"
                                           className={[
-                                            "text-[11px] text-red-300 hover:text-red-200",
+                                            "mt-1 text-[11px] text-red-300 hover:text-red-200",
                                             lockInputs
                                               ? "opacity-40 pointer-events-none"
                                               : "",
@@ -980,7 +986,7 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                                       onClick={addEmptyPart}
                                       className="mt-1 inline-flex min-h-9 items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:border-accent/80 hover:text-accent"
                                     >
-                                      + Add another
+                                      + Add another part
                                     </button>
                                   ) : null}
                                 </div>
@@ -991,36 +997,34 @@ export default function SectionDisplay(props: SectionDisplayProps) {
                       })()}
 
                       {isFailOrRec && onSubmitAI ? (
-                        <div className="mt-3 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
-                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                            <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
-                              {submitted
-                                ? "This finding is in Quote Review. The inspection remains open."
-                                : "Send this finding to Quote Review now without completing the inspection."}
-                            </p>
-                            <Button
-                              type="button"
-                              className="min-h-11 shrink-0 px-5 text-xs font-semibold uppercase tracking-[0.14em]"
-                              disabled={
-                                submitted ||
-                                submitting ||
-                                (requireNoteForAI && note.length === 0)
-                              }
-                              onClick={() =>
-                                onSubmitAI(sectionIndex, itemIndex)
-                              }
-                            >
-                              {submitted
-                                ? "Submitted to Quote Review"
-                                : submitting
-                                  ? "Submitting…"
-                                  : "Submit item"}
-                            </Button>
-                          </div>
+                        <div className="mt-2 space-y-1.5">
+                          <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
+                            {submitted
+                              ? "This finding is in Quote Review. The inspection remains open."
+                              : "Send this finding to Quote Review now without completing the inspection."}
+                          </p>
+                          <Button
+                            type="button"
+                            className="min-h-10 w-full text-xs font-semibold uppercase tracking-[0.14em]"
+                            disabled={
+                              submitted ||
+                              submitting ||
+                              (requireNoteForAI && note.length === 0)
+                            }
+                            onClick={() =>
+                              onSubmitAI(sectionIndex, itemIndex)
+                            }
+                          >
+                            {submitted
+                              ? "Submitted to Quote Review"
+                              : submitting
+                                ? "Submitting…"
+                                : "Submit item"}
+                          </Button>
                           {!submitted &&
                           requireNoteForAI &&
                           note.length === 0 ? (
-                            <p className="mt-2 text-[11px] text-amber-700 dark:text-amber-200">
+                            <p className="text-[11px] text-amber-700 dark:text-amber-200">
                               Add the complaint note before submitting.
                             </p>
                           ) : null}

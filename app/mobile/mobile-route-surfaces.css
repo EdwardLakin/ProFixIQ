@@ -80,6 +80,31 @@
   width: 100%;
 }
 
+/* Checkboxes and radios should never be stretched full-width — that turns
+ * them into an invisible full-width bar and pushes their label text out
+ * past the edge of the card. This mirrors the exclusion already applied
+ * to inputs generally in mobile-command.css. */
+.mobile-command-route input[type="checkbox"],
+.mobile-command-route input[type="radio"] {
+  width: auto;
+}
+
+/* A handful of other controls are intentionally small and inline —
+ * inspection finding labor hours, part quantity — and need to opt out of
+ * the full-width rule above too. */
+.mobile-command-route .pfx-inline-field {
+  width: auto !important;
+}
+
+/* Hard guard: a checkbox/radio row must wrap its label text instead of
+ * overflowing the card, regardless of how wide the control ends up. */
+.mobile-command-route label:has(> input[type="checkbox"]),
+.mobile-command-route label:has(> input[type="radio"]) {
+  flex-wrap: wrap;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .mobile-command-route :is(.divide-y, .divide-x) > :not([hidden]) ~ :not([hidden]) {
   border-color: var(--theme-border-soft);
 }
