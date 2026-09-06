@@ -44,16 +44,12 @@ export default function AiAssistantModal({
         size="lg"
         hideFooter
       >
-        <div className="space-y-4">
-          <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
-            <div className="text-[0.65rem] font-semibold uppercase tracking-[0.22em] text-[var(--accent-copper-light)]">
-              AI / Tech Assistant
-            </div>
-            <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
-              Ask diagnosis, testing, specification, or repair questions using
-              this job and vehicle context. Nothing is changed automatically.
-            </p>
-          </div>
+        <div className="space-y-3">
+          <p className="text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+            Diagnosis, testing, specification, and repair guidance for this
+            job and vehicle. Nothing is changed automatically — the
+            technician decides what is used.
+          </p>
 
           <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] p-3 shadow-[var(--theme-shadow-medium)]">
             <TechAssistant
@@ -84,7 +80,7 @@ export default function AiAssistantModal({
         <div className="absolute inset-x-0 top-0 h-[3px] bg-[linear-gradient(90deg,rgba(184,115,51,0),rgba(184,115,51,0.95),rgba(253,186,116,0.95),rgba(184,115,51,0))]" />
         <div className="pointer-events-none absolute inset-x-10 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(184,115,51,0.14),transparent_72%)]" />
 
-        <div className="relative flex items-start justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
+        <div className="relative flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2.5">
           <div className="min-w-0">
             <h2
               className="text-sm font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-primary)]"
@@ -92,15 +88,14 @@ export default function AiAssistantModal({
             >
               Ask ProFixIQ
             </h2>
-            <p className="mt-1 text-[0.72rem] leading-5 text-[color:var(--theme-text-secondary)]">
-              Ask diagnosis, testing, specification, or repair questions using
-              this job and vehicle context. Nothing is changed automatically.
+            <p className="mt-0.5 truncate text-[0.65rem] text-[color:var(--theme-text-secondary)]">
+              Diagnosis and repair guidance. Nothing is changed automatically.
             </p>
           </div>
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] text-sm text-[color:var(--theme-text-primary)] active:scale-95"
+            className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] text-sm text-[color:var(--theme-text-primary)] active:scale-95"
             aria-label="Close ProFixIQ assistant"
           >
             ✕
@@ -108,7 +103,7 @@ export default function AiAssistantModal({
         </div>
 
         <div
-          className="max-h-[calc(100dvh-7rem)] overflow-y-auto px-3 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-3"
+          className="max-h-[calc(100dvh-6rem)] overflow-y-auto px-3 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] pt-3"
           style={{ WebkitOverflowScrolling: "touch" }}
         >
           <MobileTechnicianAssistant
