@@ -80,6 +80,13 @@
   width: 100%;
 }
 
+/* A handful of controls are intentionally small and inline — inspection
+ * finding labor hours, part quantity, and the "no parts required"
+ * checkbox — and need to opt out of the full-width rule above. */
+.mobile-command-route .pfx-inline-field {
+  width: auto !important;
+}
+
 .mobile-command-route :is(.divide-y, .divide-x) > :not([hidden]) ~ :not([hidden]) {
   border-color: var(--theme-border-soft);
 }
