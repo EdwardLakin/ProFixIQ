@@ -9,6 +9,7 @@ export const TECHNICIAN_COPILOT_ACTION_TYPES = [
   "job.parts.request",
   "message.reply",
   "inspection.start",
+  "inspection.complete",
   "shift.break.start",
   "shift.break.end",
   "shift.lunch.start",
@@ -52,6 +53,7 @@ export type TechnicianCopilotAction =
       content: string | null;
     }
   | { type: "inspection.start"; workOrderLineId: string | null }
+  | { type: "inspection.complete"; workOrderLineId: string | null }
   | { type: "shift.break.start" }
   | { type: "shift.break.end" }
   | { type: "shift.lunch.start" }
@@ -130,6 +132,7 @@ export function parseTechnicianCopilotAction(
         content: text(value?.content, 4_000),
       };
     case "inspection.start":
+    case "inspection.complete":
       return { type, workOrderLineId };
     case "shift.break.start":
     case "shift.break.end":

@@ -130,6 +130,23 @@ describe("parseTechnicianCopilotAction: inspection.start", () => {
   });
 });
 
+describe("parseTechnicianCopilotAction: inspection.complete", () => {
+  it("keeps a given workOrderLineId", () => {
+    expect(
+      parseTechnicianCopilotAction({
+        type: "inspection.complete",
+        workOrderLineId: "line-1",
+      }),
+    ).toEqual({ type: "inspection.complete", workOrderLineId: "line-1" });
+  });
+
+  it("allows a null workOrderLineId so the caller can resolve it", () => {
+    expect(
+      parseTechnicianCopilotAction({ type: "inspection.complete" }),
+    ).toEqual({ type: "inspection.complete", workOrderLineId: null });
+  });
+});
+
 describe("parseTechnicianCopilotAction: shift.break/lunch punches", () => {
   it("parses each punch type with no extra fields", () => {
     for (const type of [

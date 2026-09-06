@@ -1,6 +1,10 @@
 import "server-only";
 
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
+import { insertPrioritizedJobsFromInspection } from "@/features/work-orders/lib/work-orders/insertPrioritizedJobsFromInspection";
+import { publishInspectionPdf } from "@/features/inspections/server/publishInspectionPdf";
+import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
 import type { TechnicianCopilotAction } from "./actionContract";
 import type {
   TechnicianWorkCandidate,
@@ -61,6 +65,17 @@ export type PreparedTechnicianCopilotAction =
        * job.parts.request threads workOrderId through.
        */
       templateId?: string | null;
+      /**
+       * inspection.complete only: the canonical inspection resolved
+       * server-side for the target line, its parent work order/vehicle (for
+       * staging findings to Quote Review), and the sync revision read at
+       * resolve time (sign_inspection's own optimistic-concurrency check
+       * catches real staleness between resolve and execute).
+       */
+      inspectionId?: string | null;
+      inspectionWorkOrderId?: string | null;
+      inspectionVehicleId?: string | null;
+      inspectionSyncRevision?: number | null;
     };
 
 export type TechnicianCopilotActionResult = {
@@ -315,6 +330,143 @@ async function resolveInspectionStartTarget(input: {
   return { kind: "execute", workOrder, line, templateId };
 }
 
+type InspectionLookupClient = {
+  from: (table: string) => {
+    select: (columns: string) => {
+      eq: (
+        column: string,
+        value: string,
+      ) => {
+        eq: (
+          column: string,
+          value: boolean,
+        ) => {
+          maybeSingle: () => PromiseLike<{
+            data: {
+              id: string;
+              work_order_id: string | null;
+              vehicle_id: string | null;
+              summary: unknown;
+            } | null;
+            error: { message: string } | null;
+          }>;
+        };
+      };
+    };
+  };
+};
+
+function inspectionSyncRevision(summary: unknown): number {
+  const value =
+    summary && typeof summary === "object" && !Array.isArray(summary)
+      ? (summary as Record<string, unknown>).syncRevision
+      : null;
+  const revision = Number(value);
+  return Number.isFinite(revision) && revision > 0 ? Math.trunc(revision) : 0;
+}
+
+async function lookupInspectionForLine(
+  supabase: TechnicianWorkScope["supabase"],
+  lineId: string,
+): Promise<{
+  id: string;
+  workOrderId: string | null;
+  vehicleId: string | null;
+  syncRevision: number;
+} | null> {
+  const client = supabase as unknown as InspectionLookupClient;
+  const { data, error } = await client
+    .from("inspections")
+    .select("id, work_order_id, vehicle_id, summary")
+    .eq("work_order_line_id", lineId)
+    .eq("is_canonical", true)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    id: data.id,
+    workOrderId: data.work_order_id,
+    vehicleId: data.vehicle_id,
+    syncRevision: inspectionSyncRevision(data.summary),
+  };
+}
+
+type InspectionCompleteTarget =
+  | { kind: "reply"; reply: string }
+  | {
+      kind: "execute";
+      workOrder: TechnicianWorkCandidate;
+      line: TechnicianWorkLine;
+      inspectionId: string;
+      inspectionWorkOrderId: string;
+      inspectionVehicleId: string | null;
+      syncRevision: number;
+    };
+
+/**
+ * Resolves inspection.complete the same way inspection.start resolves its
+ * target — across every assigned work order, not just the active one — but
+ * instead of a template, this looks up the canonical inspections row
+ * already staged for that line (created whenever the tech opened it, via
+ * inspection.start or the manual screen) and the sync revision it last
+ * autosaved at. sign_inspection itself re-checks that revision atomically,
+ * so a stale read here just surfaces as a clear "changed, sign again" reply
+ * at execute time rather than a silent wrong signature.
+ */
+async function resolveInspectionCompleteTarget(input: {
+  supabase: TechnicianWorkScope["supabase"];
+  action: Extract<TechnicianCopilotAction, { type: "inspection.complete" }>;
+  assignedWork: readonly TechnicianWorkCandidate[];
+}): Promise<InspectionCompleteTarget> {
+  const requestedId = input.action.workOrderLineId;
+  const target = requestedId
+    ? findLineAcrossAssignedWork(input.assignedWork, requestedId)
+    : null;
+
+  if (!target) {
+    const allLines = input.assignedWork.flatMap((workOrder) => workOrder.lines);
+    if (allLines.length === 0) {
+      return {
+        kind: "reply",
+        reply: "You don't have an assigned job line to sign an inspection for right now.",
+      };
+    }
+    return { kind: "reply", reply: choiceReply(allLines) };
+  }
+
+  const { workOrder, line } = target;
+  const label = technicianWorkLineLabel(line);
+
+  const inspection = await lookupInspectionForLine(input.supabase, line.id);
+  if (!inspection) {
+    return {
+      kind: "reply",
+      reply: `There's no inspection started for ${label} yet. Ask me to start it first.`,
+    };
+  }
+  if (!inspection.workOrderId) {
+    return {
+      kind: "reply",
+      reply: `${label}'s inspection isn't attached to a work order, so I can't submit its findings. Refresh and try again.`,
+    };
+  }
+  if (inspection.syncRevision < 1) {
+    return {
+      kind: "reply",
+      reply: `There's no saved progress on ${label}'s inspection yet. Fill in at least one item before I can sign it.`,
+    };
+  }
+
+  return {
+    kind: "execute",
+    workOrder,
+    line,
+    inspectionId: inspection.id,
+    inspectionWorkOrderId: inspection.workOrderId,
+    inspectionVehicleId: inspection.vehicleId,
+    syncRevision: inspection.syncRevision,
+  };
+}
+
 export async function prepareTechnicianCopilotAction(input: {
   action: PreparableAction;
   activeWorkOrder: TechnicianWorkCandidate | null;
@@ -343,6 +495,25 @@ export async function prepareTechnicianCopilotAction(input: {
       workOrder: target.workOrder,
       line: target.line,
       templateId: target.templateId,
+    };
+  }
+
+  if (input.action.type === "inspection.complete") {
+    const target = await resolveInspectionCompleteTarget({
+      supabase: input.supabase,
+      action: input.action,
+      assignedWork: input.assignedWork,
+    });
+    if (target.kind === "reply") return target;
+    return {
+      kind: "execute",
+      action: { type: "inspection.complete", workOrderLineId: target.line.id },
+      workOrder: target.workOrder,
+      line: target.line,
+      inspectionId: target.inspectionId,
+      inspectionWorkOrderId: target.inspectionWorkOrderId,
+      inspectionVehicleId: target.inspectionVehicleId,
+      inspectionSyncRevision: target.syncRevision,
     };
   }
 
@@ -544,6 +715,15 @@ export type BoundTechnicianCopilotAction = {
    * prepared. See PreparedTechnicianCopilotAction's templateId doc.
    */
   templateId?: string | null;
+  /**
+   * inspection.complete only: see PreparedTechnicianCopilotAction's
+   * inspectionId/inspectionWorkOrderId/inspectionVehicleId/
+   * inspectionSyncRevision doc.
+   */
+  inspectionId?: string | null;
+  inspectionWorkOrderId?: string | null;
+  inspectionVehicleId?: string | null;
+  inspectionSyncRevision?: number | null;
 };
 
 type AdminRpcClient = {
@@ -719,6 +899,218 @@ async function executeInspectionStartAction(input: {
   };
 }
 
+type InspectionReportClient = {
+  from: (table: string) => {
+    select: (columns: string) => {
+      eq: (
+        column: string,
+        value: string,
+      ) => {
+        eq: (
+          column: string,
+          value: boolean,
+        ) => {
+          maybeSingle: () => PromiseLike<{
+            data: {
+              id: string;
+              shop_id: string;
+              work_order_id: string | null;
+              work_order_line_id: string | null;
+              summary: unknown;
+              sync_revision: number | null;
+              pdf_storage_path: string | null;
+            } | null;
+            error: { message: string } | null;
+          }>;
+        };
+      };
+    };
+  };
+};
+
+/**
+ * Mirrors app/api/inspections/sign/route.ts's post-sign report step exactly:
+ * sign_inspection locks the inspection but never touches the PDF report
+ * itself, so signing without this would leave a completed inspection with
+ * no attached report. Re-reads the inspection via an admin client (the same
+ * client the manual route uses for this step, since it also needs to read
+ * storage.objects independent of the caller's RLS), skips publishing if a
+ * report already exists (a prior call may have signed but been interrupted
+ * before this step — retrying only the missing half), and otherwise
+ * generates and uploads the PDF then attaches it via the same atomic RPC.
+ */
+async function publishSignedInspectionReport(input: {
+  identity: CopilotMutationIdentity;
+  inspectionId: string;
+}): Promise<void> {
+  const admin = createAdminSupabase();
+  const client = admin as unknown as InspectionReportClient;
+  const { data: inspection, error } = await client
+    .from("inspections")
+    .select(
+      "id,shop_id,work_order_id,work_order_line_id,summary,sync_revision,pdf_storage_path",
+    )
+    .eq("id", input.inspectionId)
+    .eq("is_canonical", true)
+    .maybeSingle();
+  if (
+    error ||
+    !inspection?.work_order_id ||
+    !inspection.work_order_line_id ||
+    !inspection.summary ||
+    typeof inspection.summary !== "object"
+  ) {
+    throw new Error(
+      error?.message ?? "Inspection report context could not be loaded.",
+    );
+  }
+  if (inspection.pdf_storage_path) return;
+
+  const syncRevision = Math.max(0, Math.trunc(Number(inspection.sync_revision ?? 0)));
+  const published = await publishInspectionPdf({
+    admin,
+    shopId: inspection.shop_id,
+    workOrderId: inspection.work_order_id,
+    workOrderLineId: inspection.work_order_line_id,
+    inspectionId: inspection.id,
+    summary: inspection.summary as InspectionSession,
+    syncRevision,
+  });
+
+  const rpc = input.identity.supabase as unknown as AdminRpcClient;
+  const { error: attachError } = await rpc.rpc(
+    "attach_signed_inspection_pdf_atomic",
+    {
+      p_inspection_id: inspection.id,
+      p_work_order_line_id: inspection.work_order_line_id,
+      p_actor_user_id: input.identity.authUserId,
+      p_expected_sync_revision: syncRevision,
+      p_pdf_storage_path: published.path,
+      p_pdf_sha256: published.sha256,
+      p_pdf_url: published.reportUrl,
+    },
+  );
+  if (attachError) throw new Error(attachError.message);
+}
+
+/**
+ * inspection.complete mirrors the exact three-step sequence
+ * app/api/inspections/sign/route.ts already performs for a technician
+ * signature, in the same order, calling the same functions and RPCs rather
+ * than reimplementing any of it:
+ *   1. Stage any remaining fail/recommend findings to Quote Review
+ *      (insertPrioritizedJobsFromInspection) — signing locks the inspection
+ *      against further edits, so this must happen first or those findings
+ *      are lost.
+ *   2. Sign the inspection (sign_inspection). For role="technician" this
+ *      RPC always ignores the caller's name/signature and derives both from
+ *      the technician's own saved profile signature, so none of that is
+ *      passed here — only the resolved inspection id and sync revision.
+ *   3. Publish and attach the signed PDF report if one doesn't already
+ *      exist (see publishSignedInspectionReport) — sign_inspection's own
+ *      "already signed" idempotent no-op only covers the signature row
+ *      itself, so this is retried independently of whether signing was a
+ *      no-op, the same way the manual route always re-checks it.
+ */
+async function executeInspectionCompleteAction(input: {
+  identity: CopilotMutationIdentity;
+  bound: BoundTechnicianCopilotAction;
+  operationId: string;
+}): Promise<TechnicianCopilotActionResult> {
+  const label = input.bound.lineLabel;
+  const inspectionId = input.bound.inspectionId;
+  const inspectionWorkOrderId = input.bound.inspectionWorkOrderId;
+  const syncRevision = input.bound.inspectionSyncRevision;
+  if (!inspectionId || !inspectionWorkOrderId || !syncRevision) {
+    return {
+      ok: false,
+      reply: `I couldn't confirm the inspection details for ${label}. Refresh and try again.`,
+    };
+  }
+
+  const imported = await insertPrioritizedJobsFromInspection({
+    supabase: input.identity.supabase,
+    inspectionId,
+    workOrderId: inspectionWorkOrderId,
+    vehicleId: input.bound.inspectionVehicleId ?? null,
+    userId: input.identity.authUserId,
+    operationKey: `copilot:${input.operationId}:inspection-sign-findings`,
+  });
+  if (!imported.ok) {
+    console.error("[technician-copilot] inspection findings import failed", {
+      inspectionId,
+      error: imported.error,
+    });
+    return {
+      ok: false,
+      reply: `I couldn't submit ${label}'s inspection findings. Refresh and try again.`,
+    };
+  }
+
+  const rpc = input.identity.supabase as unknown as AdminRpcClient;
+  const { error: signError } = await rpc.rpc("sign_inspection", {
+    p_inspection_id: inspectionId,
+    p_role: "technician",
+    p_signed_name: null,
+    p_expected_sync_revision: syncRevision,
+    p_signature_image_path: null,
+    p_signature_hash: null,
+  });
+  if (signError) {
+    const message = signError.message.toLowerCase();
+    if (message.includes("no valid saved") || message.includes("no saved")) {
+      return {
+        ok: false,
+        reply: `You don't have a saved signature on file yet. Add one in your tech settings, then ask me to sign ${label}'s inspection again.`,
+      };
+    }
+    if (message.includes("changed on another device")) {
+      return {
+        ok: false,
+        reply: `${label}'s inspection changed since I last checked it. Ask me to sign it again.`,
+      };
+    }
+    if (message.includes("already signed")) {
+      return {
+        ok: true,
+        reply: `${label}'s inspection is already signed off.`,
+        eventLabel: "Signed inspection",
+        eventDetail: label,
+      };
+    }
+    console.error("[technician-copilot] inspection sign failed", {
+      inspectionId,
+      error: signError.message,
+    });
+    return {
+      ok: false,
+      reply: `I couldn't sign ${label}'s inspection. Refresh and try again.`,
+    };
+  }
+
+  try {
+    await publishSignedInspectionReport({ identity: input.identity, inspectionId });
+  } catch (error) {
+    console.error("[technician-copilot] inspection report publish failed", {
+      inspectionId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return {
+      ok: true,
+      reply: `Signed ${label}'s inspection, but the report couldn't be published yet. Ask me to sign it again to retry that.`,
+      eventLabel: "Signed inspection",
+      eventDetail: label,
+    };
+  }
+
+  return {
+    ok: true,
+    reply: `Signed off ${label}'s inspection.`,
+    eventLabel: "Signed inspection",
+    eventDetail: label,
+  };
+}
+
 export async function executeBoundTechnicianCopilotAction(input: {
   identity: CopilotMutationIdentity;
   sessionId: string;
@@ -744,6 +1136,14 @@ export async function executeBoundTechnicianCopilotAction(input: {
       bound: input.bound,
       operationId: input.operationId,
       expectedLineUpdatedAt: input.expectedLineUpdatedAt,
+    });
+  }
+
+  if (action.type === "inspection.complete") {
+    return executeInspectionCompleteAction({
+      identity: input.identity,
+      bound: input.bound,
+      operationId: input.operationId,
     });
   }
 
@@ -851,7 +1251,16 @@ export async function executeTechnicianCopilotAction(input: {
   operationId: string;
   expectedLineUpdatedAt?: string | null;
 }): Promise<TechnicianCopilotActionResult> {
-  const { action, line, workOrder, templateId } = input.prepared;
+  const {
+    action,
+    line,
+    workOrder,
+    templateId,
+    inspectionId,
+    inspectionWorkOrderId,
+    inspectionVehicleId,
+    inspectionSyncRevision,
+  } = input.prepared;
   return executeBoundTechnicianCopilotAction({
     identity: input.identity,
     sessionId: input.sessionId,
@@ -866,6 +1275,10 @@ export async function executeTechnicianCopilotAction(input: {
       lineUpdatedAt: line.updatedAt,
       workOrderId: workOrder.id,
       templateId,
+      inspectionId,
+      inspectionWorkOrderId,
+      inspectionVehicleId,
+      inspectionSyncRevision,
     },
   });
 }

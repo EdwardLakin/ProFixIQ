@@ -152,6 +152,11 @@ type StoredActionTurn = {
   lineUpdatedAt: string | null;
   /** inspection.start only. See PreparedTechnicianCopilotAction's doc. */
   templateId: string | null;
+  /** inspection.complete only. See PreparedTechnicianCopilotAction's doc. */
+  inspectionId: string | null;
+  inspectionWorkOrderId: string | null;
+  inspectionVehicleId: string | null;
+  inspectionSyncRevision: number | null;
   result: {
     ok: boolean;
     reply: string;
@@ -252,6 +257,22 @@ function storedActionTurn(
       typeof pending.payload?.templateId === "string"
         ? pending.payload.templateId
         : null,
+    inspectionId:
+      typeof pending.payload?.inspectionId === "string"
+        ? pending.payload.inspectionId
+        : null,
+    inspectionWorkOrderId:
+      typeof pending.payload?.inspectionWorkOrderId === "string"
+        ? pending.payload.inspectionWorkOrderId
+        : null,
+    inspectionVehicleId:
+      typeof pending.payload?.inspectionVehicleId === "string"
+        ? pending.payload.inspectionVehicleId
+        : null,
+    inspectionSyncRevision:
+      typeof pending.payload?.inspectionSyncRevision === "number"
+        ? pending.payload.inspectionSyncRevision
+        : null,
     result:
       completed && completedReply
         ? {
@@ -294,6 +315,10 @@ function boundActionFromStored(
     lineUpdatedAt: storedAction.lineUpdatedAt,
     workOrderId: storedAction.workOrderId,
     templateId: storedAction.templateId,
+    inspectionId: storedAction.inspectionId,
+    inspectionWorkOrderId: storedAction.inspectionWorkOrderId,
+    inspectionVehicleId: storedAction.inspectionVehicleId,
+    inspectionSyncRevision: storedAction.inspectionSyncRevision,
   };
 }
 
@@ -759,18 +784,21 @@ export async function runTechnicianCopilotTurn(input: {
         clientAction: null,
       };
     }
-    // inspection.start resolves its own target across every assigned work
-    // order (it isn't scoped to whatever the model's own mode/workOrderId
-    // fields say — see prepareTechnicianCopilotAction), so it's checked
-    // before the generic mode==="start" path. Finding one here anchors a
-    // session to it exactly like mode==="start" does below, then falls
-    // through into the normal active-session flow, which re-decides the
-    // turn and — now with that session active — actually executes
-    // inspection.start (see the active-session branch) rather than just
+    // inspection.start/inspection.complete resolve their own target across
+    // every assigned work order (they aren't scoped to whatever the model's
+    // own mode/workOrderId fields say — see prepareTechnicianCopilotAction),
+    // so they're checked before the generic mode==="start" path. Finding one
+    // here anchors a session to it exactly like mode==="start" does below,
+    // then falls through into the normal active-session flow, which
+    // re-decides the turn and — now with that session active — actually
+    // executes the action (see the active-session branch) rather than just
     // replying with whatever the first decision call said.
     let selected: TechnicianWorkCandidate | null = null;
     let lineId: string | null = null;
-    if (decision.action?.type === "inspection.start") {
+    if (
+      decision.action?.type === "inspection.start" ||
+      decision.action?.type === "inspection.complete"
+    ) {
       const prepared = await prepareTechnicianCopilotAction({
         action: decision.action,
         activeWorkOrder: null,
@@ -1061,6 +1089,10 @@ export async function runTechnicianCopilotTurn(input: {
               lineCorrection: prepared.line.correction,
               lineUpdatedAt: prepared.line.updatedAt,
               templateId: prepared.templateId,
+              inspectionId: prepared.inspectionId,
+              inspectionWorkOrderId: prepared.inspectionWorkOrderId,
+              inspectionVehicleId: prepared.inspectionVehicleId,
+              inspectionSyncRevision: prepared.inspectionSyncRevision,
             },
           });
 
