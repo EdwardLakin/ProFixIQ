@@ -16,7 +16,10 @@ import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
 import { signInWithIdentifier } from "@/features/auth/lib/signInClient";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { ACCOUNT_BILLING_RECOVERY_HREF } from "@/features/shared/lib/product-access";
-import { claimStripeAcquisitionAfterAuth } from "@/features/stripe/lib/client/claim-acquisition";
+import {
+  claimStripeAcquisitionAfterAuth,
+  stripeAcquisitionRecoveryHref,
+} from "@/features/stripe/lib/client/claim-acquisition";
 import {
   normalizeProductAcquisitionSurface,
   type ProductAcquisitionSurface,
@@ -261,6 +264,15 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
       const claim = await claimStripeAcquisitionAfterAuth(searchParams);
       if (cancelled) return;
       if (!claim.linked) {
+        const recoveryHref = stripeAcquisitionRecoveryHref(
+          claim,
+          searchParams,
+        );
+        if (recoveryHref) {
+          navigateAfterAuthentication(recoveryHref);
+          return;
+        }
+
         setError(
           "We couldn't securely link that checkout to this account. Retry from the checkout confirmation link.",
         );
@@ -311,6 +323,15 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
         }
         const claim = await claimStripeAcquisitionAfterAuth(searchParams);
         if (!claim.linked) {
+          const recoveryHref = stripeAcquisitionRecoveryHref(
+            claim,
+            searchParams,
+          );
+          if (recoveryHref) {
+            navigateAfterAuthentication(recoveryHref);
+            return;
+          }
+
           setError(
             "We couldn't securely link that checkout to this account. Retry from the checkout confirmation link.",
           );
@@ -369,6 +390,15 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
       }
       const claim = await claimStripeAcquisitionAfterAuth(searchParams);
       if (!claim.linked) {
+        const recoveryHref = stripeAcquisitionRecoveryHref(
+          claim,
+          searchParams,
+        );
+        if (recoveryHref) {
+          navigateAfterAuthentication(recoveryHref);
+          return;
+        }
+
         setError(
           "Your account was created, but checkout could not be securely linked. Retry from the checkout confirmation link.",
         );

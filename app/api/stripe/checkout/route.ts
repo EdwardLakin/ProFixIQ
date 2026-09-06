@@ -42,7 +42,7 @@ const checkoutSchema = z
     planKey: z.enum(["starter", "unlimited"]).optional(),
     checkoutAttemptId: z.string().uuid().optional(),
     flow: z.enum(["acquisition", "owner"]).optional(),
-    source: z.enum(["pricing_cta"]).optional(),
+    source: z.enum(["pricing_cta", "billing_recovery"]).optional(),
     interval: z.literal("monthly").optional(),
     checkoutMode: z.enum(["trial", "paid"]).optional(),
     // Rolling-deploy compatibility only. These values are never trusted.
@@ -304,6 +304,12 @@ export async function POST(req: Request) {
     if (parsed.data.flow === "owner" && parsed.data.source === "pricing_cta") {
       return noStoreJson({ error: "Invalid checkout flow" }, 400);
     }
+    if (
+      parsed.data.source === "billing_recovery" &&
+      parsed.data.flow !== "owner"
+    ) {
+      return noStoreJson({ error: "Invalid checkout flow" }, 400);
+    }
 
     const stripe = createStripeClient(mustEnv("STRIPE_SECRET_KEY"));
     const selection = resolveCheckoutSelection(parsed.data);
@@ -412,13 +418,17 @@ export async function POST(req: Request) {
       actorId: access.profile.id,
     });
     const trialDays = configuredDays;
-    const enableTrial = ownerTrialEligible(shop);
+    const isBillingRecovery = parsed.data.source === "billing_recovery";
+    const enableTrial =
+      !isBillingRecovery &&
+      parsed.data.checkoutMode !== "paid" &&
+      ownerTrialEligible(shop);
     const metadata: Stripe.MetadataParam = {
       app: "profixiq",
       shop_id: shop.id,
       supabase_user_id: access.profile.id,
       purpose: "profixiq_subscription",
-      source: "owner_settings",
+      source: isBillingRecovery ? "billing_recovery" : "owner_settings",
       plan_key: selection.acquisitionPlanKey,
       ...(selection.packageKey ? { package_key: selection.packageKey } : {}),
       price_id: priceId,
@@ -430,8 +440,12 @@ export async function POST(req: Request) {
       buildCheckoutParams({
         customerId,
         priceId,
-        successUrl: `${baseUrl}/dashboard/owner/settings#billing-stripe`,
-        cancelUrl: `${baseUrl}/dashboard/owner/settings#billing-stripe`,
+        successUrl: isBillingRecovery
+          ? `${baseUrl}/account/billing`
+          : `${baseUrl}/dashboard/owner/settings#billing-stripe`,
+        cancelUrl: isBillingRecovery
+          ? `${baseUrl}/account/billing/plans`
+          : `${baseUrl}/dashboard/owner/settings#billing-stripe`,
         trialDays: enableTrial ? trialDays : 0,
         metadata,
         identifierPrefix: "profixiq_owner",

@@ -406,6 +406,20 @@ jobs:
             -f tests/security/p0-006-stripe-identity.runtime.sql \
             2>&1 | tee p0-006-stripe-identity-runtime.log
 
+      - name: Execute Stripe acquisition recovery integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/stripe-acquisition-recovery.runtime.sql \
+            2>&1 | tee stripe-acquisition-recovery-runtime.log
+
       - name: Execute P0 financial outbox idempotency integration
         shell: bash
         env:
@@ -671,6 +685,7 @@ jobs:
             mobile-handoff-assignment-compatibility-runtime.log
             p0-005-ai-route-governance-runtime.log
             p0-006-stripe-identity-runtime.log
+            stripe-acquisition-recovery-runtime.log
             p0-007-financial-outbox-runtime.log
             p0-007-financial-outbox-concurrency.log
             p1-012-stripe-webhook-receipts-runtime.log

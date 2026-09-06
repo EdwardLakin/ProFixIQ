@@ -310,3 +310,81 @@ export async function claimStripeAcquisitionIntent(input: {
     repeated: row.denial_reason === "already_claimed",
   };
 }
+
+type RecoverStrandedIntentRow = {
+  recovered: boolean;
+  denial_reason: string | null;
+  shop_id: string | null;
+};
+
+export type RecoveredStrandedStripeAcquisition =
+  | { recovered: true; shopId: string }
+  | { recovered: false; reason: string };
+
+export async function recoverStrandedStripeAcquisitionIdentity(input: {
+  admin: AdminClient;
+  authUserId: string;
+  profileId: string;
+  shopId: string;
+  metadata: StripeAcquisitionMetadata;
+  checkoutSessionId: string;
+  customerId: string;
+  subscriptionId: string;
+  checkoutEmail: string;
+  expectedProfileCheckoutSessionId: string | null;
+  expectedProfileCustomerId: string | null;
+  expectedProfileSubscriptionId: string | null;
+  expectedShopCheckoutSessionId: string | null;
+  expectedShopCustomerId: string | null;
+  expectedShopSubscriptionId: string | null;
+}): Promise<RecoveredStrandedStripeAcquisition> {
+  const { data, error } = await input.admin.rpc(
+    "recover_stranded_stripe_acquisition_identity",
+    {
+      p_auth_user_id: input.authUserId,
+      p_profile_id: input.profileId,
+      p_shop_id: input.shopId,
+      p_intent_id: input.metadata.intentId,
+      p_nonce: input.metadata.nonce,
+      p_checkout_email: input.checkoutEmail,
+      p_stripe_price_id: input.metadata.priceId,
+      p_checkout_session_id: input.checkoutSessionId,
+      p_customer_id: input.customerId,
+      p_subscription_id: input.subscriptionId,
+      p_expected_profile_checkout_session_id:
+        input.expectedProfileCheckoutSessionId ?? undefined,
+      p_expected_profile_customer_id:
+        input.expectedProfileCustomerId ?? undefined,
+      p_expected_profile_subscription_id:
+        input.expectedProfileSubscriptionId ?? undefined,
+      p_expected_shop_checkout_session_id:
+        input.expectedShopCheckoutSessionId ?? undefined,
+      p_expected_shop_customer_id:
+        input.expectedShopCustomerId ?? undefined,
+      p_expected_shop_subscription_id:
+        input.expectedShopSubscriptionId ?? undefined,
+    },
+  );
+
+  if (error) {
+    throw new Error(
+      `acquisition recovery unavailable (${error.code ?? "unknown"})`,
+    );
+  }
+
+  const row = Array.isArray(data)
+    ? (data[0] as RecoverStrandedIntentRow | undefined)
+    : undefined;
+
+  if (!row?.recovered || !row.shop_id) {
+    return {
+      recovered: false,
+      reason: row?.denial_reason ?? "recovery_rejected",
+    };
+  }
+
+  return {
+    recovered: true,
+    shopId: row.shop_id,
+  };
+}

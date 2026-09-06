@@ -123,8 +123,15 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
         reason: claim.reason,
         userId: user.id,
       });
+      const recoveryRequired =
+        claim.reason === "billing_identity_conflict" ||
+        claim.reason === "shop_billing_identity_conflict";
+
       return noStoreJson(
-        { error: "Checkout cannot be linked to this account" },
+        {
+          error: "Checkout cannot be linked to this account",
+          ...(recoveryRequired ? { recoveryRequired: true } : {}),
+        },
         claimFailureStatus(claim.reason),
       );
     }

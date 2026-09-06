@@ -9,7 +9,10 @@ import {
 } from "@/features/auth/lib/acquisitionSurfaceRouting";
 import { resolvePostAuthDestination } from "@/features/auth/lib/postAuthRouting";
 import { activatePasswordProfile } from "@/features/auth/lib/passwordActivation";
-import { claimStripeAcquisitionAfterAuth } from "@/features/stripe/lib/client/claim-acquisition";
+import {
+  claimStripeAcquisitionAfterAuth,
+  stripeAcquisitionRecoveryHref,
+} from "@/features/stripe/lib/client/claim-acquisition";
 import { Button } from "@shared/components/ui/Button";
 import { Input } from "@shared/components/ui/input";
 
@@ -98,9 +101,15 @@ export default function SetPasswordPage() {
 
     const claim = await claimStripeAcquisitionAfterAuth(searchParams);
     if (!claim.linked) {
+      const recoveryHref = stripeAcquisitionRecoveryHref(claim, searchParams);
+      if (recoveryHref) {
+        window.location.replace(recoveryHref);
+        return false;
+      }
+
       setStatusTone("error");
       setStatusMessage(
-        "Your password was updated, but the trial could not be linked. Retry account activation from the checkout confirmation link.",
+        "Your password was updated, but the subscription could not be linked. Retry account activation from the checkout confirmation link.",
       );
       return false;
     }

@@ -132,6 +132,39 @@ describe("acquisition auth handoff", () => {
     );
   });
 
+  it("routes a stranded completed acquisition to billing recovery from every auth path", () => {
+    const callback = read("app/auth/callback/page.tsx");
+    const setPassword = read("app/auth/set-password/page.tsx");
+    const signIn = read("features/auth/components/SignIn.tsx");
+    const claimHelper = read(
+      "features/stripe/lib/client/claim-acquisition.ts",
+    );
+
+    expect(claimHelper).toContain("stripeAcquisitionRecoveryHref");
+    expect(claimHelper).toContain("!claim.recoveryRequired");
+    expect(claimHelper).toContain("/^cs_[A-Za-z0-9_]+$/");
+    expect(claimHelper).toContain("/account/billing?");
+    expect(claimHelper).toContain('billing_link_error: "1"');
+
+    expect(callback).toContain(
+      "stripeAcquisitionRecoveryHref(claim, sp)",
+    );
+    expect(setPassword).toContain(
+      "stripeAcquisitionRecoveryHref(claim, searchParams)",
+    );
+
+    expect(
+      signIn.match(/stripeAcquisitionRecoveryHref\(/g)?.length,
+    ).toBe(3);
+
+    expect(setPassword).toContain(
+      "window.location.replace(recoveryHref)",
+    );
+    expect(signIn).toContain(
+      "navigateAfterAuthentication(recoveryHref)",
+    );
+  });
+
   it("claims a completed acquisition before leaving password recovery", () => {
     const setPassword = read("app/auth/set-password/page.tsx");
 
