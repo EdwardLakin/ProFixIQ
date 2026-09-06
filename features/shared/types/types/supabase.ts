@@ -28195,31 +28195,6 @@ export type Database = {
           shop_id: string
         }[]
       }
-      recover_stranded_stripe_acquisition_identity: {
-        Args: {
-          p_auth_user_id: string;
-          p_profile_id: string;
-          p_shop_id: string;
-          p_intent_id: string;
-          p_nonce: string;
-          p_checkout_email: string;
-          p_stripe_price_id: string;
-          p_checkout_session_id: string;
-          p_customer_id: string;
-          p_subscription_id: string;
-          p_expected_profile_checkout_session_id: string | null;
-          p_expected_profile_customer_id: string | null;
-          p_expected_profile_subscription_id: string | null;
-          p_expected_shop_checkout_session_id: string | null;
-          p_expected_shop_customer_id: string | null;
-          p_expected_shop_subscription_id: string | null;
-        };
-        Returns: {
-          recovered: boolean;
-          denial_reason: string | null;
-          shop_id: string | null;
-        }[];
-      };
       claim_stripe_webhook_event: {
         Args: {
           p_event_created_at: string
@@ -30170,6 +30145,31 @@ export type Database = {
           p_subscription_id: string
         }
         Returns: boolean
+      }
+      recover_stranded_stripe_acquisition_identity: {
+        Args: {
+          p_auth_user_id: string
+          p_checkout_email: string
+          p_checkout_session_id: string
+          p_customer_id: string
+          p_expected_profile_checkout_session_id?: string
+          p_expected_profile_customer_id?: string
+          p_expected_profile_subscription_id?: string
+          p_expected_shop_checkout_session_id?: string
+          p_expected_shop_customer_id?: string
+          p_expected_shop_subscription_id?: string
+          p_intent_id: string
+          p_nonce: string
+          p_profile_id: string
+          p_shop_id: string
+          p_stripe_price_id: string
+          p_subscription_id: string
+        }
+        Returns: {
+          denial_reason: string
+          recovered: boolean
+          shop_id: string
+        }[]
       }
       release_financial_outbox_claim: {
         Args: {

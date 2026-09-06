@@ -11,12 +11,12 @@ create or replace function public.recover_stranded_stripe_acquisition_identity(
   p_checkout_session_id text,
   p_customer_id text,
   p_subscription_id text,
-  p_expected_profile_checkout_session_id text,
-  p_expected_profile_customer_id text,
-  p_expected_profile_subscription_id text,
-  p_expected_shop_checkout_session_id text,
-  p_expected_shop_customer_id text,
-  p_expected_shop_subscription_id text
+  p_expected_profile_checkout_session_id text default null,
+  p_expected_profile_customer_id text default null,
+  p_expected_profile_subscription_id text default null,
+  p_expected_shop_checkout_session_id text default null,
+  p_expected_shop_customer_id text default null,
+  p_expected_shop_subscription_id text default null
 )
 returns table (
   recovered boolean,

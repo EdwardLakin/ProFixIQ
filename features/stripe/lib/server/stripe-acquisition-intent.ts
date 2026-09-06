@@ -352,12 +352,17 @@ export async function recoverStrandedStripeAcquisitionIdentity(input: {
       p_customer_id: input.customerId,
       p_subscription_id: input.subscriptionId,
       p_expected_profile_checkout_session_id:
-        input.expectedProfileCheckoutSessionId,
-      p_expected_profile_customer_id: input.expectedProfileCustomerId,
-      p_expected_profile_subscription_id: input.expectedProfileSubscriptionId,
-      p_expected_shop_checkout_session_id: input.expectedShopCheckoutSessionId,
-      p_expected_shop_customer_id: input.expectedShopCustomerId,
-      p_expected_shop_subscription_id: input.expectedShopSubscriptionId,
+        input.expectedProfileCheckoutSessionId ?? undefined,
+      p_expected_profile_customer_id:
+        input.expectedProfileCustomerId ?? undefined,
+      p_expected_profile_subscription_id:
+        input.expectedProfileSubscriptionId ?? undefined,
+      p_expected_shop_checkout_session_id:
+        input.expectedShopCheckoutSessionId ?? undefined,
+      p_expected_shop_customer_id:
+        input.expectedShopCustomerId ?? undefined,
+      p_expected_shop_subscription_id:
+        input.expectedShopSubscriptionId ?? undefined,
     },
   );
 
