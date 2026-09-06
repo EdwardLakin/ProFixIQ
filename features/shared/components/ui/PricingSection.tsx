@@ -22,6 +22,7 @@ export type PricingSectionProps = {
   onCheckout: (payload: CheckoutPayload) => void | Promise<void>;
   onStartFree: () => void;
   surface: "light" | "dark";
+  paidOnly?: boolean;
 };
 
 const plans: Array<{
@@ -97,6 +98,7 @@ const plans: Array<{
 export default function PricingSection({
   onCheckout,
   surface,
+  paidOnly = false,
 }: PricingSectionProps) {
   const [busyKey, setBusyKey] = useState<ProductPackageKey | null>(null);
 
@@ -169,19 +171,21 @@ export default function PricingSection({
               </div>
 
               <div className="mt-6 grid gap-2">
-                <button
-                  type="button"
-                  onClick={() => void startCheckout(plan.key, "trial")}
-                  disabled={Boolean(busyKey)}
-                  aria-busy={isBusy}
-                  className={`${styles.button} ${
-                    plan.featured
-                      ? styles.primaryButton
-                      : styles.secondaryButton
-                  } rounded-xl border px-4 py-3 text-sm font-bold transition`}
-                >
-                  {isBusy ? "Starting…" : "Start 7-day free trial"}
-                </button>
+                {!paidOnly ? (
+                  <button
+                    type="button"
+                    onClick={() => void startCheckout(plan.key, "trial")}
+                    disabled={Boolean(busyKey)}
+                    aria-busy={isBusy}
+                    className={`${styles.button} ${
+                      plan.featured
+                        ? styles.primaryButton
+                        : styles.secondaryButton
+                    } rounded-xl border px-4 py-3 text-sm font-bold transition`}
+                  >
+                    {isBusy ? "Starting…" : "Start 7-day free trial"}
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => void startCheckout(plan.key, "paid")}

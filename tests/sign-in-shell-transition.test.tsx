@@ -37,9 +37,17 @@ vi.mock("@/features/auth/lib/postAuthNavigation", () => ({
   navigateAfterAuthentication: mocks.navigateAfterAuthentication,
 }));
 
-vi.mock("@/features/stripe/lib/client/claim-acquisition", () => ({
-  claimStripeAcquisitionAfterAuth: mocks.claimAcquisition,
-}));
+vi.mock("@/features/stripe/lib/client/claim-acquisition", async (importOriginal) => {
+  const actual =
+    await importOriginal<
+      typeof import("@/features/stripe/lib/client/claim-acquisition")
+    >();
+
+  return {
+    ...actual,
+    claimStripeAcquisitionAfterAuth: mocks.claimAcquisition,
+  };
+});
 
 vi.mock("@/features/shared/lib/supabase/client", () => ({
   createBrowserSupabase: () => ({
@@ -85,6 +93,31 @@ describe("Shop sign-in shell transition", () => {
       surface: "shop",
       acquisitionSessionId: undefined,
     });
+  });
+
+  it("routes a stranded completed acquisition to exact billing recovery", async () => {
+    searchParams.set("flow", "acquisition");
+    searchParams.set("session_id", "cs_recovery_test");
+
+    mocks.getUser.mockResolvedValue({
+      data: { user: { id: "owner-user" } },
+    });
+    mocks.claimAcquisition.mockResolvedValue({
+      required: true,
+      linked: false,
+      surface: null,
+      recoveryRequired: true,
+    });
+
+    render(<AuthPage />);
+
+    await waitFor(() => {
+      expect(mocks.navigateAfterAuthentication).toHaveBeenCalledWith(
+        "/account/billing?session_id=cs_recovery_test&billing_link_error=1",
+      );
+    });
+
+    expect(mocks.claimAcquisition).toHaveBeenCalled();
   });
 
   it("uses location replacement to rebuild the protected root layout", async () => {

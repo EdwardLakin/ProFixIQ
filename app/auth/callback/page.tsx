@@ -14,7 +14,10 @@ import {
   resolveLegacySignInHref,
 } from "@/features/auth/lib/accessSurfaceRouting";
 import { safeInternalRedirect } from "@/features/auth/lib/safeRedirect";
-import { claimStripeAcquisitionAfterAuth } from "@/features/stripe/lib/client/claim-acquisition";
+import {
+  claimStripeAcquisitionAfterAuth,
+  stripeAcquisitionRecoveryHref,
+} from "@/features/stripe/lib/client/claim-acquisition";
 
 const OTP_TYPES = new Set<EmailOtpType>([
   "signup",
@@ -97,8 +100,15 @@ export default function AuthCallbackPage() {
 
       const claim = await claimStripeAcquisitionAfterAuth(sp);
       if (!claim.linked) {
+        const sessionId = sp.get("session_id")?.trim() ?? "";
+
+        const recoveryHref = stripeAcquisitionRecoveryHref(claim, sp);
+        if (recoveryHref) {
+          router.replace(recoveryHref);
+          return;
+        }
+
         const retry = new URLSearchParams();
-        const sessionId = sp.get("session_id")?.trim();
         if (sessionId) retry.set("session_id", sessionId);
         retry.set("flow", "acquisition");
         retry.set("billing_link_error", "1");

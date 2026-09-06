@@ -25,7 +25,12 @@ describe("P0-006 Stripe identity boundary", () => {
       claimStripeAcquisitionAfterAuth(
         new URLSearchParams("flow=acquisition&session_id=invalid"),
       ),
-    ).resolves.toEqual({ required: true, linked: false, surface: null });
+    ).resolves.toEqual({
+      required: true,
+      linked: false,
+      surface: null,
+      recoveryRequired: false,
+    });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -69,7 +74,12 @@ describe("P0-006 Stripe identity boundary", () => {
           "flow=acquisition&session_id=cs_test_missing_surface",
         ),
       ),
-    ).resolves.toEqual({ required: true, linked: false, surface: null });
+    ).resolves.toEqual({
+      required: true,
+      linked: false,
+      surface: null,
+      recoveryRequired: false,
+    });
   });
 
   it("keeps price, trial, governed discounts, redirects, and Stripe retries server-owned", async () => {
@@ -91,9 +101,7 @@ describe("P0-006 Stripe identity boundary", () => {
     );
     expect(checkout).not.toContain("STRIPE_PRICE_BASE_MONTHLY");
     expect(checkout).toContain("configuredTrialDays()");
-    expect(checkout).toContain(
-      'process.env.STRIPE_TRIAL_DAYS ?? "7"',
-    );
+    expect(checkout).toContain('process.env.STRIPE_TRIAL_DAYS ?? "7"');
     expect(checkout).toMatch(/\? parsed : 7;/);
     expect(checkout).toContain("allow_promotion_codes: true");
     expect(checkout).not.toContain("STRIPE_FOUNDING_COUPON_ID");
@@ -129,6 +137,27 @@ describe("P0-006 Stripe identity boundary", () => {
     );
     expect(linking).toContain(
       "idempotencyKey: `profixiq:acquisition-subscription-link:",
+    );
+  });
+
+  it("offers recovery only for stale canonical billing identity conflicts", async () => {
+    const linking = await source(
+      "features/stripe/api/stripe/checkout/link-user/route.ts",
+    );
+    const client = await source(
+      "features/stripe/lib/client/claim-acquisition.ts",
+    );
+
+    expect(linking).toContain('claim.reason === "billing_identity_conflict"');
+    expect(linking).toContain(
+      'claim.reason === "shop_billing_identity_conflict"',
+    );
+    expect(linking).not.toContain(
+      'claim.reason === "billing_identity_already_linked"',
+    );
+    expect(linking).toContain("recoveryRequired: true");
+    expect(client).toContain(
+      "response.status === 409 && body?.recoveryRequired === true",
     );
   });
 

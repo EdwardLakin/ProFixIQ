@@ -9,6 +9,7 @@ type Props = {
   open: boolean;
   onClose: () => void;
   onVerified?: (expiresAt: string | undefined) => void;
+  purpose?: string;
 };
 
 type VerifyResponse = {
@@ -26,6 +27,7 @@ export default function OwnerPinModal({
   open,
   onClose,
   onVerified,
+  purpose,
 }: Props) {
   const [pin, setPin] = useState("");
   const [confirmPin, setConfirmPin] = useState("");
@@ -53,7 +55,9 @@ export default function OwnerPinModal({
 
   if (!open) return null;
 
-  async function tryVerifyFirst(): Promise<"verified" | "needs_set" | "failed"> {
+  async function tryVerifyFirst(): Promise<
+    "verified" | "needs_set" | "failed"
+  > {
     if (!shopId) {
       setError("Shop not found.");
       return "failed";
@@ -62,7 +66,7 @@ export default function OwnerPinModal({
     const res = await fetch("/api/shop/owner-pin/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ shopId, pin }),
+      body: JSON.stringify({ shopId, pin, ...(purpose ? { purpose } : {}) }),
     });
 
     const json = (await res.json().catch(() => ({}))) as VerifyResponse;
@@ -112,9 +116,8 @@ export default function OwnerPinModal({
       return false;
     }
 
-    onVerified?.(buildExpiryIso(30));
-    onClose();
-    return true;
+    const verification = await tryVerifyFirst();
+    return verification === "verified";
   }
 
   async function handleSubmit() {
@@ -169,7 +172,9 @@ export default function OwnerPinModal({
               </label>
               <Input
                 value={confirmPin}
-                onChange={(e) => setConfirmPin(e.target.value.replace(/\D/g, ""))}
+                onChange={(e) =>
+                  setConfirmPin(e.target.value.replace(/\D/g, ""))
+                }
                 inputMode="numeric"
                 placeholder="Confirm PIN"
                 maxLength={8}
@@ -194,16 +199,8 @@ export default function OwnerPinModal({
           >
             Cancel
           </Button>
-          <Button
-            type="button"
-            onClick={handleSubmit}
-            disabled={!canSubmit}
-          >
-            {busy
-              ? "Please wait..."
-              : mode === "verify"
-                ? "Unlock"
-                : "Set PIN"}
+          <Button type="button" onClick={handleSubmit} disabled={!canSubmit}>
+            {busy ? "Please wait..." : mode === "verify" ? "Unlock" : "Set PIN"}
           </Button>
         </div>
       </div>
