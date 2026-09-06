@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useId, useRef, useState, type ChangeEvent } from "react";
+import { Camera } from "lucide-react";
 import { toast } from "sonner";
 import InspectionPhotoGallery from "@inspections/components/inspection/InspectionPhotoGallery";
 import {
@@ -54,6 +55,7 @@ export default function PhotoUploadButton({
   readOnly = false,
   onPendingChange,
 }: PhotoUploadButtonProps) {
+  const inputId = useId();
   const [urls, setUrls] = useState<string[]>(photoUrls ?? []);
   const [staged, setStaged] = useState<StagedPreview[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -283,57 +285,95 @@ export default function PhotoUploadButton({
     );
   };
 
-  return (
-    <div className="mt-2">
-      <label className="mb-1 block text-xs font-bold text-[color:var(--theme-text-primary)]">
-        {readOnly ? "Photos" : "Add photos"}
-      </label>
+  const photoCount = urls.length + staged.length;
+  const hasPhotos = photoCount > 0;
 
-      <InspectionPhotoGallery
-        workOrderId={workOrderId}
-        workOrderLineId={workOrderLineId}
-        photos={[
-          ...urls.map((url, index) => ({
-            id: `saved-${url}-${index}`,
-            url,
-            label: itemName
-              ? `${itemName} evidence ${index + 1}`
-              : `Inspection evidence ${index + 1}`,
-            onRemove: readOnly ? undefined : () => handleRemove(index),
-          })),
-          ...staged.map((preview) => ({
-            id: preview.clientMutationId,
-            url: preview.previewUrl,
-            label: preview.fileName,
-            statusLabel:
-              preview.status === "conflicted"
-                ? "Sync needs review"
-                : preview.status === "failed"
-                  ? "Waiting to retry"
-                  : "Queued on device",
-            onRemove: readOnly ? undefined : () => void removeStaged(preview),
-          })),
-        ]}
-      />
+  return (
+    <div className="mt-1.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+          {hasPhotos
+            ? `${photoCount} photo${photoCount === 1 ? "" : "s"}`
+            : readOnly
+              ? "Photos"
+              : "No photos yet"}
+        </span>
+
+        {!readOnly ? (
+          <label
+            htmlFor={inputId}
+            aria-disabled={uploading || !canUpload}
+            className={[
+              "inline-flex min-h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-[11px] font-semibold text-[color:var(--theme-text-primary)]",
+              "hover:border-accent/70 hover:text-accent active:scale-[0.98]",
+              uploading || !canUpload
+                ? "pointer-events-none opacity-50"
+                : "",
+            ].join(" ")}
+          >
+            <Camera className="h-3.5 w-3.5" aria-hidden />
+            {uploading
+              ? "Uploading…"
+              : hasPhotos
+                ? "+ Add"
+                : "+ Add photos"}
+          </label>
+        ) : null}
+      </div>
 
       {!readOnly ? (
         <input
+          id={inputId}
           type="file"
           multiple
           accept="image/*"
+          capture="environment"
           onChange={handleFileChange}
           disabled={uploading || !canUpload}
-          className="mt-2 block text-sm text-[color:var(--theme-text-secondary)] file:rounded-full file:border-0 file:bg-orange-700 file:text-sm file:font-semibold file:text-[color:var(--theme-text-primary)] hover:file:bg-orange-600 disabled:opacity-60"
+          className="sr-only"
         />
       ) : null}
 
-      {canStage && (
-        <div className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
+      {hasPhotos ? (
+        <div className="mt-2">
+          <InspectionPhotoGallery
+            workOrderId={workOrderId}
+            workOrderLineId={workOrderLineId}
+            photos={[
+              ...urls.map((url, index) => ({
+                id: `saved-${url}-${index}`,
+                url,
+                label: itemName
+                  ? `${itemName} evidence ${index + 1}`
+                  : `Inspection evidence ${index + 1}`,
+                onRemove: readOnly ? undefined : () => handleRemove(index),
+              })),
+              ...staged.map((preview) => ({
+                id: preview.clientMutationId,
+                url: preview.previewUrl,
+                label: preview.fileName,
+                statusLabel:
+                  preview.status === "conflicted"
+                    ? "Sync needs review"
+                    : preview.status === "failed"
+                      ? "Waiting to retry"
+                      : "Queued on device",
+                onRemove: readOnly
+                  ? undefined
+                  : () => void removeStaged(preview),
+              })),
+            ]}
+          />
+        </div>
+      ) : null}
+
+      {canStage && !readOnly && (
+        <div className="mt-1 text-[10px] text-[color:var(--theme-text-secondary)]">
           Photos are kept on this device until upload completes.
         </div>
       )}
       {!readOnly && !canUpload && (
-        <div className="mt-1 text-[11px] text-amber-200/80">
+        <div className="mt-1 text-[10px] text-amber-200/80">
           Photo upload disabled (missing inspectionId).
         </div>
       )}

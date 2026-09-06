@@ -107,7 +107,7 @@ export default function PartsRequestModal({
           .maybeSingle();
 
         const wo = data as WorkOrderLite | null;
-        setWoLabel(wo?.custom_id ?? workOrderId);
+        setWoLabel(wo?.custom_id?.trim() || `WO-${workOrderId.slice(0, 8)}`);
       }
 
       // Job line complaint/description
@@ -122,7 +122,7 @@ export default function PartsRequestModal({
         const label =
           (line?.complaint ?? "").trim() ||
           (line?.description ?? "").trim() ||
-          jobId;
+          "This job";
 
         setJobLabel(label);
       }
@@ -237,8 +237,8 @@ export default function PartsRequestModal({
 
   if (!isOpen) return null;
 
-  const woDisplay = woLabel || workOrderId;
-  const jobDisplay = jobLabel || jobId;
+  const woDisplay = woLabel || `WO-${workOrderId.slice(0, 8)}`;
+  const jobDisplay = jobLabel || "This job";
 
   return (
     <ModalShell
@@ -260,31 +260,16 @@ export default function PartsRequestModal({
           </div>
         </div>
 
-        {/* Header meta */}
-        <div className="flex flex-col gap-2 text-[0.7rem] text-[color:var(--theme-text-secondary)] sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-              Work order
-            </span>
-            <span
-              className="max-w-[60vw] truncate rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 font-mono text-[0.7rem] text-[color:var(--theme-text-primary)] sm:max-w-[340px]"
-              title={woDisplay}
-            >
-              {woDisplay}
-            </span>
-          </div>
-
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
-            <span className="font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-              Job
-            </span>
-            <span
-              className="max-w-[60vw] truncate rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1 text-[0.75rem] font-medium text-[color:var(--theme-text-primary)] sm:max-w-[420px]"
-              title={jobDisplay}
-            >
-              {jobDisplay}
-            </span>
-          </div>
+        {/* Header meta — one plain-language line of context, never raw ids */}
+        <div
+          className="min-w-0 truncate rounded-full border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-1.5 text-[0.75rem] font-medium text-[color:var(--theme-text-primary)]"
+          title={`${woDisplay} · ${jobDisplay}`}
+        >
+          <span className="font-mono text-[0.72rem] text-[color:var(--theme-text-secondary)]">
+            {woDisplay}
+          </span>
+          <span className="mx-1.5 text-[color:var(--theme-text-muted)]">·</span>
+          {jobDisplay}
         </div>
 
         {/* Note to parts */}

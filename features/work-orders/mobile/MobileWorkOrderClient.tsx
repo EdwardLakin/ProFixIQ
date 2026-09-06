@@ -2391,21 +2391,21 @@ export default function MobileWorkOrderClient({
 
           <section
             ref={focusedActionRef}
-            className="metal-panel metal-panel--card scroll-mt-20 rounded-2xl border border-[var(--metal-border-soft)] px-4 py-3"
+            className="mobile-work-order-next-action scroll-mt-20 rounded-2xl border px-4 py-3.5"
           >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h2 className="text-sm font-semibold sm:text-base">
-                  Focused job / actions
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h2 className="text-[0.65rem] font-bold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+                  Next action
                 </h2>
-                <p className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
+                <p className="mt-1 truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   {nextActionText}
                 </p>
               </div>
               {primaryActionLine ? (
                 <button
                   type="button"
-                  className="mobile-tech-btn-utility rounded-full border px-3 py-1.5 text-[11px] font-semibold"
+                  className="mobile-tech-btn-primary shrink-0 rounded-xl px-4 text-sm font-bold"
                   onClick={() => {
                     setFocusedJobId(primaryActionLine.id);
                     setFocusedOpen(true);
@@ -2416,20 +2416,20 @@ export default function MobileWorkOrderClient({
                     : "Open next job"}
                 </button>
               ) : (
-                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
+                <span className="shrink-0 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                   Completed
                 </span>
               )}
             </div>
 
-            <div className="mt-3 border-t border-[color:var(--theme-border-soft)] pt-3">
-              <h2 className="text-sm font-semibold sm:text-base">
+            <details className="mt-3 border-t border-[color:var(--theme-border-soft)] pt-2.5">
+              <summary className="cursor-pointer list-none text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
                 Supporting utilities
-              </h2>
+              </summary>
               <div className="mt-2">
                 <AskAssistantEntry mobile placement="dock" />
               </div>
-            </div>
+            </details>
           </section>
         </div>
       )}

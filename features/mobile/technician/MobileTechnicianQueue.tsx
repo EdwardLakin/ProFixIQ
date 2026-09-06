@@ -481,6 +481,11 @@ export default function MobileTechnicianQueue() {
             );
             const approval = cleanText(line.approval_state || "approved");
 
+            const hasBadges =
+              priority !== "normal" ||
+              (approval && approval.toLowerCase() !== "approved") ||
+              (line.punched_in_at && !line.punched_out_at);
+
             return (
               <Link
                 key={line.id}
@@ -489,37 +494,39 @@ export default function MobileTechnicianQueue() {
                     ? `/mobile/work-orders/${workOrder.id}`
                     : "/mobile/tech/queue"
                 }
-                className="mobile-tech-subpanel block border border-[color:var(--theme-border-soft)] p-3 active:scale-[0.99]"
+                className="mobile-tech-subpanel block border border-[color:var(--theme-border-soft)] px-3 py-2.5 active:scale-[0.99]"
               >
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <div className="text-[0.65rem] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                      WO {workOrderLabel}
-                      {lineNumber ? ` • Line ${lineNumber}` : ""}
+                    <div className="flex items-baseline gap-1.5 text-[0.65rem] uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
+                      <span>WO {workOrderLabel}</span>
+                      {lineNumber ? <span>• Line {lineNumber}</span> : null}
                     </div>
-                    <div className="mt-1 truncate text-base font-semibold text-[color:var(--theme-text-primary)]">
+                    <div className="mt-0.5 truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
                       {jobLabel}
                     </div>
-                    <div className="mt-1 truncate text-xs text-[color:var(--theme-text-secondary)]">
+                    <div className="truncate text-xs text-[color:var(--theme-text-secondary)]">
                       {workOrder?.vehicleLabel || "Vehicle not listed"}
                     </div>
-                    <div className="mt-2 flex flex-wrap gap-1.5">
-                      {priority !== "normal" ? (
-                        <span className="rounded-full border border-red-400/35 bg-red-500/10 px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.1em] text-red-100">
-                          {priority}
-                        </span>
-                      ) : null}
-                      {approval && approval.toLowerCase() !== "approved" ? (
-                        <span className="rounded-full border border-amber-400/35 bg-amber-500/10 px-2 py-0.5 text-[0.62rem] uppercase tracking-[0.1em] text-amber-100">
-                          Approval {approval.replaceAll("_", " ")}
-                        </span>
-                      ) : null}
-                      {line.punched_in_at && !line.punched_out_at ? (
-                        <span className="rounded-full border border-emerald-400/35 bg-emerald-500/10 px-2 py-0.5 text-[0.62rem] uppercase tracking-[0.1em] text-emerald-100">
-                          Timer active
-                        </span>
-                      ) : null}
-                    </div>
+                    {hasBadges ? (
+                      <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {priority !== "normal" ? (
+                          <span className="rounded-full border border-red-400/35 bg-red-500/10 px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.1em] text-red-100">
+                            {priority}
+                          </span>
+                        ) : null}
+                        {approval && approval.toLowerCase() !== "approved" ? (
+                          <span className="rounded-full border border-amber-400/35 bg-amber-500/10 px-2 py-0.5 text-[0.62rem] uppercase tracking-[0.1em] text-amber-100">
+                            Approval {approval.replaceAll("_", " ")}
+                          </span>
+                        ) : null}
+                        {line.punched_in_at && !line.punched_out_at ? (
+                          <span className="rounded-full border border-emerald-400/35 bg-emerald-500/10 px-2 py-0.5 text-[0.62rem] uppercase tracking-[0.1em] text-emerald-100">
+                            Timer active
+                          </span>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                   <span
                     className={`shrink-0 rounded-full border px-2.5 py-1 text-[0.65rem] font-semibold ${statusTone(bucket)}`}

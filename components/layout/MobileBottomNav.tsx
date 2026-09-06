@@ -83,6 +83,8 @@ const DEFAULT_RUNTIME_STATUS: RuntimeStatus = {
   syncBlocked: null,
 };
 
+const RESUME_VISIBLE_LIMIT = 3;
+
 function isActivePath(pathname: string, href: string) {
   return href === "/mobile" ? pathname === href : pathname.startsWith(href);
 }
@@ -383,7 +385,7 @@ export function MobileBottomNav({ open, onClose }: Props) {
       tabs
         .filter((item) => !item.pinned)
         .sort((a, b) => b.lastOpenedAt - a.lastOpenedAt)
-        .slice(0, 5),
+        .slice(0, RESUME_VISIBLE_LIMIT),
     [tabs],
   );
 
@@ -460,8 +462,24 @@ export function MobileBottomNav({ open, onClose }: Props) {
           </button>
         </header>
 
-        <div className="mobile-command-drawer__scroll flex-1 space-y-5 overflow-y-auto px-3 py-4">
-          {userId ? <MobileShiftTracker userId={userId} /> : null}
+        <div className="mobile-command-drawer__scroll flex-1 space-y-4 overflow-y-auto px-3 py-4">
+          <MenuSection
+            title="Work"
+            items={navigationItems}
+            pathname={pathname}
+            onClose={onClose}
+          />
+
+          <MenuSection
+            title="Tools"
+            items={utilityItems}
+            pathname={pathname}
+            onClose={onClose}
+          />
+
+          {userId ? (
+            <MobileShiftTracker userId={userId} compact />
+          ) : null}
 
           {openWorkItems.length ? (
             <section className="space-y-2">
@@ -471,7 +489,7 @@ export function MobileBottomNav({ open, onClose }: Props) {
                   {totalOpenWork}
                 </span>
               </div>
-              <div className="space-y-2">
+              <div className="space-y-1.5">
                 {openWorkItems.map((item) => (
                   <div
                     key={item.key}
@@ -521,97 +539,104 @@ export function MobileBottomNav({ open, onClose }: Props) {
             </section>
           ) : null}
 
-          <MenuSection
-            title="Work"
-            items={navigationItems}
-            pathname={pathname}
-            onClose={onClose}
-          />
-
-          <MenuSection
-            title="Tools"
-            items={utilityItems}
-            pathname={pathname}
-            onClose={onClose}
-          />
-
           <section className="space-y-2">
-            <h2 className="mobile-command-drawer__section-title px-2">
-              Device & sync
-            </h2>
-            <div
-              className="mobile-command-device-card"
-              data-attention={deviceNeedsAttention ? "true" : "false"}
-            >
-              <div className="flex items-start gap-3">
-                <span className="mt-0.5 inline-grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/[0.08]">
-                  {runtimeStatus.online ? (
-                    <Wifi
-                      aria-hidden
-                      className="h-4.5 w-4.5 text-emerald-300"
-                    />
-                  ) : (
-                    <CloudOff
-                      aria-hidden
-                      className="h-4.5 w-4.5 text-amber-300"
-                    />
-                  )}
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-semibold text-white">
-                    {deviceLabel}
+            {deviceNeedsAttention ? (
+              <>
+                <h2 className="mobile-command-drawer__section-title px-2">
+                  Device & sync
+                </h2>
+                <div
+                  className="mobile-command-device-card"
+                  data-attention="true"
+                >
+                  <div className="flex items-start gap-3">
+                    <span className="mt-0.5 inline-grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-white/[0.08]">
+                      {runtimeStatus.online ? (
+                        <Wifi
+                          aria-hidden
+                          className="h-4.5 w-4.5 text-emerald-300"
+                        />
+                      ) : (
+                        <CloudOff
+                          aria-hidden
+                          className="h-4.5 w-4.5 text-amber-300"
+                        />
+                      )}
+                    </span>
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-semibold text-white">
+                        {deviceLabel}
+                      </div>
+                      <div className="mt-1 text-[0.69rem] leading-4 text-slate-300">
+                        {runtimeStatus.syncBlocked
+                          ? runtimeStatus.syncBlocked
+                          : runtimeStatus.conflicted > 0
+                            ? `${runtimeStatus.conflicted} conflict${runtimeStatus.conflicted === 1 ? "" : "s"} require review.`
+                            : runtimeStatus.failed > 0
+                              ? `${runtimeStatus.failed} saved change${runtimeStatus.failed === 1 ? "" : "s"} failed to sync.`
+                              : runtimeStatus.updateReady
+                                ? "A new ProFixIQ version is ready."
+                                : "Offline work and updates are managed here."}
+                      </div>
+                    </div>
                   </div>
-                  <div className="mt-1 text-[0.69rem] leading-4 text-slate-300">
-                    {runtimeStatus.syncBlocked
-                      ? runtimeStatus.syncBlocked
-                      : runtimeStatus.conflicted > 0
-                        ? `${runtimeStatus.conflicted} conflict${runtimeStatus.conflicted === 1 ? "" : "s"} require review.`
-                        : runtimeStatus.failed > 0
-                          ? `${runtimeStatus.failed} saved change${runtimeStatus.failed === 1 ? "" : "s"} failed to sync.`
-                          : runtimeStatus.updateReady
-                            ? "A new ProFixIQ version is ready."
-                            : "Offline work and updates are managed here."}
+
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Link
+                      href="/mobile/offline"
+                      onClick={onClose}
+                      className="inline-flex min-h-10 flex-1 items-center justify-center rounded-xl border border-white/15 bg-white/[0.07] px-3 text-xs font-semibold text-white"
+                    >
+                      View details
+                    </Link>
+                    {runtimeStatus.updateReady ? (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          window.dispatchEvent(
+                            new Event("profixiq:pwa-update-request"),
+                          )
+                        }
+                        disabled={
+                          runtimeStatus.activatingUpdate ||
+                          runtimeStatus.pending > 0
+                        }
+                        className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[#32b9f3] px-3 text-xs font-bold text-[#041022] disabled:opacity-55"
+                      >
+                        <RefreshCw
+                          aria-hidden
+                          className={`h-4 w-4 ${
+                            runtimeStatus.activatingUpdate ? "animate-spin" : ""
+                          }`}
+                        />
+                        {runtimeStatus.activatingUpdate
+                          ? "Updating"
+                          : runtimeStatus.pending > 0
+                            ? "Sync first"
+                            : "Update"}
+                      </button>
+                    ) : null}
                   </div>
                 </div>
-              </div>
-
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Link
-                  href="/mobile/offline"
-                  onClick={onClose}
-                  className="inline-flex min-h-10 flex-1 items-center justify-center rounded-xl border border-white/15 bg-white/[0.07] px-3 text-xs font-semibold text-white"
-                >
-                  View details
-                </Link>
-                {runtimeStatus.updateReady ? (
-                  <button
-                    type="button"
-                    onClick={() =>
-                      window.dispatchEvent(
-                        new Event("profixiq:pwa-update-request"),
-                      )
-                    }
-                    disabled={
-                      runtimeStatus.activatingUpdate ||
-                      runtimeStatus.pending > 0
-                    }
-                    className="inline-flex min-h-10 flex-1 items-center justify-center gap-2 rounded-xl bg-[#32b9f3] px-3 text-xs font-bold text-[#041022] disabled:opacity-55"
-                  >
-                    <RefreshCw
-                      aria-hidden
-                      className={`h-4 w-4 ${
-                        runtimeStatus.activatingUpdate ? "animate-spin" : ""
-                      }`}
-                    />
-                    {runtimeStatus.activatingUpdate
-                      ? "Updating"
-                      : runtimeStatus.pending > 0
-                        ? "Sync first"
-                        : "Update"}
-                  </button>
-                ) : null}
-              </div>
-            </div>
+              </>
+            ) : (
+              <Link
+                href="/mobile/offline"
+                onClick={onClose}
+                className="mobile-command-status-row flex items-center justify-between gap-2 rounded-xl border border-white/10 bg-white/[0.04] px-3 py-2 text-xs text-slate-300"
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <Wifi
+                    aria-hidden
+                    className="h-3.5 w-3.5 shrink-0 text-emerald-300"
+                  />
+                  <span className="truncate">{deviceLabel}</span>
+                </span>
+                <span className="shrink-0 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-slate-500">
+                  Details
+                </span>
+              </Link>
+            )}
 
             {install.available ? (
               <button
