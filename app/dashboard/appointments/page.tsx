@@ -35,6 +35,7 @@ import { toast, Toaster } from "sonner";
 
 import WeeklyCalendar from "./WeeklyCalendar";
 import FullCalendarModal from "./FullCalendarModal";
+import AppointmentCustomerVehiclePicker from "./AppointmentCustomerVehiclePicker";
 import type { Database } from "@shared/types/types/supabase";
 import { Button } from "@shared/components/ui/Button";
 
@@ -1193,8 +1194,6 @@ export default function PortalAppointmentsPage(): JSX.Element {
             ) : panelMode === "create" ? (
               <CreateForm
                 defaultDate={creatingDate ?? isoDate(weekStart)}
-                customers={customers}
-                loadingCustomers={loadingCustomers}
                 prefill={createPrefill}
                 onCancel={closePanel}
                 onSubmit={handleCreate}
@@ -1418,8 +1417,6 @@ export default function PortalAppointmentsPage(): JSX.Element {
             ) : (
               <CreateForm
                 defaultDate={creatingDate ?? isoDate(weekStart)}
-                customers={customers}
-                loadingCustomers={loadingCustomers}
                 prefill={createPrefill}
                 onCancel={closePanel}
                 onSubmit={handleCreate}
@@ -1466,15 +1463,11 @@ function TabButton({
 
 function CreateForm({
   defaultDate,
-  customers,
-  loadingCustomers,
   prefill,
   onCancel,
   onSubmit,
 }: {
   defaultDate: string;
-  customers: CustomerRow[];
-  loadingCustomers: boolean;
   prefill: AppointmentCreatePrefill | null;
   onCancel: () => void;
   onSubmit: (form: {
@@ -1512,6 +1505,9 @@ function CreateForm({
   const [vehicleId, setVehicleId] = useState<string>(
     prefill?.vehicleId ?? "",
   );
+  const [selectedVehicleLabel, setSelectedVehicleLabel] = useState(
+    prefill?.vehicleLabel ?? "",
+  );
   const [customerName, setCustomerName] = useState(
     initialFull || `${initialFirst} ${initialLast}`.trim(),
   );
@@ -1533,35 +1529,20 @@ function CreateForm({
     setDate(defaultDate);
   }, [defaultDate]);
 
-  const handleSelectCustomer = (id: string) => {
-    setCustomerId(id);
-    if (id !== prefill?.customer.id) setVehicleId("");
-    const c = customers.find((x) => x.id === id);
-    if (!c) return;
-
-    const rec = c as unknown as Record<string, unknown>;
-    const full = safeString(rec["full_name"]) || safeString(rec["name"]);
-    const first = safeString(rec["first_name"]);
-    const last = safeString(rec["last_name"]);
-    const name = full || `${first} ${last}`.trim();
-
-    setCustomerName(name || "");
-    setCustomerEmail(
-      safeString(rec["email"]) || safeString(rec["contact_email"]),
-    );
-    setCustomerPhone(safeString(rec["phone"]) || safeString(rec["mobile"]));
-  };
-
   return (
     <form
       className="space-y-3"
       onSubmit={(e) => {
         e.preventDefault();
+        if (!customerId) {
+          toast.error("Select an existing customer before saving the appointment.");
+          return;
+        }
         onSubmit({
           date,
           startsAt,
           endsAt,
-          customerId: customerId || undefined,
+          customerId,
           vehicleId: vehicleId || undefined,
           customerName,
           customerEmail,
@@ -1573,13 +1554,6 @@ function CreateForm({
       <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
         Create appointment
       </h3>
-
-      {vehicleId && prefill ? (
-        <div className="rounded-xl border border-sky-500/30 bg-sky-500/10 px-3 py-2 text-sm">
-          <span className="text-[color:var(--theme-text-muted)]">Vehicle</span>{" "}
-          <strong>{prefill.vehicleLabel}</strong>
-        </div>
-      ) : null}
 
       <div className="grid gap-2 sm:grid-cols-2">
         <label className="text-xs text-[color:var(--theme-text-secondary)]">
@@ -1614,29 +1588,37 @@ function CreateForm({
         </div>
       </div>
 
-      <label className="text-xs text-[color:var(--theme-text-secondary)]">
-        Customer (from database)
-        <select
-          value={customerId}
-          onChange={(e) => handleSelectCustomer(e.target.value)}
-          className={fieldClass()}
-        >
-          <option value="">{loadingCustomers ? "Loading…" : "Select…"}</option>
-          {customers.map((c) => (
-            <option key={c.id} value={c.id}>
-              {customerLabel(c)}
-            </option>
-          ))}
-        </select>
-      </label>
+      <AppointmentCustomerVehiclePicker
+        selectedCustomerId={customerId}
+        selectedCustomerName={customerName}
+        selectedVehicleId={vehicleId}
+        selectedVehicleLabel={selectedVehicleLabel}
+        onSelect={({ customer, vehicle }) => {
+          setCustomerId(customer.id);
+          setCustomerName(customer.displayName);
+          setCustomerEmail(customer.email ?? "");
+          setCustomerPhone(customer.phone ?? "");
+          setVehicleId(vehicle?.id ?? "");
+          setSelectedVehicleLabel(vehicle?.label ?? "");
+        }}
+        onClear={() => {
+          setCustomerId("");
+          setVehicleId("");
+          setSelectedVehicleLabel("");
+          setCustomerName("");
+          setCustomerEmail("");
+          setCustomerPhone("");
+        }}
+      />
 
       <label className="text-xs text-[color:var(--theme-text-secondary)]">
         Customer name
         <input
           value={customerName}
+          readOnly={Boolean(customerId)}
           onChange={(e) => setCustomerName(e.target.value)}
           className={fieldClass()}
-          placeholder="John Smith"
+          placeholder="Select a customer above"
         />
       </label>
 
@@ -1646,6 +1628,7 @@ function CreateForm({
           <input
             type="email"
             value={customerEmail}
+            readOnly={Boolean(customerId)}
             onChange={(e) => setCustomerEmail(e.target.value)}
             className={fieldClass()}
           />
@@ -1654,6 +1637,7 @@ function CreateForm({
           Phone
           <input
             value={customerPhone}
+            readOnly={Boolean(customerId)}
             onChange={(e) => setCustomerPhone(e.target.value)}
             className={fieldClass()}
           />
