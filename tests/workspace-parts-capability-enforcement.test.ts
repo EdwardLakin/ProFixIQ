@@ -41,6 +41,7 @@ describe("parts capability enforcement reaches the database", () => {
       ["parts_place_purchase_order", "'parts.order'"],
       ["parts_receive_request_item", "'parts.receive'"],
       ["parts_receive_free_text_po_line", "'parts.receive'"],
+      ["parts_create_or_reuse_po_line_for_request", "'parts.order'"],
     ];
     for (const [name, capability] of gated) {
       // The canonical implementation is out of the Data API schema, and the
@@ -64,6 +65,7 @@ describe("parts capability enforcement reaches the database", () => {
       "parts_place_purchase_order",
       "parts_receive_request_item",
       "parts_receive_free_text_po_line",
+      "parts_create_or_reuse_po_line_for_request",
     ]) {
       expect(MIGRATION).toContain(`revoke all on function private.${name}(`);
     }

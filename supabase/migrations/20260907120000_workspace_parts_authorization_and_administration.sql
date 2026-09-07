@@ -514,6 +514,72 @@ revoke all on function public.parts_receive_free_text_po_line(uuid, uuid, numeri
 grant execute on function public.parts_receive_free_text_po_line(uuid, uuid, numeric, text)
   to authenticated, service_role;
 
+alter function public.parts_create_or_reuse_po_line_for_request(
+  uuid, numeric, text, uuid, uuid, numeric, uuid, text
+)
+  set schema private;
+revoke all on function private.parts_create_or_reuse_po_line_for_request(
+  uuid, numeric, text, uuid, uuid, numeric, uuid, text
+)
+  from public, anon, authenticated, service_role;
+
+create function public.parts_create_or_reuse_po_line_for_request(
+  p_request_item_id uuid,
+  p_qty numeric,
+  p_idempotency_key text,
+  p_po_id uuid default null,
+  p_supplier_id uuid default null,
+  p_unit_cost numeric default null,
+  p_location_id uuid default null,
+  p_notes text default null
+) returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_shop_id uuid;
+begin
+  select coalesce(item.shop_id, request.shop_id)
+    into v_shop_id
+  from public.part_request_items item
+  join public.part_requests request
+    on request.id = item.request_id
+  where item.id = p_request_item_id;
+
+  perform private.workspace_assert_capability(
+    v_shop_id,
+    'parts.order',
+    'PARTS_ORDER_ACCESS_DENIED'
+  );
+
+  return private.parts_create_or_reuse_po_line_for_request(
+    p_request_item_id,
+    p_qty,
+    p_idempotency_key,
+    p_po_id,
+    p_supplier_id,
+    p_unit_cost,
+    p_location_id,
+    p_notes
+  );
+end;
+$$;
+
+revoke all on function public.parts_create_or_reuse_po_line_for_request(
+  uuid, numeric, text, uuid, uuid, numeric, uuid, text
+)
+  from public, anon, authenticated, service_role;
+grant execute on function public.parts_create_or_reuse_po_line_for_request(
+  uuid, numeric, text, uuid, uuid, numeric, uuid, text
+)
+  to authenticated, service_role;
+
+comment on function public.parts_create_or_reuse_po_line_for_request(
+  uuid, numeric, text, uuid, uuid, numeric, uuid, text
+) is
+  'Capability-gated entry point for parts.order. The canonical implementation is private.parts_create_or_reuse_po_line_for_request, which is outside the Data API schema.';
+
 comment on function public.create_part_request_with_items(uuid, jsonb, text, text) is
   'Capability-gated entry point for parts.request. The canonical implementation is private.create_part_request_with_items, which is outside the Data API schema.';
 comment on function public.parts_place_purchase_order(uuid, text, text) is

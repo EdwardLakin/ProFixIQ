@@ -86,7 +86,8 @@ begin
     'private.create_part_request_with_items(uuid, jsonb, text, text)',
     'private.parts_place_purchase_order(uuid, text, text)',
     'private.parts_receive_request_item(uuid, uuid, numeric, uuid, numeric, text)',
-    'private.parts_receive_free_text_po_line(uuid, uuid, numeric, text)'
+    'private.parts_receive_free_text_po_line(uuid, uuid, numeric, text)',
+    'private.parts_create_or_reuse_po_line_for_request(uuid, numeric, text, uuid, uuid, numeric, uuid, text)'
   ]
   loop
     if has_function_privilege('authenticated', v_signature, 'EXECUTE')
