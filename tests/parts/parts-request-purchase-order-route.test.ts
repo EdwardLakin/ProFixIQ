@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 const ITEM_ID = "11111111-1111-4111-8111-111111111111";
 const SUPPLIER_ID = "22222222-2222-4222-8222-222222222222";
@@ -114,7 +115,7 @@ describe("parts request purchase-order route", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
-      requiredCapability: "canManageParts",
+      requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.orderParts,
     });
     expect(supabase.filters).toEqual([
       ["id", ITEM_ID],

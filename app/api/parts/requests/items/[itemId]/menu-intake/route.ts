@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 type Body = {
   partId?: string | null;
@@ -37,7 +38,7 @@ export async function PATCH(
   context: { params: Promise<{ itemId: string }> },
 ) {
   const access = await requireShopScopedApiAccess({
-    requiredCapability: "canManageParts",
+    requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.managePartsDesk,
   });
   if (!access.ok) return access.response;
 

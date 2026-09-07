@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import {
+  WORKSPACE_CAPABILITIES,
+} from "@/features/workspace/authorization/capabilities";
 import { toSafeDatabaseError } from "@/features/shared/lib/server/safeDatabaseError";
 
 type Body = {
@@ -63,8 +66,9 @@ export async function POST(
     );
   }
 
+  // Placing a purchase order is purchasing authority, separate from receiving.
   const access = await requireShopScopedApiAccess({
-    requiredCapability: "canManageParts",
+    requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.orderParts,
   });
   if (!access.ok) return access.response;
 

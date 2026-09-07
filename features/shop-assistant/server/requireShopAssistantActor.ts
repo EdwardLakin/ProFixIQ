@@ -16,7 +16,12 @@ import {
   createAdminSupabase,
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
-import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
+import {
+  WORKSPACE_CAPABILITIES,
+  WORKSPACE_CAPABILITY_KEYS,
+  createDeniedWorkspaceCapabilities,
+  type EffectiveWorkspaceCapabilities,
+} from "@/features/workspace/authorization/capabilities";
 import { resolveCurrentWorkspaceCapabilities } from "@/features/workspace/authorization/server/resolveWorkspaceCapabilities";
 
 export class ShopAssistantHttpError extends Error {
@@ -36,6 +41,14 @@ export type ShopAssistantActor = {
   role: string | null;
   canonicalRole: CanonicalRole;
   capabilities: ActorCapabilities;
+  /**
+   * Effective Workspace capabilities for this human actor.
+   *
+   * Assistant tools must use these rather than reasoning about the role. The
+   * decisions are already fail-closed: if the resolver is unavailable every
+   * capability is denied.
+   */
+  workspaceCapabilities: EffectiveWorkspaceCapabilities;
   supabase: ReturnType<typeof createServerSupabaseRoute>;
 };
 
@@ -95,22 +108,26 @@ export async function requireShopAssistantActor(
     role: profile.role,
     fleetRole: strongestFleetRole,
   });
+  // One batched resolution for every capability the tool registry can require,
+  // rather than an RPC per tool call.
   const workspaceAccess = await resolveCurrentWorkspaceCapabilities({
     supabase,
     profileId: profile.id,
     shopId: profile.shop_id,
-    capabilityKeys: [WORKSPACE_CAPABILITIES.manageWorkOrderAssignments],
+    capabilityKeys: WORKSPACE_CAPABILITY_KEYS,
   });
+  const workspaceCapabilities: EffectiveWorkspaceCapabilities =
+    workspaceAccess.error === null
+      ? workspaceAccess.capabilities
+      : createDeniedWorkspaceCapabilities();
   const capabilities: ActorCapabilities = {
     ...roleCapabilities,
-    // Assignment is the first Workspace capability migrated end to end. A
+    // Assignment was the first Workspace capability migrated end to end. A
     // resolver error fails this one action closed without disabling unrelated
     // assistant reads and tools.
     canAssignWork:
-      workspaceAccess.error === null &&
-      workspaceAccess.capabilities[
-        WORKSPACE_CAPABILITIES.manageWorkOrderAssignments
-      ].granted,
+      workspaceCapabilities[WORKSPACE_CAPABILITIES.manageWorkOrderAssignments]
+        .granted,
   };
 
   return {
@@ -120,6 +137,7 @@ export async function requireShopAssistantActor(
     role: profile.role,
     canonicalRole,
     capabilities,
+    workspaceCapabilities,
     supabase,
   };
 }

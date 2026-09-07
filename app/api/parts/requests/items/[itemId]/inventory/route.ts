@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 type DB = Database;
 type PartRow = DB["public"]["Tables"]["parts"]["Row"] & {
@@ -82,7 +83,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
     return NextResponse.json({ ok: false, error: "Invalid itemId." }, { status: 400 });
   }
 
-  const access = await requireShopScopedApiAccess({ requiredCapability: "canManageParts" });
+  const access = await requireShopScopedApiAccess({ requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.managePartsDesk });
   if (!access.ok) return access.response;
 
   const body = (await req.json().catch(() => null)) as Body | null;

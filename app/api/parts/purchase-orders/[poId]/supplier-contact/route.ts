@@ -5,6 +5,7 @@ import {
   purchaseOrderContactHref,
 } from "@/features/parts/lib/purchaseOrderContact";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import { toSafeDatabaseError } from "@/features/shared/lib/server/safeDatabaseError";
 
 type Body = {
@@ -62,8 +63,7 @@ export async function POST(
   }
 
   const access = await requireShopScopedApiAccess({
-    requiredCapability: "canManageParts",
-    allowRoles: ["owner", "admin", "manager", "parts", "lead_hand", "foreman"],
+    requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.managePartsDesk,
   });
   if (!access.ok) return access.response;
 

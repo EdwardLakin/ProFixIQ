@@ -3,6 +3,7 @@
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 type DB = Database;
 
@@ -88,18 +89,11 @@ export async function POST(req: Request) {
 
   // 2) auth + tenant boundary. Technicians, Parts, and shop operators may
   // create requests only against work orders in their current shop.
+  // Requesting parts is deliberately separate authority from purchasing them.
+  // create_part_request_with_items enforces the same capability, so a direct
+  // RPC call cannot bypass this route.
   const access = await requireShopScopedApiAccess({
-    allowRoles: [
-      "owner",
-      "admin",
-      "manager",
-      "advisor",
-      "service",
-      "parts",
-      "mechanic",
-      "lead_hand",
-      "foreman",
-    ],
+    requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.requestParts,
   });
   if (!access.ok) return access.response;
 

@@ -3,6 +3,7 @@ import type { Database } from "@shared/types/types/supabase";
 import { syncQuoteLinePartsStatus } from "@/features/parts/server/syncQuoteLinePartsStatus";
 import { isPartsRequestItemPriced } from "@/features/parts/lib/status-display";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import { ESTIMATE_PARTS_ROLES } from "@/features/estimates/lib/access";
 
 type DB = Database;
@@ -71,8 +72,7 @@ export async function POST(
   }
 
   const access = await requireShopScopedApiAccess({
-    allowRoles: ["owner", "admin", "manager", "parts", "lead_hand", "foreman"],
-    requiredCapability: "canManageParts",
+    requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.managePartsDesk,
   });
   if (!access.ok) return access.response;
 

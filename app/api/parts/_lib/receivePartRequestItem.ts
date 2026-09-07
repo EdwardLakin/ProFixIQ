@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import {
+  WORKSPACE_CAPABILITIES,
+} from "@/features/workspace/authorization/capabilities";
 import { toSafeDatabaseError } from "@/features/shared/lib/server/safeDatabaseError";
 
 type ReceivePayload = {
@@ -68,8 +71,9 @@ export async function receivePartRequestItem(payload: ReceivePayload): Promise<N
     return NextResponse.json({ error: "A stable idempotency key is required." }, { status: 400 });
   }
 
+  // Receiving is separate authority from ordering.
   const access = await requireShopScopedApiAccess({
-    requiredCapability: "canManageParts",
+    requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.receiveParts,
   });
   if (!access.ok) return access.response;
 

@@ -44,7 +44,7 @@ describe("parts request RLS and legacy trigger reconciliation", () => {
   });
 
   it("allows canonical inventory selection route to persist through authorized server path", () => {
-    expect(inventoryRoute).toContain('requiredCapability: "canManageParts"');
+    expect(inventoryRoute).toContain('requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.managePartsDesk');
     expect(inventoryRoute).toContain("part_id: part.id");
     expect(inventoryRoute).toContain("Inventory selection did not persist.");
   });
@@ -81,7 +81,7 @@ describe("parts request RLS and legacy trigger reconciliation", () => {
 
 describe("parts request inventory selection regression", () => {
   it("retains application capability authorization and verifies the atomic persisted selection", () => {
-    expect(inventoryRoute).toContain('requiredCapability: "canManageParts"');
+    expect(inventoryRoute).toContain('requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.managePartsDesk');
     expect(inventoryRoute).toContain('.eq("shop_id", access.profile.shop_id)');
     expect(inventoryRoute).toContain('"parts_attach_inventory_to_request_item_atomic"');
     expect(inventoryRoute).toContain("p_part_id: part.id");

@@ -6,6 +6,7 @@ import { loadTechnicianWorkCandidateForWorkOrder } from "@/features/copilot/tech
 import { ShopAssistantHttpError } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { defineShopAssistantTool, runShopAssistantCommandRpc } from "../types";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 const LowStockItemSchema = z.object({
   partId: z.string().uuid(),
@@ -236,11 +237,12 @@ async function loadPurchaseOrderPlacementLines(
 
 export const listLowStockPartsTool = defineShopAssistantTool({
   name: "list_low_stock_parts",
+  requiredWorkspaceCapability:
+    WORKSPACE_CAPABILITIES.managePartsDesk,
   domain: "inventory",
   description: "List parts at or below their configured reorder threshold.",
   mode: "read",
   risk: "low",
-  requiredCapability: "canManageParts",
   confirmation: "never",
   inputSchema: z.object({
     limit: z.number().int().min(1).max(50).default(20),
@@ -322,12 +324,13 @@ export const listLowStockPartsTool = defineShopAssistantTool({
 
 export const listPartsBlockersTool = defineShopAssistantTool({
   name: "list_parts_blockers",
+  requiredWorkspaceCapability:
+    WORKSPACE_CAPABILITIES.managePartsDesk,
   domain: "inventory",
   description:
     "List approved part request quantities that have not been fully received.",
   mode: "read",
   risk: "low",
-  requiredCapability: "canManageParts",
   confirmation: "never",
   inputSchema: z.object({
     workOrderId: z.string().uuid().optional(),
@@ -444,12 +447,13 @@ export const listPartsBlockersTool = defineShopAssistantTool({
 
 export const listStockLocationsTool = defineShopAssistantTool({
   name: "list_stock_locations",
+  requiredWorkspaceCapability:
+    WORKSPACE_CAPABILITIES.managePartsDesk,
   domain: "inventory",
   description:
     "List same-shop inventory locations and their exact IDs for receiving or stock adjustments.",
   mode: "read",
   risk: "low",
-  requiredCapability: "canManageParts",
   confirmation: "never",
   inputSchema: z.object({
     query: z.string().trim().max(120).optional(),
@@ -490,12 +494,13 @@ export const listStockLocationsTool = defineShopAssistantTool({
 
 export const findSuppliersTool = defineShopAssistantTool({
   name: "find_suppliers",
+  requiredWorkspaceCapability:
+    WORKSPACE_CAPABILITIES.managePartsDesk,
   domain: "inventory",
   description:
     "Find active same-shop purchasing suppliers by name, email, phone, or account number.",
   mode: "read",
   risk: "low",
-  requiredCapability: "canManageParts",
   confirmation: "never",
   inputSchema: z.object({
     query: z.string().trim().max(120).optional(),
@@ -545,12 +550,13 @@ export const findSuppliersTool = defineShopAssistantTool({
 
 export const readPurchaseOrderTool = defineShopAssistantTool({
   name: "read_purchase_order",
+  requiredWorkspaceCapability:
+    WORKSPACE_CAPABILITIES.managePartsDesk,
   domain: "inventory",
   description:
     "Read one same-shop purchase order, its supplier, totals, and exact line IDs with ordered and received quantities.",
   mode: "read",
   risk: "low",
-  requiredCapability: "canManageParts",
   confirmation: "never",
   inputSchema: z.object({ purchaseOrderId: z.string().uuid() }),
   outputSchema: z.object({
@@ -660,16 +666,13 @@ export const readPurchaseOrderTool = defineShopAssistantTool({
 
 export const createPartRequestTool = defineShopAssistantTool({
   name: "create_part_request",
+  requiredWorkspaceCapability:
+    WORKSPACE_CAPABILITIES.requestParts,
   domain: "inventory",
   description:
     "Request one or more parts for a same-shop work order; technicians may request only for a job line assigned to them.",
   mode: "write",
   risk: "medium",
-  requiredAnyCapabilities: [
-    "canManageParts",
-    "canManageWorkOrders",
-    "canPerformAssignedWork",
-  ],
   confirmation: "required",
   inputSchema: z.object({
     workOrderId: z.string().uuid(),
@@ -797,13 +800,13 @@ export const createPartRequestTool = defineShopAssistantTool({
 
 export const receivePartRequestItemTool = defineShopAssistantTool({
   name: "receive_part_request_item",
+  requiredWorkspaceCapability:
+    WORKSPACE_CAPABILITIES.receiveParts,
   domain: "inventory",
   description:
     "Receive a quantity for an existing same-shop part request item into a stock location.",
   mode: "write",
   risk: "medium",
-  requiredCapability: "canManageParts",
-  allowedRoles: ["owner", "admin", "manager", "parts", "lead_hand", "foreman"],
   confirmation: "required",
   inputSchema: z.object({
     itemId: z.string().uuid(),
@@ -1002,13 +1005,13 @@ const InventoryPartInputSchema = z
 
 export const createInventoryPartTool = defineShopAssistantTool({
   name: "create_inventory_part",
+  requiredWorkspaceCapability:
+    WORKSPACE_CAPABILITIES.managePartsDesk,
   domain: "inventory",
   description:
     "Create a same-shop inventory catalog part and optionally set its initial on-hand quantity at one location.",
   mode: "write",
   risk: "medium",
-  requiredCapability: "canManageParts",
-  allowedRoles: ["owner", "admin", "manager", "parts", "lead_hand", "foreman"],
   confirmation: "required",
   inputSchema: InventoryPartInputSchema,
   outputSchema: InventoryPartCreateResultSchema,
@@ -1105,13 +1108,13 @@ export const createInventoryPartTool = defineShopAssistantTool({
 
 export const setInventoryStockTool = defineShopAssistantTool({
   name: "set_inventory_stock",
+  requiredWorkspaceCapability:
+    WORKSPACE_CAPABILITIES.managePartsDesk,
   domain: "inventory",
   description:
     "Set the counted on-hand quantity for one same-shop inventory part at one stock location, recording an auditable adjustment.",
   mode: "write",
   risk: "high",
-  requiredCapability: "canManageParts",
-  allowedRoles: ["owner", "admin", "manager", "parts", "lead_hand", "foreman"],
   confirmation: "required",
   inputSchema: z.object({
     partId: z.string().uuid(),
@@ -1208,13 +1211,13 @@ export const setInventoryStockTool = defineShopAssistantTool({
 
 export const createPurchaseOrderTool = defineShopAssistantTool({
   name: "create_purchase_order",
+  requiredWorkspaceCapability:
+    WORKSPACE_CAPABILITIES.orderParts,
   domain: "inventory",
   description:
     "Create one same-shop draft purchase order with validated supplier, catalog or free-text lines, optional work-order anchor, costs, and receiving locations.",
   mode: "write",
   risk: "high",
-  requiredCapability: "canManageParts",
-  allowedRoles: ["owner", "admin", "manager", "parts", "lead_hand", "foreman"],
   confirmation: "required",
   inputSchema: z.object({
     supplierId: z.string().uuid(),
@@ -1344,13 +1347,13 @@ export const createPurchaseOrderTool = defineShopAssistantTool({
 
 export const placePurchaseOrderTool = defineShopAssistantTool({
   name: "place_purchase_order",
+  requiredWorkspaceCapability:
+    WORKSPACE_CAPABILITIES.orderParts,
   domain: "inventory",
   description:
     "Place a validated non-empty draft purchase order, using canonical quote-contact auditing when the PO came from a supplier quote.",
   mode: "write",
   risk: "high",
-  requiredCapability: "canManageParts",
-  allowedRoles: ["owner", "admin", "manager", "parts", "lead_hand", "foreman"],
   confirmation: "required",
   inputSchema: z.object({
     purchaseOrderId: z.string().uuid(),
@@ -1528,13 +1531,13 @@ export const placePurchaseOrderTool = defineShopAssistantTool({
 
 export const receivePurchaseOrderLineTool = defineShopAssistantTool({
   name: "receive_purchase_order_line",
+  requiredWorkspaceCapability:
+    WORKSPACE_CAPABILITIES.receiveParts,
   domain: "inventory",
   description:
     "Receive an exact quantity against one purchase-order line using the canonical catalog or free-text receipt lifecycle.",
   mode: "write",
   risk: "high",
-  requiredCapability: "canManageParts",
-  allowedRoles: ["owner", "admin", "manager", "parts", "lead_hand", "foreman"],
   confirmation: "required",
   inputSchema: z.object({
     purchaseOrderId: z.string().uuid(),

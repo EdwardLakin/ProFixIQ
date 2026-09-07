@@ -22,7 +22,11 @@ vi.mock("@/features/shared/lib/supabase/server", () => ({
 }));
 
 import { requireShopAssistantActor } from "@/features/shop-assistant/server/requireShopAssistantActor";
-import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
+import {
+  WORKSPACE_CAPABILITIES,
+  WORKSPACE_CAPABILITY_KEYS,
+  createDeniedWorkspaceCapabilities,
+} from "@/features/workspace/authorization/capabilities";
 
 const AUTH_USER_ID = "11111111-1111-4111-8111-111111111111";
 const PROFILE_ID = "22222222-2222-4222-8222-222222222222";
@@ -40,23 +44,14 @@ function userClient() {
 }
 
 function capabilityResult(granted: boolean, error: string | null = null) {
-  return {
-    capabilities: {
-      [WORKSPACE_CAPABILITIES.manageTeamPermissions]: {
-        capabilityKey: WORKSPACE_CAPABILITIES.manageTeamPermissions,
-        accessLevel: "manage",
-        granted: false,
-        source: "unavailable",
-      },
-      [WORKSPACE_CAPABILITIES.manageWorkOrderAssignments]: {
-        capabilityKey: WORKSPACE_CAPABILITIES.manageWorkOrderAssignments,
-        accessLevel: "manage",
-        granted,
-        source: error ? "unavailable" : "individual_override",
-      },
-    },
-    error,
+  const capabilities = createDeniedWorkspaceCapabilities();
+  capabilities[WORKSPACE_CAPABILITIES.manageWorkOrderAssignments] = {
+    capabilityKey: WORKSPACE_CAPABILITIES.manageWorkOrderAssignments,
+    accessLevel: "manage",
+    granted,
+    source: error ? "unavailable" : "individual_override",
   };
+  return { capabilities, error };
 }
 
 describe("Shop Assistant Workspace authorization", () => {
@@ -93,7 +88,7 @@ describe("Shop Assistant Workspace authorization", () => {
       supabase: expect.anything(),
       profileId: PROFILE_ID,
       shopId: SHOP_ID,
-      capabilityKeys: [WORKSPACE_CAPABILITIES.manageWorkOrderAssignments],
+      capabilityKeys: WORKSPACE_CAPABILITY_KEYS,
     });
     expect(actor.canonicalRole).toBe("mechanic");
     expect(actor.capabilities.canAssignWork).toBe(true);

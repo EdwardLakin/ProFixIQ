@@ -31193,6 +31193,10 @@ export type Database = {
           shop_id: string
         }[]
       }
+      workspace_permission_administration_snapshot: {
+        Args: { p_target_profile_id?: string }
+        Returns: Json
+      }
     }
     Enums: {
       agent_action_risk: "low" | "medium" | "high"

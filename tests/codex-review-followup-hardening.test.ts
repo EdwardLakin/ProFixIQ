@@ -125,10 +125,13 @@ describe("Codex review follow-up hardening", () => {
       "Restoring the previous role also failed",
     );
     expect(read("app/api/parts/_lib/lifecycleCommand.ts")).toContain(
-      'requiredCapability: "canManageParts"',
+      "requiredWorkspaceCapability: capability",
+    );
+    expect(read("app/api/parts/_lib/lifecycleCommand.ts")).toContain(
+      "WORKSPACE_CAPABILITIES.managePartsDesk",
     );
     expect(read("app/api/parts/_lib/receivePartRequestItem.ts")).toContain(
-      'requiredCapability: "canManageParts"',
+      "requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.receiveParts",
     );
   });
 });

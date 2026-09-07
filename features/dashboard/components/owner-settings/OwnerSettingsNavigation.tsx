@@ -11,6 +11,7 @@ import {
   Mail,
   PlugZap,
   Search,
+  ShieldCheck,
   SlidersHorizontal,
   UsersRound,
 } from "lucide-react";
@@ -22,6 +23,7 @@ export type OwnerSettingsSectionId =
   | "operations"
   | "automation"
   | "team"
+  | "permissions"
   | "scheduling"
   | "communications"
   | "integrations"
@@ -63,6 +65,14 @@ export const OWNER_SETTINGS_SECTIONS = [
     description: "Create users and manage accounts",
     keywords: "create user staff employee people users password invite role profiles workforce",
     icon: UsersRound,
+  },
+  {
+    id: "permissions",
+    label: "Roles & permissions",
+    description: "What each role and employee can do",
+    keywords:
+      "permissions roles access capability allow deny inherit assign parts invoice financial override lead hand",
+    icon: ShieldCheck,
   },
   {
     id: "scheduling",

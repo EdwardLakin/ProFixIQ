@@ -716,6 +716,7 @@ function validateCandidate(params: {
       input: call.input,
       capabilities: params.actor.capabilities,
       canonicalRole: params.actor.canonicalRole,
+      workspaceCapabilities: params.actor.workspaceCapabilities,
     });
     return {
       name: validated.name,
@@ -770,6 +771,7 @@ export async function planShopAssistantTurn(params: {
   const tools = listShopAssistantPlannerTools(
     params.actor.capabilities,
     params.actor.canonicalRole,
+    params.actor.workspaceCapabilities,
   );
   const availableToolNames = new Set(tools.map((tool) => tool.name));
   const fallback = () =>

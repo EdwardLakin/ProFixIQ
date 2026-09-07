@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 type RpcError = { message: string; details?: string | null; hint?: string | null };
 type RpcClient = {
@@ -45,7 +46,7 @@ export async function POST(
   }
 
   const access = await requireShopScopedApiAccess({
-    requiredCapability: "canManageParts",
+    requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.managePartsDesk,
   });
   if (!access.ok) return access.response;
 

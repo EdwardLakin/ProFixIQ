@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 const mocks = vi.hoisted(() => ({
   requireShopScopedApiAccess: vi.fn(),
@@ -106,7 +107,7 @@ describe("parts vendor management route", () => {
 
     expect(response.status).toBe(201);
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
-      requiredCapability: "canManageParts",
+      requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.managePartsDesk,
     });
     expect(supabase.inserted).toEqual([
       expect.objectContaining({

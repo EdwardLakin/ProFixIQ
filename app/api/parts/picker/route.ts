@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 const MENU_EDITOR_ROLES = [
@@ -29,7 +30,7 @@ export async function GET(request: Request) {
   const access = await requireShopScopedApiAccess(
     pickerContext === "menu-editor"
       ? { allowRoles: MENU_EDITOR_ROLES }
-      : { requiredCapability: "canManageParts" },
+      : { requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.managePartsDesk },
   );
   if (!access.ok) return access.response;
 

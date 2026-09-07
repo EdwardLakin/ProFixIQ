@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextResponse } from "next/server";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 const PO_ID = "11111111-1111-4111-8111-111111111111";
 const LINE_ID = "22222222-2222-4222-8222-222222222222";
@@ -50,7 +51,7 @@ describe("request-backed free-text PO receipt route", () => {
 
     expect(response.status).toBe(403);
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
-      requiredCapability: "canManageParts",
+      requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.receiveParts,
     });
     expect(rpc).not.toHaveBeenCalled();
   });

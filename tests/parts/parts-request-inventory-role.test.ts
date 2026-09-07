@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextResponse } from "next/server";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 const routeSource = readFileSync("app/api/parts/requests/items/[itemId]/inventory/route.ts", "utf8");
 const pageSource = readFileSync("app/parts/requests/[id]/page.tsx", "utf8");
@@ -51,7 +52,7 @@ describe("parts request inventory route authorization", () => {
 
     expect(response.status).toBe(403);
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
-      requiredCapability: "canManageParts",
+      requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.managePartsDesk,
     });
   });
 
@@ -62,7 +63,7 @@ describe("parts request inventory route authorization", () => {
       addRouteSource,
       commitRouteSource,
     ]) {
-      expect(source).toContain('requiredCapability: "canManageParts"');
+      expect(source).toContain('requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.managePartsDesk');
       expect(source).not.toContain('requiredCapability: "canManageWorkOrders"');
     }
   });

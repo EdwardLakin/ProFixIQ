@@ -25,7 +25,7 @@ describe("parts-role part picker access", () => {
   });
 
   it("requires the canonical parts capability for inventory actions", () => {
-    expect(pickerRoute).toContain('requiredCapability: "canManageParts"');
+    expect(pickerRoute).toContain('requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.managePartsDesk');
     expect(pickerRoute).not.toContain('access.canonicalRole === "mechanic"');
     expect(workOrderDetail).toContain(
       "const canUseInventoryPicker = currentActor.canManageParts",

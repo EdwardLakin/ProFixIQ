@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import {
+  WORKSPACE_CAPABILITIES,
+} from "@/features/workspace/authorization/capabilities";
+import {
   idempotencyKey,
   isUuid,
   positiveNumber,
@@ -41,8 +44,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
       { status: 400 },
     );
 
+  // Creating or reusing a PO line commits the shop to a purchase.
   const access = await requireShopScopedApiAccess({
-    requiredCapability: "canManageParts",
+    requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.orderParts,
   });
   if (!access.ok) return access.response;
 

@@ -1,5 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import {
+  WORKSPACE_CAPABILITIES,
+  type WorkspaceCapabilityKey,
+} from "@/features/workspace/authorization/capabilities";
 import { toSafeDatabaseError } from "@/features/shared/lib/server/safeDatabaseError";
 
 export function isUuid(value: unknown): value is string {
@@ -93,13 +97,22 @@ export async function runPartsLifecycleRpcWithAccess(
   return NextResponse.json({ ok: true, result: data });
 }
 
+/**
+ * Run a canonical parts lifecycle procedure for the authenticated actor.
+ *
+ * The gate is the effective Workspace capability, not a role list. Callers pass
+ * the capability their specific operation needs; `parts.desk.manage` carries the
+ * same authority the legacy canManageParts guard did, so it is the default for
+ * picking, allocation, issue, and return.
+ */
 export async function runPartsLifecycleRpc(
   _req: Request,
   rpcName: string,
   args: Record<string, unknown>,
+  capability: WorkspaceCapabilityKey = WORKSPACE_CAPABILITIES.managePartsDesk,
 ) {
   const access = await requireShopScopedApiAccess({
-    requiredCapability: "canManageParts",
+    requiredWorkspaceCapability: capability,
   });
   if (!access.ok) return access.response;
   return runPartsLifecycleRpcWithAccess(access, rpcName, args);

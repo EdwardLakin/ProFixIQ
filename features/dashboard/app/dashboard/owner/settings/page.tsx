@@ -27,6 +27,7 @@ import TechnicianCopilotCapabilitiesSection from "@/features/dashboard/component
 import OwnerSettingsSchedulingSection from "@/features/dashboard/components/owner-settings/OwnerSettingsSchedulingSection";
 import OwnerSettingsSidebar from "@/features/dashboard/components/owner-settings/OwnerSettingsSidebar";
 import OwnerSettingsUsersSection from "@/features/dashboard/components/owner-settings/OwnerSettingsUsersSection";
+import RolePermissionsPanel from "@/features/workspace/authorization/components/RolePermissionsPanel";
 import OwnerSettingsNavigation, {
   ownerSettingsSectionLabel,
   type OwnerSettingsSectionId,
@@ -203,6 +204,8 @@ const SETTINGS_HASH_MAP: Record<string, OwnerSettingsSectionId> = {
   "settings-operations": "operations",
   "settings-automation": "automation",
   "settings-team": "team",
+  "settings-permissions": "permissions",
+  "roles-permissions": "permissions",
   "settings-scheduling": "scheduling",
   "settings-communications": "communications",
   "settings-integrations": "integrations",
@@ -1953,6 +1956,16 @@ export default function OwnerSettingsPage() {
               creatorRole={ownerRole}
               onUserCreated={() => setSeatsUsed((used) => used + 1)}
             />
+          ) : null}
+          {activeSection === "permissions" ? (
+            <OwnerSettingsPanel
+              id="roles-permissions"
+              tone="secondary"
+              title="Roles & permissions"
+              description="Set what each role can do in this shop. Individual exceptions live on the employee record in Workforce."
+            >
+              <RolePermissionsPanel />
+            </OwnerSettingsPanel>
           ) : null}
           {activeSection === "integrations" ? (
             <OwnerSettingsPanel

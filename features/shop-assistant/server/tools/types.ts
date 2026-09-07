@@ -15,6 +15,10 @@ import type {
   ShopAssistantActionRisk,
   ShopAssistantDomain,
 } from "@/features/shop-assistant/types";
+import type {
+  EffectiveWorkspaceCapabilities,
+  WorkspaceCapabilityKey,
+} from "@/features/workspace/authorization/capabilities";
 
 export type ActorCapabilityKey = {
   [Key in keyof ActorCapabilities]: ActorCapabilities[Key] extends boolean
@@ -52,6 +56,14 @@ export type ShopAssistantToolDefinition<TInput, TOutput> = {
   risk: ShopAssistantActionRisk;
   requiredCapability?: ActorCapabilityKey;
   requiredAnyCapabilities?: readonly ActorCapabilityKey[];
+  /**
+   * Effective Workspace capability required to use this tool.
+   *
+   * This is the same decision the human-facing UI, the API route, and the
+   * database procedure use. A tool that declares one cannot be reached by an
+   * actor the resolver denies, and a resolver failure denies it too.
+   */
+  requiredWorkspaceCapability?: WorkspaceCapabilityKey;
   allowedRoles?: readonly CanonicalRole[];
   confirmation: ShopAssistantConfirmationPolicy;
   inputSchema: z.ZodType<TInput>;
@@ -150,11 +162,25 @@ export function assertToolCapability(
     name: string;
     requiredCapability?: ActorCapabilityKey;
     requiredAnyCapabilities?: readonly ActorCapabilityKey[];
+    requiredWorkspaceCapability?: WorkspaceCapabilityKey;
     allowedRoles?: readonly CanonicalRole[];
   },
   capabilities: ActorCapabilities,
   canonicalRole?: CanonicalRole,
+  workspaceCapabilities?: EffectiveWorkspaceCapabilities,
 ): void {
+  const workspaceCapability = tool.requiredWorkspaceCapability;
+  if (workspaceCapability) {
+    // Fail closed: a missing envelope means the effective decision could not be
+    // obtained, which is never a reason to fall back to the role.
+    if (!workspaceCapabilities?.[workspaceCapability]?.granted) {
+      throw new ShopAssistantHttpError(
+        403,
+        `Your role is not allowed to use ${tool.name}.`,
+      );
+    }
+  }
+
   const capability = tool.requiredCapability;
   if (capability && capabilities[capability] !== true) {
     throw new ShopAssistantHttpError(

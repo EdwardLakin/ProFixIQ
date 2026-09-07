@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 const PO_ID = "11111111-1111-4111-8111-111111111111";
 const SHOP_ID = "22222222-2222-4222-8222-222222222222";
@@ -51,7 +52,7 @@ describe("Field purchase-order placement route", () => {
 
     expect(response.status).toBe(200);
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
-      requiredCapability: "canManageParts",
+      requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.orderParts,
     });
     expect(rpc).toHaveBeenCalledWith("parts_place_purchase_order", {
       p_po_id: PO_ID,

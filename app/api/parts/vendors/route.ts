@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { normalizeVendorName } from "@/features/parts/lib/vendorWorkspace";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 type DB = Database;
 type SupplierInsert = DB["public"]["Tables"]["suppliers"]["Insert"];
@@ -83,7 +84,7 @@ function parseVendorBody(body: VendorBody):
 }
 
 async function requireVendorAccess() {
-  return requireShopScopedApiAccess({ requiredCapability: "canManageParts" });
+  return requireShopScopedApiAccess({ requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.managePartsDesk });
 }
 
 async function findNormalizedDuplicate(args: {

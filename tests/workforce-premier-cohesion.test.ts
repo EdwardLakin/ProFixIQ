@@ -390,7 +390,7 @@ describe("premier workforce cohesion", () => {
     );
     expect(menuItemPage).toContain("id: p.id");
     expect(menuIntakeRoute).toContain(
-      'requiredCapability: "canManageParts"',
+      'requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.managePartsDesk',
     );
     expect(menuIntakeRoute).toContain(
       'rpc("review_menu_item_part_intake"',

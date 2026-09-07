@@ -7,6 +7,10 @@ import type {
   ShopAssistantDomain,
 } from "@/features/shop-assistant/types";
 import type { CanonicalRole } from "@/features/shared/lib/rbac";
+import type {
+  EffectiveWorkspaceCapabilities,
+  WorkspaceCapabilityKey,
+} from "@/features/workspace/authorization/capabilities";
 import { withAiOperationalTimeout } from "@/features/agent/lib/toolTypes";
 import { groundShopAssistantToolOutput } from "@/features/agent/lib/operationalGrounding";
 import { sendConversationMessageTool } from "./domains/communications";
@@ -164,6 +168,7 @@ type RuntimeTool = {
   risk: ShopAssistantActionRisk;
   requiredCapability?: ActorCapabilityKey;
   requiredAnyCapabilities?: readonly ActorCapabilityKey[];
+  requiredWorkspaceCapability?: WorkspaceCapabilityKey;
   allowedRoles?: readonly CanonicalRole[];
   confirmation: ShopAssistantConfirmationPolicy;
   inputSchema: z.ZodTypeAny;
@@ -201,6 +206,7 @@ export type ShopAssistantToolMetadata = {
   confirmation: ShopAssistantConfirmationPolicy;
   requiredCapability?: ActorCapabilityKey;
   requiredAnyCapabilities?: readonly ActorCapabilityKey[];
+  requiredWorkspaceCapability?: WorkspaceCapabilityKey;
   allowedRoles?: readonly CanonicalRole[];
 };
 
@@ -218,6 +224,7 @@ export function listShopAssistantTools(): ShopAssistantToolMetadata[] {
     confirmation: tool.confirmation,
     requiredCapability: tool.requiredCapability,
     requiredAnyCapabilities: tool.requiredAnyCapabilities,
+    requiredWorkspaceCapability: tool.requiredWorkspaceCapability,
     allowedRoles: tool.allowedRoles,
   }));
 }
@@ -225,10 +232,16 @@ export function listShopAssistantTools(): ShopAssistantToolMetadata[] {
 export function listShopAssistantPlannerTools(
   capabilities: Record<ActorCapabilityKey, boolean>,
   canonicalRole?: CanonicalRole,
+  workspaceCapabilities?: EffectiveWorkspaceCapabilities,
 ): ShopAssistantPlannerTool[] {
   return [...TOOL_MAP.values()]
     .filter(
       (tool) =>
+        // A tool the actor cannot use is never offered to the planner, and a
+        // missing capability envelope hides every capability-gated tool.
+        (!tool.requiredWorkspaceCapability ||
+          workspaceCapabilities?.[tool.requiredWorkspaceCapability]?.granted ===
+            true) &&
         (!tool.requiredCapability ||
           capabilities[tool.requiredCapability] === true) &&
         (!tool.requiredAnyCapabilities?.length ||
@@ -247,6 +260,7 @@ export function listShopAssistantPlannerTools(
       confirmation: tool.confirmation,
       requiredCapability: tool.requiredCapability,
       requiredAnyCapabilities: tool.requiredAnyCapabilities,
+      requiredWorkspaceCapability: tool.requiredWorkspaceCapability,
       allowedRoles: tool.allowedRoles,
       inputJsonSchema: z.toJSONSchema(tool.inputSchema, {
         io: "input",
@@ -266,13 +280,19 @@ export function validateShopAssistantToolCall(params: {
   input: unknown;
   capabilities: Record<ActorCapabilityKey, boolean>;
   canonicalRole?: CanonicalRole;
+  workspaceCapabilities?: EffectiveWorkspaceCapabilities;
 }): {
   name: string;
   input: unknown;
   metadata: ShopAssistantToolMetadata;
 } {
   const tool = getShopAssistantTool(params.name);
-  assertToolCapability(tool, params.capabilities, params.canonicalRole);
+  assertToolCapability(
+    tool,
+    params.capabilities,
+    params.canonicalRole,
+    params.workspaceCapabilities,
+  );
   const input = tool.inputSchema.parse(params.input) as unknown;
   return {
     name: tool.name,
@@ -286,6 +306,7 @@ export function validateShopAssistantToolCall(params: {
       confirmation: tool.confirmation,
       requiredCapability: tool.requiredCapability,
       requiredAnyCapabilities: tool.requiredAnyCapabilities,
+      requiredWorkspaceCapability: tool.requiredWorkspaceCapability,
       allowedRoles: tool.allowedRoles,
     },
   };
@@ -306,6 +327,7 @@ export async function runShopAssistantReadTool(params: {
     tool,
     params.context.actor.capabilities,
     params.context.actor.canonicalRole,
+    params.context.actor.workspaceCapabilities,
   );
   const input = tool.inputSchema.parse(params.input) as unknown;
   await tool.authorize?.(input, params.context);
@@ -336,6 +358,7 @@ export async function previewShopAssistantWriteTool(params: {
     tool,
     params.context.actor.capabilities,
     params.context.actor.canonicalRole,
+    params.context.actor.workspaceCapabilities,
   );
   const input = tool.inputSchema.parse(params.input) as unknown;
   await tool.authorize?.(input, params.context);
@@ -352,6 +375,7 @@ export async function previewShopAssistantWriteTool(params: {
       confirmation: tool.confirmation,
       requiredCapability: tool.requiredCapability,
       requiredAnyCapabilities: tool.requiredAnyCapabilities,
+      requiredWorkspaceCapability: tool.requiredWorkspaceCapability,
       allowedRoles: tool.allowedRoles,
     },
   };
@@ -370,6 +394,7 @@ export async function executeShopAssistantWriteTool(params: {
     tool,
     params.context.actor.capabilities,
     params.context.actor.canonicalRole,
+    params.context.actor.workspaceCapabilities,
   );
   const input = tool.inputSchema.parse(params.input) as unknown;
   await tool.authorize?.(input, params.context);

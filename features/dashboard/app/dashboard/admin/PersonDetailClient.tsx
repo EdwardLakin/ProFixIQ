@@ -15,6 +15,7 @@ import {
   AdminStatGrid,
   AdminToolbar,
 } from "@/features/dashboard/app/dashboard/admin/AdminSurface";
+import EmployeeAccessPanel from "@/features/workspace/authorization/components/EmployeeAccessPanel";
 
 type Certification = {
   id: string;
@@ -570,8 +571,16 @@ export default function PersonDetailClient({ personId, from }: { personId: strin
           </AdminField>
         </AdminToolbar>
         <div className="px-4 pb-4 text-xs text-[color:var(--theme-text-secondary)]">
-          App role controls access and permissions. Workforce role/title is managed separately.
+          App role sets the baseline for what this employee can do. Workforce role/title is managed separately.
         </div>
+      </AdminPanel>
+
+      <AdminPanel>
+        <AdminPanelTitle
+          title="Access & Permissions"
+          description="Individual exceptions to the shop role permissions. Use these instead of creating an artificial role."
+        />
+        <EmployeeAccessPanel profileId={personId} />
       </AdminPanel>
 
       <AdminPanel>

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 
 const PO_ID = "11111111-1111-4111-8111-111111111111";
 const SHOP_ID = "22222222-2222-4222-8222-222222222222";
@@ -85,7 +86,7 @@ describe("purchase-order place route", () => {
       result: { idempotent: false, po_id: PO_ID, status: "open" },
     });
     expect(mocks.requireShopScopedApiAccess).toHaveBeenCalledWith({
-      requiredCapability: "canManageParts",
+      requiredWorkspaceCapability: WORKSPACE_CAPABILITIES.orderParts,
     });
     expect(supabase.rpc).toHaveBeenCalledWith("parts_place_purchase_order", {
       p_po_id: PO_ID,
