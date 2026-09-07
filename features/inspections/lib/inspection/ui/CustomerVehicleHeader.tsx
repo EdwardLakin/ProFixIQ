@@ -2,6 +2,8 @@
 "use client";
 
 type Customer = {
+  business_name?: string | null;
+  name?: string | null;
   first_name?: string | null;
   last_name?: string | null;
   phone?: string | null;
@@ -39,8 +41,15 @@ export default function CustomerVehicleHeader({
   vehicle,
   rightSlot,
 }: Props) {
+  const personName =
+    [customer?.first_name, customer?.last_name].filter(Boolean).join(" ").trim();
+  // A fleet/business account is identified by a business name rather than a
+  // person's name — prefer it for the "Customer / Fleet" card when present.
   const fullName =
-    [customer?.first_name, customer?.last_name].filter(Boolean).join(" ").trim() || "—";
+    customer?.business_name?.trim() ||
+    customer?.name?.trim() ||
+    personName ||
+    "—";
 
   const addr =
     [customer?.address, customer?.city, customer?.province, customer?.postal_code]
