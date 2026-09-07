@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import {
-  WORKSPACE_CAPABILITIES,
-} from "@/features/workspace/authorization/capabilities";
+import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import {
   idempotencyKey,
   isUuid,
