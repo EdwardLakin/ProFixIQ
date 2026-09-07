@@ -10,6 +10,7 @@ vi.mock("@/features/stripe/lib/server/subscription-discovery", () => ({
 }));
 
 const SHOP_ID = "8b100000-0000-4000-8000-000000000001";
+const RECOVERED_SHOP_ID = "8b100000-0000-4000-8000-000000000002";
 const EVENT_ID = "evt_p1012_ordered";
 const EVENT_CREATED_AT = "2026-07-27T02:00:00.000Z";
 
@@ -82,6 +83,120 @@ describe("P1-012 Stripe subscription ordering", () => {
       },
     );
     expect(from).not.toHaveBeenCalled();
+  });
+
+  it("recovers a stale metadata shop through the unique Stripe customer mapping and retries the same snapshot", async () => {
+    const rpc = vi
+      .fn()
+      .mockResolvedValueOnce({
+        data: null,
+        error: { message: "billing shop not found" },
+      })
+      .mockResolvedValueOnce({ data: true, error: null });
+    const limit = vi.fn().mockResolvedValue({
+      data: [{ id: RECOVERED_SHOP_ID }],
+      error: null,
+    });
+    const from = vi.fn((table: string) => {
+      if (table !== "shops") throw new Error(`unexpected table ${table}`);
+      return {
+        select: vi.fn(() => ({
+          eq: vi.fn(() => ({ limit })),
+        })),
+      };
+    });
+    const subscriptionRetrieve = vi.fn().mockResolvedValue(subscription());
+    const customerRetrieve = vi.fn();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const { syncCanonicalShopBilling } =
+      await import("../features/stripe/lib/server/canonical-shop-billing");
+
+    const result = await syncCanonicalShopBilling({
+      stripe: {
+        subscriptions: { retrieve: subscriptionRetrieve },
+        customers: { retrieve: customerRetrieve },
+      } as never,
+      supabase: { rpc, from } as never,
+      shopId: SHOP_ID,
+      customerId: "cus_p1012shop",
+      subscriptionId: "sub_p1012shop",
+      webhookEvent: { id: EVENT_ID, createdAt: EVENT_CREATED_AT },
+    });
+
+    expect(result).toEqual({ applied: true });
+    expect(customerRetrieve).not.toHaveBeenCalled();
+    expect(rpc).toHaveBeenNthCalledWith(
+      1,
+      "apply_stripe_subscription_webhook_snapshot",
+      expect.objectContaining({ p_shop_id: SHOP_ID }),
+    );
+    expect(rpc).toHaveBeenNthCalledWith(
+      2,
+      "apply_stripe_subscription_webhook_snapshot",
+      expect.objectContaining({ p_shop_id: RECOVERED_SHOP_ID }),
+    );
+    expect(warn).toHaveBeenCalledWith(
+      "[stripe/webhook] recovered stale billing shop identity",
+      expect.objectContaining({
+        eventId: EVENT_ID,
+        subscriptionId: "sub_p1012shop",
+        customerId: "cus_p1012shop",
+        staleShopId: SHOP_ID,
+        recoveredShopId: RECOVERED_SHOP_ID,
+      }),
+    );
+    warn.mockRestore();
+  });
+
+  it("keeps an orphaned subscription retryable and emits contextual identity diagnostics", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: null,
+      error: { message: "billing shop not found" },
+    });
+    const limit = vi.fn().mockResolvedValue({ data: [], error: null });
+    const maybeSingle = vi.fn().mockResolvedValue({ data: null, error: null });
+    const from = vi.fn((table: string) => {
+      if (table === "shops") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({ limit })),
+          })),
+        };
+      }
+      if (table === "profiles") {
+        return {
+          select: vi.fn(() => ({
+            eq: vi.fn(() => ({ maybeSingle })),
+          })),
+        };
+      }
+      throw new Error(`unexpected table ${table}`);
+    });
+    const customerRetrieve = vi.fn().mockResolvedValue({
+      id: "cus_p1012shop",
+      metadata: {},
+    });
+    const { syncCanonicalShopBilling } =
+      await import("../features/stripe/lib/server/canonical-shop-billing");
+
+    await expect(
+      syncCanonicalShopBilling({
+        stripe: {
+          subscriptions: { retrieve: vi.fn().mockResolvedValue(subscription()) },
+          customers: { retrieve: customerRetrieve },
+        } as never,
+        supabase: { rpc, from } as never,
+        shopId: SHOP_ID,
+        customerId: "cus_p1012shop",
+        subscriptionId: "sub_p1012shop",
+        webhookEvent: { id: EVENT_ID, createdAt: EVENT_CREATED_AT },
+      }),
+    ).rejects.toThrow(
+      `event=${EVENT_ID} subscription=sub_p1012shop customer=cus_p1012shop claimed_shop=${SHOP_ID}`,
+    );
+
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(customerRetrieve).toHaveBeenCalledWith("cus_p1012shop");
   });
 
   it("maps receipt claims and completes only with the durable claim token", async () => {
