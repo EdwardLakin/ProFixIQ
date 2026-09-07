@@ -20,6 +20,13 @@ import { useRealtimeVoice } from "@inspections/lib/inspection/useRealtimeVoice";
 import { buildVoiceBrainFeedback } from "@inspections/lib/inspection/voice/voiceBrain";
 import VoiceControlsPanel from "@inspections/components/inspection/VoiceControlsPanel";
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
+import {
+  hasCustomerContext,
+  hasVehicleContext,
+  toSessionCustomerFromRecord,
+  toSessionVehicleFromRecord,
+  type WorkOrderLineDetailForContext,
+} from "@inspections/lib/inspection/inspectionCustomerVehicleContext";
 
 import type {
   ParsedCommand,
@@ -72,6 +79,8 @@ type GenericInspectionScreenProps = {
 
 function toHeaderCustomer(c?: SessionCustomer | null) {
   return {
+    business_name: c?.business_name ?? "",
+    name: c?.name ?? "",
     first_name: c?.first_name ?? "",
     last_name: c?.last_name ?? "",
     phone: c?.phone ?? "",
@@ -713,8 +722,10 @@ type SmartMatchRow = {
     sp.get("template") ||
     "Inspection";
 
-  const customer = useMemo<SessionCustomer>(
+  const paramCustomer = useMemo<SessionCustomer>(
     () => ({
+      business_name: sp.get("business_name") || "",
+      name: sp.get("customer_name") || "",
       first_name: sp.get("first_name") || "",
       last_name: sp.get("last_name") || "",
       phone: sp.get("phone") || "",
@@ -727,7 +738,7 @@ type SmartMatchRow = {
     [sp],
   );
 
-  const vehicle = useMemo<SessionVehicle>(
+  const paramVehicle = useMemo<SessionVehicle>(
     () => ({
       year: sp.get("year") || "",
       make: sp.get("make") || "",
@@ -742,8 +753,62 @@ type SmartMatchRow = {
     [sp],
   );
 
+  // A brand-new inspection carries its customer/vehicle as setup-wizard URL
+  // params. Reopening an *existing* inspection tied to a work order (the
+  // normal technician flow) never carried those params, so this screen had
+  // nothing to show even though the work order already has an authoritative
+  // customer/vehicle relationship. Resolve that relationship the same way
+  // the focused-job screen already does, and only when the params didn't
+  // already supply it.
+  const [workOrderCustomer, setWorkOrderCustomer] =
+    useState<SessionCustomer | null>(null);
+  const [workOrderVehicle, setWorkOrderVehicle] =
+    useState<SessionVehicle | null>(null);
 
+  useEffect(() => {
+    if (!workOrderLineId) return;
+    if (hasCustomerContext(paramCustomer) && hasVehicleContext(paramVehicle)) {
+      return;
+    }
 
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch(
+          `/api/work-order-lines/${encodeURIComponent(workOrderLineId)}/workspace-detail`,
+          { cache: "no-store" },
+        );
+        if (!response.ok) return;
+        const data =
+          (await response.json().catch(() => null)) as WorkOrderLineDetailForContext | null;
+        if (cancelled || !data) return;
+
+        if (!hasCustomerContext(paramCustomer) && data.customer) {
+          setWorkOrderCustomer(toSessionCustomerFromRecord(data.customer));
+        }
+        if (!hasVehicleContext(paramVehicle) && data.vehicle) {
+          setWorkOrderVehicle(toSessionVehicleFromRecord(data.vehicle));
+        }
+      } catch {
+        // Best-effort context resolution — the inspection itself still works
+        // with whatever params it was opened with.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [workOrderLineId, paramCustomer, paramVehicle]);
+
+  const customer =
+    !hasCustomerContext(paramCustomer) && workOrderCustomer
+      ? workOrderCustomer
+      : paramCustomer;
+
+  const vehicle =
+    !hasVehicleContext(paramVehicle) && workOrderVehicle
+      ? workOrderVehicle
+      : paramVehicle;
 
   const bootSections = useMemo<InspectionSection[]>(() => {
     const stagedParams = readStaged<Record<string, string>>("inspection:params") ?? {};
@@ -2707,8 +2772,16 @@ type SmartMatchRow = {
 
           <CustomerVehicleHeader
             templateName=""
-            customer={toHeaderCustomer(session.customer ?? null)}
-            vehicle={toHeaderVehicle(session.vehicle ?? null)}
+            customer={toHeaderCustomer(
+              hasCustomerContext((session.customer ?? {}) as SessionCustomer)
+                ? session.customer
+                : customer,
+            )}
+            vehicle={toHeaderVehicle(
+              hasVehicleContext((session.vehicle ?? {}) as SessionVehicle)
+                ? session.vehicle
+                : vehicle,
+            )}
           />
         </div>
 
