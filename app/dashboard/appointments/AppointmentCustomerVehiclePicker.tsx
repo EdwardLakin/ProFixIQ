@@ -118,6 +118,13 @@ export default function AppointmentCustomerVehiclePicker({
         <input
           value={query}
           onChange={(event) => {
+            // Invalidate both displayed and in-flight results before accepting
+            // the new query so stale canonical IDs can never be clicked during
+            // the debounce/request window.
+            requestNumber.current += 1;
+            setResult(null);
+            setError(null);
+            setLoading(false);
             setQuery(event.target.value);
             setOpen(true);
           }}
@@ -188,7 +195,7 @@ export default function AppointmentCustomerVehiclePicker({
               No matching customer or vehicle.
             </div>
           ) : null}
-          {!error
+          {!loading && !error
             ? visibleGroups.map((group) => {
                 const matchedVehicleIds = new Set(group.matchedVehicleIds);
                 const vehicles = [...group.vehicles]
