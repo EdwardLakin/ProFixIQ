@@ -56,6 +56,15 @@ function normalize(value: unknown): string {
     .toLowerCase();
 }
 
+function isUuid(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value.trim(),
+    )
+  );
+}
+
 function planFromLookupKey(
   lookupKey: string | null | undefined,
 ): CanonicalPlan | null {
@@ -185,15 +194,13 @@ export function toCanonicalShopBillingUpdate(args: {
 }): ShopBillingUpdate {
   const { customerId, subscription, checkoutSessionId } = args;
   const resolvedPlan =
-    normalizeCanonicalPlan(
-    resolveCanonicalPlanFromSubscription(subscription),
-    ) ?? "starter";
-  const subscriptionPackage =
-    resolveProductPackageFromSubscription(subscription);
+    normalizeCanonicalPlan(resolveCanonicalPlanFromSubscription(subscription)) ??
+    "starter";
+  const subscriptionPackage = resolveProductPackageFromSubscription(subscription);
   const pricingModel = subscriptionPackage
     ? PRODUCT_PACKAGE_BILLING_MODEL
     : subscription.metadata?.pricing_model === "base_plus_seats_v2" ||
-    subscription.items.data.some((item) => isV2Price(item.price))
+        subscription.items.data.some((item) => isV2Price(item.price))
       ? "base_plus_seats_v2"
       : "legacy";
 
@@ -230,6 +237,44 @@ export async function getProfileStripeArtifacts(
   return data ?? null;
 }
 
+async function recoverWebhookShopId(args: {
+  stripe: Stripe;
+  supabase: SupabaseClient<DB>;
+  customerId: string;
+  staleShopId: string;
+}): Promise<string | null> {
+  const { data: shops, error: shopLookupError } = await args.supabase
+    .from("shops")
+    .select("id")
+    .eq("stripe_customer_id", args.customerId)
+    .limit(2);
+  if (shopLookupError) throw new Error(shopLookupError.message);
+
+  const customerShopId =
+    shops?.length === 1 && isUuid(shops[0]?.id) ? shops[0].id : null;
+  if (customerShopId && customerShopId !== args.staleShopId) {
+    return customerShopId;
+  }
+
+  const customer = await args.stripe.customers.retrieve(args.customerId);
+  const userId =
+    customer && !("deleted" in customer && customer.deleted)
+      ? String(customer.metadata?.supabase_user_id ?? "").trim()
+      : "";
+  if (!isUuid(userId)) return null;
+
+  const { data: profile, error: profileError } = await args.supabase
+    .from("profiles")
+    .select("shop_id")
+    .eq("id", userId)
+    .maybeSingle<{ shop_id: string | null }>();
+  if (profileError) throw new Error(profileError.message);
+
+  return isUuid(profile?.shop_id) && profile.shop_id !== args.staleShopId
+    ? profile.shop_id
+    : null;
+}
+
 export async function syncCanonicalShopBilling(params: {
   stripe: Stripe;
   supabase: SupabaseClient<DB>;
@@ -261,27 +306,52 @@ export async function syncCanonicalShopBilling(params: {
         "Stripe subscription webhook is missing its customer identity",
       );
     }
-    const { data, error } = await supabase.rpc(
-      "apply_stripe_subscription_webhook_snapshot",
-      {
-      p_shop_id: shopId,
-      p_customer_id: customerId,
-      p_subscription_id: sub.id,
-      p_event_id: webhookEvent.id,
-      p_event_created_at: webhookEvent.createdAt,
-      p_snapshot: {
-        stripe_subscription_status: update.stripe_subscription_status ?? null,
-        stripe_trial_end: update.stripe_trial_end ?? null,
-        stripe_current_period_end: update.stripe_current_period_end ?? null,
-        stripe_pricing_model: update.stripe_pricing_model ?? null,
-          subscription_package: update.subscription_package ?? null,
-        plan: update.plan ?? null,
-        stripe_checkout_session_id: checkoutSessionId ?? null,
-      },
-      },
-    );
-    if (error) throw new Error(error.message);
-    return { applied: data === true };
+
+    const snapshot = {
+      stripe_subscription_status: update.stripe_subscription_status ?? null,
+      stripe_trial_end: update.stripe_trial_end ?? null,
+      stripe_current_period_end: update.stripe_current_period_end ?? null,
+      stripe_pricing_model: update.stripe_pricing_model ?? null,
+      subscription_package: update.subscription_package ?? null,
+      plan: update.plan ?? null,
+      stripe_checkout_session_id: checkoutSessionId ?? null,
+    };
+    const applySnapshot = (resolvedShopId: string) =>
+      supabase.rpc("apply_stripe_subscription_webhook_snapshot", {
+        p_shop_id: resolvedShopId,
+        p_customer_id: customerId,
+        p_subscription_id: sub.id,
+        p_event_id: webhookEvent.id,
+        p_event_created_at: webhookEvent.createdAt,
+        p_snapshot: snapshot,
+      });
+
+    let result = await applySnapshot(shopId);
+    if (result.error?.message === "billing shop not found") {
+      const recoveredShopId = await recoverWebhookShopId({
+        stripe,
+        supabase,
+        customerId,
+        staleShopId: shopId,
+      });
+      if (!recoveredShopId) {
+        throw new Error(
+          `Stripe subscription webhook could not resolve billing shop; event=${webhookEvent.id} subscription=${sub.id} customer=${customerId} claimed_shop=${shopId}`,
+        );
+      }
+
+      console.warn("[stripe/webhook] recovered stale billing shop identity", {
+        eventId: webhookEvent.id,
+        subscriptionId: sub.id,
+        customerId,
+        staleShopId: shopId,
+        recoveredShopId,
+      });
+      result = await applySnapshot(recoveredShopId);
+    }
+
+    if (result.error) throw new Error(result.error.message);
+    return { applied: result.data === true };
   }
 
   const { error } = await supabase
