@@ -75,7 +75,7 @@
 }
 
 .mobile-command-route select,
-.mobile-command-route input,
+.mobile-command-route input:not(.pfx-inline-field),
 .mobile-command-route textarea {
   width: 100%;
 }
@@ -91,10 +91,13 @@
 
 /* A handful of other controls are intentionally small and inline —
  * inspection finding labor hours, part quantity — and need to opt out of
- * the full-width rule above too. */
-.mobile-command-route .pfx-inline-field {
-  width: auto !important;
-}
+ * the full-width rule above too. `.pfx-inline-field` is excluded from that
+ * rule entirely (rather than reset to `width: auto`) so each control's own
+ * Tailwind width utility (e.g. `w-14`, `w-16`) governs its size. A bare
+ * `width: auto` here would win over a plain one-class utility on
+ * specificity alone (two classes vs. one) and made a compact `w-14` Qty
+ * field fall back to the browser's much wider native
+ * `input[type=number]` intrinsic width, squeezing its flex sibling. */
 
 /* Hard guard: a checkbox/radio row must wrap its label text instead of
  * overflowing the card, regardless of how wide the control ends up. */
