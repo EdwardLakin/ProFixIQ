@@ -122,17 +122,43 @@ remain protected by grants and RLS where the table is exposed.
   remain outside this policy domain even if stale policy rows exist; future
   Fleet Workspace authorization will receive its own resource-scoped contract.
 
-### What remains after the first effective-capability slice
+### Extended after the first slice
+
+- The Parts capability family (`parts.operate`, `parts.desk.manage`,
+  `parts.request`, `parts.order`, `parts.receive`) replaced the hard-coded role
+  allowlists inside `parts_lifecycle_assert_shop_access`,
+  `parts_lifecycle_assert_line_access` and `create_part_request_with_items`.
+  Presets were derived from those allowlists, so authorized behavior is
+  unchanged while the decision is now shop-configurable and individually
+  overridable.
+- The four directly reachable Parts procedures behind `parts.request`,
+  `parts.order` and `parts.receive` moved into the `private` schema and are
+  re-published under their public names behind a capability gate, so a route
+  check is no longer the only thing in front of them.
+- `workspace_permission_administration_snapshot` provides the shop-scoped
+  administration read model without exposing the policy tables.
+- Owner Settings → Roles & permissions, `/dashboard/settings/permissions` for a
+  delegated administrator, and Workforce → employee → Access & Permissions are
+  the business-language administration surfaces.
+- Shop Assistant tools can declare `requiredWorkspaceCapability`; the actor
+  carries the full effective envelope resolved in one batched call, and a tool
+  whose capability cannot be resolved fails closed.
+
+See `docs/workspace-authorization.md` for the resolution order, naming rules,
+the process for adding a capability, and the current remaining work.
+
+### What remains
 
 - A general staff-to-location membership/scope model suitable for Workspace
   authorization.
 - Resource-relationship resolvers beyond the existing Work Order assignment
   rules and RLS.
-- Expansion of the catalog from the first proving capability into the full Work
-  Order module capability set.
-- Business-language Settings and Employee permission administration screens.
-- A complete capability envelope for every Copilot tool; assignment is the
-  first tool migrated to the shared decision.
+- Expansion of the catalog into the full Work Order module capability set;
+  assignment and the financial keys are migrated, the lifecycle is not.
+- Inspection, estimate, communication and customer/vehicle capability keys,
+  each of which needs its RLS/RPC path traced before a key is safe to add.
+- A complete capability envelope for every Copilot tool; assignment and the
+  Parts/inventory tools are migrated to the shared decision.
 - Explicit grant-once/request-access workflows.
 
 `profiles.role` and `profiles.shop_id` are not sufficient for those features.
