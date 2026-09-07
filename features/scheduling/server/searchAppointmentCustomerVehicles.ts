@@ -58,31 +58,30 @@ const BLOCKED_VEHICLE_STATUSES = new Set([
 
 export function sanitizeAppointmentCustomerVehicleQuery(value: unknown): string {
   return String(value ?? "")
-    .replace(/[^a-zA-Z0-9@.+ _'-]/g, " ")
+    .replace(/[^\p{L}\p{N}@.+ _'-]/gu, " ")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, 120);
 }
 
 function searchTerms(query: string): string[] {
-  return Array.from(new Set(query.toLowerCase().match(/[a-z0-9]+/g) ?? [])).slice(
-    0,
-    8,
-  );
+  return Array.from(
+    new Set(query.toLocaleLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []),
+  ).slice(0, 8);
 }
 
 function searchable(values: unknown[]): string {
   return values
     .filter((value) => value !== null && value !== undefined)
-    .map((value) => String(value).toLowerCase())
+    .map((value) => String(value).toLocaleLowerCase())
     .join(" ");
 }
 
 function matchesEveryTerm(values: unknown[], terms: string[]): boolean {
   const text = searchable(values);
-  const compact = text.replace(/[^a-z0-9]/g, "");
+  const compact = text.replace(/[^\p{L}\p{N}]/gu, "");
   return terms.every((term) => {
-    const compactTerm = term.replace(/[^a-z0-9]/g, "");
+    const compactTerm = term.replace(/[^\p{L}\p{N}]/gu, "");
     return text.includes(term) || (compactTerm.length > 0 && compact.includes(compactTerm));
   });
 }
@@ -155,8 +154,8 @@ function customerDisplayName(row: CustomerRow): string {
   return (
     row.business_name?.trim() ||
     row.name?.trim() ||
-    row.identity_name?.trim() ||
     [row.first_name, row.last_name].filter(Boolean).join(" ").trim() ||
+    row.identity_name?.trim() ||
     row.email?.trim() ||
     "Customer"
   );
@@ -194,23 +193,28 @@ export async function searchAppointmentCustomerVehicles({
     return { query: sanitized, groups: [] };
   }
 
-  const firstTerm = terms[0];
+  let customerQuery = supabase
+    .from("customers")
+    .select(CUSTOMER_COLUMNS)
+    .eq("shop_id", shopId)
+    .is("archived_at", null)
+    .is("merged_into_customer_id", null);
+  let vehicleQuery = supabase
+    .from("vehicles")
+    .select(VEHICLE_COLUMNS)
+    .eq("shop_id", shopId);
+
+  // Repeated PostgREST `or` filters are ANDed together. Applying one OR-group
+  // per token keeps every search term in the database predicate before the
+  // candidate limit is applied, so common first terms cannot hide a later match.
+  for (const term of terms) {
+    customerQuery = customerQuery.or(customerFilter(term));
+    vehicleQuery = vehicleQuery.or(vehicleFilter(term));
+  }
+
   const [customerCandidates, vehicleCandidates] = await Promise.all([
-    supabase
-      .from("customers")
-      .select(CUSTOMER_COLUMNS)
-      .eq("shop_id", shopId)
-      .is("archived_at", null)
-      .is("merged_into_customer_id", null)
-      .or(customerFilter(firstTerm))
-      .limit(CANDIDATE_LIMIT),
-    supabase
-      .from("vehicles")
-      .select(VEHICLE_COLUMNS)
-      .eq("shop_id", shopId)
-      .or(vehicleFilter(firstTerm))
-      .order("created_at", { ascending: false })
-      .limit(CANDIDATE_LIMIT),
+    customerQuery.limit(CANDIDATE_LIMIT),
+    vehicleQuery.order("created_at", { ascending: false }).limit(CANDIDATE_LIMIT),
   ]);
 
   if (customerCandidates.error) throw new Error(customerCandidates.error.message);
@@ -252,10 +256,29 @@ export async function searchAppointmentCustomerVehicles({
 
   const matchedCustomerIds = new Set(matchedCustomers.map((row) => row.id));
   const matchedVehicleIds = new Set(matchedVehicles.map((row) => row.id));
+  const directlyMatchedByCustomer = new Map<string, VehicleRow[]>();
+  for (const row of matchedVehicles) {
+    if (!row.customer_id || !customerIdList.includes(row.customer_id)) continue;
+    directlyMatchedByCustomer.set(row.customer_id, [
+      ...(directlyMatchedByCustomer.get(row.customer_id) ?? []),
+      row,
+    ]);
+  }
+
   const vehiclesByCustomer = new Map<string, VehicleRow[]>();
+  for (const customerId of customerIdList) {
+    const directMatches = directlyMatchedByCustomer.get(customerId) ?? [];
+    if (directMatches.length > 0) {
+      vehiclesByCustomer.set(
+        customerId,
+        directMatches.slice(0, VEHICLES_PER_CUSTOMER),
+      );
+    }
+  }
   for (const row of (relatedVehicles.data ?? []) as VehicleRow[]) {
     if (!row.customer_id || !vehicleAllowed(row)) continue;
     const current = vehiclesByCustomer.get(row.customer_id) ?? [];
+    if (current.some((vehicle) => vehicle.id === row.id)) continue;
     if (current.length < VEHICLES_PER_CUSTOMER) {
       current.push(row);
       vehiclesByCustomer.set(row.customer_id, current);
