@@ -103,4 +103,56 @@ describe("appointment customer / vehicle search", () => {
     expect(helper).toContain('.is("archived_at", null)');
     expect(helper).toContain('.is("merged_into_customer_id", null)');
   });
+
+  it("applies all tokens before candidate limits and preserves direct vehicle matches", () => {
+    const helper = readFileSync(
+      "features/scheduling/server/searchAppointmentCustomerVehicles.ts",
+      "utf8",
+    );
+
+    expect(helper).toContain("for (const term of terms)");
+    expect(helper).toContain("customerQuery = customerQuery.or(customerFilter(term))");
+    expect(helper).toContain("vehicleQuery = vehicleQuery.or(vehicleFilter(term))");
+    expect(helper.indexOf("for (const term of terms)")).toBeLessThan(
+      helper.indexOf("customerQuery.limit(CANDIDATE_LIMIT)"),
+    );
+    expect(helper).toContain("directlyMatchedByCustomer");
+    expect(helper).toContain("directMatches.slice(0, VEHICLES_PER_CUSTOMER)");
+    expect(helper).toContain("current.some((vehicle) => vehicle.id === row.id)");
+  });
+
+  it("keeps customer search Unicode-safe and uses display fields before normalized identity keys", () => {
+    const helper = readFileSync(
+      "features/scheduling/server/searchAppointmentCustomerVehicles.ts",
+      "utf8",
+    );
+
+    expect(helper).toContain("\\p{L}\\p{N}");
+    expect(helper).toContain("toLocaleLowerCase()");
+    const displayName = helper.slice(
+      helper.indexOf("function customerDisplayName"),
+      helper.indexOf("function customerEmail"),
+    );
+    expect(displayName.indexOf("[row.first_name, row.last_name]")).toBeLessThan(
+      displayName.indexOf("row.identity_name"),
+    );
+  });
+
+  it("invalidates stale picker results immediately when the query changes", () => {
+    const picker = readFileSync(
+      "app/dashboard/appointments/AppointmentCustomerVehiclePicker.tsx",
+      "utf8",
+    );
+    const onChange = picker.slice(
+      picker.indexOf("onChange={(event) =>"),
+      picker.indexOf("onFocus={() =>"),
+    );
+
+    expect(onChange).toContain("requestNumber.current += 1");
+    expect(onChange).toContain("setResult(null)");
+    expect(onChange.indexOf("setResult(null)")).toBeLessThan(
+      onChange.indexOf("setQuery(event.target.value)"),
+    );
+    expect(picker).toContain("{!loading && !error");
+  });
 });
