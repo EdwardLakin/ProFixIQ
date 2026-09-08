@@ -9,7 +9,7 @@ import {
   estimateAISpeechCostUsd,
   registerAIUsageEvent,
 } from "@/features/shared/lib/server/ai-ops-guard";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import {
   getOpenAIClient,
   isOpenAIConfigured,
@@ -50,7 +50,7 @@ async function recordSpeechResult(input: {
       ? estimateAISpeechCostUsd(input.textLength)
       : 0;
 
-  await recordAITelemetry({
+  await recordDurableAIUsage({
     feature: FEATURE,
     endpoint: ENDPOINT,
     shop_id: input.access.shopId,

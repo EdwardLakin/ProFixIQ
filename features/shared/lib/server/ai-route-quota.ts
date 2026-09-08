@@ -11,7 +11,7 @@ import {
   estimateAICostUsd,
   registerAIUsageEvent,
 } from "@/features/shared/lib/server/ai-ops-guard";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import type { AIFeature } from "@/features/shared/lib/server/ai-policy";
 import type { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
@@ -50,6 +50,7 @@ export type AIRouteQuotaOperationResult<T> = {
   latencyMs: number;
   usage?: {
     promptTokens: number | null;
+    cachedPromptTokens?: number | null;
     completionTokens: number | null;
     totalTokens: number | null;
   };
@@ -89,7 +90,7 @@ export async function withDurableAIQuota<T>(
       actualCostUsd: estimatedCostUsd,
       succeeded: true,
     });
-    await recordAITelemetry({
+    await recordDurableAIUsage({
       event_key: `quota:${claim.receiptId}`,
       quota_receipt_id: claim.receiptId,
       feature: config.telemetryFeature,
@@ -99,6 +100,7 @@ export async function withDurableAIQuota<T>(
       model: result.model,
       latency_ms: result.latencyMs,
       prompt_tokens: result.usage?.promptTokens ?? null,
+      cached_prompt_tokens: result.usage?.cachedPromptTokens ?? null,
       completion_tokens: result.usage?.completionTokens ?? null,
       total_tokens: totalTokens,
       estimated_cost_usd: estimatedCostUsd,
@@ -133,7 +135,7 @@ export async function withDurableAIQuota<T>(
       actualCostUsd: 0,
       succeeded: false,
     });
-    await recordAITelemetry({
+    await recordDurableAIUsage({
       event_key: `quota:${claim.receiptId}`,
       quota_receipt_id: claim.receiptId,
       feature: config.telemetryFeature,

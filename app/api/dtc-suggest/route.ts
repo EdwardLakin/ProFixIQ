@@ -7,7 +7,7 @@ import {
   estimateAICostUsd,
   registerAIUsageEvent,
 } from "@/features/shared/lib/server/ai-ops-guard";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { readBoundedJson } from "@/features/shared/lib/server/bounded-json";
 import {
@@ -199,7 +199,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       shopId: access.profile.shop_id,
       succeeded: true,
     });
-    await recordAITelemetry({
+    await recordDurableAIUsage({
       event_key: `quota:${claim.receiptId}`,
       quota_receipt_id: claim.receiptId,
       feature: FEATURE,
@@ -240,7 +240,7 @@ export async function POST(request: Request): Promise<NextResponse> {
       shopId: access.profile.shop_id,
       succeeded: false,
     });
-    await recordAITelemetry({
+    await recordDurableAIUsage({
       event_key: `quota:${claim.receiptId}`,
       quota_receipt_id: claim.receiptId,
       feature: FEATURE,

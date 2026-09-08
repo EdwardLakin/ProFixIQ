@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getOpenAIRealtimeTranscriptionModel } from "@/features/shared/lib/openai-realtime-models";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import {
   enforceAIOperationalPolicy,
   estimateAICostUsd,
@@ -198,7 +198,7 @@ export async function GET() {
     // established synthetic cost in the legacy operational guard until Phase 4
     // meters the actual realtime session.
     const legacyEstimatedCostUsd = estimateAICostUsd("openai_realtime_token", 1);
-    await recordAITelemetry({
+    await recordDurableAIUsage({
       feature: "openai_realtime_token",
       endpoint: "/api/openai/realtime-token",
       shop_id: access.profile.shop_id,
@@ -239,7 +239,7 @@ export async function GET() {
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unhandled realtime token error";
-    await recordAITelemetry({
+    await recordDurableAIUsage({
       feature: "openai_realtime_token",
       endpoint: "/api/openai/realtime-token",
       shop_id: access.profile.shop_id,

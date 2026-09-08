@@ -47,7 +47,7 @@ vi.mock("@/features/shared/lib/server/ai-ops-guard", () => ({
 }));
 
 vi.mock("@/features/shared/lib/server/ai-telemetry", () => ({
-  recordAITelemetry: mocks.recordTelemetry,
+  recordDurableAIUsage: mocks.recordTelemetry,
 }));
 
 import { TechnicianCopilotAccessError } from "@/features/copilot/technician/server/auth";

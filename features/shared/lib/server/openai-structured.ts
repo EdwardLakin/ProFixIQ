@@ -2,7 +2,7 @@ import "server-only";
 
 import { getAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import {
-  recordAITelemetry,
+  recordDurableAIUsage,
   type AITelemetryFeature,
 } from "@/features/shared/lib/server/ai-telemetry";
 import { getOpenAIClient, isOpenAIConfigured } from "@/features/shared/lib/server/openai";
@@ -95,6 +95,15 @@ export async function runOpenAIStructuredJson<T>(params: {
   const started = Date.now();
   const model = getOpenAIModelForPurpose(params.purpose);
   const telemetry = params.telemetry ?? getAITelemetryContext();
+  if (!telemetry) {
+    // The canonical structured-AI path can only write a durable ledger row when
+    // the caller supplies (or is wrapped in) authenticated tenant/actor context.
+    // Surface the gap instead of silently omitting the provider spend.
+    console.warn("[openai-structured] no telemetry context; usage not ledgered", {
+      feature: params.feature,
+      purpose: params.purpose,
+    });
+  }
   let usage: OpenAIStructuredJsonUsage | undefined;
   let providerRequestId: string | null = null;
 
@@ -155,7 +164,7 @@ export async function runOpenAIStructuredJson<T>(params: {
     });
 
     if (telemetry) {
-      await recordAITelemetry({
+      await recordDurableAIUsage({
         feature: params.feature as AITelemetryFeature,
         endpoint: telemetry.endpoint,
         shop_id: telemetry.shopId,
@@ -191,7 +200,7 @@ export async function runOpenAIStructuredJson<T>(params: {
     });
 
     if (telemetry) {
-      await recordAITelemetry({
+      await recordDurableAIUsage({
         feature: params.feature as AITelemetryFeature,
         endpoint: telemetry.endpoint,
         shop_id: telemetry.shopId,

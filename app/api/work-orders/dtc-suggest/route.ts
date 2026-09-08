@@ -9,7 +9,7 @@ import {
 } from "@/features/shared/lib/server/durable-ai-guard";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { estimateAICostUsd, registerAIUsageEvent } from "@/features/shared/lib/server/ai-ops-guard";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import { runWithProviderTimeout } from "@/features/shared/lib/server/provider-timeout";
@@ -598,7 +598,7 @@ export async function POST(req: Request) {
         succeeded: false,
       });
       const model = getOpenAIModelForPurpose(getAIPolicy(FEATURE).modelPurpose);
-      await recordAITelemetry({
+      await recordDurableAIUsage({
         event_key: `${claim.receiptId}:error`,
         feature: FEATURE,
         endpoint: ENDPOINT,
@@ -658,7 +658,7 @@ export async function POST(req: Request) {
       shopId: access.profile.shop_id,
       succeeded: true,
     });
-    await recordAITelemetry({
+    await recordDurableAIUsage({
       event_key: `${claim.receiptId}:success`,
       feature: FEATURE,
       endpoint: ENDPOINT,

@@ -8,7 +8,7 @@ import {
   openAITemperatureParam,
 } from "@/features/shared/lib/server/openai-models";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import {
   enforceAIOperationalPolicy,
   estimateAICostUsd,
@@ -149,7 +149,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     const totalTokens = usage?.total_tokens ?? null;
     const estimatedCost = estimateAICostUsd(FEATURE, totalTokens);
 
-    await recordAITelemetry({
+    await recordDurableAIUsage({
       feature: FEATURE,
       endpoint: ENDPOINT,
       shop_id: access.profile.shop_id,
@@ -182,7 +182,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     const message =
       error instanceof Error ? error.message : "Documentation rewrite failed";
 
-    await recordAITelemetry({
+    await recordDurableAIUsage({
       feature: FEATURE,
       endpoint: ENDPOINT,
       shop_id: access.profile.shop_id,

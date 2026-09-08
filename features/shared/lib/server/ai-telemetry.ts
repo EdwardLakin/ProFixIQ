@@ -111,20 +111,45 @@ async function persistLedgerEvent(
   }
 }
 
-export async function recordAITelemetry(
+function telemetryLogLine(
+  event: AITelemetryEvent,
+  eventKey: string,
+  estimatedCostUsd: number | null,
+): string {
+  return JSON.stringify({
+    type: "ai_telemetry",
+    ...event,
+    event_key: eventKey,
+    rate_card_version: AI_RATE_CARD_VERSION,
+    estimated_cost_usd: estimatedCostUsd,
+  });
+}
+
+/**
+ * Pre-existing structured-log telemetry contract. Synchronous, console-only,
+ * and free of persistence side effects. Callers that additionally need durable
+ * ledger accounting use `recordDurableAIUsage`.
+ */
+export function recordAITelemetry(event: AITelemetryEvent): void {
+  const eventKey = event.event_key?.trim() || randomUUID();
+  console.info(telemetryLogLine(event, eventKey, normalizedCost(event)));
+}
+
+/**
+ * Durable AI usage accounting. Logs the same structured telemetry line as
+ * `recordAITelemetry` and additionally persists the event to the private
+ * usage ledger via the service-role-only `record_ai_usage_ledger` adapter.
+ *
+ * This is a separately named addition: `recordAITelemetry` keeps its original
+ * synchronous, console-only contract so the ledger can be rolled out and
+ * rolled back independently of the AI routes that only need logging.
+ */
+export async function recordDurableAIUsage(
   event: AITelemetryEvent,
 ): Promise<AITelemetryRecordResult> {
   const eventKey = event.event_key?.trim() || randomUUID();
   const estimatedCostUsd = normalizedCost(event);
-  console.info(
-    JSON.stringify({
-      type: "ai_telemetry",
-      ...event,
-      event_key: eventKey,
-      rate_card_version: AI_RATE_CARD_VERSION,
-      estimated_cost_usd: estimatedCostUsd,
-    }),
-  );
+  console.info(telemetryLogLine(event, eventKey, estimatedCostUsd));
 
   try {
     const admin = createAdminSupabase() as unknown as LedgerRpcClient;

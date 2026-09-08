@@ -13,7 +13,7 @@ import {
   getOpenAIClient,
 } from "@/features/branding/server/logo-generation";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import {
   enforceAIOperationalPolicy,
   estimateAICostUsd,
@@ -152,6 +152,48 @@ export async function POST(req: Request) {
       );
     }
 
+    // The provider has already done billable work at this point. Record
+    // usage before asset persistence so a storage/insert failure below
+    // cannot drop the charge from the durable ledger.
+    const totalTokens =
+      (result.usage as { total_tokens?: number } | undefined)?.total_tokens ??
+      null;
+    const estimatedCostUsd = estimateAICostUsd(
+      "branding_generate_logo",
+      totalTokens,
+    );
+    await recordDurableAIUsage({
+      feature: "branding_generate_logo",
+      endpoint: "/api/branding/generate",
+      shop_id: auth.shopId,
+      user_id: auth.userId,
+      provider: "openai",
+      model,
+      modality: "image",
+      latency_ms: Date.now() - startedAt,
+      prompt_tokens:
+        (result.usage as { input_tokens?: number } | undefined)?.input_tokens ??
+        null,
+      completion_tokens:
+        (result.usage as { output_tokens?: number } | undefined)
+          ?.output_tokens ?? null,
+      total_tokens: totalTokens,
+      estimated_cost_usd: estimatedCostUsd,
+      status: "success",
+      error_code: null,
+      error_message: null,
+    });
+    registerAIUsageEvent({
+      feature: "branding_generate_logo",
+      endpoint: "/api/branding/generate",
+      shopId: auth.shopId,
+      model,
+      totalTokens,
+      estimatedCostUsd,
+      status: "success",
+      errorCode: null,
+    });
+
     const createdAssets: Array<
       DB["public"]["Tables"]["shop_brand_assets"]["Row"]
     > = [];
@@ -222,44 +264,6 @@ export async function POST(req: Request) {
       createdAssets.push(asset);
     }
 
-    const totalTokens =
-      (result.usage as { total_tokens?: number } | undefined)?.total_tokens ??
-      null;
-    const estimatedCostUsd = estimateAICostUsd(
-      "branding_generate_logo",
-      totalTokens,
-    );
-    await recordAITelemetry({
-      feature: "branding_generate_logo",
-      endpoint: "/api/branding/generate",
-      shop_id: auth.shopId,
-      user_id: auth.userId,
-      provider: "openai",
-      model,
-      modality: "image",
-      latency_ms: Date.now() - startedAt,
-      prompt_tokens:
-        (result.usage as { input_tokens?: number } | undefined)?.input_tokens ??
-        null,
-      completion_tokens:
-        (result.usage as { output_tokens?: number } | undefined)
-          ?.output_tokens ?? null,
-      total_tokens: totalTokens,
-      estimated_cost_usd: estimatedCostUsd,
-      status: "success",
-      error_code: null,
-      error_message: null,
-    });
-    registerAIUsageEvent({
-      feature: "branding_generate_logo",
-      endpoint: "/api/branding/generate",
-      shopId: auth.shopId,
-      model,
-      totalTokens,
-      estimatedCostUsd,
-      status: "success",
-      errorCode: null,
-    });
 
     return NextResponse.json({
       ok: true,
@@ -269,7 +273,7 @@ export async function POST(req: Request) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Logo generation failed";
-    await recordAITelemetry({
+    await recordDurableAIUsage({
       feature: "branding_generate_logo",
       endpoint: "/api/branding/generate",
       shop_id: auth.shopId,

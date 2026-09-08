@@ -5,7 +5,7 @@ import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { openai } from "lib/server/openai";
 import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import {
   enforceAIOperationalPolicy,
   estimateAICostUsd,
@@ -281,7 +281,7 @@ export async function POST(req: Request) {
       "work_orders_suggest_lines",
       completion.usage?.total_tokens ?? null,
     );
-    await recordAITelemetry({
+    await recordDurableAIUsage({
       feature: "work_orders_suggest_lines",
       endpoint: "/api/work-orders/suggest-lines",
       shop_id: shopIdForContext,
@@ -313,7 +313,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ suggestions });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to generate suggestions";
-    await recordAITelemetry({
+    await recordDurableAIUsage({
       feature: "work_orders_suggest_lines",
       endpoint: "/api/work-orders/suggest-lines",
       shop_id: shopIdForContext,

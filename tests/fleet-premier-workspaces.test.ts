@@ -138,7 +138,7 @@ describe("premier fleet workspaces", () => {
 
     expect(route).toContain("getOpenAIClient");
     expect(route).toContain("getOpenAIModelForPurpose");
-    expect(route).toContain("recordAITelemetry");
+    expect(route).toContain("recordDurableAIUsage");
     expect(route).toContain("enforceAIOperationalPolicy");
     expect(route).not.toContain('from "openai"');
     expect(route).not.toContain("OPENAI_FLEET_SUMMARY_MODEL");

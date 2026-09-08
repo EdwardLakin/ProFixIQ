@@ -16,7 +16,7 @@ import {
   estimateAICostUsd,
   registerAIUsageEvent,
 } from "@/features/shared/lib/server/ai-ops-guard";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import {
   getOpenAIClient,
   isOpenAIConfigured,
@@ -232,7 +232,7 @@ export async function POST(request: Request) {
         "ai_summarize_stats",
         completion.usage?.total_tokens ?? null,
       );
-      await recordAITelemetry({
+      await recordDurableAIUsage({
         feature: "ai_summarize_stats",
         endpoint: "/api/ai/summarize-stats",
         shop_id: access.profile.shop_id,
@@ -269,7 +269,7 @@ export async function POST(request: Request) {
       } satisfies OwnerReportSummaryResponse);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "AI summary failed";
-      await recordAITelemetry({
+      await recordDurableAIUsage({
         feature: "ai_summarize_stats",
         endpoint: "/api/ai/summarize-stats",
         shop_id: access.profile.shop_id,
