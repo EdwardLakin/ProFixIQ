@@ -186,6 +186,8 @@ export async function POST(request: Request): Promise<NextResponse> {
       JSON.parse(completion.choices[0]?.message?.content ?? "{}") as unknown,
     );
     const totalTokens = completion.usage?.total_tokens ?? null;
+    const cachedPromptTokens =
+      completion.usage?.prompt_tokens_details?.cached_tokens ?? null;
     const estimatedCostUsd = estimateAICostUsd(FEATURE, totalTokens);
 
     await completeDurableAIRouteQuota({
@@ -197,7 +199,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       shopId: access.profile.shop_id,
       succeeded: true,
     });
-    recordAITelemetry({
+    await recordAITelemetry({
+      event_key: `quota:${claim.receiptId}`,
+      quota_receipt_id: claim.receiptId,
       feature: FEATURE,
       endpoint: ENDPOINT,
       shop_id: access.profile.shop_id,
@@ -205,12 +209,14 @@ export async function POST(request: Request): Promise<NextResponse> {
       model,
       latency_ms: Date.now() - startedAt,
       prompt_tokens: completion.usage?.prompt_tokens ?? null,
+      cached_prompt_tokens: cachedPromptTokens,
       completion_tokens: completion.usage?.completion_tokens ?? null,
       total_tokens: totalTokens,
       estimated_cost_usd: estimatedCostUsd,
       status: "success",
       error_code: null,
       error_message: null,
+      provider_request_id: completion.id ?? null,
     });
     registerAIUsageEvent({
       feature: FEATURE,
@@ -234,7 +240,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       shopId: access.profile.shop_id,
       succeeded: false,
     });
-    recordAITelemetry({
+    await recordAITelemetry({
+      event_key: `quota:${claim.receiptId}`,
+      quota_receipt_id: claim.receiptId,
       feature: FEATURE,
       endpoint: ENDPOINT,
       shop_id: access.profile.shop_id,
