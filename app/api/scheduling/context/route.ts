@@ -36,6 +36,19 @@ export async function GET() {
     role: me.role,
   }).canManageScheduling;
 
+  const { data: shop, error: shopError } = await admin
+    .from("shops")
+    .select("id, name, slug")
+    .eq("id", access.profile.shop_id)
+    .maybeSingle();
+
+  if (shopError) {
+    return NextResponse.json({ error: shopError.message }, { status: 500 });
+  }
+  if (!shop?.id || !shop.slug) {
+    return NextResponse.json({ error: "Shop not found" }, { status: 404 });
+  }
+
   let users: Array<{
     id: string;
     full_name: string | null;
@@ -78,6 +91,7 @@ export async function GET() {
   }
 
   return NextResponse.json({
+    shop,
     me: {
       ...me,
       full_name:
