@@ -45,7 +45,7 @@ export async function GET() {
   if (shopError) {
     return NextResponse.json({ error: shopError.message }, { status: 500 });
   }
-  if (!shop?.id || !shop.slug) {
+  if (!shop?.id) {
     return NextResponse.json({ error: "Shop not found" }, { status: 404 });
   }
 

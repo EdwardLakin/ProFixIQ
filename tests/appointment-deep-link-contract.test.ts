@@ -21,7 +21,11 @@ vi.mock("@/features/shared/lib/supabase/server", () => ({
 const read = (path: string) => readFileSync(path, "utf8");
 
 const appointmentsPage = read("app/dashboard/appointments/page.tsx");
+const appointmentsLayout = read("app/dashboard/appointments/layout.tsx");
+const schedulingContextRoute = read("app/api/scheduling/context/route.ts");
 const staffBookingsRoute = read("app/api/portal/bookings/route.ts");
+const legacyStaffCreateRoute = read("app/api/portal/book/route.ts");
+const createPortalBooking = read("features/portal/server/createPortalBooking.ts");
 const workspaceLoader = read(
   "features/vehicles/server/loadVehicleWorkspaceSnapshot.ts",
 );
@@ -71,15 +75,44 @@ describe("vehicle workspace appointment deep links", () => {
     expect(appointmentsPage).toContain('setPanelMode("edit")');
   });
 
-  it("bootstraps the shop through the canonical server profile guard", () => {
-    expect(staffBookingsRoute).toContain(
-      "await requireShopScopedApiAccess()",
+  it("bootstraps through scheduling context and server-gates the desktop page", () => {
+    expect(schedulingContextRoute).toContain(
+      "await requireShopScopedApiAccess({",
     );
-    expect(staffBookingsRoute).toContain('.eq("id", profile.shop_id)');
-    expect(appointmentsPage).toContain(
-      'fetch("/api/portal/bookings?scope=shop"',
+    expect(schedulingContextRoute).toContain(
+      '.eq("id", access.profile.shop_id)',
     );
+    expect(appointmentsPage).toContain('fetch("/api/scheduling/context"');
     expect(appointmentsPage).not.toContain('.from("profiles")');
+    expect(appointmentsLayout).toContain(
+      'requiredCapability: "canManageScheduling"',
+    );
+  });
+
+  it("keeps internal appointments usable when the public shop slug is null", () => {
+    expect(schedulingContextRoute).toContain("if (!shop?.id)");
+    expect(schedulingContextRoute).not.toContain("!shop.slug");
+    expect(appointmentsPage).toContain("if (!shop?.id)");
+    expect(appointmentsPage).toContain("shop.slug ?? shop.id");
+    expect(appointmentsPage).toContain("!s.slug && s.id === shopSlug");
+    expect(staffBookingsRoute).toContain("shopKey !== shop.id");
+    expect(staffBookingsRoute).toContain('shopKey !== (shop.slug ?? "")');
+  });
+
+  it("uses the authenticated profile shop id for staff creation without changing public slug lookup", () => {
+    expect(legacyStaffCreateRoute).toContain(
+      "staffShopId: access.profile.shop_id",
+    );
+    expect(legacyStaffCreateRoute).toContain(
+      "legacyStaffOperationKey(userId, access.profile.shop_id, body)",
+    );
+    expect(createPortalBooking).toContain(
+      'actorMode === "allow-staff"',
+    );
+    expect(createPortalBooking).toContain(
+      'shopQuery.eq("id", canonicalStaffShopId)',
+    );
+    expect(createPortalBooking).toContain('shopQuery.eq("slug", shopSlug)');
   });
 
   it("returns only the canonical linked profile's shop context", async () => {

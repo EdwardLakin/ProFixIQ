@@ -12,11 +12,15 @@ function bad(msg: string, code = 400) {
   return NextResponse.json({ error: msg }, { status: code });
 }
 
-function legacyStaffOperationKey(userId: string, body: CreatePortalBookingInput): string {
+function legacyStaffOperationKey(
+  userId: string,
+  shopId: string,
+  body: CreatePortalBookingInput,
+): string {
   return [
     "legacy-staff-booking",
     userId,
-    body.shopSlug,
+    shopId,
     body.customerId ?? "customer",
     body.vehicleId ?? "vehicle",
     body.startsAt,
@@ -42,13 +46,14 @@ export async function POST(req: Request) {
       req.headers.get("Idempotency-Key")?.trim() ||
       body.operationKey?.trim() ||
       body.idempotencyKey?.trim() ||
-      legacyStaffOperationKey(userId, body);
+      legacyStaffOperationKey(userId, access.profile.shop_id, body);
 
     const result = await createPortalBooking({
       supabase,
       userId,
       input: { ...body, operationKey },
       actorMode: "allow-staff",
+      staffShopId: access.profile.shop_id,
     });
 
     if (!result.ok) return bad(result.error, result.status);
