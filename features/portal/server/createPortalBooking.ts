@@ -55,21 +55,30 @@ export async function createPortalBooking({
   userId,
   input,
   actorMode,
+  staffShopId,
 }: {
   supabase: SupabaseClient<DB>;
   userId: string;
   input: CreatePortalBookingInput;
   actorMode: BookingActorMode;
+  staffShopId?: string | null;
 }): Promise<CreatePortalBookingResult> {
   const shopSlug = clean(input.shopSlug);
+  const canonicalStaffShopId = clean(staffShopId);
   const startsAt = clean(input.startsAt);
   const endsAt = clean(input.endsAt);
   const vehicleId = clean(input.vehicleId) || null;
   const suppliedCustomerId = clean(input.customerId);
   const operationKey = clean(input.operationKey) || clean(input.idempotencyKey);
 
-  if (!shopSlug || !startsAt || !endsAt) {
-    return { ok: false, error: "Missing shopSlug, startsAt, or endsAt", status: 400 };
+  if (!startsAt || !endsAt) {
+    return { ok: false, error: "Missing startsAt or endsAt", status: 400 };
+  }
+  if (actorMode === "customer-only" && !shopSlug) {
+    return { ok: false, error: "Missing shopSlug", status: 400 };
+  }
+  if (actorMode === "allow-staff" && !canonicalStaffShopId) {
+    return { ok: false, error: "Staff shop context is required", status: 400 };
   }
   if (!operationKey) {
     return { ok: false, error: "A stable operation key is required", status: 400 };
@@ -88,11 +97,13 @@ export async function createPortalBooking({
     return { ok: false, error: "Valid booking times are required", status: 400 };
   }
 
-  const { data: shop, error: shopError } = await supabase
-    .from("shops")
-    .select("id")
-    .eq("slug", shopSlug)
-    .maybeSingle<{ id: string }>();
+  let shopQuery = supabase.from("shops").select("id");
+  shopQuery =
+    actorMode === "allow-staff"
+      ? shopQuery.eq("id", canonicalStaffShopId)
+      : shopQuery.eq("slug", shopSlug);
+
+  const { data: shop, error: shopError } = await shopQuery.maybeSingle<{ id: string }>();
   if (shopError) return { ok: false, error: shopError.message, status: 500 };
   if (!shop) return { ok: false, error: "Shop not found", status: 404 };
 
