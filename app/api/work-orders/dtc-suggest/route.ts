@@ -334,6 +334,30 @@ function buildUserPrompt(args: {
   });
 }
 
+type BilledProviderUsage = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number };
+};
+
+/**
+ * Raised when the provider responded (and billed) but its payload could not be
+ * parsed. Carries the usage so the failure ledger event still accounts for the
+ * charge instead of recording a request that cost nothing.
+ */
+class DtcProviderResponseError extends Error {
+  constructor(
+    message: string,
+    readonly usage: BilledProviderUsage | undefined,
+    readonly model: string,
+    readonly requestId: string | null,
+  ) {
+    super(message);
+    this.name = "DtcProviderResponseError";
+  }
+}
+
 async function generateDtcResponse(args: {
   context: RouteContext;
   dtcCode: string | null;
@@ -365,10 +389,17 @@ async function generateDtcResponse(args: {
 
   const raw = completion.choices[0]?.message?.content ?? "{}";
 
-  const parsed = JSON.parse(raw) as {
-    reply?: unknown;
-    summary?: unknown;
-  };
+  let parsed: { reply?: unknown; summary?: unknown };
+  try {
+    parsed = JSON.parse(raw) as { reply?: unknown; summary?: unknown };
+  } catch (error) {
+    throw new DtcProviderResponseError(
+      error instanceof Error ? error.message : "Malformed provider response",
+      completion.usage,
+      model,
+      completion.id ?? null,
+    );
+  }
 
   const reply =
     asNonEmptyString(parsed.reply) ??
@@ -597,7 +628,12 @@ export async function POST(req: Request) {
         shopId: access.profile.shop_id,
         succeeded: false,
       });
-      const model = getOpenAIModelForPurpose(getAIPolicy(FEATURE).modelPurpose);
+      const billed =
+        error instanceof DtcProviderResponseError ? error : null;
+      const model =
+        billed?.model ??
+        getOpenAIModelForPurpose(getAIPolicy(FEATURE).modelPurpose);
+      const billedTotalTokens = billed?.usage?.total_tokens ?? null;
       await recordDurableAIUsage({
         event_key: `${claim.receiptId}:error`,
         feature: FEATURE,
@@ -606,10 +642,13 @@ export async function POST(req: Request) {
         user_id: access.profile.id,
         model,
         latency_ms: Date.now() - startedAt,
-        prompt_tokens: null,
-        completion_tokens: null,
-        total_tokens: null,
-        estimated_cost_usd: 0,
+        prompt_tokens: billed?.usage?.prompt_tokens ?? null,
+        cached_prompt_tokens:
+          billed?.usage?.prompt_tokens_details?.cached_tokens ?? null,
+        completion_tokens: billed?.usage?.completion_tokens ?? null,
+        total_tokens: billedTotalTokens,
+        estimated_cost_usd: estimateAICostUsd(FEATURE, billedTotalTokens),
+        provider_request_id: billed?.requestId ?? null,
         status: "error",
         error_code: "dtc_suggest_failed",
         error_message:
@@ -623,8 +662,8 @@ export async function POST(req: Request) {
         endpoint: ENDPOINT,
         shopId: access.profile.shop_id,
         model,
-        totalTokens: null,
-        estimatedCostUsd: 0,
+        totalTokens: billedTotalTokens,
+        estimatedCostUsd: estimateAICostUsd(FEATURE, billedTotalTokens),
         status: "error",
         errorCode: "dtc_suggest_failed",
       });

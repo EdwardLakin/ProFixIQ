@@ -148,6 +148,15 @@ export async function POST(request: Request): Promise<NextResponse> {
   const policy = getAIPolicy(FEATURE);
   const model = getOpenAIModelForPurpose(policy.modelPurpose);
 
+  // Captured the moment the provider responds. suggestionSchema.parse() below
+  // can reject truncated or malformed output on a request OpenAI has already
+  // billed, and the failure ledger event must still carry its usage.
+  let billedPromptTokens: number | null = null;
+  let billedCachedPromptTokens: number | null = null;
+  let billedCompletionTokens: number | null = null;
+  let billedTotalTokens: number | null = null;
+  let billedRequestId: string | null = null;
+
   try {
     const openai = getOpenAIClient();
     const completion = await runWithProviderTimeout(policy.timeoutMs, (signal) =>
@@ -181,6 +190,13 @@ export async function POST(request: Request): Promise<NextResponse> {
         { signal },
       ),
     );
+
+    billedPromptTokens = completion.usage?.prompt_tokens ?? null;
+    billedCachedPromptTokens =
+      completion.usage?.prompt_tokens_details?.cached_tokens ?? null;
+    billedCompletionTokens = completion.usage?.completion_tokens ?? null;
+    billedTotalTokens = completion.usage?.total_tokens ?? null;
+    billedRequestId = completion.id ?? null;
 
     const suggestion = suggestionSchema.parse(
       JSON.parse(completion.choices[0]?.message?.content ?? "{}") as unknown,
@@ -249,10 +265,12 @@ export async function POST(request: Request): Promise<NextResponse> {
       user_id: access.profile.id,
       model,
       latency_ms: Date.now() - startedAt,
-      prompt_tokens: null,
-      completion_tokens: null,
-      total_tokens: null,
-      estimated_cost_usd: 0,
+      prompt_tokens: billedPromptTokens,
+      cached_prompt_tokens: billedCachedPromptTokens,
+      completion_tokens: billedCompletionTokens,
+      total_tokens: billedTotalTokens,
+      estimated_cost_usd: estimateAICostUsd(FEATURE, billedTotalTokens),
+      provider_request_id: billedRequestId,
       status: "error",
       error_code: "dtc_suggest_failed",
       error_message:
