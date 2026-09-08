@@ -34,42 +34,45 @@ create table private.ai_usage_ledger (
   created_at timestamptz not null default clock_timestamp()
 );
 
-create index ai_usage_ledger_shop_month_idx on private.ai_usage_ledger (shop_id, occurred_at desc);
-create index ai_usage_ledger_user_month_idx on private.ai_usage_ledger (shop_id, user_id, occurred_at desc);
-create index ai_usage_ledger_feature_month_idx on private.ai_usage_ledger (shop_id, feature, occurred_at desc);
-create index ai_usage_ledger_model_month_idx on private.ai_usage_ledger (model, occurred_at desc);
-create index ai_usage_ledger_quota_receipt_idx on private.ai_usage_ledger (quota_receipt_id)
+create index ai_usage_ledger_shop_month_idx
+  on private.ai_usage_ledger (shop_id, occurred_at desc);
+create index ai_usage_ledger_user_month_idx
+  on private.ai_usage_ledger (shop_id, user_id, occurred_at desc);
+create index ai_usage_ledger_feature_month_idx
+  on private.ai_usage_ledger (shop_id, feature, occurred_at desc);
+create index ai_usage_ledger_model_month_idx
+  on private.ai_usage_ledger (model, occurred_at desc);
+create index ai_usage_ledger_quota_receipt_idx
+  on private.ai_usage_ledger (quota_receipt_id)
   where quota_receipt_id is not null;
 create unique index ai_usage_ledger_provider_request_unique_idx
   on private.ai_usage_ledger (provider, provider_request_id, feature)
   where provider_request_id is not null;
 
-revoke all privileges on schema private from public, anon, authenticated;
-revoke all privileges on table private.ai_usage_ledger from public, anon, authenticated;
-grant usage on schema private to service_role;
-grant select, insert on table private.ai_usage_ledger to service_role;
+-- Preserve the repository-wide private-schema boundary. service_role must not
+-- gain direct USAGE or table access; the single helper below is the only write
+-- path exposed to the server role.
+revoke all privileges on schema private
+  from public, anon, authenticated, service_role;
+revoke all privileges on table private.ai_usage_ledger
+  from public, anon, authenticated, service_role;
 
--- Keep the existing public.insert_ai_event signature so the generated public
--- Supabase contract does not change. Normal callers retain the existing
--- ai_events behavior. A reserved training_source gives server-side service-role
--- telemetry one narrow path into the private ledger without exposing a second
--- privileged RPC to authenticated clients.
-create or replace function public.insert_ai_event(
+create schema if not exists rls_helpers authorization postgres;
+alter default privileges for role postgres in schema rls_helpers
+  revoke execute on functions from public;
+
+create or replace function rls_helpers.record_private_ai_usage_ledger(
   p_shop_id uuid,
-  p_event_type text,
-  p_payload jsonb,
-  p_entity_id uuid default null::uuid,
-  p_entity_table text default null::text,
-  p_user_id uuid default null::uuid,
-  p_training_source text default null::text
+  p_user_id uuid,
+  p_payload jsonb
 )
 returns uuid
 language plpgsql
-security invoker
-set search_path = pg_catalog, public, private
+security definer
+set search_path = ''
 as $function$
 declare
-  v_event_id uuid;
+  v_id uuid;
   v_event_key text;
   v_feature text;
   v_endpoint text;
@@ -94,109 +97,245 @@ declare
   v_quota_receipt_id uuid;
   v_occurred_at timestamptz;
 begin
+  if p_payload is null or jsonb_typeof(p_payload) <> 'object' then
+    raise exception using
+      errcode = '22023',
+      message = 'AI_USAGE_LEDGER_INPUT_INVALID';
+  end if;
+
+  v_event_key := nullif(pg_catalog.btrim(p_payload ->> 'event_key'), '');
+  v_feature := nullif(pg_catalog.btrim(p_payload ->> 'feature'), '');
+  v_endpoint := nullif(pg_catalog.btrim(p_payload ->> 'endpoint'), '');
+  v_provider := pg_catalog.coalesce(
+    nullif(pg_catalog.btrim(p_payload ->> 'provider'), ''),
+    'openai'
+  );
+  v_model := nullif(pg_catalog.btrim(p_payload ->> 'model'), '');
+  v_modality := pg_catalog.coalesce(
+    nullif(pg_catalog.btrim(p_payload ->> 'modality'), ''),
+    'text'
+  );
+  v_rate_card_version := nullif(
+    pg_catalog.btrim(p_payload ->> 'rate_card_version'),
+    ''
+  );
+  v_prompt_tokens := nullif(p_payload ->> 'prompt_tokens', '')::integer;
+  v_cached_prompt_tokens := nullif(
+    p_payload ->> 'cached_prompt_tokens',
+    ''
+  )::integer;
+  v_completion_tokens := nullif(
+    p_payload ->> 'completion_tokens',
+    ''
+  )::integer;
+  v_total_tokens := nullif(p_payload ->> 'total_tokens', '')::integer;
+  v_audio_input_tokens := nullif(
+    p_payload ->> 'audio_input_tokens',
+    ''
+  )::integer;
+  v_audio_output_tokens := nullif(
+    p_payload ->> 'audio_output_tokens',
+    ''
+  )::integer;
+  v_speech_characters := nullif(
+    p_payload ->> 'speech_characters',
+    ''
+  )::integer;
+  v_duration_seconds := nullif(
+    p_payload ->> 'duration_seconds',
+    ''
+  )::numeric;
+  v_estimated_cost_usd := nullif(
+    p_payload ->> 'estimated_cost_usd',
+    ''
+  )::numeric;
+  v_latency_ms := pg_catalog.coalesce(
+    nullif(p_payload ->> 'latency_ms', '')::integer,
+    0
+  );
+  v_status := nullif(pg_catalog.btrim(p_payload ->> 'status'), '');
+  v_error_code := nullif(pg_catalog.btrim(p_payload ->> 'error_code'), '');
+  v_error_message := nullif(
+    pg_catalog.btrim(p_payload ->> 'error_message'),
+    ''
+  );
+  v_provider_request_id := nullif(
+    pg_catalog.btrim(p_payload ->> 'provider_request_id'),
+    ''
+  );
+  v_quota_receipt_id := nullif(
+    p_payload ->> 'quota_receipt_id',
+    ''
+  )::uuid;
+  v_occurred_at := pg_catalog.coalesce(
+    nullif(p_payload ->> 'occurred_at', '')::timestamptz,
+    pg_catalog.clock_timestamp()
+  );
+
+  if v_event_key is null
+     or pg_catalog.length(v_event_key) > 240
+     or v_feature is null
+     or pg_catalog.length(v_feature) > 120
+     or v_endpoint is null
+     or pg_catalog.length(v_endpoint) > 240
+     or v_provider <> 'openai'
+     or v_rate_card_version is null
+     or pg_catalog.length(v_rate_card_version) > 80
+     or v_modality not in ('text', 'realtime', 'speech', 'image', 'other')
+     or v_status not in ('success', 'error')
+     or v_latency_ms < 0
+     or pg_catalog.coalesce(v_prompt_tokens, 0) < 0
+     or pg_catalog.coalesce(v_cached_prompt_tokens, 0) < 0
+     or pg_catalog.coalesce(v_completion_tokens, 0) < 0
+     or pg_catalog.coalesce(v_total_tokens, 0) < 0
+     or pg_catalog.coalesce(v_audio_input_tokens, 0) < 0
+     or pg_catalog.coalesce(v_audio_output_tokens, 0) < 0
+     or pg_catalog.coalesce(v_speech_characters, 0) < 0
+     or pg_catalog.coalesce(v_duration_seconds, 0) < 0
+     or pg_catalog.coalesce(v_estimated_cost_usd, 0) < 0 then
+    raise exception using
+      errcode = '22023',
+      message = 'AI_USAGE_LEDGER_INPUT_INVALID';
+  end if;
+
+  if p_shop_id is not null
+     and not exists (
+       select 1
+       from public.shops shop
+       where shop.id = p_shop_id
+     ) then
+    raise exception using
+      errcode = '42501',
+      message = 'AI_USAGE_LEDGER_SHOP_SCOPE_INVALID';
+  end if;
+
+  if p_user_id is not null
+     and p_shop_id is not null
+     and not exists (
+       select 1
+       from public.profiles profile
+       where profile.shop_id = p_shop_id
+         and (profile.id = p_user_id or profile.user_id = p_user_id)
+     ) then
+    raise exception using
+      errcode = '42501',
+      message = 'AI_USAGE_LEDGER_USER_SCOPE_INVALID';
+  end if;
+
+  insert into private.ai_usage_ledger (
+    event_key,
+    shop_id,
+    user_id,
+    feature,
+    endpoint,
+    provider,
+    model,
+    modality,
+    rate_card_version,
+    prompt_tokens,
+    cached_prompt_tokens,
+    completion_tokens,
+    total_tokens,
+    audio_input_tokens,
+    audio_output_tokens,
+    speech_characters,
+    duration_seconds,
+    estimated_cost_usd,
+    latency_ms,
+    status,
+    error_code,
+    error_message,
+    provider_request_id,
+    quota_receipt_id,
+    occurred_at
+  ) values (
+    v_event_key,
+    p_shop_id,
+    p_user_id,
+    v_feature,
+    v_endpoint,
+    v_provider,
+    v_model,
+    v_modality,
+    v_rate_card_version,
+    v_prompt_tokens,
+    v_cached_prompt_tokens,
+    v_completion_tokens,
+    v_total_tokens,
+    v_audio_input_tokens,
+    v_audio_output_tokens,
+    v_speech_characters,
+    v_duration_seconds,
+    v_estimated_cost_usd,
+    v_latency_ms,
+    v_status,
+    v_error_code,
+    pg_catalog.left(v_error_message, 500),
+    v_provider_request_id,
+    v_quota_receipt_id,
+    v_occurred_at
+  )
+  on conflict do nothing
+  returning id into v_id;
+
+  if v_id is null then
+    select ledger.id
+      into v_id
+    from private.ai_usage_ledger ledger
+    where ledger.event_key = v_event_key
+       or (
+         v_provider_request_id is not null
+         and ledger.provider = v_provider
+         and ledger.provider_request_id = v_provider_request_id
+         and ledger.feature = v_feature
+       )
+    order by ledger.created_at asc
+    limit 1;
+  end if;
+
+  return v_id;
+end
+$function$;
+
+alter function rls_helpers.record_private_ai_usage_ledger(uuid, uuid, jsonb)
+  owner to postgres;
+revoke all on function rls_helpers.record_private_ai_usage_ledger(uuid, uuid, jsonb)
+  from public, anon, authenticated, service_role;
+grant execute on function rls_helpers.record_private_ai_usage_ledger(uuid, uuid, jsonb)
+  to service_role;
+
+-- Keep the established public signature so generated public Supabase types do
+-- not change. Normal callers retain ai_events behavior. Only service_role can
+-- select the reserved telemetry branch, which delegates to the narrow helper.
+create or replace function public.insert_ai_event(
+  p_shop_id uuid,
+  p_event_type text,
+  p_payload jsonb,
+  p_entity_id uuid default null::uuid,
+  p_entity_table text default null::text,
+  p_user_id uuid default null::uuid,
+  p_training_source text default null::text
+)
+returns uuid
+language plpgsql
+security invoker
+set search_path = ''
+as $function$
+declare
+  v_event_id uuid;
+begin
   if p_training_source = '__durable_ai_usage_ledger__' then
     if current_user <> 'service_role' then
-      raise exception using errcode = '42501', message = 'AI_USAGE_LEDGER_SERVICE_ROLE_REQUIRED';
+      raise exception using
+        errcode = '42501',
+        message = 'AI_USAGE_LEDGER_SERVICE_ROLE_REQUIRED';
     end if;
 
-    v_event_key := nullif(btrim(p_payload ->> 'event_key'), '');
-    v_feature := nullif(btrim(p_payload ->> 'feature'), '');
-    v_endpoint := nullif(btrim(p_payload ->> 'endpoint'), '');
-    v_provider := coalesce(nullif(btrim(p_payload ->> 'provider'), ''), 'openai');
-    v_model := nullif(btrim(p_payload ->> 'model'), '');
-    v_modality := coalesce(nullif(btrim(p_payload ->> 'modality'), ''), 'text');
-    v_rate_card_version := nullif(btrim(p_payload ->> 'rate_card_version'), '');
-    v_prompt_tokens := nullif(p_payload ->> 'prompt_tokens', '')::integer;
-    v_cached_prompt_tokens := nullif(p_payload ->> 'cached_prompt_tokens', '')::integer;
-    v_completion_tokens := nullif(p_payload ->> 'completion_tokens', '')::integer;
-    v_total_tokens := nullif(p_payload ->> 'total_tokens', '')::integer;
-    v_audio_input_tokens := nullif(p_payload ->> 'audio_input_tokens', '')::integer;
-    v_audio_output_tokens := nullif(p_payload ->> 'audio_output_tokens', '')::integer;
-    v_speech_characters := nullif(p_payload ->> 'speech_characters', '')::integer;
-    v_duration_seconds := nullif(p_payload ->> 'duration_seconds', '')::numeric;
-    v_estimated_cost_usd := nullif(p_payload ->> 'estimated_cost_usd', '')::numeric;
-    v_latency_ms := coalesce(nullif(p_payload ->> 'latency_ms', '')::integer, 0);
-    v_status := nullif(btrim(p_payload ->> 'status'), '');
-    v_error_code := nullif(btrim(p_payload ->> 'error_code'), '');
-    v_error_message := nullif(btrim(p_payload ->> 'error_message'), '');
-    v_provider_request_id := nullif(btrim(p_payload ->> 'provider_request_id'), '');
-    v_quota_receipt_id := nullif(p_payload ->> 'quota_receipt_id', '')::uuid;
-    v_occurred_at := coalesce(
-      nullif(p_payload ->> 'occurred_at', '')::timestamptz,
-      clock_timestamp()
+    return rls_helpers.record_private_ai_usage_ledger(
+      p_shop_id,
+      p_user_id,
+      p_payload
     );
-
-    if v_event_key is null
-       or length(v_event_key) > 240
-       or v_feature is null
-       or length(v_feature) > 120
-       or v_endpoint is null
-       or length(v_endpoint) > 240
-       or v_provider <> 'openai'
-       or v_rate_card_version is null
-       or length(v_rate_card_version) > 80
-       or v_modality not in ('text', 'realtime', 'speech', 'image', 'other')
-       or v_status not in ('success', 'error')
-       or v_latency_ms < 0
-       or coalesce(v_prompt_tokens, 0) < 0
-       or coalesce(v_cached_prompt_tokens, 0) < 0
-       or coalesce(v_completion_tokens, 0) < 0
-       or coalesce(v_total_tokens, 0) < 0
-       or coalesce(v_audio_input_tokens, 0) < 0
-       or coalesce(v_audio_output_tokens, 0) < 0
-       or coalesce(v_speech_characters, 0) < 0
-       or coalesce(v_duration_seconds, 0) < 0
-       or coalesce(v_estimated_cost_usd, 0) < 0 then
-      raise exception using errcode = '22023', message = 'AI_USAGE_LEDGER_INPUT_INVALID';
-    end if;
-
-    if p_shop_id is not null
-       and not exists (select 1 from public.shops shop where shop.id = p_shop_id) then
-      raise exception using errcode = '42501', message = 'AI_USAGE_LEDGER_SHOP_SCOPE_INVALID';
-    end if;
-
-    if p_user_id is not null and p_shop_id is not null
-       and not exists (
-         select 1 from public.profiles profile
-         where profile.shop_id = p_shop_id
-           and (profile.id = p_user_id or profile.user_id = p_user_id)
-       ) then
-      raise exception using errcode = '42501', message = 'AI_USAGE_LEDGER_USER_SCOPE_INVALID';
-    end if;
-
-    insert into private.ai_usage_ledger (
-      event_key, shop_id, user_id, feature, endpoint, provider, model, modality,
-      rate_card_version, prompt_tokens, cached_prompt_tokens, completion_tokens,
-      total_tokens, audio_input_tokens, audio_output_tokens, speech_characters,
-      duration_seconds, estimated_cost_usd, latency_ms, status, error_code,
-      error_message, provider_request_id, quota_receipt_id, occurred_at
-    ) values (
-      v_event_key, p_shop_id, p_user_id, v_feature, v_endpoint, v_provider,
-      v_model, v_modality, v_rate_card_version, v_prompt_tokens,
-      v_cached_prompt_tokens, v_completion_tokens, v_total_tokens,
-      v_audio_input_tokens, v_audio_output_tokens, v_speech_characters,
-      v_duration_seconds, v_estimated_cost_usd, v_latency_ms, v_status,
-      v_error_code, left(v_error_message, 500), v_provider_request_id,
-      v_quota_receipt_id, v_occurred_at
-    )
-    on conflict do nothing
-    returning id into v_event_id;
-
-    if v_event_id is null then
-      select ledger.id into v_event_id
-      from private.ai_usage_ledger ledger
-      where ledger.event_key = v_event_key
-         or (
-           v_provider_request_id is not null
-           and ledger.provider = v_provider
-           and ledger.provider_request_id = v_provider_request_id
-           and ledger.feature = v_feature
-         )
-      order by ledger.created_at asc
-      limit 1;
-    end if;
-
-    return v_event_id;
   end if;
 
   insert into public.ai_events (
@@ -223,7 +362,6 @@ begin
 end
 $function$;
 
--- Preserve the established execution surface for normal ai_events callers.
 revoke all on function public.insert_ai_event(uuid,text,jsonb,uuid,text,uuid,text)
   from public, anon;
 grant execute on function public.insert_ai_event(uuid,text,jsonb,uuid,text,uuid,text)
