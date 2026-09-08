@@ -216,7 +216,7 @@ export async function extractTechnicianDocumentationTurn(
   input: unknown,
 ): Promise<DocumentationExtractionResult> {
   const result = await runOpenAIStructuredJson<DocumentationExtraction>({
-    purpose: "extraction",
+    purpose: "fast",
     feature: "technician_copilot_documentation",
     system: SYSTEM,
     user: input,
@@ -226,6 +226,7 @@ export async function extractTechnicianDocumentationTurn(
     requireAI: true,
     maxOutputTokens: 1000,
     temperature: 0,
+    promptCacheKey: TECHNICIAN_DOCUMENTATION_PROMPT_VERSION,
   });
   return {
     ...result.output,
