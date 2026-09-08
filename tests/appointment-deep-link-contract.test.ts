@@ -24,6 +24,8 @@ const appointmentsPage = read("app/dashboard/appointments/page.tsx");
 const appointmentsLayout = read("app/dashboard/appointments/layout.tsx");
 const schedulingContextRoute = read("app/api/scheduling/context/route.ts");
 const staffBookingsRoute = read("app/api/portal/bookings/route.ts");
+const legacyStaffCreateRoute = read("app/api/portal/book/route.ts");
+const createPortalBooking = read("features/portal/server/createPortalBooking.ts");
 const workspaceLoader = read(
   "features/vehicles/server/loadVehicleWorkspaceSnapshot.ts",
 );
@@ -87,10 +89,30 @@ describe("vehicle workspace appointment deep links", () => {
     );
   });
 
-  it("keeps the shared scheduling context valid when the public shop slug is null", () => {
+  it("keeps internal appointments usable when the public shop slug is null", () => {
     expect(schedulingContextRoute).toContain("if (!shop?.id)");
     expect(schedulingContextRoute).not.toContain("!shop.slug");
-    expect(schedulingContextRoute).toContain("shop,");
+    expect(appointmentsPage).toContain("if (!shop?.id)");
+    expect(appointmentsPage).toContain("shop.slug ?? shop.id");
+    expect(appointmentsPage).toContain("!s.slug && s.id === shopSlug");
+    expect(staffBookingsRoute).toContain("shopKey !== shop.id");
+    expect(staffBookingsRoute).toContain('shopKey !== (shop.slug ?? "")');
+  });
+
+  it("uses the authenticated profile shop id for staff creation without changing public slug lookup", () => {
+    expect(legacyStaffCreateRoute).toContain(
+      "staffShopId: access.profile.shop_id",
+    );
+    expect(legacyStaffCreateRoute).toContain(
+      "legacyStaffOperationKey(userId, access.profile.shop_id, body)",
+    );
+    expect(createPortalBooking).toContain(
+      'actorMode === "allow-staff"',
+    );
+    expect(createPortalBooking).toContain(
+      'shopQuery.eq("id", canonicalStaffShopId)',
+    );
+    expect(createPortalBooking).toContain('shopQuery.eq("slug", shopSlug)');
   });
 
   it("returns only the canonical linked profile's shop context", async () => {
