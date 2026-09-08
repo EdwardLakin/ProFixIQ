@@ -21,6 +21,8 @@ vi.mock("@/features/shared/lib/supabase/server", () => ({
 const read = (path: string) => readFileSync(path, "utf8");
 
 const appointmentsPage = read("app/dashboard/appointments/page.tsx");
+const appointmentsLayout = read("app/dashboard/appointments/layout.tsx");
+const schedulingContextRoute = read("app/api/scheduling/context/route.ts");
 const staffBookingsRoute = read("app/api/portal/bookings/route.ts");
 const workspaceLoader = read(
   "features/vehicles/server/loadVehicleWorkspaceSnapshot.ts",
@@ -71,15 +73,24 @@ describe("vehicle workspace appointment deep links", () => {
     expect(appointmentsPage).toContain('setPanelMode("edit")');
   });
 
-  it("bootstraps the shop through the canonical server profile guard", () => {
-    expect(staffBookingsRoute).toContain(
-      "await requireShopScopedApiAccess()",
+  it("bootstraps through scheduling context and server-gates the desktop page", () => {
+    expect(schedulingContextRoute).toContain(
+      "await requireShopScopedApiAccess({",
     );
-    expect(staffBookingsRoute).toContain('.eq("id", profile.shop_id)');
-    expect(appointmentsPage).toContain(
-      'fetch("/api/portal/bookings?scope=shop"',
+    expect(schedulingContextRoute).toContain(
+      '.eq("id", access.profile.shop_id)',
     );
+    expect(appointmentsPage).toContain('fetch("/api/scheduling/context"');
     expect(appointmentsPage).not.toContain('.from("profiles")');
+    expect(appointmentsLayout).toContain(
+      'requiredCapability: "canManageScheduling"',
+    );
+  });
+
+  it("keeps the shared scheduling context valid when the public shop slug is null", () => {
+    expect(schedulingContextRoute).toContain("if (!shop?.id)");
+    expect(schedulingContextRoute).not.toContain("!shop.slug");
+    expect(schedulingContextRoute).toContain("shop,");
   });
 
   it("returns only the canonical linked profile's shop context", async () => {
