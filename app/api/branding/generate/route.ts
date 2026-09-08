@@ -222,12 +222,21 @@ export async function POST(req: Request) {
       createdAssets.push(asset);
     }
 
-    recordAITelemetry({
+    const totalTokens =
+      (result.usage as { total_tokens?: number } | undefined)?.total_tokens ??
+      null;
+    const estimatedCostUsd = estimateAICostUsd(
+      "branding_generate_logo",
+      totalTokens,
+    );
+    await recordAITelemetry({
       feature: "branding_generate_logo",
       endpoint: "/api/branding/generate",
       shop_id: auth.shopId,
       user_id: auth.userId,
+      provider: "openai",
       model,
+      modality: "image",
       latency_ms: Date.now() - startedAt,
       prompt_tokens:
         (result.usage as { input_tokens?: number } | undefined)?.input_tokens ??
@@ -235,14 +244,8 @@ export async function POST(req: Request) {
       completion_tokens:
         (result.usage as { output_tokens?: number } | undefined)
           ?.output_tokens ?? null,
-      total_tokens:
-        (result.usage as { total_tokens?: number } | undefined)?.total_tokens ??
-        null,
-      estimated_cost_usd: estimateAICostUsd(
-        "branding_generate_logo",
-        (result.usage as { total_tokens?: number } | undefined)?.total_tokens ??
-          null,
-      ),
+      total_tokens: totalTokens,
+      estimated_cost_usd: estimatedCostUsd,
       status: "success",
       error_code: null,
       error_message: null,
@@ -252,14 +255,8 @@ export async function POST(req: Request) {
       endpoint: "/api/branding/generate",
       shopId: auth.shopId,
       model,
-      totalTokens:
-        (result.usage as { total_tokens?: number } | undefined)?.total_tokens ??
-        null,
-      estimatedCostUsd: estimateAICostUsd(
-        "branding_generate_logo",
-        (result.usage as { total_tokens?: number } | undefined)?.total_tokens ??
-          null,
-      ),
+      totalTokens,
+      estimatedCostUsd,
       status: "success",
       errorCode: null,
     });
@@ -272,12 +269,14 @@ export async function POST(req: Request) {
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Logo generation failed";
-    recordAITelemetry({
+    await recordAITelemetry({
       feature: "branding_generate_logo",
       endpoint: "/api/branding/generate",
       shop_id: auth.shopId,
       user_id: auth.userId,
+      provider: "openai",
       model: "gpt-image-1.5",
+      modality: "image",
       latency_ms: Date.now() - startedAt,
       prompt_tokens: null,
       completion_tokens: null,
