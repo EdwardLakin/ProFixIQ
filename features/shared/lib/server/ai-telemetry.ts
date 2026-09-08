@@ -42,11 +42,16 @@ export type AITelemetryEvent = {
   occurred_at?: string | null;
 };
 
+type LedgerRpcResult = {
+  data: unknown;
+  error: { message: string; code?: string | null } | null;
+};
+
 type LedgerRpcClient = {
   rpc: (
     name: "record_ai_usage_ledger",
     args: Record<string, unknown>,
-  ) => Promise<{ data: unknown; error: { message: string; code?: string | null } | null }>;
+  ) => Promise<LedgerRpcResult>;
 };
 
 export type AITelemetryRecordResult = {
@@ -56,33 +61,46 @@ export type AITelemetryRecordResult = {
 };
 
 function normalizedCost(event: AITelemetryEvent): number | null {
-  if (event.estimated_cost_usd !== undefined) return event.estimated_cost_usd;
-  if ((event.provider ?? "openai") !== "openai") return null;
-  if ((event.modality ?? "text") === "speech" && event.speech_characters != null) {
+  const provider = event.provider ?? "openai";
+  const modality = event.modality ?? "text";
+
+  // Durable ledger accounting is model-aware even when legacy callers still
+  // supply the old blended estimate for their separate quota/anomaly logic.
+  if (provider === "openai" && modality === "text") {
+    const priced = estimateOpenAITextCostUsd({
+      model: event.model,
+      promptTokens: event.prompt_tokens,
+      cachedPromptTokens: event.cached_prompt_tokens,
+      completionTokens: event.completion_tokens,
+    });
+    if (priced !== null) return priced;
+  }
+
+  if (
+    provider === "openai" &&
+    modality === "speech" &&
+    event.speech_characters != null
+  ) {
     return estimateOpenAISpeechCostUsd(event.speech_characters);
   }
-  if ((event.modality ?? "text") !== "text") return null;
-  return estimateOpenAITextCostUsd(event.model, {
-    promptTokens: event.prompt_tokens,
-    cachedPromptTokens: event.cached_prompt_tokens,
-    completionTokens: event.completion_tokens,
-    totalTokens: event.total_tokens,
-  });
+
+  return event.estimated_cost_usd ?? null;
 }
 
-/** Accounting failures are observable but never turn a successful shop action into a failure. */
 export async function recordAITelemetry(
   event: AITelemetryEvent,
 ): Promise<AITelemetryRecordResult> {
   const eventKey = event.event_key?.trim() || randomUUID();
   const estimatedCostUsd = normalizedCost(event);
-  console.info(JSON.stringify({
-    type: "ai_telemetry",
-    ...event,
-    event_key: eventKey,
-    rate_card_version: AI_RATE_CARD_VERSION,
-    estimated_cost_usd: estimatedCostUsd,
-  }));
+  console.info(
+    JSON.stringify({
+      type: "ai_telemetry",
+      ...event,
+      event_key: eventKey,
+      rate_card_version: AI_RATE_CARD_VERSION,
+      estimated_cost_usd: estimatedCostUsd,
+    }),
+  );
 
   try {
     const admin = createAdminSupabase() as unknown as LedgerRpcClient;
@@ -95,7 +113,6 @@ export async function recordAITelemetry(
       p_provider: event.provider ?? "openai",
       p_model: event.model,
       p_modality: event.modality ?? "text",
-      p_rate_card_version: AI_RATE_CARD_VERSION,
       p_prompt_tokens: event.prompt_tokens,
       p_cached_prompt_tokens: event.cached_prompt_tokens ?? null,
       p_completion_tokens: event.completion_tokens,
@@ -105,6 +122,7 @@ export async function recordAITelemetry(
       p_speech_characters: event.speech_characters ?? null,
       p_duration_seconds: event.duration_seconds ?? null,
       p_estimated_cost_usd: estimatedCostUsd,
+      p_rate_card_version: AI_RATE_CARD_VERSION,
       p_latency_ms: Math.max(0, Math.round(event.latency_ms)),
       p_status: event.status,
       p_error_code: event.error_code,
@@ -115,7 +133,7 @@ export async function recordAITelemetry(
     });
 
     if (error) {
-      console.error("ai_telemetry_persistence_failed", {
+      console.error("[ai-telemetry] durable ledger write failed", {
         eventKey,
         feature: event.feature,
         endpoint: event.endpoint,
@@ -126,7 +144,7 @@ export async function recordAITelemetry(
     }
     return { eventKey, persisted: true, estimatedCostUsd };
   } catch (error) {
-    console.error("ai_telemetry_persistence_failed", {
+    console.error("[ai-telemetry] durable ledger write failed", {
       eventKey,
       feature: event.feature,
       endpoint: event.endpoint,
