@@ -5,6 +5,7 @@ import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
 import {
   enforceAIOperationalPolicy,
+  estimateAICostUsd,
   registerAIUsageEvent,
 } from "@/features/shared/lib/server/ai-ops-guard";
 
@@ -182,10 +183,7 @@ export async function GET() {
     const extracted = extractToken(parsed);
 
     if (!extracted) {
-      console.error(
-        "[realtime-token] Unexpected response shape",
-        parsed,
-      );
+      console.error("[realtime-token] Unexpected response shape", parsed);
       return NextResponse.json(
         {
           error: "Voice service returned an invalid response",
@@ -196,8 +194,10 @@ export async function GET() {
     }
 
     // Issuing a client secret is not the billable realtime session itself.
-    // Persist the issuance as a zero-cost control-plane event; Phase 4 will
-    // meter actual client-side realtime duration/usage.
+    // Persist it as a zero-cost control-plane ledger event. Preserve the
+    // established synthetic cost in the legacy operational guard until Phase 4
+    // meters the actual realtime session.
+    const legacyEstimatedCostUsd = estimateAICostUsd("openai_realtime_token", 1);
     await recordAITelemetry({
       feature: "openai_realtime_token",
       endpoint: "/api/openai/realtime-token",
@@ -220,8 +220,8 @@ export async function GET() {
       endpoint: "/api/openai/realtime-token",
       shopId: access.profile.shop_id,
       model: transcriptionModel,
-      totalTokens: null,
-      estimatedCostUsd: 0,
+      totalTokens: 1,
+      estimatedCostUsd: legacyEstimatedCostUsd,
       status: "success",
       errorCode: null,
     });
