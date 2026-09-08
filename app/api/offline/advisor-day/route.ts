@@ -78,7 +78,7 @@ export async function GET(request: NextRequest) {
     .select("id,name,slug")
     .eq("id", profile.shop_id)
     .single();
-  if (shopError || !shop?.slug) {
+  if (shopError || !shop?.id) {
     return NextResponse.json(
       { error: "Shop could not be loaded." },
       { status: 500 },

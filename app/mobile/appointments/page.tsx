@@ -16,8 +16,15 @@ import {
 } from "@/features/work-orders/mobile/advisorOffline";
 
 type DB = Database;
-type ShopRow = DB["public"]["Tables"]["shops"]["Row"];
+type ShopRow = Pick<
+  DB["public"]["Tables"]["shops"]["Row"],
+  "id" | "name" | "slug"
+>;
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
+type ShopContextResponse = {
+  shop?: ShopRow | null;
+  error?: string;
+};
 
 export type Booking = {
   id: string;
@@ -76,43 +83,65 @@ export default function MobileAppointmentsPage() {
   /* --------------------------------- Shops --------------------------------- */
 
   useEffect(() => {
-    (async () => {
-      const { data, error } = await supabase
-        .from("shops")
-        .select("id,name,slug,accepts_online_booking")
-        .eq("accepts_online_booking", true)
-        .order("name", { ascending: true });
+    let mounted = true;
+    const controller = new AbortController();
 
-      if (error) {
-        // eslint-disable-next-line no-console
-        console.error(error);
+    (async () => {
+      try {
+        const response = await fetch("/api/scheduling/context", {
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const context = (await response.json().catch(() => null)) as
+          | ShopContextResponse
+          | null;
+        if (!response.ok || !context?.shop?.id) {
+          throw new Error(context?.error || "Unable to load your shop.");
+        }
+        if (!mounted || controller.signal.aborted) return;
+
+        const shop = context.shop;
+        const shopKey = shop.slug ?? shop.id;
+        setShops([shop]);
+        setShopSlug(shopKey);
+
+        const canonicalQuery = new URLSearchParams(search.toString());
+        if (canonicalQuery.get("shop") !== shopKey) {
+          canonicalQuery.set("shop", shopKey);
+          router.replace(
+            `/mobile/appointments?${canonicalQuery.toString()}`,
+          );
+        }
+      } catch (error) {
+        if (
+          !mounted ||
+          controller.signal.aborted ||
+          (error instanceof DOMException && error.name === "AbortError")
+        ) {
+          return;
+        }
         const scope = await getSessionMatchedOfflineScope();
         const cached = scope ? await getLatestCachedAdvisorDay(scope) : null;
+        if (!mounted) return;
         if (cached) {
-          setShops([cached.shop as ShopRow]);
-          setShopSlug(cached.shop.slug ?? "");
+          const cachedShopKey = cached.shop.slug ?? cached.shop.id;
+          setShops([cached.shop]);
+          setShopSlug(cachedShopKey);
           setOfflineSavedAt(cached.downloadedAt);
           setUsingOfflineData(true);
         } else {
-          toast.error("Unable to load shops.");
+          toast.error(
+            error instanceof Error ? error.message : "Unable to load your shop.",
+          );
         }
-        return;
-      }
-
-      const rows = (data ?? []) as ShopRow[];
-      setShops(rows);
-
-      // default to first shop if none selected
-      if (!shopSlug && rows.length > 0) {
-        const first = rows[0].slug as string;
-        setShopSlug(first);
-        router.replace(
-          `/mobile/appointments?shop=${encodeURIComponent(first)}`,
-        );
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+
+    return () => {
+      mounted = false;
+      controller.abort();
+    };
+  }, [router, search]);
 
   useEffect(() => {
     const update = () => setOnline(navigator.onLine);
@@ -126,7 +155,10 @@ export default function MobileAppointmentsPage() {
 
   // selected shop row
   const selectedShop = useMemo(
-    () => shops.find((s) => (s.slug as string | null) === shopSlug) ?? null,
+    () =>
+      shops.find(
+        (s) => s.slug === shopSlug || (!s.slug && s.id === shopSlug),
+      ) ?? null,
     [shops, shopSlug],
   );
 
@@ -200,7 +232,7 @@ export default function MobileAppointmentsPage() {
         console.error(err);
         const scope = await getSessionMatchedOfflineScope();
         const cached = scope ? await getCachedAdvisorDay({ scope, day }) : null;
-        if (cached && cached.shop.slug === shopSlug) {
+        if (cached && (cached.shop.slug ?? cached.shop.id) === shopSlug) {
           setBookings(cached.bookings);
           setCustomers(cached.customers);
           setOfflineSavedAt(cached.downloadedAt);
@@ -398,19 +430,22 @@ export default function MobileAppointmentsPage() {
               <select
                 value={shopSlug}
                 onChange={(e) => {
-                  const slug = e.target.value;
-                  setShopSlug(slug);
+                  const shopKey = e.target.value;
+                  setShopSlug(shopKey);
                   router.replace(
-                    `/mobile/appointments?shop=${encodeURIComponent(slug)}`,
+                    `/mobile/appointments?shop=${encodeURIComponent(shopKey)}`,
                   );
                 }}
                 className="mt-1 w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)] focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-500"
               >
-                {shops.map((s) => (
-                  <option key={s.slug as string} value={s.slug as string}>
-                    {s.name}
-                  </option>
-                ))}
+                {shops.map((s) => {
+                  const shopKey = s.slug ?? s.id;
+                  return (
+                    <option key={shopKey} value={shopKey}>
+                      {s.name}
+                    </option>
+                  );
+                })}
               </select>
             </label>
 

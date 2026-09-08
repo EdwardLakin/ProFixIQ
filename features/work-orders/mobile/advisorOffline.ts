@@ -47,8 +47,9 @@ async function cacheAdvisorRouteShells(bundle: AdvisorOfflineBundle) {
   if (typeof caches === "undefined" || !navigator.serviceWorker?.controller)
     return;
   const cache = await caches.open(ADVISOR_SHELL_CACHE);
+  const shopKey = bundle.shop.slug ?? bundle.shop.id;
   const urls = [
-    `/mobile/appointments?shop=${encodeURIComponent(bundle.shop.slug ?? "")}`,
+    `/mobile/appointments?shop=${encodeURIComponent(shopKey)}`,
     "/mobile/work-orders/create",
   ];
   await Promise.all(

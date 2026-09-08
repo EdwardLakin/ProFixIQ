@@ -17,7 +17,7 @@ export type AdvisorOfflineBooking = Pick<
   | "notes"
   | "status"
 > & {
-  shop_slug: string;
+  shop_slug: string | null;
   customer_name: string | null;
   customer_email: string | null;
   customer_phone: string | null;
