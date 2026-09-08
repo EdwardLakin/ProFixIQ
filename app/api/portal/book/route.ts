@@ -17,7 +17,11 @@ function legacyStaffOperationKey(
   shopId: string,
   body: CreatePortalBookingInput,
 ): string {
-  const legacyShopKey = body.shopSlug?.trim() || shopId;
+  // Preserve the exact pre-#1627 slug component when one was supplied. Durable
+  // booking receipts are keyed by this exact string, so normalizing an existing
+  // slug here would break retries that cross the deployment boundary. Null-slug
+  // staff callers use the authenticated canonical shop id instead.
+  const legacyShopKey = body.shopSlug || shopId;
   return [
     "legacy-staff-booking",
     userId,
