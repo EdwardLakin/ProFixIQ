@@ -17,10 +17,11 @@ function legacyStaffOperationKey(
   shopId: string,
   body: CreatePortalBookingInput,
 ): string {
+  const legacyShopKey = body.shopSlug?.trim() || shopId;
   return [
     "legacy-staff-booking",
     userId,
-    shopId,
+    legacyShopKey,
     body.customerId ?? "customer",
     body.vehicleId ?? "vehicle",
     body.startsAt,
