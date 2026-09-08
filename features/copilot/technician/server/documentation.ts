@@ -1,9 +1,6 @@
 import "server-only";
 
-import {
-  runOpenAIStructuredJson,
-  type OpenAIStructuredTelemetryContext,
-} from "@/features/shared/lib/server/openai-structured";
+import { runOpenAIStructuredJson } from "@/features/shared/lib/server/openai-structured";
 import type {
   SilentDocumentationEvent,
   SilentDocumentationEventType,
@@ -217,7 +214,6 @@ Allowed event types and required details:
 
 export async function extractTechnicianDocumentationTurn(
   input: unknown,
-  telemetry?: OpenAIStructuredTelemetryContext,
 ): Promise<DocumentationExtractionResult> {
   const result = await runOpenAIStructuredJson<DocumentationExtraction>({
     purpose: "fast",
@@ -231,7 +227,6 @@ export async function extractTechnicianDocumentationTurn(
     maxOutputTokens: 1000,
     temperature: 0,
     promptCacheKey: TECHNICIAN_DOCUMENTATION_PROMPT_VERSION,
-    telemetry,
   });
   return {
     ...result.output,
