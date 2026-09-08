@@ -73,6 +73,24 @@ begin
   ) then
     raise exception 'P0-005 runtime assertion failed: AI ledger helper ACL is unsafe';
   end if;
+
+  if has_function_privilege(
+    'anon',
+    'public.record_ai_usage_ledger(uuid,uuid,jsonb)',
+    'EXECUTE'
+  )
+  or has_function_privilege(
+    'authenticated',
+    'public.record_ai_usage_ledger(uuid,uuid,jsonb)',
+    'EXECUTE'
+  )
+  or not has_function_privilege(
+    'service_role',
+    'public.record_ai_usage_ledger(uuid,uuid,jsonb)',
+    'EXECUTE'
+  ) then
+    raise exception 'P0-005 runtime assertion failed: AI ledger adapter ACL is unsafe';
+  end if;
 end
 $$;
 
@@ -87,6 +105,11 @@ values
     '56000000-0000-4000-8000-000000000002',
     'p0-005-owner-b@example.com',
     '{"full_name":"P0-005 Owner B"}'::jsonb
+  ),
+  (
+    '57000000-0000-4000-8000-000000000003',
+    'p0-005-tech-a@example.com',
+    '{"full_name":"P0-005 Tech A"}'::jsonb
   )
 on conflict (id) do nothing;
 
@@ -103,6 +126,12 @@ values
     '56000000-0000-4000-8000-000000000002',
     'owner',
     'P0-005 Owner B'
+  ),
+  (
+    '57000000-0000-4000-8000-000000000013',
+    '57000000-0000-4000-8000-000000000003',
+    'mechanic',
+    'P0-005 Tech A'
   )
 on conflict (id) do update
 set user_id = excluded.user_id,
@@ -131,11 +160,14 @@ update public.profiles
 set shop_id = case id
   when '55000000-0000-4000-8000-000000000001'::uuid
     then 'a5100000-0000-4000-8000-000000000001'::uuid
+  when '57000000-0000-4000-8000-000000000013'::uuid
+    then 'a5100000-0000-4000-8000-000000000001'::uuid
   else 'b5200000-0000-4000-8000-000000000002'::uuid
 end
 where id in (
   '55000000-0000-4000-8000-000000000001',
-  '56000000-0000-4000-8000-000000000002'
+  '56000000-0000-4000-8000-000000000002',
+  '57000000-0000-4000-8000-000000000013'
 );
 
 set local role authenticated;
@@ -143,9 +175,9 @@ set local role authenticated;
 do $$
 begin
   begin
-    perform public.insert_ai_event(
+    perform public.record_ai_usage_ledger(
       null,
-      'ai_usage_record',
+      null,
       jsonb_build_object(
         'event_key', 'p0-005-authenticated-ledger-attempt',
         'feature', 'dtc_suggest',
@@ -155,11 +187,7 @@ begin
         'rate_card_version', 'runtime-test',
         'latency_ms', 1,
         'status', 'success'
-      ),
-      null,
-      null,
-      null,
-      '__durable_ai_usage_ledger__'
+      )
     );
     raise exception 'P0-005 runtime assertion failed: authenticated actor wrote private AI ledger';
   exception
@@ -177,11 +205,12 @@ declare
   v_retry uuid;
   v_provider_first uuid;
   v_provider_retry uuid;
+  v_canonical uuid;
 begin
   begin
-    perform public.insert_ai_event(
+    perform public.record_ai_usage_ledger(
       'b5200000-0000-4000-8000-000000000002',
-      'ai_usage_record',
+      '55000000-0000-4000-8000-000000000001',
       jsonb_build_object(
         'event_key', 'p0-005-cross-shop-ledger',
         'feature', 'dtc_suggest',
@@ -191,20 +220,16 @@ begin
         'rate_card_version', 'runtime-test',
         'latency_ms', 1,
         'status', 'success'
-      ),
-      null,
-      null,
-      '55000000-0000-4000-8000-000000000001',
-      '__durable_ai_usage_ledger__'
+      )
     );
     raise exception 'P0-005 runtime assertion failed: cross-shop AI ledger user was accepted';
   exception
     when insufficient_privilege then null;
   end;
 
-  select public.insert_ai_event(
+  select public.record_ai_usage_ledger(
     'a5100000-0000-4000-8000-000000000001',
-    'ai_usage_record',
+    '55000000-0000-4000-8000-000000000001',
     jsonb_build_object(
       'event_key', 'p0-005-ledger-event-1',
       'feature', 'dtc_suggest',
@@ -220,16 +245,12 @@ begin
       'estimated_cost_usd', 0.001,
       'latency_ms', 50,
       'status', 'success'
-    ),
-    null,
-    null,
-    '55000000-0000-4000-8000-000000000001',
-    '__durable_ai_usage_ledger__'
+    )
   ) into v_first;
 
-  select public.insert_ai_event(
+  select public.record_ai_usage_ledger(
     'a5100000-0000-4000-8000-000000000001',
-    'ai_usage_record',
+    '55000000-0000-4000-8000-000000000001',
     jsonb_build_object(
       'event_key', 'p0-005-ledger-event-1',
       'feature', 'dtc_suggest',
@@ -240,20 +261,16 @@ begin
       'rate_card_version', 'runtime-test',
       'latency_ms', 50,
       'status', 'success'
-    ),
-    null,
-    null,
-    '55000000-0000-4000-8000-000000000001',
-    '__durable_ai_usage_ledger__'
+    )
   ) into v_retry;
 
   if v_first is null or v_retry is distinct from v_first then
     raise exception 'P0-005 runtime assertion failed: AI ledger event-key retry was not idempotent';
   end if;
 
-  select public.insert_ai_event(
+  select public.record_ai_usage_ledger(
     'a5100000-0000-4000-8000-000000000001',
-    'ai_usage_record',
+    '55000000-0000-4000-8000-000000000001',
     jsonb_build_object(
       'event_key', 'p0-005-provider-event-1',
       'feature', 'dtc_suggest',
@@ -265,16 +282,12 @@ begin
       'latency_ms', 50,
       'status', 'success',
       'provider_request_id', 'p0-005-provider-request-1'
-    ),
-    null,
-    null,
-    '55000000-0000-4000-8000-000000000001',
-    '__durable_ai_usage_ledger__'
+    )
   ) into v_provider_first;
 
-  select public.insert_ai_event(
+  select public.record_ai_usage_ledger(
     'a5100000-0000-4000-8000-000000000001',
-    'ai_usage_record',
+    '55000000-0000-4000-8000-000000000001',
     jsonb_build_object(
       'event_key', 'p0-005-provider-event-2',
       'feature', 'dtc_suggest',
@@ -286,15 +299,31 @@ begin
       'latency_ms', 50,
       'status', 'success',
       'provider_request_id', 'p0-005-provider-request-1'
-    ),
-    null,
-    null,
-    '55000000-0000-4000-8000-000000000001',
-    '__durable_ai_usage_ledger__'
+    )
   ) into v_provider_retry;
 
   if v_provider_first is null or v_provider_retry is distinct from v_provider_first then
     raise exception 'P0-005 runtime assertion failed: provider-request retry was not idempotent';
+  end if;
+
+  select public.record_ai_usage_ledger(
+    'a5100000-0000-4000-8000-000000000001',
+    '57000000-0000-4000-8000-000000000003',
+    jsonb_build_object(
+      'event_key', 'p0-005-canonical-user-event',
+      'feature', 'technician_copilot_text',
+      'endpoint', '/api/copilot/technician/chat',
+      'provider', 'openai',
+      'model', 'gpt-5.5',
+      'modality', 'text',
+      'rate_card_version', 'runtime-test',
+      'latency_ms', 50,
+      'status', 'success'
+    )
+  ) into v_canonical;
+
+  if v_canonical is null then
+    raise exception 'P0-005 runtime assertion failed: auth-user ledger attribution was rejected';
   end if;
 end
 $$;
@@ -304,6 +333,7 @@ reset role;
 do $$
 declare
   v_count integer;
+  v_user_id uuid;
 begin
   select count(*) into v_count
   from private.ai_usage_ledger
@@ -321,6 +351,14 @@ begin
 
   if v_count <> 1 then
     raise exception 'P0-005 runtime assertion failed: provider-request retry duplicated rows';
+  end if;
+
+  select user_id into v_user_id
+  from private.ai_usage_ledger
+  where event_key = 'p0-005-canonical-user-event';
+
+  if v_user_id is distinct from '57000000-0000-4000-8000-000000000013'::uuid then
+    raise exception 'P0-005 runtime assertion failed: ledger did not normalize canonical profile id';
   end if;
 end
 $$;
