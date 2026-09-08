@@ -1,6 +1,10 @@
 import "server-only";
 
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { getAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
+import {
+  recordAITelemetry,
+  type AITelemetryFeature,
+} from "@/features/shared/lib/server/ai-telemetry";
 import { getOpenAIClient, isOpenAIConfigured } from "@/features/shared/lib/server/openai";
 import {
   getOpenAIModelForPurpose,
@@ -83,7 +87,7 @@ export async function runOpenAIStructuredJson<T>(params: {
   maxOutputTokens?: number;
   /** Stable cache affinity for repeated calls with the same prompt prefix. */
   promptCacheKey?: string;
-  /** Durable tenant/user attribution for this provider call. */
+  /** Explicit durable tenant/user attribution. Request scope is used if omitted. */
   telemetry?: OpenAIStructuredTelemetryContext;
   /**
    * When set, the model call is aborted after this many milliseconds (see
@@ -102,6 +106,7 @@ export async function runOpenAIStructuredJson<T>(params: {
 }> {
   const started = Date.now();
   const model = getOpenAIModelForPurpose(params.purpose);
+  const telemetry = params.telemetry ?? getAITelemetryContext();
   let usage: OpenAIStructuredJsonUsage | undefined;
   let providerRequestId: string | null = null;
 
@@ -170,12 +175,12 @@ export async function runOpenAIStructuredJson<T>(params: {
       durationMs: latencyMs,
     });
 
-    if (params.telemetry) {
+    if (telemetry) {
       await recordAITelemetry({
-        feature: params.feature as Parameters<typeof recordAITelemetry>[0]["feature"],
-        endpoint: params.telemetry.endpoint,
-        shop_id: params.telemetry.shopId,
-        user_id: params.telemetry.userId,
+        feature: params.feature as AITelemetryFeature,
+        endpoint: telemetry.endpoint,
+        shop_id: telemetry.shopId,
+        user_id: telemetry.userId,
         provider: "openai",
         model,
         modality: "text",
@@ -206,12 +211,12 @@ export async function runOpenAIStructuredJson<T>(params: {
       error: message.slice(0, 160),
     });
 
-    if (params.telemetry) {
+    if (telemetry) {
       await recordAITelemetry({
-        feature: params.feature as Parameters<typeof recordAITelemetry>[0]["feature"],
-        endpoint: params.telemetry.endpoint,
-        shop_id: params.telemetry.shopId,
-        user_id: params.telemetry.userId,
+        feature: params.feature as AITelemetryFeature,
+        endpoint: telemetry.endpoint,
+        shop_id: telemetry.shopId,
+        user_id: telemetry.userId,
         provider: "openai",
         model,
         modality: "text",
