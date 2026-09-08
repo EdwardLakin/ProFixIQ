@@ -81,7 +81,12 @@ function normalizedCost(event: AITelemetryEvent): number | null {
     modality === "speech" &&
     event.speech_characters != null
   ) {
-    return estimateOpenAISpeechCostUsd(event.speech_characters);
+    const priced = estimateOpenAISpeechCostUsd(
+      event.model,
+      event.speech_characters,
+    );
+    if (priced !== null) return priced;
+    return null;
   }
 
   return event.estimated_cost_usd ?? null;
