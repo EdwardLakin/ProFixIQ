@@ -58,6 +58,7 @@ revoke all privileges on table private.ai_usage_ledger
   from public, anon, authenticated, service_role;
 
 create schema if not exists rls_helpers authorization postgres;
+grant usage on schema rls_helpers to service_role;
 alter default privileges for role postgres in schema rls_helpers
   revoke execute on functions from public;
 
