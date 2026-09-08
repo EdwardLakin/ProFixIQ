@@ -53,6 +53,8 @@ export async function runOpenAIStructuredJson<T>(params: {
   requireAI?: boolean;
   temperature?: number;
   maxOutputTokens?: number;
+  /** Stable cache affinity for repeated calls with the same prompt prefix. */
+  promptCacheKey?: string;
   /**
    * When set, the model call is aborted after this many milliseconds (see
    * runWithProviderTimeout). Omitted by default, matching every existing
@@ -92,6 +94,7 @@ export async function runOpenAIStructuredJson<T>(params: {
       model,
       ...openAITemperatureParam(model, params.temperature ?? 0.1),
       ...(params.maxOutputTokens ? { max_output_tokens: params.maxOutputTokens } : {}),
+      ...(params.promptCacheKey ? { prompt_cache_key: params.promptCacheKey } : {}),
       text: {
         format: {
           type: "json_object" as const,

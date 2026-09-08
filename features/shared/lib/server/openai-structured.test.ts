@@ -68,6 +68,36 @@ describe("runOpenAIStructuredJson", () => {
     expect(result.output).toEqual({ value: 123 });
   });
 
+  it("forwards a stable prompt cache key while keeping the static system prefix first", async () => {
+    vi.mocked(isOpenAIConfigured).mockReturnValue(true);
+    const create = vi.fn(async () => ({ output_text: '{"value":1}' }));
+    vi.mocked(getOpenAIClient).mockReturnValue({
+      responses: { create },
+    } as never);
+
+    await runOpenAIStructuredJson({
+      purpose: "reasoning",
+      feature: "test",
+      system: "stable-system-prefix",
+      user: { dynamic: "payload" },
+      schemaName: "Test",
+      fallback: () => ({ value: 0 }),
+      promptCacheKey: "stable-feature-v1",
+    });
+
+    expect(create).toHaveBeenCalledTimes(1);
+    const [body] = create.mock.calls[0] as unknown as [
+      {
+        prompt_cache_key?: string;
+        input?: Array<{ role?: string; content?: Array<{ text?: string }> }>;
+      },
+    ];
+    expect(body.prompt_cache_key).toBe("stable-feature-v1");
+    expect(body.input?.[0]?.role).toBe("system");
+    expect(body.input?.[0]?.content?.[0]?.text).toBe("stable-system-prefix");
+    expect(body.input?.[1]?.role).toBe("user");
+  });
+
   it("falls back on invalid JSON", async () => {
     vi.mocked(isOpenAIConfigured).mockReturnValue(true);
     vi.mocked(getOpenAIClient).mockReturnValue({
