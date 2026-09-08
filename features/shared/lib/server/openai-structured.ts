@@ -1,5 +1,6 @@
 import "server-only";
 
+import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
 import { getOpenAIClient, isOpenAIConfigured } from "@/features/shared/lib/server/openai";
 import {
   getOpenAIModelForPurpose,
@@ -10,15 +11,20 @@ import { runWithProviderTimeout } from "@/features/shared/lib/server/provider-ti
 
 export type OpenAIStructuredJsonUsage = {
   promptTokens: number | null;
+  cachedPromptTokens: number | null;
   completionTokens: number | null;
   totalTokens: number | null;
 };
 
+export type OpenAIStructuredTelemetryContext = {
+  endpoint: string;
+  shopId: string | null;
+  userId: string | null;
+};
+
 // The Responses API's usage object uses input_tokens/output_tokens rather
 // than Chat Completions' prompt_tokens/completion_tokens. Read defensively
-// so a field-name change (or a test mock with no `usage` at all, as
-// openai-structured.test.ts uses) never throws — callers that don't need
-// usage never look at this field.
+// so a field-name change (or a test mock with no `usage` at all) never throws.
 function readUsage(response: unknown): OpenAIStructuredJsonUsage {
   const usage =
     response && typeof response === "object" && "usage" in response
@@ -33,12 +39,34 @@ function readUsage(response: unknown): OpenAIStructuredJsonUsage {
     }
     return null;
   };
+  const nestedNumberOrNull = (
+    parentKeys: string[],
+    childKey: string,
+  ): number | null => {
+    for (const parentKey of parentKeys) {
+      const parent = record?.[parentKey];
+      if (!parent || typeof parent !== "object") continue;
+      const value = (parent as Record<string, unknown>)[childKey];
+      if (typeof value === "number" && Number.isFinite(value)) return value;
+    }
+    return null;
+  };
 
   return {
     promptTokens: numberOrNull("input_tokens", "prompt_tokens"),
+    cachedPromptTokens: nestedNumberOrNull(
+      ["input_tokens_details", "prompt_tokens_details"],
+      "cached_tokens",
+    ),
     completionTokens: numberOrNull("output_tokens", "completion_tokens"),
     totalTokens: numberOrNull("total_tokens"),
   };
+}
+
+function responseId(response: unknown): string | null {
+  if (!response || typeof response !== "object" || !("id" in response)) return null;
+  const value = (response as { id?: unknown }).id;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 export async function runOpenAIStructuredJson<T>(params: {
@@ -55,11 +83,13 @@ export async function runOpenAIStructuredJson<T>(params: {
   maxOutputTokens?: number;
   /** Stable cache affinity for repeated calls with the same prompt prefix. */
   promptCacheKey?: string;
+  /** Durable tenant/user attribution for this provider call. */
+  telemetry?: OpenAIStructuredTelemetryContext;
   /**
    * When set, the model call is aborted after this many milliseconds (see
    * runWithProviderTimeout). Omitted by default, matching every existing
    * caller's current behavior exactly; callers that need provider-timeout
-   * protection (e.g. an API route with its own request deadline) opt in.
+   * protection opt in.
    */
   timeoutMs?: number;
 }): Promise<{
@@ -72,6 +102,8 @@ export async function runOpenAIStructuredJson<T>(params: {
 }> {
   const started = Date.now();
   const model = getOpenAIModelForPurpose(params.purpose);
+  let usage: OpenAIStructuredJsonUsage | undefined;
+  let providerRequestId: string | null = null;
 
   if (!isOpenAIConfigured()) {
     if (params.requireAI) {
@@ -118,6 +150,9 @@ export async function runOpenAIStructuredJson<T>(params: {
         )
       : await client.responses.create(requestBody);
 
+    usage = readUsage(response);
+    providerRequestId = responseId(response);
+
     const outputText = response.output_text?.trim();
     if (!outputText) {
       throw new Error("No structured response text returned.");
@@ -125,7 +160,6 @@ export async function runOpenAIStructuredJson<T>(params: {
 
     const parsed = JSON.parse(outputText);
     const output = params.validate ? params.validate(parsed, model) : (parsed as T);
-    const usage = readUsage(response);
     const latencyMs = Date.now() - started;
 
     console.info("[openai-structured] success", {
@@ -135,6 +169,27 @@ export async function runOpenAIStructuredJson<T>(params: {
       mode: "ai",
       durationMs: latencyMs,
     });
+
+    if (params.telemetry) {
+      await recordAITelemetry({
+        feature: params.feature as Parameters<typeof recordAITelemetry>[0]["feature"],
+        endpoint: params.telemetry.endpoint,
+        shop_id: params.telemetry.shopId,
+        user_id: params.telemetry.userId,
+        provider: "openai",
+        model,
+        modality: "text",
+        latency_ms: latencyMs,
+        prompt_tokens: usage.promptTokens,
+        cached_prompt_tokens: usage.cachedPromptTokens,
+        completion_tokens: usage.completionTokens,
+        total_tokens: usage.totalTokens,
+        status: "success",
+        error_code: null,
+        error_message: null,
+        provider_request_id: providerRequestId,
+      });
+    }
 
     return { mode: "ai", model, output, usage, latencyMs };
   } catch (error) {
@@ -151,6 +206,27 @@ export async function runOpenAIStructuredJson<T>(params: {
       error: message.slice(0, 160),
     });
 
+    if (params.telemetry) {
+      await recordAITelemetry({
+        feature: params.feature as Parameters<typeof recordAITelemetry>[0]["feature"],
+        endpoint: params.telemetry.endpoint,
+        shop_id: params.telemetry.shopId,
+        user_id: params.telemetry.userId,
+        provider: "openai",
+        model,
+        modality: "text",
+        latency_ms: latencyMs,
+        prompt_tokens: usage?.promptTokens ?? null,
+        cached_prompt_tokens: usage?.cachedPromptTokens ?? null,
+        completion_tokens: usage?.completionTokens ?? null,
+        total_tokens: usage?.totalTokens ?? null,
+        status: "error",
+        error_code: /timed out/i.test(message) ? "provider_timeout" : "provider_error",
+        error_message: message.slice(0, 200),
+        provider_request_id: providerRequestId,
+      });
+    }
+
     if (params.requireAI) {
       throw new Error(`[${params.feature}] AI call failed: ${message}`);
     }
@@ -160,6 +236,7 @@ export async function runOpenAIStructuredJson<T>(params: {
       model,
       output: params.fallback(model),
       warning: "AI call failed; deterministic fallback was used.",
+      usage,
       latencyMs,
     };
   }
