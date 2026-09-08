@@ -5,6 +5,7 @@ import {
   parseTechnicianCopilotAction,
   type TechnicianCopilotAction,
 } from "./actionContract";
+import { boundTechnicianCopilotModelInput } from "./reasoningContext";
 
 export type CopilotModelDecision = {
   mode: "start" | "reply";
@@ -86,7 +87,7 @@ export async function decideTechnicianCopilotTurn(input: unknown) {
     purpose: "reasoning",
     feature: "technician_copilot_text",
     system: SYSTEM,
-    user: input,
+    user: boundTechnicianCopilotModelInput(input),
     schemaName: "technician_copilot_turn",
     validate: validateDecision,
     fallback: () => ({
