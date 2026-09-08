@@ -1,6 +1,9 @@
 import "server-only";
 
-import { runOpenAIStructuredJson } from "@/features/shared/lib/server/openai-structured";
+import {
+  runOpenAIStructuredJson,
+  type OpenAIStructuredTelemetryContext,
+} from "@/features/shared/lib/server/openai-structured";
 import {
   parseTechnicianCopilotAction,
   type TechnicianCopilotAction,
@@ -84,7 +87,10 @@ Return JSON only: {mode,workOrderId,workOrderLineId,action,reply}. The action ob
 
 const TECHNICIAN_REASONING_PROMPT_CACHE_KEY = "technician_copilot_reasoning_v1";
 
-export async function decideTechnicianCopilotTurn(input: unknown) {
+export async function decideTechnicianCopilotTurn(
+  input: unknown,
+  telemetry?: OpenAIStructuredTelemetryContext,
+) {
   const result = await runOpenAIStructuredJson<CopilotModelDecision>({
     purpose: "reasoning",
     feature: "technician_copilot_text",
@@ -104,6 +110,7 @@ export async function decideTechnicianCopilotTurn(input: unknown) {
     maxOutputTokens: 1000,
     temperature: 0.1,
     promptCacheKey: TECHNICIAN_REASONING_PROMPT_CACHE_KEY,
+    telemetry,
   });
   return result.output;
 }
