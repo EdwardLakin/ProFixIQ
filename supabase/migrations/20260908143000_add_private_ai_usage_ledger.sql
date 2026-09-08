@@ -6,7 +6,10 @@ create table private.ai_usage_ledger (
   id uuid primary key default gen_random_uuid(),
   event_key text not null unique,
   shop_id uuid references public.shops(id) on delete set null,
-  user_id uuid references public.profiles(id) on delete set null,
+  -- Existing AI routes use a mix of auth user ids and profile ids for actor
+  -- attribution, so keep the durable actor identifier without an FK while the
+  -- write RPC validates that it resolves to the supplied shop when both exist.
+  user_id uuid,
   feature text not null,
   endpoint text not null,
   provider text not null default 'openai',
@@ -88,7 +91,8 @@ begin
      or length(p_feature) > 120
      or nullif(btrim(p_endpoint), '') is null
      or length(p_endpoint) > 240
-     or coalesce(nullif(btrim(p_provider), ''), 'openai') <> 'openai'
+     or nullif(btrim(p_provider), '') is null
+     or length(p_provider) > 80
      or coalesce(nullif(btrim(p_modality), ''), 'text') not in ('text', 'realtime', 'speech', 'image', 'other')
      or p_status not in ('success', 'error')
      or coalesce(p_latency_ms, 0) < 0
@@ -117,8 +121,8 @@ begin
      and not exists (
        select 1
        from public.profiles profile
-       where profile.id = p_user_id
-         and profile.shop_id = p_shop_id
+       where profile.shop_id = p_shop_id
+         and (profile.id = p_user_id or profile.user_id = p_user_id)
      ) then
     raise exception using
       errcode = '42501',
@@ -156,7 +160,7 @@ begin
     p_user_id,
     btrim(p_feature),
     btrim(p_endpoint),
-    coalesce(nullif(btrim(p_provider), ''), 'openai'),
+    btrim(p_provider),
     nullif(btrim(p_model), ''),
     coalesce(nullif(btrim(p_modality), ''), 'text'),
     p_prompt_tokens,
@@ -176,9 +180,15 @@ begin
     p_quota_receipt_id,
     coalesce(p_occurred_at, clock_timestamp())
   )
-  on conflict (event_key) do update
-    set event_key = excluded.event_key
+  on conflict (event_key) do nothing
   returning id into v_id;
+
+  if v_id is null then
+    select ledger.id
+      into v_id
+    from private.ai_usage_ledger ledger
+    where ledger.event_key = btrim(p_event_key);
+  end if;
 
   return v_id;
 end
