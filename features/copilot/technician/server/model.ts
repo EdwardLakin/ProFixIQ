@@ -82,6 +82,8 @@ Return JSON only: {mode,workOrderId,workOrderLineId,action,reply}. The action ob
 {type:"shift.lunch.start"}
 {type:"shift.lunch.end"}.`;
 
+const TECHNICIAN_REASONING_PROMPT_CACHE_KEY = "technician_copilot_reasoning_v1";
+
 export async function decideTechnicianCopilotTurn(input: unknown) {
   const result = await runOpenAIStructuredJson<CopilotModelDecision>({
     purpose: "reasoning",
@@ -101,6 +103,7 @@ export async function decideTechnicianCopilotTurn(input: unknown) {
     requireAI: true,
     maxOutputTokens: 1000,
     temperature: 0.1,
+    promptCacheKey: TECHNICIAN_REASONING_PROMPT_CACHE_KEY,
   });
   return result.output;
 }
