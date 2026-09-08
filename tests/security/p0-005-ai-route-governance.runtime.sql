@@ -45,6 +45,16 @@ begin
      or has_table_privilege('service_role', 'private.ai_route_usage_receipts', 'SELECT') then
     raise exception 'P0-005 runtime assertion failed: private usage receipts are exposed';
   end if;
+
+  if has_schema_privilege('anon', 'private', 'USAGE')
+     or has_schema_privilege('authenticated', 'private', 'USAGE')
+     or has_table_privilege('anon', 'private.ai_usage_ledger', 'SELECT')
+     or has_table_privilege('authenticated', 'private.ai_usage_ledger', 'SELECT')
+     or not has_schema_privilege('service_role', 'private', 'USAGE')
+     or not has_table_privilege('service_role', 'private.ai_usage_ledger', 'SELECT')
+     or not has_table_privilege('service_role', 'private.ai_usage_ledger', 'INSERT') then
+    raise exception 'P0-005 runtime assertion failed: private AI usage ledger ACL is unsafe';
+  end if;
 end
 $$;
 
@@ -110,7 +120,185 @@ where id in (
   '56000000-0000-4000-8000-000000000002'
 );
 
+set local role authenticated;
+
+do $$
+begin
+  begin
+    perform public.insert_ai_event(
+      null,
+      'ai_usage_record',
+      jsonb_build_object(
+        'event_key', 'p0-005-authenticated-ledger-attempt',
+        'feature', 'dtc_suggest',
+        'endpoint', '/api/work-orders/dtc-suggest',
+        'provider', 'openai',
+        'modality', 'text',
+        'rate_card_version', 'runtime-test',
+        'latency_ms', 1,
+        'status', 'success'
+      ),
+      null,
+      null,
+      null,
+      '__durable_ai_usage_ledger__'
+    );
+    raise exception 'P0-005 runtime assertion failed: authenticated actor wrote private AI ledger';
+  exception
+    when insufficient_privilege then null;
+  end;
+end
+$$;
+
+reset role;
 set local role service_role;
+
+do $$
+declare
+  v_first uuid;
+  v_retry uuid;
+  v_provider_first uuid;
+  v_provider_retry uuid;
+  v_count integer;
+begin
+  begin
+    perform public.insert_ai_event(
+      'b5200000-0000-4000-8000-000000000002',
+      'ai_usage_record',
+      jsonb_build_object(
+        'event_key', 'p0-005-cross-shop-ledger',
+        'feature', 'dtc_suggest',
+        'endpoint', '/api/work-orders/dtc-suggest',
+        'provider', 'openai',
+        'modality', 'text',
+        'rate_card_version', 'runtime-test',
+        'latency_ms', 1,
+        'status', 'success'
+      ),
+      null,
+      null,
+      '55000000-0000-4000-8000-000000000001',
+      '__durable_ai_usage_ledger__'
+    );
+    raise exception 'P0-005 runtime assertion failed: cross-shop AI ledger user was accepted';
+  exception
+    when insufficient_privilege then null;
+  end;
+
+  select public.insert_ai_event(
+    'a5100000-0000-4000-8000-000000000001',
+    'ai_usage_record',
+    jsonb_build_object(
+      'event_key', 'p0-005-ledger-event-1',
+      'feature', 'dtc_suggest',
+      'endpoint', '/api/work-orders/dtc-suggest',
+      'provider', 'openai',
+      'model', 'gpt-5.5',
+      'modality', 'text',
+      'rate_card_version', 'runtime-test',
+      'prompt_tokens', 100,
+      'cached_prompt_tokens', 20,
+      'completion_tokens', 10,
+      'total_tokens', 110,
+      'estimated_cost_usd', 0.001,
+      'latency_ms', 50,
+      'status', 'success'
+    ),
+    null,
+    null,
+    '55000000-0000-4000-8000-000000000001',
+    '__durable_ai_usage_ledger__'
+  ) into v_first;
+
+  select public.insert_ai_event(
+    'a5100000-0000-4000-8000-000000000001',
+    'ai_usage_record',
+    jsonb_build_object(
+      'event_key', 'p0-005-ledger-event-1',
+      'feature', 'dtc_suggest',
+      'endpoint', '/api/work-orders/dtc-suggest',
+      'provider', 'openai',
+      'model', 'gpt-5.5',
+      'modality', 'text',
+      'rate_card_version', 'runtime-test',
+      'latency_ms', 50,
+      'status', 'success'
+    ),
+    null,
+    null,
+    '55000000-0000-4000-8000-000000000001',
+    '__durable_ai_usage_ledger__'
+  ) into v_retry;
+
+  if v_first is null or v_retry is distinct from v_first then
+    raise exception 'P0-005 runtime assertion failed: AI ledger event-key retry was not idempotent';
+  end if;
+
+  select count(*) into v_count
+  from private.ai_usage_ledger
+  where event_key = 'p0-005-ledger-event-1';
+
+  if v_count <> 1 then
+    raise exception 'P0-005 runtime assertion failed: AI ledger event-key retry duplicated rows';
+  end if;
+
+  select public.insert_ai_event(
+    'a5100000-0000-4000-8000-000000000001',
+    'ai_usage_record',
+    jsonb_build_object(
+      'event_key', 'p0-005-provider-event-1',
+      'feature', 'dtc_suggest',
+      'endpoint', '/api/work-orders/dtc-suggest',
+      'provider', 'openai',
+      'model', 'gpt-5.5',
+      'modality', 'text',
+      'rate_card_version', 'runtime-test',
+      'latency_ms', 50,
+      'status', 'success',
+      'provider_request_id', 'p0-005-provider-request-1'
+    ),
+    null,
+    null,
+    '55000000-0000-4000-8000-000000000001',
+    '__durable_ai_usage_ledger__'
+  ) into v_provider_first;
+
+  select public.insert_ai_event(
+    'a5100000-0000-4000-8000-000000000001',
+    'ai_usage_record',
+    jsonb_build_object(
+      'event_key', 'p0-005-provider-event-2',
+      'feature', 'dtc_suggest',
+      'endpoint', '/api/work-orders/dtc-suggest',
+      'provider', 'openai',
+      'model', 'gpt-5.5',
+      'modality', 'text',
+      'rate_card_version', 'runtime-test',
+      'latency_ms', 50,
+      'status', 'success',
+      'provider_request_id', 'p0-005-provider-request-1'
+    ),
+    null,
+    null,
+    '55000000-0000-4000-8000-000000000001',
+    '__durable_ai_usage_ledger__'
+  ) into v_provider_retry;
+
+  if v_provider_first is null or v_provider_retry is distinct from v_provider_first then
+    raise exception 'P0-005 runtime assertion failed: provider-request retry was not idempotent';
+  end if;
+
+  select count(*) into v_count
+  from private.ai_usage_ledger
+  where provider = 'openai'
+    and provider_request_id = 'p0-005-provider-request-1'
+    and feature = 'dtc_suggest';
+
+  if v_count <> 1 then
+    raise exception 'P0-005 runtime assertion failed: provider-request retry duplicated rows';
+  end if;
+end
+$$;
 
 do $$
 declare
