@@ -50,14 +50,14 @@ create unique index ai_usage_ledger_provider_request_unique_idx
   where provider_request_id is not null;
 
 -- Preserve the repository-wide private-schema boundary. service_role must not
--- gain direct USAGE or table access; the single helper below is the only write
--- path exposed to the server role.
+-- gain direct USAGE or table access; the helper below is the only write path.
 revoke all privileges on schema private
   from public, anon, authenticated, service_role;
 revoke all privileges on table private.ai_usage_ledger
   from public, anon, authenticated, service_role;
 
 create schema if not exists rls_helpers authorization postgres;
+revoke all on schema rls_helpers from public, anon;
 grant usage on schema rls_helpers to service_role;
 alter default privileges for role postgres in schema rls_helpers
   revoke execute on functions from public;
@@ -74,6 +74,8 @@ set search_path = ''
 as $function$
 declare
   v_id uuid;
+  v_profile_id uuid;
+  v_profile_user_id uuid;
   v_event_key text;
   v_feature text;
   v_endpoint text;
@@ -98,7 +100,7 @@ declare
   v_quota_receipt_id uuid;
   v_occurred_at timestamptz;
 begin
-  if p_payload is null or jsonb_typeof(p_payload) <> 'object' then
+  if p_payload is null or pg_catalog.jsonb_typeof(p_payload) <> 'object' then
     raise exception using
       errcode = '22023',
       message = 'AI_USAGE_LEDGER_INPUT_INVALID';
@@ -107,12 +109,12 @@ begin
   v_event_key := nullif(pg_catalog.btrim(p_payload ->> 'event_key'), '');
   v_feature := nullif(pg_catalog.btrim(p_payload ->> 'feature'), '');
   v_endpoint := nullif(pg_catalog.btrim(p_payload ->> 'endpoint'), '');
-  v_provider := pg_catalog.coalesce(
+  v_provider := coalesce(
     nullif(pg_catalog.btrim(p_payload ->> 'provider'), ''),
     'openai'
   );
   v_model := nullif(pg_catalog.btrim(p_payload ->> 'model'), '');
-  v_modality := pg_catalog.coalesce(
+  v_modality := coalesce(
     nullif(pg_catalog.btrim(p_payload ->> 'modality'), ''),
     'text'
   );
@@ -150,7 +152,7 @@ begin
     p_payload ->> 'estimated_cost_usd',
     ''
   )::numeric;
-  v_latency_ms := pg_catalog.coalesce(
+  v_latency_ms := coalesce(
     nullif(p_payload ->> 'latency_ms', '')::integer,
     0
   );
@@ -168,7 +170,7 @@ begin
     p_payload ->> 'quota_receipt_id',
     ''
   )::uuid;
-  v_occurred_at := pg_catalog.coalesce(
+  v_occurred_at := coalesce(
     nullif(p_payload ->> 'occurred_at', '')::timestamptz,
     pg_catalog.clock_timestamp()
   );
@@ -185,15 +187,15 @@ begin
      or v_modality not in ('text', 'realtime', 'speech', 'image', 'other')
      or v_status not in ('success', 'error')
      or v_latency_ms < 0
-     or pg_catalog.coalesce(v_prompt_tokens, 0) < 0
-     or pg_catalog.coalesce(v_cached_prompt_tokens, 0) < 0
-     or pg_catalog.coalesce(v_completion_tokens, 0) < 0
-     or pg_catalog.coalesce(v_total_tokens, 0) < 0
-     or pg_catalog.coalesce(v_audio_input_tokens, 0) < 0
-     or pg_catalog.coalesce(v_audio_output_tokens, 0) < 0
-     or pg_catalog.coalesce(v_speech_characters, 0) < 0
-     or pg_catalog.coalesce(v_duration_seconds, 0) < 0
-     or pg_catalog.coalesce(v_estimated_cost_usd, 0) < 0 then
+     or coalesce(v_prompt_tokens, 0) < 0
+     or coalesce(v_cached_prompt_tokens, 0) < 0
+     or coalesce(v_completion_tokens, 0) < 0
+     or coalesce(v_total_tokens, 0) < 0
+     or coalesce(v_audio_input_tokens, 0) < 0
+     or coalesce(v_audio_output_tokens, 0) < 0
+     or coalesce(v_speech_characters, 0) < 0
+     or coalesce(v_duration_seconds, 0) < 0
+     or coalesce(v_estimated_cost_usd, 0) < 0 then
     raise exception using
       errcode = '22023',
       message = 'AI_USAGE_LEDGER_INPUT_INVALID';
@@ -210,17 +212,43 @@ begin
       message = 'AI_USAGE_LEDGER_SHOP_SCOPE_INVALID';
   end if;
 
-  if p_user_id is not null
-     and p_shop_id is not null
-     and not exists (
-       select 1
-       from public.profiles profile
-       where profile.shop_id = p_shop_id
-         and (profile.id = p_user_id or profile.user_id = p_user_id)
-     ) then
-    raise exception using
-      errcode = '42501',
-      message = 'AI_USAGE_LEDGER_USER_SCOPE_INVALID';
+  -- Normalize every supplied actor to the canonical profile id before storing
+  -- it. Callers currently provide a mixture of profile ids and auth user ids.
+  if p_user_id is not null then
+    select profile.id, profile.user_id
+      into v_profile_id, v_profile_user_id
+    from public.profiles profile
+    where profile.id = p_user_id
+       or profile.user_id = p_user_id
+    order by case when profile.id = p_user_id then 0 else 1 end
+    limit 1;
+
+    if v_profile_id is null then
+      raise exception using
+        errcode = '42501',
+        message = 'AI_USAGE_LEDGER_USER_SCOPE_INVALID';
+    end if;
+
+    if p_shop_id is not null
+       and not exists (
+         select 1
+         from public.profiles profile
+         where profile.id = v_profile_id
+           and profile.shop_id = p_shop_id
+       )
+       and not exists (
+         select 1
+         from public.fleet_members member
+         join public.fleets fleet
+           on fleet.id = member.fleet_id
+          and fleet.shop_id = p_shop_id
+         where member.shop_id = p_shop_id
+           and member.user_id in (v_profile_id, v_profile_user_id, p_user_id)
+       ) then
+      raise exception using
+        errcode = '42501',
+        message = 'AI_USAGE_LEDGER_USER_SCOPE_INVALID';
+    end if;
   end if;
 
   insert into private.ai_usage_ledger (
@@ -252,7 +280,7 @@ begin
   ) values (
     v_event_key,
     p_shop_id,
-    p_user_id,
+    v_profile_id,
     v_feature,
     v_endpoint,
     v_provider,
@@ -305,67 +333,30 @@ revoke all on function rls_helpers.record_private_ai_usage_ledger(uuid, uuid, js
 grant execute on function rls_helpers.record_private_ai_usage_ledger(uuid, uuid, jsonb)
   to service_role;
 
--- Keep the established public signature so generated public Supabase types do
--- not change. Normal callers retain ai_events behavior. Only service_role can
--- select the reserved telemetry branch, which delegates to the narrow helper.
-create or replace function public.insert_ai_event(
+-- Dedicated service-role adapter. Do not overload the established
+-- public.insert_ai_event contract with accounting behavior.
+create or replace function public.record_ai_usage_ledger(
   p_shop_id uuid,
-  p_event_type text,
-  p_payload jsonb,
-  p_entity_id uuid default null::uuid,
-  p_entity_table text default null::text,
-  p_user_id uuid default null::uuid,
-  p_training_source text default null::text
+  p_user_id uuid,
+  p_payload jsonb
 )
 returns uuid
-language plpgsql
+language sql
 security invoker
 set search_path = ''
 as $function$
-declare
-  v_event_id uuid;
-begin
-  if p_training_source = '__durable_ai_usage_ledger__' then
-    if current_user <> 'service_role' then
-      raise exception using
-        errcode = '42501',
-        message = 'AI_USAGE_LEDGER_SERVICE_ROLE_REQUIRED';
-    end if;
-
-    return rls_helpers.record_private_ai_usage_ledger(
-      p_shop_id,
-      p_user_id,
-      p_payload
-    );
-  end if;
-
-  insert into public.ai_events (
-    shop_id,
-    event_type,
-    payload,
-    entity_id,
-    entity_table,
-    user_id,
-    training_source
-  )
-  values (
+  select rls_helpers.record_private_ai_usage_ledger(
     p_shop_id,
-    p_event_type,
-    p_payload,
-    p_entity_id,
-    p_entity_table,
     p_user_id,
-    p_training_source::public.ai_training_source
-  )
-  returning id into v_event_id;
-
-  return v_event_id;
-end
+    p_payload
+  );
 $function$;
 
-revoke all on function public.insert_ai_event(uuid,text,jsonb,uuid,text,uuid,text)
-  from public, anon;
-grant execute on function public.insert_ai_event(uuid,text,jsonb,uuid,text,uuid,text)
-  to authenticated, service_role;
+alter function public.record_ai_usage_ledger(uuid, uuid, jsonb)
+  owner to postgres;
+revoke all on function public.record_ai_usage_ledger(uuid, uuid, jsonb)
+  from public, anon, authenticated, service_role;
+grant execute on function public.record_ai_usage_ledger(uuid, uuid, jsonb)
+  to service_role;
 
 commit;
