@@ -50,6 +50,11 @@ export function estimateOpenAITextCostUsd(
   const rate = getOpenAITextModelRate(input.model);
   if (!rate) return null;
 
+  // A provider error can occur after billable work but before usage is returned.
+  // Do not turn missing usage into a false $0 accounting record.
+  if (input.promptTokens == null && input.completionTokens == null) return null;
+  if (input.promptTokens == null && input.cachedPromptTokens != null) return null;
+
   const promptTokens = Math.max(input.promptTokens ?? 0, 0);
   const cachedPromptTokens = Math.min(
     promptTokens,
