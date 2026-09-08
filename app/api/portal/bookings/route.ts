@@ -121,7 +121,7 @@ async function loadSchedulerEvents(
 
 export async function GET(req: Request): Promise<Response> {
   const url = new URL(req.url);
-  const shopSlug = url.searchParams.get("shop") ?? "";
+  const shopKey = url.searchParams.get("shop") ?? "";
   const start = url.searchParams.get("start") ?? "";
   const end = url.searchParams.get("end") ?? "";
   const status = url.searchParams.get("status") ?? "";
@@ -138,7 +138,7 @@ export async function GET(req: Request): Promise<Response> {
   }
   if (
     !shopContextOnly &&
-    (!shopSlug || (!bookingId && !pendingQueue && (!start || !end)))
+    (!shopKey || (!bookingId && !pendingQueue && (!start || !end)))
   ) {
     return bad("Missing shop or date range");
   }
@@ -160,19 +160,24 @@ export async function GET(req: Request): Promise<Response> {
   }
 
   // The service client is used only after canonical staff authorization and is
-  // pinned to the actor's resolved tenant. This keeps linked legacy profiles
-  // working even where the shops self-read policy still keys on profiles.id.
-  let shopQuery = createAdminSupabase()
+  // pinned to the actor's resolved tenant. The optional shop query parameter is
+  // treated only as a compatibility hint for internal clients; it never selects
+  // another tenant.
+  const { data: shop, error: shopErr } = await createAdminSupabase()
     .from("shops")
     .select("id, name, slug, accepts_online_booking")
-    .eq("id", profile.shop_id);
+    .eq("id", profile.shop_id)
+    .maybeSingle();
 
-  if (!shopContextOnly) {
-    shopQuery = shopQuery.eq("slug", shopSlug);
-  }
-
-  const { data: shop, error: shopErr } = await shopQuery.maybeSingle();
   if (shopErr || !shop) return bad("Shop not found", 404);
+
+  if (
+    !shopContextOnly &&
+    shopKey !== shop.id &&
+    shopKey !== (shop.slug ?? "")
+  ) {
+    return bad("Shop not found", 404);
+  }
 
   if (shopContextOnly) {
     return NextResponse.json(
