@@ -200,6 +200,15 @@ export async function POST(request: Request) {
 
     const openai = getOpenAIClient();
     const model = getOpenAIModelForPurpose(policy.modelPurpose);
+    // Captured as soon as the provider responds: saveSummary() below can fail
+    // on a request OpenAI has already billed, and the failure ledger event must
+    // still carry its usage.
+    let billedPromptTokens: number | null = null;
+    let billedCachedPromptTokens: number | null = null;
+    let billedCompletionTokens: number | null = null;
+    let billedTotalTokens: number | null = null;
+    let billedRequestId: string | null = null;
+
     try {
       const completion = await Promise.race([
         openai.chat.completions.create({
@@ -214,6 +223,13 @@ export async function POST(request: Request) {
           ),
         ),
       ]);
+      billedPromptTokens = completion.usage?.prompt_tokens ?? null;
+      billedCachedPromptTokens =
+        completion.usage?.prompt_tokens_details?.cached_tokens ?? null;
+      billedCompletionTokens = completion.usage?.completion_tokens ?? null;
+      billedTotalTokens = completion.usage?.total_tokens ?? null;
+      billedRequestId = completion.id ?? null;
+
       const generated = completion.choices[0]?.message?.content?.trim() ?? "";
       const summary =
         generated.length >= 40 && generated.length <= 4_000 ? generated : fallback;
@@ -276,21 +292,29 @@ export async function POST(request: Request) {
         user_id: access.profile.id,
         model,
         latency_ms: Date.now() - startedAt,
-        prompt_tokens: null,
-        completion_tokens: null,
-        total_tokens: null,
-        estimated_cost_usd: 0,
+        prompt_tokens: billedPromptTokens,
+        cached_prompt_tokens: billedCachedPromptTokens,
+        completion_tokens: billedCompletionTokens,
+        total_tokens: billedTotalTokens,
+        estimated_cost_usd: estimateAICostUsd(
+          "ai_summarize_stats",
+          billedTotalTokens,
+        ),
         status: "error",
         error_code: "ai_summary_error",
         error_message: message,
+        provider_request_id: billedRequestId,
       });
       registerAIUsageEvent({
         feature: "ai_summarize_stats",
         endpoint: "/api/ai/summarize-stats",
         shopId: access.profile.shop_id,
         model,
-        totalTokens: null,
-        estimatedCostUsd: 0,
+        totalTokens: billedTotalTokens,
+        estimatedCostUsd: estimateAICostUsd(
+          "ai_summarize_stats",
+          billedTotalTokens,
+        ),
         status: "error",
         errorCode: "ai_summary_error",
       });

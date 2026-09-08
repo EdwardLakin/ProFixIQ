@@ -48,10 +48,16 @@ type LedgerRpcResult = {
 };
 
 type LedgerRpcClient = {
+  /**
+   * supabase-js resolves `.rpc()` to a PostgrestFilterBuilder, which implements
+   * PromiseLike — it has `then()` but no `catch()`/`finally()`. Model that
+   * exactly: typing it as a full Promise lets `.catch()` compile and then throw
+   * `TypeError` at runtime, which silently discards every ledger write.
+   */
   rpc: (
     name: "record_ai_usage_ledger",
     args: Record<string, unknown>,
-  ) => Promise<LedgerRpcResult>;
+  ) => PromiseLike<LedgerRpcResult>;
 };
 
 export type AITelemetryRecordResult = {
@@ -85,6 +91,16 @@ function normalizedCost(event: AITelemetryEvent): number | null {
     return estimateOpenAISpeechCostUsd(event.model, event.speech_characters);
   }
 
+  // Image generation prices input and output dimensions separately, and there
+  // is no rate card for gpt-image-1.5 yet. The branding caller's blended
+  // per-1K-token proxy is not dimension-aware, so persist the raw usage and
+  // leave durable cost unknown rather than recording a figure we cannot stand
+  // behind — the same treatment gpt-4o-mini-tts already gets. The operational
+  // budget proxy in registerAIUsageEvent is unchanged.
+  if (provider === "openai" && modality === "image") {
+    return null;
+  }
+
   return event.estimated_cost_usd ?? null;
 }
 
@@ -95,7 +111,9 @@ async function persistLedgerEvent(
   let timer: ReturnType<typeof setTimeout> | null = null;
   try {
     return await Promise.race([
-      admin.rpc("record_ai_usage_ledger", args).catch((error: unknown) => ({
+      // Promise.resolve() adopts the builder's thenable. Calling .catch()
+      // on the builder itself throws before the request is ever issued.
+      Promise.resolve(admin.rpc("record_ai_usage_ledger", args)).catch((error: unknown) => ({
         data: null,
         error: {
           message: error instanceof Error ? error.message : "unknown_error",

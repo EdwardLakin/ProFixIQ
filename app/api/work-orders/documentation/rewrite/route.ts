@@ -95,6 +95,15 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
+  // Captured as soon as the provider responds. Everything after that point
+  // (schema validation, persistence) can throw on a request OpenAI has already
+  // billed, and the failure ledger event must still carry its usage.
+  let billedPromptTokens: number | null = null;
+  let billedCachedPromptTokens: number | null = null;
+  let billedCompletionTokens: number | null = null;
+  let billedTotalTokens: number | null = null;
+  let billedRequestId: string | null = null;
+
   try {
     const openai = getOpenAIClient();
     const completion = await Promise.race([
@@ -138,6 +147,13 @@ export async function POST(req: Request): Promise<NextResponse> {
         ),
       ),
     ]);
+
+    billedPromptTokens = completion.usage?.prompt_tokens ?? null;
+    billedCachedPromptTokens =
+      completion.usage?.prompt_tokens_details?.cached_tokens ?? null;
+    billedCompletionTokens = completion.usage?.completion_tokens ?? null;
+    billedTotalTokens = completion.usage?.total_tokens ?? null;
+    billedRequestId = completion.id ?? null;
 
     const raw = completion.choices[0]?.message?.content ?? "{}";
     const parsed = responseSchema.safeParse(JSON.parse(raw));
@@ -189,13 +205,15 @@ export async function POST(req: Request): Promise<NextResponse> {
       user_id: access.profile.id,
       model,
       latency_ms: Date.now() - startedAt,
-      prompt_tokens: null,
-      completion_tokens: null,
-      total_tokens: null,
-      estimated_cost_usd: 0,
+      prompt_tokens: billedPromptTokens,
+      cached_prompt_tokens: billedCachedPromptTokens,
+      completion_tokens: billedCompletionTokens,
+      total_tokens: billedTotalTokens,
+      estimated_cost_usd: estimateAICostUsd(FEATURE, billedTotalTokens),
       status: "error",
       error_code: "documentation_rewrite_failed",
       error_message: message,
+      provider_request_id: billedRequestId,
     });
     registerAIUsageEvent({
       feature: FEATURE,
