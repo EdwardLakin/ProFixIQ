@@ -2,7 +2,11 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
-import { estimateOpenAITextCostUsd } from "@/features/shared/lib/server/ai-cost";
+import {
+  AI_RATE_CARD_VERSION,
+  estimateOpenAISpeechCostUsd,
+  estimateOpenAITextCostUsd,
+} from "@/features/shared/lib/server/ai-cost";
 import type { AIFeature } from "@/features/shared/lib/server/ai-policy";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
@@ -62,6 +66,9 @@ function normalizedCost(event: AITelemetryEvent): number | null {
     return event.estimated_cost_usd;
   }
   if ((event.provider ?? "openai") !== "openai") return null;
+  if ((event.modality ?? "text") === "speech" && event.speech_characters != null) {
+    return estimateOpenAISpeechCostUsd(event.speech_characters);
+  }
   if ((event.modality ?? "text") !== "text") return null;
   return estimateOpenAITextCostUsd(event.model, {
     promptTokens: event.prompt_tokens,
@@ -73,9 +80,9 @@ function normalizedCost(event: AITelemetryEvent): number | null {
 
 /**
  * Records the existing structured log event and persists the same accounting
- * facts into the private AI usage ledger. Ledger persistence is awaited by
- * callers that need financial durability, but a telemetry outage never turns a
- * successful technician/shop workflow into a user-visible failure.
+ * facts into the private AI usage ledger. Accounting failure is intentionally
+ * non-blocking: provider success must not become a technician/shop workflow
+ * failure just because financial telemetry is temporarily unavailable.
  */
 export async function recordAITelemetry(
   event: AITelemetryEvent,
@@ -86,6 +93,7 @@ export async function recordAITelemetry(
     type: "ai_telemetry",
     ...event,
     event_key: eventKey,
+    rate_card_version: AI_RATE_CARD_VERSION,
     estimated_cost_usd: estimatedCostUsd,
   };
   console.info(JSON.stringify(loggedEvent));
@@ -104,6 +112,7 @@ export async function recordAITelemetry(
       p_provider: event.provider ?? "openai",
       p_model: event.model,
       p_modality: event.modality ?? "text",
+      p_rate_card_version: AI_RATE_CARD_VERSION,
       p_prompt_tokens: event.prompt_tokens,
       p_cached_prompt_tokens: event.cached_prompt_tokens ?? null,
       p_completion_tokens: event.completion_tokens,
@@ -123,7 +132,7 @@ export async function recordAITelemetry(
     });
 
     if (error) {
-      console.error("[ai-telemetry] durable ledger write failed", {
+      console.error("ai_telemetry_persistence_failed", {
         eventKey,
         feature: event.feature,
         endpoint: event.endpoint,
@@ -135,7 +144,7 @@ export async function recordAITelemetry(
 
     return { eventKey, persisted: true, estimatedCostUsd };
   } catch (error) {
-    console.error("[ai-telemetry] durable ledger write failed", {
+    console.error("ai_telemetry_persistence_failed", {
       eventKey,
       feature: event.feature,
       endpoint: event.endpoint,
