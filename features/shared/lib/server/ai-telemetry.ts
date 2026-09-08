@@ -49,7 +49,7 @@ type LedgerRpcResult = {
 
 type LedgerRpcClient = {
   rpc: (
-    name: "insert_ai_event",
+    name: "record_ai_usage_ledger",
     args: Record<string, unknown>,
   ) => Promise<LedgerRpcResult>;
 };
@@ -60,7 +60,7 @@ export type AITelemetryRecordResult = {
   estimatedCostUsd: number | null;
 };
 
-const LEDGER_TRAINING_SOURCE = "__durable_ai_usage_ledger__";
+const AI_TELEMETRY_WRITE_TIMEOUT_MS = 1_000;
 
 function normalizedCost(event: AITelemetryEvent): number | null {
   const provider = event.provider ?? "openai";
@@ -69,13 +69,12 @@ function normalizedCost(event: AITelemetryEvent): number | null {
   // Durable ledger accounting is model-aware even when legacy callers still
   // supply the old blended estimate for their separate quota/anomaly logic.
   if (provider === "openai" && modality === "text") {
-    const priced = estimateOpenAITextCostUsd({
+    return estimateOpenAITextCostUsd({
       model: event.model,
       promptTokens: event.prompt_tokens,
       cachedPromptTokens: event.cached_prompt_tokens,
       completionTokens: event.completion_tokens,
     });
-    if (priced !== null) return priced;
   }
 
   if (
@@ -83,15 +82,33 @@ function normalizedCost(event: AITelemetryEvent): number | null {
     modality === "speech" &&
     event.speech_characters != null
   ) {
-    const priced = estimateOpenAISpeechCostUsd(
-      event.model,
-      event.speech_characters,
-    );
-    if (priced !== null) return priced;
-    return null;
+    return estimateOpenAISpeechCostUsd(event.model, event.speech_characters);
   }
 
   return event.estimated_cost_usd ?? null;
+}
+
+async function persistLedgerEvent(
+  admin: LedgerRpcClient,
+  args: Record<string, unknown>,
+): Promise<LedgerRpcResult | "timeout"> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      admin.rpc("record_ai_usage_ledger", args).catch((error: unknown) => ({
+        data: null,
+        error: {
+          message: error instanceof Error ? error.message : "unknown_error",
+          code: "telemetry_rpc_exception",
+        },
+      })),
+      new Promise<"timeout">((resolve) => {
+        timer = setTimeout(() => resolve("timeout"), AI_TELEMETRY_WRITE_TIMEOUT_MS);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 export async function recordAITelemetry(
@@ -111,9 +128,9 @@ export async function recordAITelemetry(
 
   try {
     const admin = createAdminSupabase() as unknown as LedgerRpcClient;
-    const { error } = await admin.rpc("insert_ai_event", {
+    const result = await persistLedgerEvent(admin, {
       p_shop_id: event.shop_id,
-      p_event_type: "ai_usage_record",
+      p_user_id: event.user_id,
       p_payload: {
         event_key: eventKey,
         feature: event.feature,
@@ -139,19 +156,25 @@ export async function recordAITelemetry(
         quota_receipt_id: event.quota_receipt_id ?? null,
         occurred_at: event.occurred_at ?? null,
       },
-      p_entity_id: null,
-      p_entity_table: null,
-      p_user_id: event.user_id,
-      p_training_source: LEDGER_TRAINING_SOURCE,
     });
 
-    if (error) {
+    if (result === "timeout") {
+      console.error("[ai-telemetry] durable ledger write timed out", {
+        eventKey,
+        feature: event.feature,
+        endpoint: event.endpoint,
+        timeoutMs: AI_TELEMETRY_WRITE_TIMEOUT_MS,
+      });
+      return { eventKey, persisted: false, estimatedCostUsd };
+    }
+
+    if (result.error) {
       console.error("[ai-telemetry] durable ledger write failed", {
         eventKey,
         feature: event.feature,
         endpoint: event.endpoint,
-        code: error.code ?? null,
-        error: error.message.slice(0, 200),
+        code: result.error.code ?? null,
+        error: result.error.message.slice(0, 200),
       });
       return { eventKey, persisted: false, estimatedCostUsd };
     }
