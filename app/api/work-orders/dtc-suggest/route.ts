@@ -389,7 +389,13 @@ async function generateDtcResponse(args: {
       laborHours: null,
     } satisfies DtcAnalysisSummary);
 
-  return { reply, summary, usage: completion.usage, model };
+  return {
+    reply,
+    summary,
+    usage: completion.usage,
+    model,
+    requestId: completion.id ?? null,
+  };
 }
 
 export async function GET(req: Request) {
@@ -592,7 +598,8 @@ export async function POST(req: Request) {
         succeeded: false,
       });
       const model = getOpenAIModelForPurpose(getAIPolicy(FEATURE).modelPurpose);
-      recordAITelemetry({
+      await recordAITelemetry({
+        event_key: `${claim.receiptId}:error`,
         feature: FEATURE,
         endpoint: ENDPOINT,
         shop_id: access.profile.shop_id,
@@ -609,6 +616,7 @@ export async function POST(req: Request) {
           error instanceof Error && error.message.includes("timed out")
             ? "provider_timeout"
             : "provider_error",
+        quota_receipt_id: claim.receiptId,
       });
       registerAIUsageEvent({
         feature: FEATURE,
@@ -650,7 +658,8 @@ export async function POST(req: Request) {
       shopId: access.profile.shop_id,
       succeeded: true,
     });
-    recordAITelemetry({
+    await recordAITelemetry({
+      event_key: `${claim.receiptId}:success`,
       feature: FEATURE,
       endpoint: ENDPOINT,
       shop_id: access.profile.shop_id,
@@ -658,12 +667,16 @@ export async function POST(req: Request) {
       model: ai.model,
       latency_ms: Date.now() - startedAt,
       prompt_tokens: ai.usage?.prompt_tokens ?? null,
+      cached_prompt_tokens:
+        ai.usage?.prompt_tokens_details?.cached_tokens ?? null,
       completion_tokens: ai.usage?.completion_tokens ?? null,
       total_tokens: totalTokens,
       estimated_cost_usd: estimatedCostUsd,
       status: "success",
       error_code: null,
       error_message: null,
+      provider_request_id: ai.requestId,
+      quota_receipt_id: claim.receiptId,
     });
     registerAIUsageEvent({
       feature: FEATURE,
