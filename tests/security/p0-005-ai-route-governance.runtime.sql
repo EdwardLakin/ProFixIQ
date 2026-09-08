@@ -110,6 +110,15 @@ values
     '57000000-0000-4000-8000-000000000003',
     'p0-005-tech-a@example.com',
     '{"full_name":"P0-005 Tech A"}'::jsonb
+  ),
+  -- Canonical-attribution fixture: this actor's profiles.id deliberately
+  -- differs from its profiles.user_id. public.profiles constrains BOTH
+  -- columns to auth.users(id) (profiles_id_fkey, profiles_user_id_fkey), so
+  -- the divergent shape needs its profiles.id to exist as an auth user too.
+  (
+    '57000000-0000-4000-8000-000000000013',
+    'p0-005-tech-a-canonical@example.com',
+    '{"full_name":"P0-005 Tech A Canonical"}'::jsonb
   )
 on conflict (id) do nothing;
 
