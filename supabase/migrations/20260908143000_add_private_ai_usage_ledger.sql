@@ -16,6 +16,7 @@ create table private.ai_usage_ledger (
   model text,
   modality text not null default 'text'
     check (modality in ('text', 'realtime', 'speech', 'image', 'other')),
+  rate_card_version text not null,
   prompt_tokens integer check (prompt_tokens is null or prompt_tokens >= 0),
   cached_prompt_tokens integer check (cached_prompt_tokens is null or cached_prompt_tokens >= 0),
   completion_tokens integer check (completion_tokens is null or completion_tokens >= 0),
@@ -47,6 +48,9 @@ create index ai_usage_ledger_model_month_idx
 create index ai_usage_ledger_quota_receipt_idx
   on private.ai_usage_ledger (quota_receipt_id)
   where quota_receipt_id is not null;
+create unique index ai_usage_ledger_provider_request_unique_idx
+  on private.ai_usage_ledger (provider, provider_request_id, feature)
+  where provider_request_id is not null;
 
 revoke all privileges on table private.ai_usage_ledger
   from public, anon, authenticated, service_role;
@@ -60,6 +64,7 @@ create or replace function public.record_ai_usage_ledger(
   p_provider text,
   p_model text,
   p_modality text,
+  p_rate_card_version text,
   p_prompt_tokens integer,
   p_cached_prompt_tokens integer,
   p_completion_tokens integer,
@@ -91,8 +96,9 @@ begin
      or length(p_feature) > 120
      or nullif(btrim(p_endpoint), '') is null
      or length(p_endpoint) > 240
-     or nullif(btrim(p_provider), '') is null
-     or length(p_provider) > 80
+     or coalesce(nullif(btrim(p_provider), ''), 'openai') <> 'openai'
+     or nullif(btrim(p_rate_card_version), '') is null
+     or length(p_rate_card_version) > 80
      or coalesce(nullif(btrim(p_modality), ''), 'text') not in ('text', 'realtime', 'speech', 'image', 'other')
      or p_status not in ('success', 'error')
      or coalesce(p_latency_ms, 0) < 0
@@ -138,6 +144,7 @@ begin
     provider,
     model,
     modality,
+    rate_card_version,
     prompt_tokens,
     cached_prompt_tokens,
     completion_tokens,
@@ -160,9 +167,10 @@ begin
     p_user_id,
     btrim(p_feature),
     btrim(p_endpoint),
-    btrim(p_provider),
+    coalesce(nullif(btrim(p_provider), ''), 'openai'),
     nullif(btrim(p_model), ''),
     coalesce(nullif(btrim(p_modality), ''), 'text'),
+    btrim(p_rate_card_version),
     p_prompt_tokens,
     p_cached_prompt_tokens,
     p_completion_tokens,
@@ -180,14 +188,22 @@ begin
     p_quota_receipt_id,
     coalesce(p_occurred_at, clock_timestamp())
   )
-  on conflict (event_key) do nothing
+  on conflict do nothing
   returning id into v_id;
 
   if v_id is null then
     select ledger.id
-      into v_id
+    into v_id
     from private.ai_usage_ledger ledger
-    where ledger.event_key = btrim(p_event_key);
+    where ledger.event_key = btrim(p_event_key)
+       or (
+         p_provider_request_id is not null
+         and ledger.provider = coalesce(nullif(btrim(p_provider), ''), 'openai')
+         and ledger.provider_request_id = nullif(btrim(p_provider_request_id), '')
+         and ledger.feature = btrim(p_feature)
+       )
+    order by ledger.created_at asc
+    limit 1;
   end if;
 
   return v_id;
@@ -195,19 +211,19 @@ end
 $function$;
 
 alter function public.record_ai_usage_ledger(
-  text, uuid, uuid, text, text, text, text, text,
+  text, uuid, uuid, text, text, text, text, text, text,
   integer, integer, integer, integer, integer, integer, integer,
   numeric, numeric, integer, text, text, text, text, uuid, timestamptz
 ) owner to postgres;
 
 revoke all privileges on function public.record_ai_usage_ledger(
-  text, uuid, uuid, text, text, text, text, text,
+  text, uuid, uuid, text, text, text, text, text, text,
   integer, integer, integer, integer, integer, integer, integer,
   numeric, numeric, integer, text, text, text, text, uuid, timestamptz
 ) from public, anon, authenticated, service_role;
 
 grant execute on function public.record_ai_usage_ledger(
-  text, uuid, uuid, text, text, text, text, text,
+  text, uuid, uuid, text, text, text, text, text, text,
   integer, integer, integer, integer, integer, integer, integer,
   numeric, numeric, integer, text, text, text, text, uuid, timestamptz
 ) to service_role;
