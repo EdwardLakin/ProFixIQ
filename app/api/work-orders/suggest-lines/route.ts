@@ -14,7 +14,6 @@ import {
 
 export const runtime = "nodejs";
 
-
 type VehicleLite = {
   id: string | null;
   year: string | null;
@@ -101,12 +100,10 @@ export async function POST(req: Request) {
 
     userId = user.id;
 
-    // Gather context
     let complaint: string | null = null;
     let vehicle: VehicleLite | null = null;
 
     if ("jobId" in body) {
-      // Get WO shop_id for context
       const { data: woJoin, error: woJoinErr } = await supabase
         .from("work_order_lines")
         .select("work_order_id, work_orders:work_order_id ( shop_id )")
@@ -122,7 +119,6 @@ export async function POST(req: Request) {
         null;
 
       if (shopIdForContext) {
-        // If profile.shop_id is NULL, try to self-heal (same logic as add-suggested-lines)
         const { data: prof } = await supabase
           .from("profiles")
           .select("shop_id")
@@ -136,7 +132,6 @@ export async function POST(req: Request) {
             .or(`id.eq.${user.id},user_id.eq.${user.id}`);
         }
 
-        // Set session context (may still fail if user truly isn’t in that shop)
         await supabase.rpc("set_current_shop_id", { p_shop_id: shopIdForContext });
       }
 
@@ -152,7 +147,6 @@ export async function POST(req: Request) {
 
       if (line?.complaint) complaint = line.complaint;
 
-      // Prefer explicit vehicleId passed in the request, else derive from joined record
       if (isVehicleLite(body.vehicleId)) {
         vehicle = body.vehicleId;
       } else if (line?.vehicles) {
@@ -169,7 +163,6 @@ export async function POST(req: Request) {
         };
       }
     } else if ("workOrderId" in body) {
-      // Fetch WO shop_id for context first
       const { data: wo, error: woErr } = await supabase
         .from("work_orders")
         .select("id, shop_id")
@@ -202,7 +195,6 @@ export async function POST(req: Request) {
         await supabase.rpc("set_current_shop_id", { p_shop_id: shopIdForContext });
       }
 
-      // Pull minimal context from first line
       const { data: lines, error: linesErr } = await supabase
         .from("work_order_lines")
         .select("complaint, vehicle_id")
@@ -285,7 +277,11 @@ export async function POST(req: Request) {
           .slice(0, 6)
       : [];
 
-    recordAITelemetry({
+    const estimatedCostUsd = estimateAICostUsd(
+      "work_orders_suggest_lines",
+      completion.usage?.total_tokens ?? null,
+    );
+    await recordAITelemetry({
       feature: "work_orders_suggest_lines",
       endpoint: "/api/work-orders/suggest-lines",
       shop_id: shopIdForContext,
@@ -293,12 +289,15 @@ export async function POST(req: Request) {
       model,
       latency_ms: Date.now() - startedAt,
       prompt_tokens: completion.usage?.prompt_tokens ?? null,
+      cached_prompt_tokens:
+        completion.usage?.prompt_tokens_details?.cached_tokens ?? null,
       completion_tokens: completion.usage?.completion_tokens ?? null,
       total_tokens: completion.usage?.total_tokens ?? null,
-      estimated_cost_usd: estimateAICostUsd("work_orders_suggest_lines", completion.usage?.total_tokens ?? null),
+      estimated_cost_usd: estimatedCostUsd,
       status: "success",
       error_code: null,
       error_message: null,
+      provider_request_id: completion.id ?? null,
     });
     registerAIUsageEvent({
       feature: "work_orders_suggest_lines",
@@ -306,7 +305,7 @@ export async function POST(req: Request) {
       shopId: shopIdForContext,
       model,
       totalTokens: completion.usage?.total_tokens ?? null,
-      estimatedCostUsd: estimateAICostUsd("work_orders_suggest_lines", completion.usage?.total_tokens ?? null),
+      estimatedCostUsd,
       status: "success",
       errorCode: null,
     });
@@ -314,7 +313,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ suggestions });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to generate suggestions";
-    recordAITelemetry({
+    await recordAITelemetry({
       feature: "work_orders_suggest_lines",
       endpoint: "/api/work-orders/suggest-lines",
       shop_id: shopIdForContext,
