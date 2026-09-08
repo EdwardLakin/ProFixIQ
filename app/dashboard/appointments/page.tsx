@@ -270,7 +270,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
 
     (async () => {
       try {
-        const response = await fetch("/api/portal/bookings?scope=shop", {
+        const response = await fetch("/api/scheduling/context", {
           cache: "no-store",
           signal: controller.signal,
         });
