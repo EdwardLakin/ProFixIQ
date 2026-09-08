@@ -285,14 +285,14 @@ export default function PortalAppointmentsPage(): JSX.Element {
         }
 
         const shop = context?.shop ?? null;
-        if (!shop?.id || !shop.slug) {
+        if (!shop?.id) {
           throw new Error("Unable to load your shop.");
         }
 
         setShops([shop]);
-        const authorizedSlug = shop.slug;
+        const authorizedSlug = shop.slug ?? shop.id;
         setShopSlug(authorizedSlug);
-        const canonicalQuery = new URLSearchParams(window.location.search);
+        const canonicalQuery = new URLSearchParams(search.toString());
         if (canonicalQuery.get("shop") !== authorizedSlug) {
           canonicalQuery.set("shop", authorizedSlug);
           router.replace(
@@ -319,10 +319,13 @@ export default function PortalAppointmentsPage(): JSX.Element {
       mounted = false;
       controller.abort();
     };
-  }, [router]);
+  }, [router, search]);
 
   const selectedShop = useMemo(
-    () => shops.find((s) => (s.slug as string | null) === shopSlug) ?? null,
+    () =>
+      shops.find(
+        (s) => s.slug === shopSlug || (!s.slug && s.id === shopSlug),
+      ) ?? null,
     [shops, shopSlug],
   );
 
@@ -335,7 +338,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
     const controller = new AbortController();
     void (async () => {
       try {
-        const authorizedSlug = selectedShop.slug as string;
+        const authorizedSlug = selectedShop.slug ?? selectedShop.id;
         const response = await fetch(
           `/api/portal/bookings?shop=${encodeURIComponent(authorizedSlug)}&bookingId=${encodeURIComponent(requestedBookingId)}`,
           { cache: "no-store", signal: controller.signal },
