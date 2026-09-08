@@ -277,37 +277,41 @@ export default function PortalAppointmentsPage(): JSX.Element {
         const context = (await response.json().catch(() => null)) as
           | ShopContextResponse
           | null;
+
+        if (controller.signal.aborted || !mounted) return;
+
         if (!response.ok) {
           throw new Error(context?.error || "Unable to load your shop.");
         }
 
         const shop = context?.shop ?? null;
         if (!shop?.id || !shop.slug) {
-          throw new Error("Your profile is not linked to a shop.");
+          throw new Error("Unable to load your shop.");
         }
-        if (!mounted) return;
 
         setShops([shop]);
         const authorizedSlug = shop.slug;
         setShopSlug(authorizedSlug);
-        if (search.get("shop") !== authorizedSlug) {
-          const canonicalQuery = new URLSearchParams(search.toString());
+        const canonicalQuery = new URLSearchParams(window.location.search);
+        if (canonicalQuery.get("shop") !== authorizedSlug) {
           canonicalQuery.set("shop", authorizedSlug);
           router.replace(
             `/dashboard/appointments?${canonicalQuery.toString()}`,
           );
         }
       } catch (caught: unknown) {
-        if (caught instanceof DOMException && caught.name === "AbortError") {
+        if (
+          controller.signal.aborted ||
+          !mounted ||
+          (caught instanceof DOMException && caught.name === "AbortError")
+        ) {
           return;
         }
-        if (mounted) {
-          toast.error(
-            caught instanceof Error
-              ? caught.message
-              : "Unable to load your shop.",
-          );
-        }
+        toast.error(
+          caught instanceof Error
+            ? caught.message
+            : "Unable to load your shop.",
+        );
       }
     })();
 
@@ -315,7 +319,7 @@ export default function PortalAppointmentsPage(): JSX.Element {
       mounted = false;
       controller.abort();
     };
-  }, [router, search]);
+  }, [router]);
 
   const selectedShop = useMemo(
     () => shops.find((s) => (s.slug as string | null) === shopSlug) ?? null,
