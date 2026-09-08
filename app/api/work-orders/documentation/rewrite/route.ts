@@ -149,7 +149,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     const totalTokens = usage?.total_tokens ?? null;
     const estimatedCost = estimateAICostUsd(FEATURE, totalTokens);
 
-    recordAITelemetry({
+    await recordAITelemetry({
       feature: FEATURE,
       endpoint: ENDPOINT,
       shop_id: access.profile.shop_id,
@@ -157,12 +157,14 @@ export async function POST(req: Request): Promise<NextResponse> {
       model,
       latency_ms: Date.now() - startedAt,
       prompt_tokens: usage?.prompt_tokens ?? null,
+      cached_prompt_tokens: usage?.prompt_tokens_details?.cached_tokens ?? null,
       completion_tokens: usage?.completion_tokens ?? null,
       total_tokens: totalTokens,
       estimated_cost_usd: estimatedCost,
       status: "success",
       error_code: null,
       error_message: null,
+      provider_request_id: completion.id ?? null,
     });
     registerAIUsageEvent({
       feature: FEATURE,
@@ -180,7 +182,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     const message =
       error instanceof Error ? error.message : "Documentation rewrite failed";
 
-    recordAITelemetry({
+    await recordAITelemetry({
       feature: FEATURE,
       endpoint: ENDPOINT,
       shop_id: access.profile.shop_id,
