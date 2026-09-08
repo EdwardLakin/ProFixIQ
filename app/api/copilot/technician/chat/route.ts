@@ -9,6 +9,7 @@ import {
   runTechnicianCopilotTurn,
   TechnicianCopilotConflictError,
 } from "@/features/copilot/technician/server/chat";
+import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -89,21 +90,29 @@ export async function POST(request: NextRequest) {
       body.recentConversations,
     );
 
-    const result = await runTechnicianCopilotTurn({
-      identity: {
-        authUserId: access.authUserId,
-        profileId: access.profileId,
+    const result = await withAITelemetryContext(
+      {
+        endpoint: "/api/copilot/technician/chat",
         shopId: access.shopId,
-        documentationEnabled: access.capabilities.documentation,
-        voiceEnabled: access.capabilities.voice,
-        supabase: createAdminSupabase(),
+        userId: access.profileId,
       },
-      message,
-      turnId,
-      sessionId,
-      inputSource,
-      recentConversations,
-    });
+      () =>
+        runTechnicianCopilotTurn({
+          identity: {
+            authUserId: access.authUserId,
+            profileId: access.profileId,
+            shopId: access.shopId,
+            documentationEnabled: access.capabilities.documentation,
+            voiceEnabled: access.capabilities.voice,
+            supabase: createAdminSupabase(),
+          },
+          message,
+          turnId,
+          sessionId,
+          inputSource,
+          recentConversations,
+        }),
+    );
 
     return NextResponse.json({ ...result, turnId });
   } catch (error) {
