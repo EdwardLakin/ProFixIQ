@@ -9,7 +9,7 @@ import {
 } from "@/features/shared/lib/server/durable-ai-guard";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { estimateAICostUsd, registerAIUsageEvent } from "@/features/shared/lib/server/ai-ops-guard";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import { runWithProviderTimeout } from "@/features/shared/lib/server/provider-timeout";
@@ -334,6 +334,30 @@ function buildUserPrompt(args: {
   });
 }
 
+type BilledProviderUsage = {
+  prompt_tokens?: number;
+  completion_tokens?: number;
+  total_tokens?: number;
+  prompt_tokens_details?: { cached_tokens?: number };
+};
+
+/**
+ * Raised when the provider responded (and billed) but its payload could not be
+ * parsed. Carries the usage so the failure ledger event still accounts for the
+ * charge instead of recording a request that cost nothing.
+ */
+class DtcProviderResponseError extends Error {
+  constructor(
+    message: string,
+    readonly usage: BilledProviderUsage | undefined,
+    readonly model: string,
+    readonly requestId: string | null,
+  ) {
+    super(message);
+    this.name = "DtcProviderResponseError";
+  }
+}
+
 async function generateDtcResponse(args: {
   context: RouteContext;
   dtcCode: string | null;
@@ -365,10 +389,17 @@ async function generateDtcResponse(args: {
 
   const raw = completion.choices[0]?.message?.content ?? "{}";
 
-  const parsed = JSON.parse(raw) as {
-    reply?: unknown;
-    summary?: unknown;
-  };
+  let parsed: { reply?: unknown; summary?: unknown };
+  try {
+    parsed = JSON.parse(raw) as { reply?: unknown; summary?: unknown };
+  } catch (error) {
+    throw new DtcProviderResponseError(
+      error instanceof Error ? error.message : "Malformed provider response",
+      completion.usage,
+      model,
+      completion.id ?? null,
+    );
+  }
 
   const reply =
     asNonEmptyString(parsed.reply) ??
@@ -389,7 +420,13 @@ async function generateDtcResponse(args: {
       laborHours: null,
     } satisfies DtcAnalysisSummary);
 
-  return { reply, summary, usage: completion.usage, model };
+  return {
+    reply,
+    summary,
+    usage: completion.usage,
+    model,
+    requestId: completion.id ?? null,
+  };
 }
 
 export async function GET(req: Request) {
@@ -591,32 +628,42 @@ export async function POST(req: Request) {
         shopId: access.profile.shop_id,
         succeeded: false,
       });
-      const model = getOpenAIModelForPurpose(getAIPolicy(FEATURE).modelPurpose);
-      recordAITelemetry({
+      const billed =
+        error instanceof DtcProviderResponseError ? error : null;
+      const model =
+        billed?.model ??
+        getOpenAIModelForPurpose(getAIPolicy(FEATURE).modelPurpose);
+      const billedTotalTokens = billed?.usage?.total_tokens ?? null;
+      await recordDurableAIUsage({
+        event_key: `${claim.receiptId}:error`,
         feature: FEATURE,
         endpoint: ENDPOINT,
         shop_id: access.profile.shop_id,
         user_id: access.profile.id,
         model,
         latency_ms: Date.now() - startedAt,
-        prompt_tokens: null,
-        completion_tokens: null,
-        total_tokens: null,
-        estimated_cost_usd: 0,
+        prompt_tokens: billed?.usage?.prompt_tokens ?? null,
+        cached_prompt_tokens:
+          billed?.usage?.prompt_tokens_details?.cached_tokens ?? null,
+        completion_tokens: billed?.usage?.completion_tokens ?? null,
+        total_tokens: billedTotalTokens,
+        estimated_cost_usd: estimateAICostUsd(FEATURE, billedTotalTokens),
+        provider_request_id: billed?.requestId ?? null,
         status: "error",
         error_code: "dtc_suggest_failed",
         error_message:
           error instanceof Error && error.message.includes("timed out")
             ? "provider_timeout"
             : "provider_error",
+        quota_receipt_id: claim.receiptId,
       });
       registerAIUsageEvent({
         feature: FEATURE,
         endpoint: ENDPOINT,
         shopId: access.profile.shop_id,
         model,
-        totalTokens: null,
-        estimatedCostUsd: 0,
+        totalTokens: billedTotalTokens,
+        estimatedCostUsd: estimateAICostUsd(FEATURE, billedTotalTokens),
         status: "error",
         errorCode: "dtc_suggest_failed",
       });
@@ -650,7 +697,8 @@ export async function POST(req: Request) {
       shopId: access.profile.shop_id,
       succeeded: true,
     });
-    recordAITelemetry({
+    await recordDurableAIUsage({
+      event_key: `${claim.receiptId}:success`,
       feature: FEATURE,
       endpoint: ENDPOINT,
       shop_id: access.profile.shop_id,
@@ -658,12 +706,16 @@ export async function POST(req: Request) {
       model: ai.model,
       latency_ms: Date.now() - startedAt,
       prompt_tokens: ai.usage?.prompt_tokens ?? null,
+      cached_prompt_tokens:
+        ai.usage?.prompt_tokens_details?.cached_tokens ?? null,
       completion_tokens: ai.usage?.completion_tokens ?? null,
       total_tokens: totalTokens,
       estimated_cost_usd: estimatedCostUsd,
       status: "success",
       error_code: null,
       error_message: null,
+      provider_request_id: ai.requestId,
+      quota_receipt_id: claim.receiptId,
     });
     registerAIUsageEvent({
       feature: FEATURE,

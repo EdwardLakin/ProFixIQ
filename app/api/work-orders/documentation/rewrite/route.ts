@@ -8,7 +8,7 @@ import {
   openAITemperatureParam,
 } from "@/features/shared/lib/server/openai-models";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import {
   enforceAIOperationalPolicy,
   estimateAICostUsd,
@@ -95,6 +95,15 @@ export async function POST(req: Request): Promise<NextResponse> {
     );
   }
 
+  // Captured as soon as the provider responds. Everything after that point
+  // (schema validation, persistence) can throw on a request OpenAI has already
+  // billed, and the failure ledger event must still carry its usage.
+  let billedPromptTokens: number | null = null;
+  let billedCachedPromptTokens: number | null = null;
+  let billedCompletionTokens: number | null = null;
+  let billedTotalTokens: number | null = null;
+  let billedRequestId: string | null = null;
+
   try {
     const openai = getOpenAIClient();
     const completion = await Promise.race([
@@ -139,6 +148,13 @@ export async function POST(req: Request): Promise<NextResponse> {
       ),
     ]);
 
+    billedPromptTokens = completion.usage?.prompt_tokens ?? null;
+    billedCachedPromptTokens =
+      completion.usage?.prompt_tokens_details?.cached_tokens ?? null;
+    billedCompletionTokens = completion.usage?.completion_tokens ?? null;
+    billedTotalTokens = completion.usage?.total_tokens ?? null;
+    billedRequestId = completion.id ?? null;
+
     const raw = completion.choices[0]?.message?.content ?? "{}";
     const parsed = responseSchema.safeParse(JSON.parse(raw));
     if (!parsed.success) {
@@ -149,7 +165,7 @@ export async function POST(req: Request): Promise<NextResponse> {
     const totalTokens = usage?.total_tokens ?? null;
     const estimatedCost = estimateAICostUsd(FEATURE, totalTokens);
 
-    recordAITelemetry({
+    await recordDurableAIUsage({
       feature: FEATURE,
       endpoint: ENDPOINT,
       shop_id: access.profile.shop_id,
@@ -157,12 +173,14 @@ export async function POST(req: Request): Promise<NextResponse> {
       model,
       latency_ms: Date.now() - startedAt,
       prompt_tokens: usage?.prompt_tokens ?? null,
+      cached_prompt_tokens: usage?.prompt_tokens_details?.cached_tokens ?? null,
       completion_tokens: usage?.completion_tokens ?? null,
       total_tokens: totalTokens,
       estimated_cost_usd: estimatedCost,
       status: "success",
       error_code: null,
       error_message: null,
+      provider_request_id: completion.id ?? null,
     });
     registerAIUsageEvent({
       feature: FEATURE,
@@ -180,20 +198,22 @@ export async function POST(req: Request): Promise<NextResponse> {
     const message =
       error instanceof Error ? error.message : "Documentation rewrite failed";
 
-    recordAITelemetry({
+    await recordDurableAIUsage({
       feature: FEATURE,
       endpoint: ENDPOINT,
       shop_id: access.profile.shop_id,
       user_id: access.profile.id,
       model,
       latency_ms: Date.now() - startedAt,
-      prompt_tokens: null,
-      completion_tokens: null,
-      total_tokens: null,
-      estimated_cost_usd: 0,
+      prompt_tokens: billedPromptTokens,
+      cached_prompt_tokens: billedCachedPromptTokens,
+      completion_tokens: billedCompletionTokens,
+      total_tokens: billedTotalTokens,
+      estimated_cost_usd: estimateAICostUsd(FEATURE, billedTotalTokens),
       status: "error",
       error_code: "documentation_rewrite_failed",
       error_message: message,
+      provider_request_id: billedRequestId,
     });
     registerAIUsageEvent({
       feature: FEATURE,

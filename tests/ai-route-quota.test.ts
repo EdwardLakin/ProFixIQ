@@ -9,7 +9,7 @@ const opsGuard = vi.hoisted(() => ({
   registerAIUsageEvent: vi.fn(),
 }));
 const telemetry = vi.hoisted(() => ({
-  recordAITelemetry: vi.fn(),
+  recordDurableAIUsage: vi.fn(),
 }));
 
 vi.mock("@/features/shared/lib/server/durable-ai-guard", () => durableGuard);
@@ -53,11 +53,56 @@ describe("withDurableAIQuota", () => {
     expect(durableGuard.completeDurableAIRouteQuota).toHaveBeenCalledWith(
       expect.objectContaining({ receiptId: "receipt-1", succeeded: true }),
     );
-    expect(telemetry.recordAITelemetry).toHaveBeenCalledWith(
+    expect(telemetry.recordDurableAIUsage).toHaveBeenCalledWith(
       expect.objectContaining({ status: "success", total_tokens: 15 }),
     );
     expect(opsGuard.registerAIUsageEvent).toHaveBeenCalledWith(
       expect.objectContaining({ status: "success" }),
+    );
+  });
+
+  it("forwards cached prompt tokens so cached input is not priced at the full rate", async () => {
+    durableGuard.claimDurableAIRouteQuota.mockResolvedValueOnce({
+      allowed: true,
+      receiptId: "receipt-cached",
+    });
+
+    await withDurableAIQuota(baseConfig, async () => ({
+      output: ["command"],
+      model: "gpt-test",
+      latencyMs: 8,
+      usage: {
+        promptTokens: 1_000,
+        cachedPromptTokens: 800,
+        completionTokens: 20,
+        totalTokens: 1_020,
+      },
+    }));
+
+    expect(telemetry.recordDurableAIUsage).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt_tokens: 1_000,
+        cached_prompt_tokens: 800,
+        completion_tokens: 20,
+      }),
+    );
+  });
+
+  it("records a null cached-token dimension when the provider reports none", async () => {
+    durableGuard.claimDurableAIRouteQuota.mockResolvedValueOnce({
+      allowed: true,
+      receiptId: "receipt-uncached",
+    });
+
+    await withDurableAIQuota(baseConfig, async () => ({
+      output: ["command"],
+      model: "gpt-test",
+      latencyMs: 8,
+      usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+    }));
+
+    expect(telemetry.recordDurableAIUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ cached_prompt_tokens: null }),
     );
   });
 
@@ -105,7 +150,7 @@ describe("withDurableAIQuota", () => {
         actualCostUsd: 0,
       }),
     );
-    expect(telemetry.recordAITelemetry).toHaveBeenCalledWith(
+    expect(telemetry.recordDurableAIUsage).toHaveBeenCalledWith(
       expect.objectContaining({ status: "error", error_code: "provider_error" }),
     );
   });
@@ -122,7 +167,7 @@ describe("withDurableAIQuota", () => {
       }),
     ).rejects.toThrow("timed out");
 
-    expect(telemetry.recordAITelemetry).toHaveBeenCalledWith(
+    expect(telemetry.recordDurableAIUsage).toHaveBeenCalledWith(
       expect.objectContaining({ error_code: "provider_timeout" }),
     );
   });

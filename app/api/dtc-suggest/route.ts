@@ -7,7 +7,7 @@ import {
   estimateAICostUsd,
   registerAIUsageEvent,
 } from "@/features/shared/lib/server/ai-ops-guard";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { readBoundedJson } from "@/features/shared/lib/server/bounded-json";
 import {
@@ -148,6 +148,15 @@ export async function POST(request: Request): Promise<NextResponse> {
   const policy = getAIPolicy(FEATURE);
   const model = getOpenAIModelForPurpose(policy.modelPurpose);
 
+  // Captured the moment the provider responds. suggestionSchema.parse() below
+  // can reject truncated or malformed output on a request OpenAI has already
+  // billed, and the failure ledger event must still carry its usage.
+  let billedPromptTokens: number | null = null;
+  let billedCachedPromptTokens: number | null = null;
+  let billedCompletionTokens: number | null = null;
+  let billedTotalTokens: number | null = null;
+  let billedRequestId: string | null = null;
+
   try {
     const openai = getOpenAIClient();
     const completion = await runWithProviderTimeout(policy.timeoutMs, (signal) =>
@@ -182,10 +191,19 @@ export async function POST(request: Request): Promise<NextResponse> {
       ),
     );
 
+    billedPromptTokens = completion.usage?.prompt_tokens ?? null;
+    billedCachedPromptTokens =
+      completion.usage?.prompt_tokens_details?.cached_tokens ?? null;
+    billedCompletionTokens = completion.usage?.completion_tokens ?? null;
+    billedTotalTokens = completion.usage?.total_tokens ?? null;
+    billedRequestId = completion.id ?? null;
+
     const suggestion = suggestionSchema.parse(
       JSON.parse(completion.choices[0]?.message?.content ?? "{}") as unknown,
     );
     const totalTokens = completion.usage?.total_tokens ?? null;
+    const cachedPromptTokens =
+      completion.usage?.prompt_tokens_details?.cached_tokens ?? null;
     const estimatedCostUsd = estimateAICostUsd(FEATURE, totalTokens);
 
     await completeDurableAIRouteQuota({
@@ -197,7 +215,9 @@ export async function POST(request: Request): Promise<NextResponse> {
       shopId: access.profile.shop_id,
       succeeded: true,
     });
-    recordAITelemetry({
+    await recordDurableAIUsage({
+      event_key: `quota:${claim.receiptId}`,
+      quota_receipt_id: claim.receiptId,
       feature: FEATURE,
       endpoint: ENDPOINT,
       shop_id: access.profile.shop_id,
@@ -205,12 +225,14 @@ export async function POST(request: Request): Promise<NextResponse> {
       model,
       latency_ms: Date.now() - startedAt,
       prompt_tokens: completion.usage?.prompt_tokens ?? null,
+      cached_prompt_tokens: cachedPromptTokens,
       completion_tokens: completion.usage?.completion_tokens ?? null,
       total_tokens: totalTokens,
       estimated_cost_usd: estimatedCostUsd,
       status: "success",
       error_code: null,
       error_message: null,
+      provider_request_id: completion.id ?? null,
     });
     registerAIUsageEvent({
       feature: FEATURE,
@@ -234,17 +256,21 @@ export async function POST(request: Request): Promise<NextResponse> {
       shopId: access.profile.shop_id,
       succeeded: false,
     });
-    recordAITelemetry({
+    await recordDurableAIUsage({
+      event_key: `quota:${claim.receiptId}`,
+      quota_receipt_id: claim.receiptId,
       feature: FEATURE,
       endpoint: ENDPOINT,
       shop_id: access.profile.shop_id,
       user_id: access.profile.id,
       model,
       latency_ms: Date.now() - startedAt,
-      prompt_tokens: null,
-      completion_tokens: null,
-      total_tokens: null,
-      estimated_cost_usd: 0,
+      prompt_tokens: billedPromptTokens,
+      cached_prompt_tokens: billedCachedPromptTokens,
+      completion_tokens: billedCompletionTokens,
+      total_tokens: billedTotalTokens,
+      estimated_cost_usd: estimateAICostUsd(FEATURE, billedTotalTokens),
+      provider_request_id: billedRequestId,
       status: "error",
       error_code: "dtc_suggest_failed",
       error_message:

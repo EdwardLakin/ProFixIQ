@@ -9,6 +9,7 @@ import {
   runTechnicianCopilotTurn,
   TechnicianCopilotConflictError,
 } from "@/features/copilot/technician/server/chat";
+import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -55,12 +56,8 @@ function runtimeConflict(error: unknown): TechnicianCopilotConflictError | null 
 export async function POST(request: NextRequest) {
   try {
     const access = await requireTechnicianCopilotAccess();
-    const body = (await request.json().catch(() => ({}))) as Record<
-      string,
-      unknown
-    >;
-    const message =
-      typeof body.message === "string" ? body.message.trim() : "";
+    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const message = typeof body.message === "string" ? body.message.trim() : "";
     if (!message || message.length > 4000) {
       return NextResponse.json(
         { error: "Message is required and must be 4000 characters or less." },
@@ -83,27 +80,32 @@ export async function POST(request: NextRequest) {
       typeof body.turnId === "string" && body.turnId.trim()
         ? body.turnId.trim().slice(0, 128)
         : randomUUID();
-    const sessionId =
-      typeof body.sessionId === "string" ? body.sessionId : null;
-    const recentConversations = parseRecentConversations(
-      body.recentConversations,
-    );
+    const sessionId = typeof body.sessionId === "string" ? body.sessionId : null;
+    const recentConversations = parseRecentConversations(body.recentConversations);
 
-    const result = await runTechnicianCopilotTurn({
-      identity: {
-        authUserId: access.authUserId,
-        profileId: access.profileId,
+    const result = await withAITelemetryContext(
+      {
+        endpoint: "/api/copilot/technician/chat",
         shopId: access.shopId,
-        documentationEnabled: access.capabilities.documentation,
-        voiceEnabled: access.capabilities.voice,
-        supabase: createAdminSupabase(),
+        userId: access.profileId,
       },
-      message,
-      turnId,
-      sessionId,
-      inputSource,
-      recentConversations,
-    });
+      () =>
+        runTechnicianCopilotTurn({
+          identity: {
+            authUserId: access.authUserId,
+            profileId: access.profileId,
+            shopId: access.shopId,
+            documentationEnabled: access.capabilities.documentation,
+            voiceEnabled: access.capabilities.voice,
+            supabase: createAdminSupabase(),
+          },
+          message,
+          turnId,
+          sessionId,
+          inputSource,
+          recentConversations,
+        }),
+    );
 
     return NextResponse.json({ ...result, turnId });
   } catch (error) {
@@ -122,10 +124,7 @@ export async function POST(request: NextRequest) {
     }
     console.error("[technician-copilot] chat failed", error);
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "Technician CoPilot failed.",
-      },
+      { error: error instanceof Error ? error.message : "Technician CoPilot failed." },
       { status: 500 },
     );
   }

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getOpenAIRealtimeTranscriptionModel } from "@/features/shared/lib/openai-realtime-models";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import {
   enforceAIOperationalPolicy,
   estimateAICostUsd,
@@ -11,8 +11,6 @@ import {
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-
-/* ----------------------------- Types ----------------------------- */
 
 type OpenAIRealtimeSessionConfig = {
   session: {
@@ -40,9 +38,6 @@ type OpenAIRealtimeSessionConfig = {
     };
   };
 };
-
-
-/* --------------------------- Helpers ---------------------------- */
 
 function extractToken(
   data: unknown,
@@ -76,8 +71,6 @@ function extractToken(
 
   return null;
 }
-
-/* ----------------------------- Route ----------------------------- */
 
 export async function GET() {
   const startedAt = Date.now();
@@ -190,10 +183,7 @@ export async function GET() {
     const extracted = extractToken(parsed);
 
     if (!extracted) {
-      console.error(
-        "[realtime-token] Unexpected response shape",
-        parsed,
-      );
+      console.error("[realtime-token] Unexpected response shape", parsed);
       return NextResponse.json(
         {
           error: "Voice service returned an invalid response",
@@ -203,17 +193,24 @@ export async function GET() {
       );
     }
 
-    recordAITelemetry({
+    // Issuing a client secret is not the billable realtime session itself.
+    // Persist it as a zero-cost control-plane ledger event. Preserve the
+    // established synthetic cost in the legacy operational guard until Phase 4
+    // meters the actual realtime session.
+    const legacyEstimatedCostUsd = estimateAICostUsd("openai_realtime_token", 1);
+    await recordDurableAIUsage({
       feature: "openai_realtime_token",
       endpoint: "/api/openai/realtime-token",
       shop_id: access.profile.shop_id,
       user_id: access.profile.id,
+      provider: "openai",
       model: transcriptionModel,
+      modality: "realtime",
       latency_ms: Date.now() - startedAt,
       prompt_tokens: null,
       completion_tokens: null,
       total_tokens: null,
-      estimated_cost_usd: estimateAICostUsd("openai_realtime_token", 1),
+      estimated_cost_usd: 0,
       status: "success",
       error_code: null,
       error_message: null,
@@ -224,7 +221,7 @@ export async function GET() {
       shopId: access.profile.shop_id,
       model: transcriptionModel,
       totalTokens: 1,
-      estimatedCostUsd: estimateAICostUsd("openai_realtime_token", 1),
+      estimatedCostUsd: legacyEstimatedCostUsd,
       status: "success",
       errorCode: null,
     });
@@ -242,12 +239,14 @@ export async function GET() {
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unhandled realtime token error";
-    recordAITelemetry({
+    await recordDurableAIUsage({
       feature: "openai_realtime_token",
       endpoint: "/api/openai/realtime-token",
       shop_id: access.profile.shop_id,
       user_id: access.profile.id,
+      provider: "openai",
       model: getOpenAIRealtimeTranscriptionModel(),
+      modality: "realtime",
       latency_ms: Date.now() - startedAt,
       prompt_tokens: null,
       completion_tokens: null,

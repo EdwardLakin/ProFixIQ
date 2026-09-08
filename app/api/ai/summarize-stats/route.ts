@@ -16,7 +16,7 @@ import {
   estimateAICostUsd,
   registerAIUsageEvent,
 } from "@/features/shared/lib/server/ai-ops-guard";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import {
   getOpenAIClient,
   isOpenAIConfigured,
@@ -200,6 +200,15 @@ export async function POST(request: Request) {
 
     const openai = getOpenAIClient();
     const model = getOpenAIModelForPurpose(policy.modelPurpose);
+    // Captured as soon as the provider responds: saveSummary() below can fail
+    // on a request OpenAI has already billed, and the failure ledger event must
+    // still carry its usage.
+    let billedPromptTokens: number | null = null;
+    let billedCachedPromptTokens: number | null = null;
+    let billedCompletionTokens: number | null = null;
+    let billedTotalTokens: number | null = null;
+    let billedRequestId: string | null = null;
+
     try {
       const completion = await Promise.race([
         openai.chat.completions.create({
@@ -214,6 +223,13 @@ export async function POST(request: Request) {
           ),
         ),
       ]);
+      billedPromptTokens = completion.usage?.prompt_tokens ?? null;
+      billedCachedPromptTokens =
+        completion.usage?.prompt_tokens_details?.cached_tokens ?? null;
+      billedCompletionTokens = completion.usage?.completion_tokens ?? null;
+      billedTotalTokens = completion.usage?.total_tokens ?? null;
+      billedRequestId = completion.id ?? null;
+
       const generated = completion.choices[0]?.message?.content?.trim() ?? "";
       const summary =
         generated.length >= 40 && generated.length <= 4_000 ? generated : fallback;
@@ -232,7 +248,7 @@ export async function POST(request: Request) {
         "ai_summarize_stats",
         completion.usage?.total_tokens ?? null,
       );
-      recordAITelemetry({
+      await recordDurableAIUsage({
         feature: "ai_summarize_stats",
         endpoint: "/api/ai/summarize-stats",
         shop_id: access.profile.shop_id,
@@ -240,12 +256,15 @@ export async function POST(request: Request) {
         model,
         latency_ms: Date.now() - startedAt,
         prompt_tokens: completion.usage?.prompt_tokens ?? null,
+        cached_prompt_tokens:
+          completion.usage?.prompt_tokens_details?.cached_tokens ?? null,
         completion_tokens: completion.usage?.completion_tokens ?? null,
         total_tokens: completion.usage?.total_tokens ?? null,
         estimated_cost_usd: estimatedCost,
         status: "success",
         error_code: null,
         error_message: null,
+        provider_request_id: completion.id ?? null,
       });
       registerAIUsageEvent({
         feature: "ai_summarize_stats",
@@ -266,28 +285,36 @@ export async function POST(request: Request) {
       } satisfies OwnerReportSummaryResponse);
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : "AI summary failed";
-      recordAITelemetry({
+      await recordDurableAIUsage({
         feature: "ai_summarize_stats",
         endpoint: "/api/ai/summarize-stats",
         shop_id: access.profile.shop_id,
         user_id: access.profile.id,
         model,
         latency_ms: Date.now() - startedAt,
-        prompt_tokens: null,
-        completion_tokens: null,
-        total_tokens: null,
-        estimated_cost_usd: 0,
+        prompt_tokens: billedPromptTokens,
+        cached_prompt_tokens: billedCachedPromptTokens,
+        completion_tokens: billedCompletionTokens,
+        total_tokens: billedTotalTokens,
+        estimated_cost_usd: estimateAICostUsd(
+          "ai_summarize_stats",
+          billedTotalTokens,
+        ),
         status: "error",
         error_code: "ai_summary_error",
         error_message: message,
+        provider_request_id: billedRequestId,
       });
       registerAIUsageEvent({
         feature: "ai_summarize_stats",
         endpoint: "/api/ai/summarize-stats",
         shopId: access.profile.shop_id,
         model,
-        totalTokens: null,
-        estimatedCostUsd: 0,
+        totalTokens: billedTotalTokens,
+        estimatedCostUsd: estimateAICostUsd(
+          "ai_summarize_stats",
+          billedTotalTokens,
+        ),
         status: "error",
         errorCode: "ai_summary_error",
       });

@@ -1,17 +1,5 @@
 // Shared durable-quota + cost/telemetry accounting for AI-calling API
-// routes, extracted from /api/ai/interpret's own (previously hand-rolled,
-// duplicated-on-every-failure-path) wiring around claimDurableAIRouteQuota /
-// completeDurableAIRouteQuota / estimateAICostUsd / recordAITelemetry /
-// registerAIUsageEvent.
-//
-// This is deliberately model-call-agnostic: `operation` can wrap a plain
-// `openai.chat.completions.create()` call (as /api/ai/interpret's own
-// prompt/response-format still does — unchanged by this file) or a
-// runOpenAIStructuredJson() call, as long as it reports back the token
-// usage and model actually used. That keeps this the one place a future
-// caller goes for the same operational safety net /api/ai/interpret has
-// always had, without forcing every caller onto the same OpenAI API
-// surface or response format.
+// routes, extracted from /api/ai/interpret's own wiring.
 import "server-only";
 
 import {
@@ -23,13 +11,12 @@ import {
   estimateAICostUsd,
   registerAIUsageEvent,
 } from "@/features/shared/lib/server/ai-ops-guard";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import type { AIFeature } from "@/features/shared/lib/server/ai-policy";
 import type { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type AdminSupabaseClient = ReturnType<typeof createAdminSupabase>;
 
-/** The shop/actor is rate-limited or over its hard monthly budget. */
 export class AIQuotaExceededError extends Error {
   constructor(
     public readonly reason: "rate_limited" | "hard_budget_exceeded",
@@ -40,7 +27,6 @@ export class AIQuotaExceededError extends Error {
   }
 }
 
-/** The durable quota RPC itself failed (distinct from a denied claim). */
 export class AIQuotaUnavailableError extends Error {
   constructor(cause: unknown) {
     super("AI route quota unavailable");
@@ -64,20 +50,12 @@ export type AIRouteQuotaOperationResult<T> = {
   latencyMs: number;
   usage?: {
     promptTokens: number | null;
+    cachedPromptTokens?: number | null;
     completionTokens: number | null;
     totalTokens: number | null;
   };
 };
 
-/**
- * Wraps a model call with the same durable-quota claim/complete, cost
- * estimation, and telemetry/usage-event accounting /api/ai/interpret has
- * always had. Throws AIQuotaUnavailableError if the quota RPC itself
- * fails, AIQuotaExceededError if the shop/actor is over quota (neither
- * case runs `operation`), or whatever `operation` itself throws on a model
- * failure (recorded as a failed completion first, then rethrown unwrapped
- * so callers keep their own error-to-status-code mapping).
- */
 export async function withDurableAIQuota<T>(
   config: AIRouteQuotaConfig,
   operation: () => Promise<AIRouteQuotaOperationResult<T>>,
@@ -112,7 +90,9 @@ export async function withDurableAIQuota<T>(
       actualCostUsd: estimatedCostUsd,
       succeeded: true,
     });
-    recordAITelemetry({
+    await recordDurableAIUsage({
+      event_key: `quota:${claim.receiptId}`,
+      quota_receipt_id: claim.receiptId,
       feature: config.telemetryFeature,
       endpoint: config.endpoint,
       shop_id: config.shopId,
@@ -120,6 +100,7 @@ export async function withDurableAIQuota<T>(
       model: result.model,
       latency_ms: result.latencyMs,
       prompt_tokens: result.usage?.promptTokens ?? null,
+      cached_prompt_tokens: result.usage?.cachedPromptTokens ?? null,
       completion_tokens: result.usage?.completionTokens ?? null,
       total_tokens: totalTokens,
       estimated_cost_usd: estimatedCostUsd,
@@ -154,7 +135,9 @@ export async function withDurableAIQuota<T>(
       actualCostUsd: 0,
       succeeded: false,
     });
-    recordAITelemetry({
+    await recordDurableAIUsage({
+      event_key: `quota:${claim.receiptId}`,
+      quota_receipt_id: claim.receiptId,
       feature: config.telemetryFeature,
       endpoint: config.endpoint,
       shop_id: config.shopId,

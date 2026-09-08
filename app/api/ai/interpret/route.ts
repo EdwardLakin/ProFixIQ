@@ -332,6 +332,8 @@ Optional section hint (may be empty): ${norm(ctx?.sectionTitle ?? "")}
             latencyMs: Date.now() - callStartedAt,
             usage: {
               promptTokens: completion.usage?.prompt_tokens ?? null,
+              cachedPromptTokens:
+                completion.usage?.prompt_tokens_details?.cached_tokens ?? null,
               completionTokens: completion.usage?.completion_tokens ?? null,
               totalTokens: completion.usage?.total_tokens ?? null,
             },

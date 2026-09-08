@@ -30101,6 +30101,10 @@ export type Database = {
         }
         Returns: string
       }
+      record_ai_usage_ledger: {
+        Args: { p_payload: Json; p_shop_id: string; p_user_id: string }
+        Returns: string
+      }
       record_fleet_portal_invitation_email_acceptance: {
         Args: {
           p_accepted_at: string

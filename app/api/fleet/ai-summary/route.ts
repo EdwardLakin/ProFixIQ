@@ -13,7 +13,7 @@ import {
   estimateAICostUsd,
   registerAIUsageEvent,
 } from "@/features/shared/lib/server/ai-ops-guard";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import {
   getOpenAIClient,
   isOpenAIConfigured,
@@ -311,7 +311,7 @@ export async function POST(request: Request) {
         }
         const totalTokens = completion.usage?.total_tokens ?? null;
         const estimatedCost = estimateAICostUsd(feature, totalTokens);
-        recordAITelemetry({
+        await recordDurableAIUsage({
           feature,
           endpoint,
           shop_id: scope.shopId,
@@ -319,12 +319,15 @@ export async function POST(request: Request) {
           model,
           latency_ms: Date.now() - startedAt,
           prompt_tokens: completion.usage?.prompt_tokens ?? null,
+          cached_prompt_tokens:
+            completion.usage?.prompt_tokens_details?.cached_tokens ?? null,
           completion_tokens: completion.usage?.completion_tokens ?? null,
           total_tokens: totalTokens,
           estimated_cost_usd: estimatedCost,
           status: "success",
           error_code: null,
           error_message: null,
+          provider_request_id: completion.id ?? null,
         });
         registerAIUsageEvent({
           feature,
@@ -339,7 +342,7 @@ export async function POST(request: Request) {
       } catch (error) {
         const message =
           error instanceof Error ? error.message : "AI summary failed";
-        recordAITelemetry({
+        await recordDurableAIUsage({
           feature,
           endpoint,
           shop_id: scope.shopId,

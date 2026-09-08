@@ -9,7 +9,7 @@ import {
   estimateAISpeechCostUsd,
   registerAIUsageEvent,
 } from "@/features/shared/lib/server/ai-ops-guard";
-import { recordAITelemetry } from "@/features/shared/lib/server/ai-telemetry";
+import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import {
   getOpenAIClient,
   isOpenAIConfigured,
@@ -33,30 +33,37 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function recordSpeechResult(input: {
+async function recordSpeechResult(input: {
   access: TechnicianCopilotAccess;
   startedAt: number;
   textLength: number;
   status: "success" | "error";
   errorCode: string | null;
   errorMessage: string | null;
-}): void {
-  const estimatedCostUsd =
+}): Promise<void> {
+  // Keep the existing estimate for the legacy in-memory operational guard.
+  // The durable ledger independently leaves gpt-4o-mini-tts cost null because
+  // OpenAI bills this model by text/audio tokens and this endpoint receives no
+  // provider usage object with those billable units.
+  const legacyEstimatedCostUsd =
     input.status === "success"
       ? estimateAISpeechCostUsd(input.textLength)
       : 0;
 
-  recordAITelemetry({
+  await recordDurableAIUsage({
     feature: FEATURE,
     endpoint: ENDPOINT,
     shop_id: input.access.shopId,
     user_id: input.access.profileId,
+    provider: "openai",
     model: SPEECH_MODEL,
+    modality: "speech",
     latency_ms: Date.now() - input.startedAt,
     prompt_tokens: null,
     completion_tokens: null,
     total_tokens: null,
-    estimated_cost_usd: estimatedCostUsd,
+    speech_characters: input.textLength,
+    estimated_cost_usd: legacyEstimatedCostUsd,
     status: input.status,
     error_code: input.errorCode,
     error_message: input.errorMessage,
@@ -67,7 +74,7 @@ function recordSpeechResult(input: {
     shopId: input.access.shopId,
     model: SPEECH_MODEL,
     totalTokens: null,
-    estimatedCostUsd,
+    estimatedCostUsd: legacyEstimatedCostUsd,
     status: input.status,
     errorCode: input.errorCode,
   });
@@ -126,7 +133,7 @@ export async function POST(request: NextRequest) {
   }
 
   if (!isOpenAIConfigured()) {
-    recordSpeechResult({
+    await recordSpeechResult({
       access,
       startedAt,
       textLength: text.length,
@@ -149,7 +156,7 @@ export async function POST(request: NextRequest) {
     shopId: access.shopId,
   });
   if (!enforcement.allowed) {
-    recordSpeechResult({
+    await recordSpeechResult({
       access,
       startedAt,
       textLength: text.length,
@@ -187,7 +194,7 @@ export async function POST(request: NextRequest) {
       throw new Error("OpenAI returned an empty speech response");
     }
 
-    recordSpeechResult({
+    await recordSpeechResult({
       access,
       startedAt,
       textLength: text.length,
@@ -212,7 +219,7 @@ export async function POST(request: NextRequest) {
     const message =
       caught instanceof Error ? caught.message : "Speech generation failed";
 
-    recordSpeechResult({
+    await recordSpeechResult({
       access,
       startedAt,
       textLength: text.length,
