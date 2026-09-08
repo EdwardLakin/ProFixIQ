@@ -15,7 +15,7 @@ import { runWithProviderTimeout } from "@/features/shared/lib/server/provider-ti
 
 export type OpenAIStructuredJsonUsage = {
   promptTokens: number | null;
-  cachedPromptTokens: number | null;
+  cachedPromptTokens?: number | null;
   completionTokens: number | null;
   totalTokens: number | null;
 };
@@ -50,15 +50,17 @@ function readUsage(response: unknown): OpenAIStructuredJsonUsage {
     return null;
   };
 
-  return {
+  const result: OpenAIStructuredJsonUsage = {
     promptTokens: numberOrNull("input_tokens", "prompt_tokens"),
-    cachedPromptTokens: nestedNumberOrNull(
-      ["input_tokens_details", "prompt_tokens_details"],
-      "cached_tokens",
-    ),
     completionTokens: numberOrNull("output_tokens", "completion_tokens"),
     totalTokens: numberOrNull("total_tokens"),
   };
+  const cachedPromptTokens = nestedNumberOrNull(
+    ["input_tokens_details", "prompt_tokens_details"],
+    "cached_tokens",
+  );
+  if (cachedPromptTokens !== null) result.cachedPromptTokens = cachedPromptTokens;
+  return result;
 }
 
 function responseId(response: unknown): string | null {
@@ -163,7 +165,7 @@ export async function runOpenAIStructuredJson<T>(params: {
         modality: "text",
         latency_ms: latencyMs,
         prompt_tokens: usage.promptTokens,
-        cached_prompt_tokens: usage.cachedPromptTokens,
+        cached_prompt_tokens: usage.cachedPromptTokens ?? null,
         completion_tokens: usage.completionTokens,
         total_tokens: usage.totalTokens,
         status: "success",
