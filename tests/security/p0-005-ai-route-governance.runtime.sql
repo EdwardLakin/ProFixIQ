@@ -147,6 +147,16 @@ set user_id = excluded.user_id,
     role = excluded.role,
     full_name = excluded.full_name;
 
+-- public.profiles carries a BEFORE INSERT trigger, trg_sync_profiles_user_id,
+-- whose function forces `new.user_id := new.id`. Inserting the divergent
+-- legacy/imported actor therefore cannot produce the shape this test needs:
+-- the row lands as user_id = ...0013 and the auth-user lookup below finds
+-- nothing. The trigger is INSERT-only, so restore the divergence with an
+-- UPDATE, which is also how such a row arises in practice.
+update public.profiles
+set user_id = '57000000-0000-4000-8000-000000000003'
+where id = '57000000-0000-4000-8000-000000000013';
+
 insert into public.shops (id, owner_id, business_name, name, user_limit)
 values
   (
