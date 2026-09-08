@@ -49,7 +49,7 @@ type LedgerRpcResult = {
 
 type LedgerRpcClient = {
   rpc: (
-    name: "record_ai_usage_ledger",
+    name: "insert_ai_event",
     args: Record<string, unknown>,
   ) => Promise<LedgerRpcResult>;
 };
@@ -59,6 +59,8 @@ export type AITelemetryRecordResult = {
   persisted: boolean;
   estimatedCostUsd: number | null;
 };
+
+const LEDGER_TRAINING_SOURCE = "__durable_ai_usage_ledger__";
 
 function normalizedCost(event: AITelemetryEvent): number | null {
   const provider = event.provider ?? "openai";
@@ -109,32 +111,38 @@ export async function recordAITelemetry(
 
   try {
     const admin = createAdminSupabase() as unknown as LedgerRpcClient;
-    const { error } = await admin.rpc("record_ai_usage_ledger", {
-      p_event_key: eventKey,
+    const { error } = await admin.rpc("insert_ai_event", {
       p_shop_id: event.shop_id,
+      p_event_type: "ai_usage_record",
+      p_payload: {
+        event_key: eventKey,
+        feature: event.feature,
+        endpoint: event.endpoint,
+        provider: event.provider ?? "openai",
+        model: event.model,
+        modality: event.modality ?? "text",
+        rate_card_version: AI_RATE_CARD_VERSION,
+        prompt_tokens: event.prompt_tokens,
+        cached_prompt_tokens: event.cached_prompt_tokens ?? null,
+        completion_tokens: event.completion_tokens,
+        total_tokens: event.total_tokens,
+        audio_input_tokens: event.audio_input_tokens ?? null,
+        audio_output_tokens: event.audio_output_tokens ?? null,
+        speech_characters: event.speech_characters ?? null,
+        duration_seconds: event.duration_seconds ?? null,
+        estimated_cost_usd: estimatedCostUsd,
+        latency_ms: Math.max(0, Math.round(event.latency_ms)),
+        status: event.status,
+        error_code: event.error_code,
+        error_message: event.error_message,
+        provider_request_id: event.provider_request_id ?? null,
+        quota_receipt_id: event.quota_receipt_id ?? null,
+        occurred_at: event.occurred_at ?? null,
+      },
+      p_entity_id: null,
+      p_entity_table: null,
       p_user_id: event.user_id,
-      p_feature: event.feature,
-      p_endpoint: event.endpoint,
-      p_provider: event.provider ?? "openai",
-      p_model: event.model,
-      p_modality: event.modality ?? "text",
-      p_prompt_tokens: event.prompt_tokens,
-      p_cached_prompt_tokens: event.cached_prompt_tokens ?? null,
-      p_completion_tokens: event.completion_tokens,
-      p_total_tokens: event.total_tokens,
-      p_audio_input_tokens: event.audio_input_tokens ?? null,
-      p_audio_output_tokens: event.audio_output_tokens ?? null,
-      p_speech_characters: event.speech_characters ?? null,
-      p_duration_seconds: event.duration_seconds ?? null,
-      p_estimated_cost_usd: estimatedCostUsd,
-      p_rate_card_version: AI_RATE_CARD_VERSION,
-      p_latency_ms: Math.max(0, Math.round(event.latency_ms)),
-      p_status: event.status,
-      p_error_code: event.error_code,
-      p_error_message: event.error_message,
-      p_provider_request_id: event.provider_request_id ?? null,
-      p_quota_receipt_id: event.quota_receipt_id ?? null,
-      p_occurred_at: event.occurred_at ?? null,
+      p_training_source: LEDGER_TRAINING_SOURCE,
     });
 
     if (error) {
