@@ -9,8 +9,7 @@ import {
 describe("AI cost accounting", () => {
   it("prices GPT-5.5 input, cached input, and output separately", () => {
     expect(
-      estimateOpenAITextCostUsd({
-        model: "gpt-5.5",
+      estimateOpenAITextCostUsd("gpt-5.5", {
         promptTokens: 1_000_000,
         cachedPromptTokens: 400_000,
         completionTokens: 100_000,
@@ -20,8 +19,7 @@ describe("AI cost accounting", () => {
 
   it("prices GPT-5.4-mini with its own rate card", () => {
     expect(
-      estimateOpenAITextCostUsd({
-        model: "gpt-5.4-mini",
+      estimateOpenAITextCostUsd("gpt-5.4-mini", {
         promptTokens: 1_000_000,
         cachedPromptTokens: 0,
         completionTokens: 100_000,
@@ -31,8 +29,7 @@ describe("AI cost accounting", () => {
 
   it("returns null for an unknown model instead of inventing cost", () => {
     expect(
-      estimateOpenAITextCostUsd({
-        model: "future-model",
+      estimateOpenAITextCostUsd("future-model", {
         promptTokens: 1_000,
         cachedPromptTokens: 0,
         completionTokens: 100,
@@ -45,6 +42,6 @@ describe("AI cost accounting", () => {
   });
 
   it("carries an explicit rate-card version", () => {
-    expect(AI_RATE_CARD_VERSION).toMatch(/^openai-/);
+    expect(AI_RATE_CARD_VERSION).toBe("openai-2026-09-08-v1");
   });
 });
