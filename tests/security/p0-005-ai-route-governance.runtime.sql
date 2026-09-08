@@ -48,12 +48,30 @@ begin
 
   if has_schema_privilege('anon', 'private', 'USAGE')
      or has_schema_privilege('authenticated', 'private', 'USAGE')
+     or has_schema_privilege('service_role', 'private', 'USAGE')
      or has_table_privilege('anon', 'private.ai_usage_ledger', 'SELECT')
      or has_table_privilege('authenticated', 'private.ai_usage_ledger', 'SELECT')
-     or not has_schema_privilege('service_role', 'private', 'USAGE')
-     or not has_table_privilege('service_role', 'private.ai_usage_ledger', 'SELECT')
-     or not has_table_privilege('service_role', 'private.ai_usage_ledger', 'INSERT') then
-    raise exception 'P0-005 runtime assertion failed: private AI usage ledger ACL is unsafe';
+     or has_table_privilege('service_role', 'private.ai_usage_ledger', 'SELECT')
+     or has_table_privilege('service_role', 'private.ai_usage_ledger', 'INSERT') then
+    raise exception 'P0-005 runtime assertion failed: private AI usage ledger is exposed';
+  end if;
+
+  if has_function_privilege(
+    'anon',
+    'rls_helpers.record_private_ai_usage_ledger(uuid,uuid,jsonb)',
+    'EXECUTE'
+  )
+  or has_function_privilege(
+    'authenticated',
+    'rls_helpers.record_private_ai_usage_ledger(uuid,uuid,jsonb)',
+    'EXECUTE'
+  )
+  or not has_function_privilege(
+    'service_role',
+    'rls_helpers.record_private_ai_usage_ledger(uuid,uuid,jsonb)',
+    'EXECUTE'
+  ) then
+    raise exception 'P0-005 runtime assertion failed: AI ledger helper ACL is unsafe';
   end if;
 end
 $$;
@@ -159,7 +177,6 @@ declare
   v_retry uuid;
   v_provider_first uuid;
   v_provider_retry uuid;
-  v_count integer;
 begin
   begin
     perform public.insert_ai_event(
@@ -234,14 +251,6 @@ begin
     raise exception 'P0-005 runtime assertion failed: AI ledger event-key retry was not idempotent';
   end if;
 
-  select count(*) into v_count
-  from private.ai_usage_ledger
-  where event_key = 'p0-005-ledger-event-1';
-
-  if v_count <> 1 then
-    raise exception 'P0-005 runtime assertion failed: AI ledger event-key retry duplicated rows';
-  end if;
-
   select public.insert_ai_event(
     'a5100000-0000-4000-8000-000000000001',
     'ai_usage_record',
@@ -287,6 +296,22 @@ begin
   if v_provider_first is null or v_provider_retry is distinct from v_provider_first then
     raise exception 'P0-005 runtime assertion failed: provider-request retry was not idempotent';
   end if;
+end
+$$;
+
+reset role;
+
+do $$
+declare
+  v_count integer;
+begin
+  select count(*) into v_count
+  from private.ai_usage_ledger
+  where event_key = 'p0-005-ledger-event-1';
+
+  if v_count <> 1 then
+    raise exception 'P0-005 runtime assertion failed: AI ledger event-key retry duplicated rows';
+  end if;
 
   select count(*) into v_count
   from private.ai_usage_ledger
@@ -299,6 +324,8 @@ begin
   end if;
 end
 $$;
+
+set local role service_role;
 
 do $$
 declare
