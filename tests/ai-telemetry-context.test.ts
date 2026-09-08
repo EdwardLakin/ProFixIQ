@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  currentAITelemetryContext,
+  getAITelemetryContext,
   withAITelemetryContext,
 } from "@/features/shared/lib/server/ai-telemetry-context";
 
 describe("AI telemetry request context", () => {
   it("is empty outside a scoped request", () => {
-    expect(currentAITelemetryContext()).toBeNull();
+    expect(getAITelemetryContext()).toBeNull();
   });
 
   it("keeps tenant attribution scoped to the async request", async () => {
@@ -15,7 +15,7 @@ describe("AI telemetry request context", () => {
       { endpoint: "/test", shopId: "shop-1", userId: "user-1" },
       async () => {
         await Promise.resolve();
-        return currentAITelemetryContext();
+        return getAITelemetryContext();
       },
     );
 
@@ -24,6 +24,6 @@ describe("AI telemetry request context", () => {
       shopId: "shop-1",
       userId: "user-1",
     });
-    expect(currentAITelemetryContext()).toBeNull();
+    expect(getAITelemetryContext()).toBeNull();
   });
 });
