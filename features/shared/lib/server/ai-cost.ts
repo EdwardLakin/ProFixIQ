@@ -1,5 +1,7 @@
 import "server-only";
 
+export const AI_RATE_CARD_VERSION = "openai-2026-09-08-v1";
+
 export type AITextUsage = {
   promptTokens: number | null;
   cachedPromptTokens?: number | null;
@@ -66,4 +68,10 @@ export function estimateOpenAITextCostUsd(
     (completionTokens / 1_000_000) * rate.outputPerMillionUsd;
 
   return Number(cost.toFixed(8));
+}
+
+/** Current tts-1 list price: $15 per 1M input characters. */
+export function estimateOpenAISpeechCostUsd(characterCount: number): number {
+  const characters = Math.max(characterCount, 0);
+  return Number(((characters / 1_000_000) * 15).toFixed(8));
 }
