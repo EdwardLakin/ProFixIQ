@@ -1,35 +1,124 @@
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 
 import {
   boundTechnicianCopilotModelInput,
+  TECHNICIAN_COPILOT_MODEL_CONTEXT_MAX_CHARS,
   TECHNICIAN_COPILOT_RECENT_TURN_LIMIT,
 } from "@/features/copilot/technician/server/reasoningContext";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
-import { readdirSync } from "node:fs";
 
 function source(relativePath: string): string {
   return readFileSync(join(process.cwd(), relativePath), "utf8");
 }
 
-function contextWithTurns(count: number) {
+function documentationHeavyContext(count: number) {
+  const occurredAt = (i: number) =>
+    new Date(Date.UTC(2026, 8, 9, 12, 0, 0) + i * 1000).toISOString();
+  const long = (label: string, i: number) => `${label} ${i} ${"detail ".repeat(80)}`;
+
   return {
     repairContext: {
-      conversation: Array.from({ length: count }, (_, i) => ({
-        eventId: `e${i}`,
+      repairSessionId: "11111111-1111-4111-8111-111111111111",
+      mode: "repair",
+      status: "active",
+      currentTask: long("current task", count),
+      complaint: long("customer complaint", count),
+      conversation: Array.from({ length: count * 2 }, (_, i) => ({
+        eventId: `conversation-${i}`,
         role: i % 2 === 0 ? "user" : "assistant",
-        text: `turn ${i} `.repeat(20),
-        turnId: `t${i}`,
-        occurredAt: new Date().toISOString(),
+        text: long(`turn ${i}`, i),
+        turnId: `turn-${Math.floor(i / 2)}`,
+        occurredAt: occurredAt(i),
       })),
+      observations: Array.from({ length: count }, (_, i) => ({
+        eventId: `observation-${i}`,
+        text: long("observation", i),
+        system: `system-${i}`,
+        component: `component-${i}`,
+        location: `location-${i}`,
+        occurredAt: occurredAt(i),
+      })),
+      measurements: Array.from({ length: count }, (_, i) => ({
+        eventId: `measurement-${i}`,
+        label: long("measurement", i),
+        value: `${i}.12345`,
+        unit: "V",
+        condition: long("condition", i),
+        component: `component-${i}`,
+        location: `location-${i}`,
+        occurredAt: occurredAt(i),
+      })),
+      dtcs: Array.from({ length: count }, (_, i) => ({
+        eventId: `dtc-${i}`,
+        code: `P${String(i % 10000).padStart(4, "0")}`,
+        module: `module-${i}`,
+        status: "current",
+        description: long("dtc description", i),
+        occurredAt: occurredAt(i),
+      })),
+      findings: Array.from({ length: count }, (_, i) => ({
+        eventId: `finding-${i}`,
+        text: long("finding", i),
+        disposition: i % 2 === 0 ? "failed" : "recommended",
+        system: `system-${i}`,
+        component: `component-${i}`,
+        location: `location-${i}`,
+        occurredAt: occurredAt(i),
+      })),
+      componentStates: Object.fromEntries(
+        Array.from({ length: count }, (_, i) => [
+          `component-${i}`,
+          {
+            eventId: `component-state-${i}`,
+            component: long("component", i),
+            location: `location-${i}`,
+            state: "removed",
+            occurredAt: occurredAt(i),
+          },
+        ]),
+      ),
+      fluidStates: Object.fromEntries(
+        Array.from({ length: count }, (_, i) => [
+          `fluid-${i}`,
+          {
+            eventId: `fluid-state-${i}`,
+            fluid: long("fluid", i),
+            system: `system-${i}`,
+            state: "drained",
+            occurredAt: occurredAt(i),
+          },
+        ]),
+      ),
+      pendingActions: Object.fromEntries(
+        Array.from({ length: count }, (_, i) => [
+          `pending-${String(i).padStart(5, "0")}`,
+          long("pending action", i),
+        ]),
+      ),
+      documentation: {
+        capturedEventCount: count,
+        lastCapturedAt: occurredAt(count),
+        repairNoteDraft: Array.from({ length: count }, (_, i) =>
+          long("repair note", i),
+        ).join("\n"),
+        timeline: Array.from({ length: count }, (_, i) => ({
+          eventId: `timeline-${i}`,
+          kind: "observation",
+          label: long("timeline", i),
+          occurredAt: occurredAt(i),
+        })),
+      },
     },
   };
 }
 
-describe("CoPilot conversation context is bounded on every model call", () => {
-  it("caps the conversation and summarizes the remainder", () => {
-    const bounded = boundTechnicianCopilotModelInput(contextWithTurns(60)) as {
+describe("Technician CoPilot model context is truly bounded", () => {
+  it("keeps only the recent conversation and summarizes older turns", () => {
+    const bounded = boundTechnicianCopilotModelInput(
+      documentationHeavyContext(60),
+    ) as {
       repairContext: { conversation: unknown[]; conversationSummary: string | null };
     };
 
@@ -39,26 +128,26 @@ describe("CoPilot conversation context is bounded on every model call", () => {
     expect(bounded.repairContext.conversationSummary).toBeTruthy();
   });
 
-  it("holds prompt size constant as the session grows without limit", () => {
-    // The cost bug is O(n) prompt growth per turn (quadratic per session). The
-    // property that matters is a ceiling: once the older-turn summary saturates,
-    // ten times more history must not add a single character.
-    const long = JSON.stringify(boundTechnicianCopilotModelInput(contextWithTurns(400)));
-    const longer = JSON.stringify(
-      boundTechnicianCopilotModelInput(contextWithTurns(4000)),
-    );
+  it("enforces a serialized ceiling for documentation-heavy 10/100/400/1000-turn sessions", () => {
+    const sizes = [10, 100, 400, 1000].map((turns) => {
+      const input = documentationHeavyContext(turns);
+      const bounded = boundTechnicianCopilotModelInput(input);
+      return {
+        turns,
+        bounded: JSON.stringify(bounded).length,
+        unbounded: JSON.stringify(input).length,
+      };
+    });
 
-    // A fixed ceiling, not proportional growth: 10x the history stays within a
-    // few hundred characters (the fixture's turn labels get one digit longer),
-    // while the unbounded payload is two orders of magnitude larger.
-    expect(Math.abs(longer.length - long.length)).toBeLessThan(500);
-    expect(longer.length).toBeLessThan(6000);
-
-    const unbounded = JSON.stringify(contextWithTurns(4000));
-    expect(longer.length).toBeLessThan(unbounded.length / 50);
+    for (const sample of sizes) {
+      expect(sample.bounded).toBeLessThanOrEqual(
+        TECHNICIAN_COPILOT_MODEL_CONTEXT_MAX_CHARS,
+      );
+    }
+    expect(sizes.at(-1)!.bounded).toBeLessThan(sizes.at(-1)!.unbounded / 20);
   });
 
-  it("applies the bound to the documentation extractor, not just the decision call", () => {
+  it("applies the bound to reasoning and silent documentation", () => {
     const documentation = source(
       "features/copilot/technician/server/documentation.ts",
     );
@@ -71,38 +160,76 @@ describe("CoPilot conversation context is bounded on every model call", () => {
   });
 });
 
-describe("CoPilot turns are governed like every other AI route", () => {
-  it("has a first-class AI policy for both model calls", () => {
-    expect(getAIPolicy("technician_copilot_text").maxTokens).toBeGreaterThan(0);
-    expect(getAIPolicy("technician_copilot_documentation").modelPurpose).toBe(
-      "fast",
+describe("CoPilot governance covers every entry point", () => {
+  it("routes both technician chat and Shop Assistant through the shared governed service", () => {
+    const route = source("app/api/copilot/technician/chat/route.ts");
+    const shopAssistant = source(
+      "features/shop-assistant/server/tools/domains/technician.ts",
+    );
+    const governed = source(
+      "features/copilot/technician/server/governedTurn.ts",
+    );
+
+    expect(route).toContain("runGovernedTechnicianCopilotTurn");
+    expect(shopAssistant).toContain("runGovernedTechnicianCopilotTurn");
+    expect(governed).toContain("claimDurableAIRouteQuota");
+    expect(governed).toContain("completeDurableAIRouteQuota");
+    expect(governed).toContain("withAITelemetryContext");
+  });
+
+  it("checks persisted replay state before reserving quota", () => {
+    const governed = source(
+      "features/copilot/technician/server/governedTurn.ts",
+    );
+    expect(governed.indexOf("turnMayCallProvider(turn)")).toBeGreaterThan(-1);
+    expect(governed.indexOf("turnMayCallProvider(turn)")).toBeLessThan(
+      governed.indexOf("claimDurableAIRouteQuota"),
     );
   });
 
-  it("caps the chat route durably and advances the anomaly counters", () => {
-    const route = source("app/api/copilot/technician/chat/route.ts");
+  it("makes provider timeouts canonical for registered AI features", () => {
+    const structured = source(
+      "features/shared/lib/server/openai-structured.ts",
+    );
+    expect(structured).toContain("canonicalPolicyTimeoutMs(params.feature)");
+    expect(structured).toContain("runWithProviderTimeout(timeoutMs");
+    expect(getAIPolicy("technician_copilot_text").timeoutMs).toBe(30_000);
+    expect(getAIPolicy("technician_copilot_documentation").timeoutMs).toBe(
+      20_000,
+    );
+  });
 
-    // The durable receipt is the real ceiling: the in-memory guard resets on
-    // every serverless cold start, so it cannot bound monthly spend on its own.
-    expect(route).toContain("claimDurableAIRouteQuota");
-    expect(route).toContain("completeDurableAIRouteQuota");
-    // registerAIUsageEvent still feeds the spike / high-cost / denial alerts.
-    expect(route).toContain("registerAIUsageEvent");
-    expect(route).toContain("estimateCopilotTurnCostUsd");
-    // Denials must surface as 429, not a silent success.
-    expect(route).toContain("hard_budget_exceeded");
+  it("does not leave a monthly hard-budget turn retryable on the technician client", () => {
+    const governed = source(
+      "features/copilot/technician/server/governedTurn.ts",
+    );
+    const client = source(
+      "features/copilot/technician/components/TechnicianTextCopilot.tsx",
+    );
+    expect(governed).toContain(
+      'this.status = code === "hard_budget_exceeded" ? 402 : 429',
+    );
+    expect(client).toContain("RECOVERABLE_TURN_STATUSES");
+    expect(client).not.toMatch(/RECOVERABLE_TURN_STATUSES[^;]*402/s);
+  });
+
+  it("keeps silent documentation as model/telemetry policy, not a second operational budget", () => {
+    expect(getAIPolicy("technician_copilot_documentation").modelPurpose).toBe(
+      "fast",
+    );
+    const ops = source("features/shared/lib/server/ai-ops-guard.ts");
+    expect(ops).toContain(
+      'Exclude<AIFeature, "technician_copilot_documentation">',
+    );
+    expect(ops).not.toContain("AI_BUDGET_HARD_USD_COPILOT_DOCUMENTATION");
   });
 });
 
 describe("durable quota features are backed by the database", () => {
-  // The receipts table CHECK and both quota RPCs validate `feature` against a
-  // hardcoded list. A DurableAIFeature with no SQL backing typechecks cleanly
-  // and then fails every claim at runtime as AI_ROUTE_QUOTA_INPUT_INVALID, so
-  // assert the two stay in step.
   function latestQuotaWhitelist(): string {
     const dir = "supabase/migrations";
     const files = readdirSync(join(process.cwd(), dir))
-      .filter((f) => f.endsWith(".sql"))
+      .filter((file) => file.endsWith(".sql"))
       .sort();
 
     let whitelist = "";
@@ -122,22 +249,10 @@ describe("durable quota features are backed by the database", () => {
     return whitelist;
   }
 
-  it("includes technician_copilot_text in the SQL whitelist", () => {
+  it("includes technician_copilot_text while preserving existing features", () => {
     const whitelist = latestQuotaWhitelist();
-
     expect(whitelist).toContain("technician_copilot_text");
-    // The pre-existing features must survive the widening.
     expect(whitelist).toContain("dtc_suggest");
     expect(whitelist).toContain("inspection_interpret");
-  });
-
-  it("routes the CoPilot turn through claim and completion", () => {
-    const route = source("app/api/copilot/technician/chat/route.ts");
-
-    expect(route).toContain("claimDurableAIRouteQuota");
-    // A claimed receipt that never settles counts against the window and budget
-    // until the stale sweep reclaims it, so both paths must complete it.
-    expect(route).toContain("settleReceipt(false)");
-    expect(route).toContain("settleReceipt(true)");
   });
 });
