@@ -586,10 +586,18 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     );
   }
 
-  const lines = filterDeferredInvoiceLines(
-    Array.isArray(linesRaw) ? linesRaw : [],
+  const rawLines = Array.isArray(linesRaw) ? linesRaw : [];
+  const deferredInvoiceLineIds = new Set(
+    rawLines
+      .filter(
+        (line) =>
+          String(line.status ?? "")
+            .trim()
+            .toLowerCase() === "deferred",
+      )
+      .map((line) => line.id),
   );
-  const invoiceLineIds = new Set(lines.map((line) => line.id));
+  const lines = filterDeferredInvoiceLines(rawLines);
 
   const { data: allocRaw, error: allocationsError } = await supabase
     .from("work_order_part_allocations")
@@ -788,8 +796,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
             PartRequestRow,
             "id" | "shop_id" | "work_order_id" | "quote_line_id"
           >
-        >
-      >();
+        >();
 
     for (const request of Array.isArray(requestRows) ? requestRows : []) {
       if (
@@ -888,8 +895,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
             | "price"
             | "default_price"
           >
-        >
-      >();
+        >();
 
     if (partRowsError) {
       throw new Error(
@@ -1113,20 +1119,21 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       `Customer sell price is missing for ${unpricedPart.name || "an attached part"}.`,
     );
   }
-  const hasAttachedPartsForInvoiceLines =
+  const hasUnresolvedAttachedParts =
     allocs.some(
       (allocation) =>
-        !!allocation.work_order_line_id &&
-        invoiceLineIds.has(allocation.work_order_line_id),
+        !allocation.work_order_line_id ||
+        !deferredInvoiceLineIds.has(allocation.work_order_line_id),
     ) ||
     stagedInvoiceParts.some(
-      (part) => !!part.lineId && invoiceLineIds.has(part.lineId),
+      (part) => !part.lineId || !deferredInvoiceLineIds.has(part.lineId),
     ) ||
     fallbackRequestItems.some(
       (item) =>
-        !!item.work_order_line_id && invoiceLineIds.has(item.work_order_line_id),
+        !item.work_order_line_id ||
+        !deferredInvoiceLineIds.has(item.work_order_line_id),
     );
-  if (parts.length === 0 && hasAttachedPartsForInvoiceLines) {
+  if (parts.length === 0 && hasUnresolvedAttachedParts) {
     throw new Error(
       "Attached parts could not be resolved into invoice line items.",
     );
