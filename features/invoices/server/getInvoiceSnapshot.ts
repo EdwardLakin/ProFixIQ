@@ -796,7 +796,8 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
             PartRequestRow,
             "id" | "shop_id" | "work_order_id" | "quote_line_id"
           >
-        >();
+        >
+      >();
 
     for (const request of Array.isArray(requestRows) ? requestRows : []) {
       if (
@@ -895,7 +896,8 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
             | "price"
             | "default_price"
           >
-        >();
+        >
+      >();
 
     if (partRowsError) {
       throw new Error(
