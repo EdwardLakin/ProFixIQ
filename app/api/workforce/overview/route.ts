@@ -49,6 +49,7 @@ const ACTIVE_LINE_EXCLUDED = [
   "closed",
   "invoiced",
   "declined",
+  "deferred",
   "voided",
 ];
 const OVERLOAD_THRESHOLD = 6;
