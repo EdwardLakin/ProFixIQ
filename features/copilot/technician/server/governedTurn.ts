@@ -14,7 +14,7 @@ import { runTechnicianCopilotTurn } from "./chat";
 import { sendCopilotServerCommand } from "./transport";
 
 export class TechnicianCopilotQuotaError extends Error {
-  readonly status = 429;
+  readonly status: 402 | 429;
 
   constructor(
     public readonly code: "rate_limited" | "hard_budget_exceeded",
@@ -26,6 +26,10 @@ export class TechnicianCopilotQuotaError extends Error {
         : "CoPilot is temporarily rate limited. Retry shortly.",
     );
     this.name = "TechnicianCopilotQuotaError";
+    // A short-window throttle can be retried. A monthly spend exhaustion must
+    // not remain in the technician client's retry queue and execute after a
+    // later billing-period reset, so surface it as a non-retryable status.
+    this.status = code === "hard_budget_exceeded" ? 402 : 429;
   }
 }
 
