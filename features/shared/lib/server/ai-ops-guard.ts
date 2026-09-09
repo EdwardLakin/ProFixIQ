@@ -161,6 +161,36 @@ const FEATURE_POLICY: Record<AIFeature, AIOpsPolicy> = {
     anomalyHighCostUsd: 0.2,
     anomalyHardDenialThreshold: 4,
   },
+  // Sized so ordinary technician use is never touched: 120 turns / 5 min is far
+  // above any human conversational rate, and the monthly budget only bites on a
+  // runaway. Every value is env-overridable for tuning once the durable ledger
+  // has real per-shop data.
+  technician_copilot_text: {
+    budgetSoftUsd: envNum("AI_BUDGET_SOFT_USD_COPILOT_TEXT", 400),
+    budgetHardUsd: envNum("AI_BUDGET_HARD_USD_COPILOT_TEXT", 600),
+    rateLimitMax: envNum("AI_RATE_LIMIT_COPILOT_TEXT_MAX", 120),
+    rateLimitWindowMs: envNum("AI_RATE_LIMIT_COPILOT_TEXT_WINDOW_MS", 5 * 60 * 1000),
+    anomalySpikeThreshold: envNum("AI_ANOMALY_SPIKE_COPILOT_TEXT", 90),
+    anomalyFailureThreshold: envNum("AI_ANOMALY_FAIL_COPILOT_TEXT", 8),
+    anomalyHighCostUsd: envNum("AI_ANOMALY_COST_COPILOT_TEXT", 0.3),
+    anomalyHardDenialThreshold: envNum("AI_ANOMALY_DENIAL_COPILOT_TEXT", 6),
+  },
+  technician_copilot_documentation: {
+    budgetSoftUsd: envNum("AI_BUDGET_SOFT_USD_COPILOT_DOCUMENTATION", 60),
+    budgetHardUsd: envNum("AI_BUDGET_HARD_USD_COPILOT_DOCUMENTATION", 100),
+    rateLimitMax: envNum("AI_RATE_LIMIT_COPILOT_DOCUMENTATION_MAX", 120),
+    rateLimitWindowMs: envNum(
+      "AI_RATE_LIMIT_COPILOT_DOCUMENTATION_WINDOW_MS",
+      5 * 60 * 1000,
+    ),
+    anomalySpikeThreshold: envNum("AI_ANOMALY_SPIKE_COPILOT_DOCUMENTATION", 90),
+    anomalyFailureThreshold: envNum("AI_ANOMALY_FAIL_COPILOT_DOCUMENTATION", 8),
+    anomalyHighCostUsd: envNum("AI_ANOMALY_COST_COPILOT_DOCUMENTATION", 0.1),
+    anomalyHardDenialThreshold: envNum(
+      "AI_ANOMALY_DENIAL_COPILOT_DOCUMENTATION",
+      6,
+    ),
+  },
   inspection_interpret: {
     budgetSoftUsd: 35,
     budgetHardUsd: 50,
@@ -181,6 +211,17 @@ export function estimateAICostUsd(feature: AIFeature, totalTokens: number | null
       : envNum("AI_COST_PER_1K_TOKENS_DEFAULT", 0.006);
   const minimumFlat = feature === "openai_realtime_token" ? 0.001 : 0;
   return Number(((tokens / 1000) * perThousand + minimumFlat).toFixed(6));
+}
+
+/**
+ * Per-turn proxy used to advance the CoPilot's monthly operational budget.
+ * `enforceAIOperationalPolicy` only reads a counter that `registerAIUsageEvent`
+ * increments, so without registering a cost the budget never moves and the
+ * guard degrades to a rate limit. Real per-turn cost lands in the durable
+ * ledger; replace this proxy once that data exists.
+ */
+export function estimateCopilotTurnCostUsd(): number {
+  return envNum("AI_COST_PER_COPILOT_TURN_USD", 0.02);
 }
 
 export function estimateAISpeechCostUsd(characterCount: number): number {

@@ -1,6 +1,7 @@
 import "server-only";
 
 import { runOpenAIStructuredJson } from "@/features/shared/lib/server/openai-structured";
+import { boundTechnicianCopilotModelInput } from "./reasoningContext";
 import type {
   SilentDocumentationEvent,
   SilentDocumentationEventType,
@@ -219,7 +220,11 @@ export async function extractTechnicianDocumentationTurn(
     purpose: "fast",
     feature: "technician_copilot_documentation",
     system: SYSTEM,
-    user: input,
+    // Bound the repair context exactly as the decision call does. Without this
+    // the silent documentation extractor still receives every conversation turn
+    // ever recorded for the session, so its prompt grows linearly with turn
+    // count and session cost grows quadratically.
+    user: boundTechnicianCopilotModelInput(input),
     schemaName: "technician_copilot_documentation_turn",
     validate: validateTechnicianDocumentationExtraction,
     fallback: () => ({ events: [] }),

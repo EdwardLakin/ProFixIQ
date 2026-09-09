@@ -11,6 +11,11 @@ import {
 } from "@/features/copilot/technician/server/chat";
 import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import {
+  enforceAIOperationalPolicy,
+  estimateCopilotTurnCostUsd,
+  registerAIUsageEvent,
+} from "@/features/shared/lib/server/ai-ops-guard";
 
 export const runtime = "nodejs";
 
@@ -76,6 +81,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // The CoPilot turn runs two model calls and was previously the only AI
+    // route with no spend ceiling at all. 120 turns / 5 min is far above any
+    // human conversational rate, so this bounds a runaway without touching
+    // ordinary technician use.
+    const enforcement = enforceAIOperationalPolicy({
+      feature: "technician_copilot_text",
+      endpoint: "/api/copilot/technician/chat",
+      shopId: access.shopId,
+    });
+    if (!enforcement.allowed) {
+      return NextResponse.json(
+        {
+          error:
+            "CoPilot is temporarily rate limited for this shop. Retry shortly.",
+          code: enforcement.code,
+        },
+        { status: 429 },
+      );
+    }
+
     const turnId =
       typeof body.turnId === "string" && body.turnId.trim()
         ? body.turnId.trim().slice(0, 128)
@@ -106,6 +131,20 @@ export async function POST(request: NextRequest) {
           recentConversations,
         }),
     );
+
+    // Advance the shop's monthly CoPilot budget. enforceAIOperationalPolicy
+    // above only reads a counter this call increments, so without it the guard
+    // would degrade to a rate limit and the budget would never move.
+    registerAIUsageEvent({
+      feature: "technician_copilot_text",
+      endpoint: "/api/copilot/technician/chat",
+      shopId: access.shopId,
+      model: null,
+      totalTokens: null,
+      estimatedCostUsd: estimateCopilotTurnCostUsd(),
+      status: "success",
+      errorCode: null,
+    });
 
     return NextResponse.json({ ...result, turnId });
   } catch (error) {
