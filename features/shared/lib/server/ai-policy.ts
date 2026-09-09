@@ -16,6 +16,7 @@ export type AIFeature =
   | "fleet_operations_summary"
   | "openai_realtime_token"
   | "technician_copilot_speech"
+  | "inspection_voice_speech"
   | "work_order_documentation_rewrite"
   | "branding_generate_logo"
   | "dtc_suggest"
@@ -52,6 +53,13 @@ const AI_POLICIES: Record<AIFeature, AIPolicy> = {
   },
   technician_copilot_speech: {
     feature: "technician_copilot_speech",
+    modelPurpose: "fast",
+    timeoutMs: 20000,
+    maxTokens: 0,
+    fallbackMode: "hard_fail",
+  },
+  inspection_voice_speech: {
+    feature: "inspection_voice_speech",
     modelPurpose: "fast",
     timeoutMs: 20000,
     maxTokens: 0,

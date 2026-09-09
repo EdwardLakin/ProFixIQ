@@ -518,6 +518,10 @@ function localFallbackCommands(text: string): ParsedCommand[] {
   return [];
 }
 
+// Flat, device-default browser TTS — the "old school robotic" voice.
+// speakNatural below is the primary path now; this only runs when that
+// fails (no OpenAI-configured voice, network error, or nothing to play
+// through), so the technician still hears *something* rather than silence.
 function speakLocal(text: string, onDone?: () => void): void {
   try {
     if (typeof window === "undefined") return;
@@ -537,6 +541,48 @@ function speakLocal(text: string, onDone?: () => void): void {
     synth.speak(u);
   } catch {
     onDone?.();
+  }
+}
+
+const NATURAL_SPEECH_TIMEOUT_MS = 20_000;
+
+/**
+ * Fetches a natural-sounding spoken rendering of `text` from the shared
+ * neural voice endpoint — the same gpt-4o-mini-tts "marin" voice the
+ * Technician CoPilot uses (see
+ * features/shared/lib/server/naturalSpeech.ts) — and plays it through the
+ * realtime voice transport's own audio graph (voice.playAudio; see
+ * features/shared/voice/useRealtimeTranscription.ts). Returns false on any
+ * failure so the caller falls back to speakLocal rather than staying
+ * silent.
+ */
+async function speakNatural(
+  text: string,
+  playAudio: (audio: ArrayBuffer) => Promise<void>,
+): Promise<boolean> {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    NATURAL_SPEECH_TIMEOUT_MS,
+  );
+  try {
+    const response = await fetch("/api/inspections/speech", {
+      method: "POST",
+      cache: "no-store",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+      signal: controller.signal,
+    });
+    if (!response.ok) return false;
+    const audio = await response.arrayBuffer();
+    if (audio.byteLength === 0) return false;
+    await playAudio(audio);
+    return true;
+  } catch {
+    return false;
+  } finally {
+    window.clearTimeout(timeout);
   }
 }
 
@@ -2122,16 +2168,31 @@ type SmartMatchRow = {
   );
 
   /**
-   * Speaks feedback through the shared Realtime transport (see
-   * features/shared/voice/useRealtimeTranscription.ts). Mutes the mic first
-   * so the transport never transcribes its own spoken reply back into a new
-   * voice command, then unmutes once speech finishes — the same self-hearing
-   * guard the Technician CoPilot's voice bridge relies on. `voice.pause()`
-   * returns false when there's no live session to mute (idle/error), in
-   * which case there's nothing to resume either.
+   * Speaks feedback with the natural neural voice (speakNatural), falling
+   * back to the flat device voice (speakLocal) only if that fails. Either
+   * way, playback goes through the shared Realtime transport's own audio
+   * graph (see features/shared/voice/useRealtimeTranscription.ts) or the
+   * browser's speechSynthesis. Mutes the mic first so the transport never
+   * transcribes its own spoken reply back into a new voice command, then
+   * unmutes once speech finishes — the same self-hearing guard the
+   * Technician CoPilot's voice bridge relies on. `voice.pause()` returns
+   * false when there's no live session to mute (idle/error), in which case
+   * there's nothing to resume either, and voice.playAudio has nothing to
+   * play through — so that case goes straight to the device voice.
    */
   const speak = (text: string): void => {
     const paused = voice.pause();
+    if (paused && typeof voice.playAudio === "function") {
+      void (async () => {
+        const played = await speakNatural(text, voice.playAudio);
+        if (played) {
+          voice.resume();
+        } else {
+          speakLocal(text, () => voice.resume());
+        }
+      })();
+      return;
+    }
     speakLocal(text, () => {
       if (paused) voice.resume();
     });
