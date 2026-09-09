@@ -5,6 +5,7 @@ import "server-only";
 import {
   claimDurableAIRouteQuota,
   completeDurableAIRouteQuota,
+  getDurableAIReservationCostUsd,
   type DurableAIFeature,
 } from "@/features/shared/lib/server/durable-ai-guard";
 import {
@@ -42,10 +43,6 @@ export class AIQuotaUnavailableError extends Error {
 export type AIRouteQuotaConfig = {
   admin: AdminSupabaseClient;
   durableFeature: DurableAIFeature;
-  // Silent CoPilot documentation is telemetry-only and is governed by the
-  // parent technician_copilot_text turn. This durable quota wrapper also
-  // advances the operational anomaly counters, so it must use a feature that
-  // participates in those counters.
   telemetryFeature: AIOpsTelemetryFeature;
   endpoint: string;
   actorId: string;
@@ -133,6 +130,12 @@ export async function withDurableAIQuota<T>(
     const errorCode = /timed out/i.test(message)
       ? "provider_timeout"
       : "provider_error";
+    // A provider may have returned billable tokens before parsing/validation
+    // failed. Preserve the conservative reservation rather than converting the
+    // receipt to $0 and allowing repeated failures to evade the monthly cap.
+    const reservedCostUsd = getDurableAIReservationCostUsd(
+      config.durableFeature,
+    );
 
     await completeDurableAIRouteQuota({
       admin: config.admin,
@@ -140,7 +143,7 @@ export async function withDurableAIQuota<T>(
       shopId: config.shopId,
       actorId: config.actorId,
       receiptId: claim.receiptId,
-      actualCostUsd: 0,
+      actualCostUsd: reservedCostUsd,
       succeeded: false,
     });
     await recordDurableAIUsage({
@@ -155,7 +158,7 @@ export async function withDurableAIQuota<T>(
       prompt_tokens: null,
       completion_tokens: null,
       total_tokens: null,
-      estimated_cost_usd: 0,
+      estimated_cost_usd: reservedCostUsd,
       status: "error",
       error_code: errorCode,
       error_message: message.slice(0, 200),
@@ -166,7 +169,7 @@ export async function withDurableAIQuota<T>(
       shopId: config.shopId,
       model: null,
       totalTokens: null,
-      estimatedCostUsd: 0,
+      estimatedCostUsd: reservedCostUsd,
       status: "error",
       errorCode,
     });
