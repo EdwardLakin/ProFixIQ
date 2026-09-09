@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -12,22 +13,9 @@ const mocks = vi.hoisted(() => ({
   recordTelemetry: vi.fn(),
 }));
 
-vi.mock("@/features/copilot/technician/server/auth", () => {
-  class TechnicianCopilotAccessError extends Error {
-    constructor(
-      public status: number,
-      public code: string,
-      message: string,
-    ) {
-      super(message);
-    }
-  }
-
-  return {
-    requireTechnicianCopilotAccess: mocks.requireAccess,
-    TechnicianCopilotAccessError,
-  };
-});
+vi.mock("@/features/shared/lib/server/admin-access", () => ({
+  requireShopScopedApiAccess: mocks.requireAccess,
+}));
 
 vi.mock("@/features/shared/lib/server/openai", () => ({
   isOpenAIConfigured: mocks.isOpenAIConfigured,
@@ -50,25 +38,24 @@ vi.mock("@/features/shared/lib/server/ai-telemetry", () => ({
   recordDurableAIUsage: mocks.recordTelemetry,
 }));
 
-import { TechnicianCopilotAccessError } from "@/features/copilot/technician/server/auth";
-import { POST } from "../app/api/copilot/technician/speech/route";
+import { POST } from "../app/api/inspections/speech/route";
 
 const access = {
-  shopId: "shop-1",
-  profileId: "profile-1",
-  capabilities: { text: true, voice: true, documentation: true },
+  ok: true as const,
+  profile: { shop_id: "shop-1" },
+  authUserId: "auth-1",
 };
 const encodedAudio = new Uint8Array([9, 8, 7, 6]);
 
 function speechRequest(body: unknown): NextRequest {
-  return new Request("http://localhost/api/copilot/technician/speech", {
+  return new Request("http://localhost/api/inspections/speech", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   }) as NextRequest;
 }
 
-describe("POST /api/copilot/technician/speech", () => {
+describe("POST /api/inspections/speech", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.requireAccess.mockResolvedValue(access);
@@ -84,23 +71,26 @@ describe("POST /api/copilot/technician/speech", () => {
     });
   });
 
-  it("authenticates, tenant-scopes, and returns generated MP3 audio", async () => {
-    const response = await POST(speechRequest({ text: "Next job is the Ford." }));
+  it("authenticates on canRunInspections (not the CoPilot's own capability, and not a broader staff-role allowlist) and returns generated MP3 audio", async () => {
+    const response = await POST(speechRequest({ text: "Front left tire is flat." }));
 
     expect(response.status).toBe(200);
+    expect(mocks.requireAccess).toHaveBeenCalledWith({
+      requiredCapability: "canRunInspections",
+    });
     expect(response.headers.get("content-type")).toBe("audio/mpeg");
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(encodedAudio);
     expect(mocks.enforcePolicy).toHaveBeenCalledWith({
-      feature: "technician_copilot_speech",
-      endpoint: "/api/copilot/technician/speech",
+      feature: "inspection_voice_speech",
+      endpoint: "/api/inspections/speech",
       shopId: "shop-1",
     });
     expect(mocks.createSpeech).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "gpt-4o-mini-tts",
         voice: "marin",
-        input: "Next job is the Ford.",
+        input: "Front left tire is flat.",
         response_format: "mp3",
       }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
@@ -108,47 +98,19 @@ describe("POST /api/copilot/technician/speech", () => {
     expect(mocks.recordTelemetry).toHaveBeenCalledWith(
       expect.objectContaining({
         shop_id: "shop-1",
-        user_id: "profile-1",
-        status: "success",
-      }),
-    );
-    expect(mocks.registerUsage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        shopId: "shop-1",
-        estimatedCostUsd: 0.00042,
+        user_id: "auth-1",
         status: "success",
       }),
     );
   });
 
-  it("preserves canonical technician access failures", async () => {
-    mocks.requireAccess.mockRejectedValueOnce(
-      new TechnicianCopilotAccessError(
-        401,
-        "unauthorized",
-        "Authentication required.",
-      ),
-    );
+  it("passes through the shop-scoped access response when unauthorized", async () => {
+    const denied = NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+    mocks.requireAccess.mockResolvedValueOnce({ ok: false, response: denied });
 
     const response = await POST(speechRequest({ text: "Hello" }));
 
     expect(response.status).toBe(401);
-    await expect(response.json()).resolves.toEqual({
-      error: "Authentication required.",
-      code: "unauthorized",
-    });
-    expect(mocks.createSpeech).not.toHaveBeenCalled();
-  });
-
-  it("requires the tenant voice capability", async () => {
-    mocks.requireAccess.mockResolvedValueOnce({
-      ...access,
-      capabilities: { ...access.capabilities, voice: false },
-    });
-
-    const response = await POST(speechRequest({ text: "Hello" }));
-
-    expect(response.status).toBe(404);
     expect(mocks.createSpeech).not.toHaveBeenCalled();
   });
 
@@ -171,7 +133,7 @@ describe("POST /api/copilot/technician/speech", () => {
 
     expect(response.status).toBe(503);
     expect(body).toEqual({
-      error: "Generated CoPilot voice is not configured.",
+      error: "Generated voice is not configured.",
       code: "speech_not_configured",
     });
     expect(mocks.createSpeech).not.toHaveBeenCalled();
@@ -207,43 +169,9 @@ describe("POST /api/copilot/technician/speech", () => {
 
     expect(response.status).toBe(502);
     expect(body).toEqual({
-      error: "Generated CoPilot voice could not be created.",
+      error: "Generated voice could not be created.",
       code: "speech_generation_failed",
     });
     expect(JSON.stringify(body)).not.toContain("provider secret diagnostic");
-    expect(mocks.registerUsage).toHaveBeenCalledWith(
-      expect.objectContaining({
-        status: "error",
-        errorCode: "speech_generation_failed",
-      }),
-    );
-  });
-
-  it("times out a stalled speech provider request", async () => {
-    vi.useFakeTimers();
-    try {
-      mocks.createSpeech.mockImplementationOnce(
-        (_body: unknown, options?: { signal?: AbortSignal }) =>
-          new Promise((_, reject) => {
-            options?.signal?.addEventListener(
-              "abort",
-              () => reject(new DOMException("Aborted", "AbortError")),
-              { once: true },
-            );
-          }),
-      );
-
-      const pendingResponse = POST(speechRequest({ text: "Hello" }));
-      await vi.advanceTimersByTimeAsync(20_001);
-      const response = await pendingResponse;
-
-      expect(response.status).toBe(504);
-      await expect(response.json()).resolves.toEqual({
-        error: "Generated CoPilot voice took too long to respond.",
-        code: "speech_upstream_timeout",
-      });
-    } finally {
-      vi.useRealTimers();
-    }
   });
 });

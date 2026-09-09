@@ -115,6 +115,22 @@ const FEATURE_POLICY: Record<AIFeature, AIOpsPolicy> = {
       8,
     ),
   },
+  inspection_voice_speech: {
+    budgetSoftUsd: envNum("AI_BUDGET_SOFT_USD_INSPECTION_SPEECH", 25),
+    budgetHardUsd: envNum("AI_BUDGET_HARD_USD_INSPECTION_SPEECH", 40),
+    rateLimitMax: envNum("AI_RATE_LIMIT_INSPECTION_SPEECH_MAX", 60),
+    rateLimitWindowMs: envNum(
+      "AI_RATE_LIMIT_INSPECTION_SPEECH_WINDOW_MS",
+      5 * 60 * 1000,
+    ),
+    anomalySpikeThreshold: envNum("AI_ANOMALY_SPIKE_INSPECTION_SPEECH", 45),
+    anomalyFailureThreshold: envNum("AI_ANOMALY_FAIL_INSPECTION_SPEECH", 8),
+    anomalyHighCostUsd: envNum("AI_ANOMALY_COST_INSPECTION_SPEECH", 0.25),
+    anomalyHardDenialThreshold: envNum(
+      "AI_ANOMALY_DENIAL_INSPECTION_SPEECH",
+      8,
+    ),
+  },
   work_order_documentation_rewrite: {
     budgetSoftUsd: envNum("AI_BUDGET_SOFT_USD_DOCUMENTATION", 30),
     budgetHardUsd: envNum("AI_BUDGET_HARD_USD_DOCUMENTATION", 50),

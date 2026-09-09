@@ -1,8 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import {
-  requireTechnicianCopilotAccess,
-  TechnicianCopilotAccessError,
-} from "@/features/copilot/technician/server/auth";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import {
   enforceAIOperationalPolicy,
@@ -17,35 +14,43 @@ import {
   NATURAL_SPEECH_MAX_CHARACTERS,
 } from "@/features/shared/lib/server/naturalSpeech";
 
+// Natural-voice spoken feedback for inspection voice control
+// (GenericInspectionScreen.tsx's speak()), mirroring
+// /api/copilot/technician/speech/route.ts exactly — same shared TTS call,
+// same telemetry/policy shape — but gated on the canRunInspections
+// capability (the same one /api/ai/interpret/route.ts already requires for
+// inspection voice *input*), not the Technician CoPilot's own text/voice
+// capability toggle, which is a separate feature inspection voice control
+// has never depended on. A workforce-roles allowlist would have been too
+// broad here: it includes "parts", which canRunInspections is explicitly
+// false for.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
-const ENDPOINT = "/api/copilot/technician/speech";
-const FEATURE = "technician_copilot_speech" as const;
+const ENDPOINT = "/api/inspections/speech";
+const FEATURE = "inspection_voice_speech" as const;
 const SPEECH_MODEL = NATURAL_SPEECH_MODEL;
 const MAX_SPEECH_CHARACTERS = NATURAL_SPEECH_MAX_CHARACTERS;
-
-type TechnicianCopilotAccess = Awaited<
-  ReturnType<typeof requireTechnicianCopilotAccess>
->;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
 async function recordSpeechResult(input: {
-  access: TechnicianCopilotAccess;
+  shopId: string;
+  userId: string;
   startedAt: number;
   textLength: number;
   status: "success" | "error";
   errorCode: string | null;
   errorMessage: string | null;
 }): Promise<void> {
-  // Keep the existing estimate for the legacy in-memory operational guard.
-  // The durable ledger independently leaves gpt-4o-mini-tts cost null because
-  // OpenAI bills this model by text/audio tokens and this endpoint receives no
-  // provider usage object with those billable units.
+  // Same split as /api/copilot/technician/speech/route.ts: the legacy
+  // in-memory operational guard keeps its own estimate, while the durable
+  // ledger leaves gpt-4o-mini-tts cost null (OpenAI bills this model by
+  // text/audio tokens and this endpoint gets no provider usage object with
+  // those billable units).
   const legacyEstimatedCostUsd =
     input.status === "success"
       ? estimateAISpeechCostUsd(input.textLength)
@@ -54,8 +59,8 @@ async function recordSpeechResult(input: {
   await recordDurableAIUsage({
     feature: FEATURE,
     endpoint: ENDPOINT,
-    shop_id: input.access.shopId,
-    user_id: input.access.profileId,
+    shop_id: input.shopId,
+    user_id: input.userId,
     provider: "openai",
     model: SPEECH_MODEL,
     modality: "speech",
@@ -72,7 +77,7 @@ async function recordSpeechResult(input: {
   registerAIUsageEvent({
     feature: FEATURE,
     endpoint: ENDPOINT,
-    shopId: input.access.shopId,
+    shopId: input.shopId,
     model: SPEECH_MODEL,
     totalTokens: null,
     estimatedCostUsd: legacyEstimatedCostUsd,
@@ -83,33 +88,14 @@ async function recordSpeechResult(input: {
 
 export async function POST(request: NextRequest) {
   const startedAt = Date.now();
-  let access: TechnicianCopilotAccess;
 
-  try {
-    access = await requireTechnicianCopilotAccess();
-  } catch (caught) {
-    if (caught instanceof TechnicianCopilotAccessError) {
-      return NextResponse.json(
-        { error: caught.message, code: caught.code },
-        { status: caught.status },
-      );
-    }
-    console.error("[technician-copilot-speech] Access check failed", caught);
-    return NextResponse.json(
-      { error: "Technician CoPilot access could not be verified." },
-      { status: 500 },
-    );
-  }
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canRunInspections",
+  });
+  if (!access.ok) return access.response;
 
-  if (!access.capabilities.voice) {
-    return NextResponse.json(
-      {
-        error: "Technician CoPilot voice is not enabled.",
-        code: "technician_copilot_voice_disabled",
-      },
-      { status: 404 },
-    );
-  }
+  const shopId = access.profile.shop_id;
+  const userId = access.authUserId;
 
   let body: unknown;
   try {
@@ -139,7 +125,8 @@ export async function POST(request: NextRequest) {
   // have piled up against the policy while the key is missing.
   if (!isOpenAIConfigured()) {
     await recordSpeechResult({
-      access,
+      shopId,
+      userId,
       startedAt,
       textLength: text.length,
       status: "error",
@@ -148,7 +135,7 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json(
       {
-        error: "Generated CoPilot voice is not configured.",
+        error: "Generated voice is not configured.",
         code: "speech_not_configured",
       },
       { status: 503 },
@@ -158,11 +145,12 @@ export async function POST(request: NextRequest) {
   const enforcement = enforceAIOperationalPolicy({
     feature: FEATURE,
     endpoint: ENDPOINT,
-    shopId: access.shopId,
+    shopId,
   });
   if (!enforcement.allowed) {
     await recordSpeechResult({
-      access,
+      shopId,
+      userId,
       startedAt,
       textLength: text.length,
       status: "error",
@@ -171,7 +159,7 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json(
       {
-        error: "Generated CoPilot voice is temporarily limited.",
+        error: "Generated voice is temporarily limited.",
         code: enforcement.code,
       },
       { status: 429 },
@@ -186,14 +174,15 @@ export async function POST(request: NextRequest) {
 
   if (!result.ok) {
     await recordSpeechResult({
-      access,
+      shopId,
+      userId,
       startedAt,
       textLength: text.length,
       status: "error",
       errorCode: result.code,
       errorMessage: result.message,
     });
-    console.error("[technician-copilot-speech] Generation failed", {
+    console.error("[inspection-speech] Generation failed", {
       errorCode: result.code,
       message: result.message,
     });
@@ -201,8 +190,8 @@ export async function POST(request: NextRequest) {
       {
         error:
           result.code === "speech_upstream_timeout"
-            ? "Generated CoPilot voice took too long to respond."
-            : "Generated CoPilot voice could not be created.",
+            ? "Generated voice took too long to respond."
+            : "Generated voice could not be created.",
         code: result.code,
       },
       { status: result.status },
@@ -210,7 +199,8 @@ export async function POST(request: NextRequest) {
   }
 
   await recordSpeechResult({
-    access,
+    shopId,
+    userId,
     startedAt,
     textLength: text.length,
     status: "success",
