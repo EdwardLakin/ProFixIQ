@@ -22,12 +22,9 @@ import { hasActivePartsWaitingSignal } from "@/features/work-orders/lib/preLabor
 import {
   ACTIVE_WORK_ORDER_STATUSES,
   countActiveWorkOrders,
-  isActiveWorkOrderStatus,
   normalizeWorkOrderStatus,
 } from "@/features/work-orders/lib/work-order-status";
 import { toTechnicianJobBucket } from "@/features/work-orders/lib/technicianJobQueue";
-import { fetchAssignedTechnicianWork } from "@/features/work-orders/mobile/technicianOfflineDownload";
-import type { TechnicianOfflineBundle } from "@/features/work-orders/mobile/technicianOfflineTypes";
 import {
   buildMobileWorkOrderListHref,
   resolveMobileWorkOrderHref,
@@ -198,83 +195,60 @@ function accumulateLineSignal(
   if (hasActivePartsWaitingSignal(line)) signal.waitingParts += 1;
 }
 
-function matchesQueueStatus(
-  workOrderStatus: string | null | undefined,
-  status: string,
-): boolean {
-  if (status === "") return isActiveWorkOrderStatus(workOrderStatus);
-  return (
-    String(workOrderStatus ?? "")
-      .trim()
-      .toLowerCase()
-      .replaceAll(" ", "_") === status
-  );
-}
+type AssignedQueuePayload = {
+  workOrders: Row[];
+  lines: Array<
+    WorkOrderLineSummary & {
+      line_type: string | null;
+      punched_in_at: string | null;
+      punched_out_at: string | null;
+      technicianIds: string[];
+    }
+  >;
+};
 
 /**
  * Technicians cannot read work_orders/work_order_lines directly: the
  * restrictive financial-capability RLS policies deliberately fail closed for
  * any staff actor without sell/invoice visibility, which is why the browser
  * query returned an empty queue while assigned jobs clearly existed. The
- * server bundle is the projection those policies expect such actors to use, so
- * the assigned queue is rebuilt from it here.
+ * assigned-queue route is the bounded server projection those policies expect
+ * such actors to use; it applies the lifecycle filter and row cap in the
+ * database, so only the current page of the queue crosses the wire.
  */
-function assignedQueueFromBundle(
-  bundle: TechnicianOfflineBundle,
-  status: string,
-): { rows: Row[]; signals: Record<string, WorkOrderSignal> } {
-  const rows: Row[] = [];
+async function fetchAssignedQueue(status: string): Promise<AssignedQueuePayload> {
+  const response = await fetch(
+    `/api/mobile/work-orders/assigned-queue?status=${encodeURIComponent(status)}`,
+    { credentials: "include", cache: "no-store" },
+  );
+  const body = (await response.json().catch(() => null)) as
+    | AssignedQueuePayload
+    | { error?: string }
+    | null;
+  if (!response.ok || !body || !("workOrders" in body)) {
+    throw new Error(
+      (body && "error" in body && body.error) ||
+        "Assigned work orders could not be loaded.",
+    );
+  }
+  return body;
+}
+
+function assignedQueueSignals(
+  payload: AssignedQueuePayload,
+): Record<string, WorkOrderSignal> {
   const signals: Record<string, WorkOrderSignal> = {};
+  const visibleWorkOrderIds = new Set(payload.workOrders.map((row) => row.id));
 
-  for (const entry of bundle.workOrders) {
-    const workOrder = entry.workOrder;
-    if (workOrder.archived_at) continue;
-    if (cleanText(workOrder.record_type) !== "work_order") continue;
-    if (!matchesQueueStatus(workOrder.status, status)) continue;
-
-    rows.push({
-      ...workOrder,
-      customers: entry.customer
-        ? {
-            first_name: entry.customer.first_name,
-            last_name: entry.customer.last_name,
-            phone: entry.customer.phone,
-          }
-        : null,
-      vehicles: entry.vehicle
-        ? {
-            year: entry.vehicle.year,
-            make: entry.vehicle.make,
-            model: entry.vehicle.model,
-            license_plate: entry.vehicle.license_plate,
-          }
-        : null,
-    } as Row);
-
-    const signal = emptySignal();
-    for (const line of entry.lines) {
-      if ((line.line_type ?? "job") !== "job") continue;
-      accumulateLineSignal(
-        signal,
-        line,
-        resolveTechnicianAssignmentContract({
-          primaryTechnicianId: line.assigned_tech_id,
-          legacyAssignedTo: line.assigned_to,
-          canonicalTechnicianIds:
-            entry.lineContext.technicianIdsByLine[line.id],
-        }).technicianIds,
-      );
-    }
-    signals[workOrder.id] = signal;
+  for (const line of payload.lines) {
+    const workOrderId = line.work_order_id;
+    if (!workOrderId || !visibleWorkOrderIds.has(workOrderId)) continue;
+    if ((line.line_type ?? "job") !== "job") continue;
+    if (!signals[workOrderId]) signals[workOrderId] = emptySignal();
+    accumulateLineSignal(signals[workOrderId], line, line.technicianIds);
   }
 
-  rows.sort(
-    (left, right) =>
-      new Date(right.created_at ?? 0).getTime() -
-      new Date(left.created_at ?? 0).getTime(),
-  );
-
-  return { rows, signals };
+  return signals;
 }
 
 function primarySignal(signal: WorkOrderSignal): string | null {
@@ -404,21 +378,21 @@ export default function MobileWorkOrderQueue({
         setScopeShopId(me.shop_id);
 
         if (canViewAssignedWork) {
-          const bundle = await fetchAssignedTechnicianWork({ scope });
+          const payload = await fetchAssignedQueue(status);
           if (!isLatestLoad()) return;
-          const assigned = assignedQueueFromBundle(bundle, status);
-          setLineSignals(assigned.signals);
-          setRows(assigned.rows);
-          setTotalCount(assigned.rows.length);
+          const signals = assignedQueueSignals(payload);
+          setLineSignals(signals);
+          setRows(payload.workOrders);
+          setTotalCount(payload.workOrders.length);
           setLastUpdatedAt(new Date());
           await saveOfflineSnapshot({
             scope,
             kind: "mobile-work-order-list",
             entityId: status || "active",
             data: {
-              rows: assigned.rows,
-              signals: assigned.signals,
-              totalCount: assigned.rows.length,
+              rows: payload.workOrders,
+              signals,
+              totalCount: payload.workOrders.length,
               assignedOnly: true,
             },
           });
@@ -547,6 +521,20 @@ export default function MobileWorkOrderQueue({
             assignedOnly: false,
           },
         });
+      } catch (caught) {
+        if (!isLatestLoad()) return;
+        setErrorMessage(
+          caught instanceof Error
+            ? caught.message
+            : "Work orders could not be loaded.",
+        );
+        // A failed refresh keeps the rows already on screen; only an initial
+        // load has nothing worth preserving.
+        if (mode === "initial") {
+          setRows([]);
+          setLineSignals({});
+          setTotalCount(0);
+        }
       } finally {
         if (isLatestLoad()) {
           setLoading(false);
@@ -676,9 +664,11 @@ export default function MobileWorkOrderQueue({
               <p className="mobile-dashboard-hero__subtitle">
                 {inspectionTemplateId
                   ? "Select the work order that contains the job line for this template."
-                  : assignedOnly
-                    ? `${activeCount} active work order${activeCount === 1 ? "" : "s"} assigned to you.`
-                    : `${activeCount} active work order${activeCount === 1 ? "" : "s"} in the current shop flow.`}
+                  : errorMessage
+                    ? "Work orders could not be loaded — retry to see your current count."
+                    : assignedOnly
+                      ? `${activeCount} active work order${activeCount === 1 ? "" : "s"} assigned to you.`
+                      : `${activeCount} active work order${activeCount === 1 ? "" : "s"} in the current shop flow.`}
               </p>
             </div>
             <div className="flex shrink-0 gap-2">
@@ -820,10 +810,12 @@ export default function MobileWorkOrderQueue({
         ) : filteredRows.length === 0 ? (
           <div className="mobile-command-panel border p-5 text-center">
             <div className="text-base font-bold text-[color:var(--theme-text-primary)]">
-              No work orders found
+              {errorMessage ? "Work orders unavailable" : "No work orders found"}
             </div>
             <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-              Change the filter or search to see another part of the shop flow.
+              {errorMessage
+                ? "This list could not be loaded, so it is not showing your assigned work. Retry above."
+                : "Change the filter or search to see another part of the shop flow."}
             </p>
           </div>
         ) : (

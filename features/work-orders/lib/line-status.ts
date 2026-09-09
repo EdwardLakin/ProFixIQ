@@ -82,6 +82,31 @@ export function getWorkOrderLineStatusDbFilter(statuses: readonly WorkOrderLineS
   return [...out];
 }
 
+/**
+ * Statuses that take a line out of the shop's active work. Completion closes a
+ * line because the work was done; declined and deferred close it because the
+ * customer decided it will not be done now. Both are self-terminal in
+ * WORK_ORDER_LINE_ALLOWED_TRANSITIONS, and neither is work anyone still owes.
+ *
+ * Declining or deferring only removes the line from active work. The decision
+ * itself is retained on work_order_quote_lines, which is vehicle-scoped and
+ * feeds deferred-work recommendations for the next visit.
+ */
+export const NON_ACTIVE_WORK_ORDER_LINE_STATUSES: ReadonlySet<WorkOrderLineStatus> =
+  new Set<WorkOrderLineStatus>([
+    "completed",
+    "ready_to_invoice",
+    "invoiced",
+    "declined",
+    "deferred",
+  ]);
+
+export function isNonActiveWorkOrderLineStatus(value: unknown): boolean {
+  return NON_ACTIVE_WORK_ORDER_LINE_STATUSES.has(
+    normalizeWorkOrderLineStatus(value),
+  );
+}
+
 export function normalizeWorkOrderLineStatus(value: unknown): WorkOrderLineStatus {
   const key = String(value ?? "")
     .trim()

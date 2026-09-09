@@ -43,8 +43,17 @@ describe("PFX-004 assignment surface regressions", () => {
     // from the server projection instead of a browser read that returns zero
     // rows. The assignment narrowing itself still runs through the shared
     // contract, just on the server.
-    expect(queue).toContain("fetchAssignedTechnicianWork");
-    expect(queue).toContain("assignedQueueFromBundle");
+    expect(queue).toContain("fetchAssignedQueue");
+    const assignedQueueRoute = read(
+      "app/api/mobile/work-orders/assigned-queue/route.ts",
+    );
+    expect(assignedQueueRoute).toContain("resolveTechnicianAssignmentContract");
+    expect(assignedQueueRoute).toContain('.eq("assigned_tech_id", id)');
+    expect(assignedQueueRoute).toContain('.eq("assigned_to", id)');
+    expect(assignedQueueRoute).toContain(
+      '.from("work_order_line_technicians")',
+    );
+
     const technicianBundle = read(
       "app/api/offline/technician-work-orders/route.ts",
     );

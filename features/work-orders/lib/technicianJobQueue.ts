@@ -8,6 +8,11 @@
  * status list locally.
  */
 
+import {
+  isNonActiveWorkOrderLineStatus,
+  normalizeWorkOrderLineStatus,
+} from "@/features/work-orders/lib/line-status";
+
 export type TechnicianJobBucket = "awaiting" | "in_progress" | "on_hold";
 
 export const TECHNICIAN_JOB_BUCKETS: readonly TechnicianJobBucket[] = [
@@ -22,32 +27,21 @@ export type TechnicianJobLine = {
   punched_out_at?: string | null;
 };
 
-function normalizeStatus(status: unknown): string {
-  return String(status ?? "")
-    .trim()
-    .toLowerCase()
-    .replace(/[\s-]+/g, "_");
-}
-
 /**
- * Statuses that close a job out of the technician's queue. A closed job stays
- * on the work order and in performance history; it just stops being work the
- * technician still has to do.
+ * Statuses that close a job out of the technician's queue: completed work plus
+ * the customer decision states. This defers to the canonical line-status
+ * contract so the queue can never disagree with countActiveWorkOrderLines
+ * about what still counts as active work.
  */
-export function isCompletedTechnicianJobStatus(
+export function isClosedTechnicianJobStatus(
   status: string | null | undefined,
 ): boolean {
-  const normalized = normalizeStatus(status);
-  return (
-    normalized === "completed" ||
-    normalized === "ready_to_invoice" ||
-    normalized === "invoiced"
-  );
+  return isNonActiveWorkOrderLineStatus(status);
 }
 
 /** An assigned line the technician still owes work on. */
 export function isOpenTechnicianJob(line: TechnicianJobLine): boolean {
-  return !isCompletedTechnicianJobStatus(line.status);
+  return !isClosedTechnicianJobStatus(line.status);
 }
 
 export function toTechnicianJobBucket(
@@ -55,8 +49,8 @@ export function toTechnicianJobBucket(
 ): TechnicianJobBucket {
   if (line.punched_in_at && !line.punched_out_at) return "in_progress";
 
-  const status = normalizeStatus(line.status);
-  if (status === "in_progress" || status === "active") return "in_progress";
+  const status = normalizeWorkOrderLineStatus(line.status);
+  if (status === "in_progress") return "in_progress";
   if (status === "on_hold") return "on_hold";
   return "awaiting";
 }
