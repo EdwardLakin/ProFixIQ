@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { loadRowsForIdChunks } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
 import { resolveWorkOrderFinancialAccess } from "@/features/work-orders/workspace/server/workOrderFinancialAuthorization";
 import type { Database, Json } from "@shared/types/types/supabase";
 
@@ -216,22 +217,7 @@ export async function GET(request: Request) {
     ),
   ];
 
-  const { data: lineData, error: lineError } = lineIds.length
-    ? await admin
-        .from("work_order_lines")
-        .select("id,work_order_id,complaint,description,status,voided_at")
-        .eq("shop_id", access.profile.shop_id)
-        .in("id", lineIds)
-    : { data: [], error: null };
-
-  if (lineError) {
-    return NextResponse.json(
-      { error: "Could not load previous repair details." },
-      { status: 500 },
-    );
-  }
-
-  const lines = (lineData ?? []) as Array<
+  let lines: Array<
     Pick<
       WorkOrderLine,
       | "id"
@@ -242,8 +228,24 @@ export async function GET(request: Request) {
       | "voided_at"
     >
   >;
-  const lineById = new Map(lines.map((line) => [line.id, line]));
+  try {
+    lines = await loadRowsForIdChunks(lineIds, (ids, from, to) =>
+      admin
+        .from("work_order_lines")
+        .select("id,work_order_id,complaint,description,status,voided_at")
+        .eq("shop_id", access.profile.shop_id)
+        .in("id", ids)
+        .order("id", { ascending: true })
+        .range(from, to),
+    );
+  } catch {
+    return NextResponse.json(
+      { error: "Could not load previous repair details." },
+      { status: 500 },
+    );
+  }
 
+  const lineById = new Map(lines.map((line) => [line.id, line]));
   const workOrderIds = [
     ...new Set(
       [
@@ -252,27 +254,28 @@ export async function GET(request: Request) {
       ].filter((id): id is string => Boolean(id)),
     ),
   ];
-  const { data: workOrderData, error: workOrderError } = workOrderIds.length
-    ? await admin
+
+  let workOrders: Array<
+    Pick<WorkOrder, "id" | "custom_id" | "type" | "external_id" | "archived_at">
+  >;
+  try {
+    workOrders = await loadRowsForIdChunks(workOrderIds, (ids, from, to) =>
+      admin
         .from("work_orders")
         .select("id,custom_id,type,external_id,archived_at")
         .eq("shop_id", access.profile.shop_id)
-        .in("id", workOrderIds)
-    : { data: [], error: null };
-
-  if (workOrderError) {
+        .in("id", ids)
+        .order("id", { ascending: true })
+        .range(from, to),
+    );
+  } catch {
     return NextResponse.json(
       { error: "Could not load previous work-order context." },
       { status: 500 },
     );
   }
 
-  const workOrderById = new Map(
-    ((workOrderData ?? []) as Array<
-      Pick<WorkOrder, "id" | "custom_id" | "type" | "external_id" | "archived_at">
-    >).map((row) => [row.id, row]),
-  );
-
+  const workOrderById = new Map(workOrders.map((row) => [row.id, row]));
   const resolvedRoots = new Set<string>();
   for (const quote of quotes) {
     const rootId = quote.source_work_order_line_id ?? quote.work_order_line_id;
