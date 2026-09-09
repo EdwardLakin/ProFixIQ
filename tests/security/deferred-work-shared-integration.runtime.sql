@@ -55,7 +55,7 @@ values
   (
     '73400000-0000-4000-8000-000000000001',
     '73200000-0000-4000-8000-000000000001',
-    'DEF-SOURCE-1',
+    'DEF-SOURCE-INSPECTION',
     '73300000-0000-4000-8000-000000000001',
     'in_progress', 'work_order',
     '73100000-0000-4000-8000-000000000001'
@@ -63,12 +63,13 @@ values
   (
     '73400000-0000-4000-8000-000000000002',
     '73200000-0000-4000-8000-000000000001',
-    'DEF-SOURCE-2',
+    'DEF-SOURCE-REPAIR',
     '73300000-0000-4000-8000-000000000002',
     'in_progress', 'work_order',
     '73100000-0000-4000-8000-000000000001'
   );
 
+-- Vehicle 1 recommendation originates from a real, completed inspection anchor.
 insert into public.work_order_lines (
   id, shop_id, work_order_id, vehicle_id, line_type, status,
   approval_state, job_type, complaint, description, notes, user_id
@@ -79,9 +80,9 @@ values
     '73200000-0000-4000-8000-000000000001',
     '73400000-0000-4000-8000-000000000001',
     '73300000-0000-4000-8000-000000000001',
-    'job', 'on_hold', 'declined', 'repair',
-    'Front lower ball joint play', 'Replace front lower ball joints',
-    'Previous technician measured excessive play.',
+    'job', 'completed', 'approved', 'inspection',
+    'Annual inspection', 'Annual inspection',
+    'Inspection completed; repair recommendation remains unresolved.',
     '73100000-0000-4000-8000-000000000002'
   ),
   (
@@ -95,9 +96,30 @@ values
     '73100000-0000-4000-8000-000000000002'
   );
 
+insert into public.inspections (
+  id, shop_id, work_order_id, work_order_line_id, vehicle_id, user_id,
+  inspection_type, status, completed, is_draft, locked, is_canonical,
+  sync_revision, signing_cycle, started_at, finalized_at, finalized_by,
+  summary, notes, created_at, updated_at
+)
+values (
+  '73700000-0000-4000-8000-000000000001',
+  '73200000-0000-4000-8000-000000000001',
+  '73400000-0000-4000-8000-000000000001',
+  '73500000-0000-4000-8000-000000000001',
+  '73300000-0000-4000-8000-000000000001',
+  '73100000-0000-4000-8000-000000000002',
+  'annual', 'completed', true, false, true, true,
+  1, 1,
+  '2026-08-01T16:00:00Z', '2026-08-01T17:00:00Z',
+  '73100000-0000-4000-8000-000000000002',
+  '{"items":[{"item":"Front lower ball joint","status":"fail","note":"Excessive play"}]}'::jsonb,
+  'Completed inspection fixture',
+  '2026-08-01T16:00:00Z', '2026-08-01T17:00:00Z'
+);
+
 -- Deliberately leave source_work_order_line_id null. The shared provenance
--- normalizer must promote the established metadata key into the canonical
--- column for inspection-origin recommendations.
+-- normalizer must promote the established metadata key into the canonical column.
 insert into public.work_order_quote_lines (
   id, shop_id, work_order_id, work_order_line_id,
   source_work_order_line_id, vehicle_id, title, description,
@@ -117,7 +139,7 @@ values
     'job', 'repair', 'declined', 'customer_declined', 'declined',
     2.0, 2.0, 150.00, 300.00, 700.00,
     1000.00, 0, 50.00, 1050.00,
-    '{"source":"inspection","source_work_order_line_id":"73500000-0000-4000-8000-000000000001"}'::jsonb,
+    '{"source":"inspection","source_work_order_line_id":"73500000-0000-4000-8000-000000000001","photo_urls":["https://example.invalid/deferred-ball-joint.jpg"]}'::jsonb,
     '2026-08-01T18:00:00Z', '2026-08-01T17:00:00Z', '2026-08-01T18:00:00Z'
   ),
   (
@@ -134,15 +156,11 @@ values
     null, '2026-08-02T17:00:00Z', '2026-08-02T18:00:00Z'
   );
 
--- The second row represents a true deferral date rather than a decline date.
 update public.work_order_quote_lines
 set deferred_at = '2026-08-02T18:00:00Z'
 where id = '73600000-0000-4000-8000-000000000002';
 
 do $deferred_contract$
-declare
-  v_carried_line_id uuid;
-  v_count integer;
 begin
   if exists (
     select 1
@@ -157,7 +175,7 @@ begin
       and quote_line.source_work_order_line_id is distinct from
           '73500000-0000-4000-8000-000000000002'::uuid
   ) then
-    raise exception 'Metadata-only inspection provenance was not normalized.';
+    raise exception 'Metadata-only recommendation provenance was not normalized.';
   end if;
 
   if has_function_privilege(
@@ -178,7 +196,6 @@ begin
 end;
 $deferred_contract$;
 
--- Make auth.uid() resolve to the current advisor for carried-line attribution.
 select set_config(
   'request.jwt.claim.sub',
   '73100000-0000-4000-8000-000000000001',
@@ -186,7 +203,7 @@ select set_config(
 );
 select set_config('request.jwt.claim.role', 'authenticated', true);
 
--- Quote-only portal placeholders must not receive technical carry-forward rows.
+-- Portal quote shells must remain free of technical carry-forward.
 insert into public.work_orders (
   id, shop_id, custom_id, vehicle_id, status, record_type, external_id, advisor_id
 )
@@ -199,16 +216,18 @@ values (
   '73100000-0000-4000-8000-000000000001'
 );
 
--- Historical imports are archival and must not receive carry-forward rows.
+-- Canonical imports use type=repair plus non-null source_intake_id.
 insert into public.work_orders (
-  id, shop_id, custom_id, vehicle_id, status, record_type, type, advisor_id
+  id, shop_id, custom_id, vehicle_id, status, record_type, type,
+  source_intake_id, advisor_id
 )
 values (
   '73400000-0000-4000-8000-000000000011',
   '73200000-0000-4000-8000-000000000001',
   'DEF-HIST-1',
   '73300000-0000-4000-8000-000000000001',
-  'completed', 'work_order', 'historical_import',
+  'completed', 'work_order', 'repair',
+  '73800000-0000-4000-8000-000000000001',
   '73100000-0000-4000-8000-000000000001'
 );
 
@@ -221,21 +240,21 @@ begin
       '73400000-0000-4000-8000-000000000011'::uuid
     )
   ) then
-    raise exception 'Portal/historical placeholder received a carried deferred line.';
+    raise exception 'Portal/import placeholder received a carried deferred line.';
   end if;
 end;
 $placeholder_guards$;
 
--- Operational work order for vehicle 1: exactly one deferred line follows.
+-- Initial operational visit must carry the completed-inspection recommendation.
 insert into public.work_orders (
-  id, shop_id, custom_id, vehicle_id, status, record_type, advisor_id
+  id, shop_id, custom_id, vehicle_id, status, record_type, approval_state, advisor_id
 )
 values (
   '73400000-0000-4000-8000-000000000020',
   '73200000-0000-4000-8000-000000000001',
   'DEF-DEST-1',
   '73300000-0000-4000-8000-000000000001',
-  'in_progress', 'work_order',
+  'in_progress', 'work_order', 'pending',
   '73100000-0000-4000-8000-000000000001'
 );
 
@@ -243,6 +262,7 @@ do $initial_carry$
 declare
   v_line public.work_order_lines%rowtype;
   v_quote public.work_order_quote_lines%rowtype;
+  v_parent public.work_orders%rowtype;
 begin
   select line.* into v_line
   from public.work_order_lines line
@@ -254,7 +274,7 @@ begin
      or v_line.status is distinct from 'deferred'
      or v_line.approval_state is distinct from 'declined'
      or v_line.user_id is distinct from '73100000-0000-4000-8000-000000000001'::uuid then
-    raise exception 'Initial carried line did not preserve deferred/non-punchable/current-actor contract.';
+    raise exception 'Completed inspection recommendation did not carry as passive deferred context.';
   end if;
 
   select quote_line.* into v_quote
@@ -269,10 +289,30 @@ begin
      or (v_quote.metadata ->> 'source_actor_user_id') is distinct from '73100000-0000-4000-8000-000000000002' then
     raise exception 'Initial carried quote provenance is incomplete.';
   end if;
+
+  select wo.* into v_parent
+  from public.work_orders wo
+  where wo.id = '73400000-0000-4000-8000-000000000020';
+
+  if v_parent.status is distinct from 'in_progress'
+     or v_parent.approval_state is distinct from 'pending' then
+    raise exception 'Passive deferred context changed parent WO state to %/%',
+      v_parent.status, v_parent.approval_state;
+  end if;
+
+  if not exists (
+    select 1
+    from public.work_order_media media
+    where media.work_order_id = v_parent.id
+      and media.quote_line_id = v_quote.id
+      and media.url = 'https://example.invalid/deferred-ball-joint.jpg'
+  ) then
+    raise exception 'Carried inspection evidence was not materialized for reassignment cleanup test.';
+  end if;
 end;
 $initial_carry$;
 
--- Updating the same vehicle fires UPDATE OF vehicle_id but must remain idempotent.
+-- Same-vehicle replay is idempotent.
 update public.work_orders
 set vehicle_id = vehicle_id
 where id = '73400000-0000-4000-8000-000000000020';
@@ -293,8 +333,52 @@ begin
 end;
 $idempotency$;
 
--- Supported create-flow vehicle reassignment must remove vehicle 1's carried
--- row and atomically replace it with vehicle 2's unresolved recommendation.
+-- Estimate creation is skipped; canonical estimate->WO transition must reconcile.
+insert into public.work_orders (
+  id, shop_id, custom_id, vehicle_id, status, record_type, advisor_id
+)
+values (
+  '73400000-0000-4000-8000-000000000030',
+  '73200000-0000-4000-8000-000000000001',
+  'DEF-ESTIMATE-1',
+  '73300000-0000-4000-8000-000000000002',
+  'new', 'estimate',
+  '73100000-0000-4000-8000-000000000001'
+);
+
+do $estimate_initial_skip$
+begin
+  if exists (
+    select 1 from public.work_order_lines
+    where work_order_id = '73400000-0000-4000-8000-000000000030'
+  ) then
+    raise exception 'Initial estimate creation received deferred technical context.';
+  end if;
+end;
+$estimate_initial_skip$;
+
+update public.work_orders
+set record_type = 'work_order'
+where id = '73400000-0000-4000-8000-000000000030';
+
+do $estimate_conversion$
+begin
+  if not exists (
+    select 1
+    from public.work_order_lines line
+    join public.work_order_quote_lines quote_line
+      on quote_line.work_order_line_id = line.id
+    where line.work_order_id = '73400000-0000-4000-8000-000000000030'
+      and line.status = 'deferred'
+      and quote_line.source_work_order_line_id = '73500000-0000-4000-8000-000000000002'
+  ) then
+    raise exception 'Estimate-to-work-order conversion did not reconcile deferred history.';
+  end if;
+end;
+$estimate_conversion$;
+
+-- Vehicle reassignment removes prior vehicle evidence before quote/line cleanup,
+-- then carries only the newly selected vehicle's unresolved recommendation.
 update public.work_orders
 set vehicle_id = '73300000-0000-4000-8000-000000000002'
 where id = '73400000-0000-4000-8000-000000000020';
@@ -327,17 +411,16 @@ begin
 
   if exists (
     select 1
-    from public.work_order_quote_lines quote_line
-    where quote_line.work_order_id = '73400000-0000-4000-8000-000000000020'
-      and quote_line.source_work_order_line_id = '73500000-0000-4000-8000-000000000001'
-      and lower(coalesce(quote_line.metadata ->> 'carry_forward', 'false')) = 'true'
+    from public.work_order_media media
+    where media.work_order_id = '73400000-0000-4000-8000-000000000020'
+      and media.url = 'https://example.invalid/deferred-ball-joint.jpg'
   ) then
-    raise exception 'Vehicle 1 provenance survived reassignment to vehicle 2.';
+    raise exception 'Vehicle 1 carried evidence survived reassignment to vehicle 2.';
   end if;
 end;
 $vehicle_reassignment$;
 
--- Completion of the original source line itself resolves the vehicle 2 thread.
+-- Completing a real, non-inspection root repair resolves that lineage.
 update public.work_order_lines
 set status = 'completed'
 where id = '73500000-0000-4000-8000-000000000002';
@@ -360,12 +443,12 @@ begin
     select 1 from public.work_order_lines
     where work_order_id = '73400000-0000-4000-8000-000000000021'
   ) then
-    raise exception 'Completed source recommendation was carried forward again.';
+    raise exception 'Completed non-inspection source repair was carried forward again.';
   end if;
 end;
 $source_completion$;
 
--- Vehicle 1 remains unresolved, so a fresh destination carries it once.
+-- Vehicle 1 is still unresolved despite its completed inspection anchor.
 insert into public.work_orders (
   id, shop_id, custom_id, vehicle_id, status, record_type, advisor_id
 )
@@ -378,8 +461,7 @@ values (
   '73100000-0000-4000-8000-000000000001'
 );
 
--- Completing that descendant resolves the lineage even though the original
--- source line remains on hold.
+-- Completing the carried descendant is an actual repair resolution signal.
 update public.work_order_lines
 set status = 'completed'
 where work_order_id = '73400000-0000-4000-8000-000000000022'
@@ -403,7 +485,7 @@ begin
     select 1 from public.work_order_lines
     where work_order_id = '73400000-0000-4000-8000-000000000023'
   ) then
-    raise exception 'Completed descendant recommendation was carried forward again.';
+    raise exception 'Completed repair descendant did not resolve inspection-origin recommendation.';
   end if;
 end;
 $descendant_completion$;
