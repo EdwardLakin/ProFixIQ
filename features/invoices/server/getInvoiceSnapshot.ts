@@ -10,6 +10,7 @@ import { calculateInvoiceTotals } from "@/features/invoices/lib/invoiceTotals";
 import { resolveApprovedPartInvoiceQuantity } from "@/features/invoices/lib/approvedInvoiceParts";
 import { shouldUsePersistedInvoiceTotals } from "@/features/invoices/lib/invoiceSnapshotState";
 import { filterInvoicePartAllocations } from "@/features/invoices/lib/filterInvoicePartAllocations";
+import { filterDeferredInvoiceLines } from "@/features/invoices/lib/filterDeferredInvoiceLines";
 import type { InvoiceDocumentConfiguration } from "@/features/invoices/lib/invoiceDocumentTheme";
 import { canonicalQuotePartQuantity } from "@/features/parts/lib/quote-parts-contract";
 
@@ -556,7 +557,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const { data: linesRaw, error: linesError } = await supabase
     .from("work_order_lines")
     .select(
-      "id, line_no, description, complaint, cause, correction, labor_time, price_estimate, intake_json",
+      "id, line_no, description, complaint, cause, correction, labor_time, price_estimate, intake_json, status",
     )
     .eq("shop_id", workOrder.shop_id)
     .eq("work_order_id", workOrderId)
@@ -574,6 +575,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
           | "labor_time"
           | "price_estimate"
           | "intake_json"
+          | "status"
         >
       >
     >();
@@ -584,7 +586,10 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
     );
   }
 
-  const lines = Array.isArray(linesRaw) ? linesRaw : [];
+  const lines = filterDeferredInvoiceLines(
+    Array.isArray(linesRaw) ? linesRaw : [],
+  );
+  const invoiceLineIds = new Set(lines.map((line) => line.id));
 
   const { data: allocRaw, error: allocationsError } = await supabase
     .from("work_order_part_allocations")
@@ -1108,12 +1113,20 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
       `Customer sell price is missing for ${unpricedPart.name || "an attached part"}.`,
     );
   }
-  if (
-    parts.length === 0 &&
-    (allocs.length > 0 ||
-      stagedInvoiceParts.length > 0 ||
-      fallbackRequestItems.length > 0)
-  ) {
+  const hasAttachedPartsForInvoiceLines =
+    allocs.some(
+      (allocation) =>
+        !!allocation.work_order_line_id &&
+        invoiceLineIds.has(allocation.work_order_line_id),
+    ) ||
+    stagedInvoiceParts.some(
+      (part) => !!part.lineId && invoiceLineIds.has(part.lineId),
+    ) ||
+    fallbackRequestItems.some(
+      (item) =>
+        !!item.work_order_line_id && invoiceLineIds.has(item.work_order_line_id),
+    );
+  if (parts.length === 0 && hasAttachedPartsForInvoiceLines) {
     throw new Error(
       "Attached parts could not be resolved into invoice line items.",
     );
