@@ -1,5 +1,6 @@
 import "server-only";
 
+import { estimateCopilotTurnCostUsd } from "@/features/shared/lib/server/ai-ops-guard";
 import type { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 // Every value here must also be present in the receipts table CHECK and in
@@ -21,33 +22,61 @@ type DurablePolicy = {
   reservationCostUsd: number;
 };
 
-const DURABLE_POLICIES: Record<DurableAIFeature, DurablePolicy> = {
-  dtc_suggest: {
-    actorMax: 20,
-    shopMax: 80,
-    windowSeconds: 5 * 60,
-    hardBudgetUsd: 75,
-    reservationCostUsd: 0.1,
-  },
-  // One claim per CoPilot turn, covering both model calls that turn makes.
-  // 120 turns / 5 min per technician is far above any human conversational
-  // rate, so this bounds a runaway without touching ordinary use. The budget
-  // is the real per-shop monthly ceiling.
-  technician_copilot_text: {
-    actorMax: 120,
-    shopMax: 480,
-    windowSeconds: 5 * 60,
-    hardBudgetUsd: 600,
-    reservationCostUsd: 0.02,
-  },
-  inspection_interpret: {
+function envNum(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) ? value : fallback;
+}
+
+function copilotPolicy(): DurablePolicy {
+  const actorMax = Math.max(
+    1,
+    Math.floor(envNum("AI_RATE_LIMIT_COPILOT_TEXT_MAX", 120)),
+  );
+  const shopMax = Math.max(
+    actorMax,
+    Math.floor(envNum("AI_RATE_LIMIT_COPILOT_TEXT_SHOP_MAX", 480)),
+  );
+  const windowMs = Math.max(
+    1000,
+    envNum("AI_RATE_LIMIT_COPILOT_TEXT_WINDOW_MS", 5 * 60 * 1000),
+  );
+
+  return {
+    actorMax,
+    shopMax,
+    windowSeconds: Math.max(1, Math.ceil(windowMs / 1000)),
+    hardBudgetUsd: Math.max(
+      0.01,
+      envNum("AI_BUDGET_HARD_USD_COPILOT_TEXT", 600),
+    ),
+    // Reserve exactly the same configurable proxy used to settle successful
+    // turns. This prevents concurrent requests near the hard budget from all
+    // reserving an understated fixed amount.
+    reservationCostUsd: Math.max(0, estimateCopilotTurnCostUsd()),
+  };
+}
+
+function durablePolicy(feature: DurableAIFeature): DurablePolicy {
+  if (feature === "technician_copilot_text") return copilotPolicy();
+  if (feature === "dtc_suggest") {
+    return {
+      actorMax: 20,
+      shopMax: 80,
+      windowSeconds: 5 * 60,
+      hardBudgetUsd: 75,
+      reservationCostUsd: 0.1,
+    };
+  }
+  return {
     actorMax: 60,
     shopMax: 240,
     windowSeconds: 5 * 60,
     hardBudgetUsd: 50,
     reservationCostUsd: 0.03,
-  },
-};
+  };
+}
 
 type QuotaRow = {
   allowed: boolean;
@@ -70,7 +99,7 @@ export async function claimDurableAIRouteQuota(input: {
   shopId: string;
   actorId: string;
 }): Promise<DurableAIClaim> {
-  const policy = DURABLE_POLICIES[input.feature];
+  const policy = durablePolicy(input.feature);
   const { data, error } = await input.admin.rpc("consume_ai_route_quota", {
     p_actor_id: input.actorId,
     p_actor_max: policy.actorMax,
