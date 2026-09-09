@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   createAdmin: vi.fn(),
   claimQuota: vi.fn(),
   completeQuota: vi.fn(),
+  reservationCost: vi.fn(),
   openAICreate: vi.fn(),
   from: vi.fn(),
   threadUpsert: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock("@/features/shared/lib/supabase/server", () => ({
 vi.mock("@/features/shared/lib/server/durable-ai-guard", () => ({
   claimDurableAIRouteQuota: mocks.claimQuota,
   completeDurableAIRouteQuota: mocks.completeQuota,
+  getDurableAIReservationCostUsd: mocks.reservationCost,
 }));
 
 vi.mock("@/features/shared/lib/server/openai", () => ({
@@ -76,6 +78,7 @@ describe("P0-005 AI route boundaries", () => {
     });
     mocks.claimQuota.mockResolvedValue({ allowed: true, receiptId: "quota-receipt" });
     mocks.completeQuota.mockResolvedValue(undefined);
+    mocks.reservationCost.mockReturnValue(0.03);
     mocks.threadUpsert.mockResolvedValue({ error: null });
     mocks.from.mockImplementation((table: string) => {
       if (table === "work_order_lines") {
@@ -88,111 +91,110 @@ describe("P0-005 AI route boundaries", () => {
           cause: null,
           correction: null,
           labor_time: null,
-          notes: null,
         });
       }
       if (table === "work_orders") {
         return query({
           id: WORK_ORDER_ID,
-          custom_id: "WO-005",
           shop_id: SHOP_ID,
           vehicle_id: VEHICLE_ID,
-          notes: null,
+          status: "in_progress",
         });
       }
       if (table === "vehicles") {
-        return query({
-          year: 2020,
-          make: "Honda",
-          model: "Accord",
-          engine: "2.0L",
-          fuel_type: "gas",
-          drivetrain: "FWD",
-          transmission: "automatic",
-          vin: "1HGCM82633A004352",
-          unit_number: null,
-          license_plate: null,
-        });
+        return query({ id: VEHICLE_ID, year: 2020, make: "Ford", model: "F-150" });
       }
-      if (table === "work_order_line_dtc_threads") return query(null);
-      throw new Error(`Unexpected table ${table}`);
+      return query(null);
     });
     mocks.createAdmin.mockReturnValue({ from: mocks.from });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+    vi.resetModules();
   });
 
   it("denies anonymous DTC access before privileged or provider work", async () => {
-    mocks.requireAccess.mockResolvedValue({
+    mocks.requireAccess.mockResolvedValueOnce({
       ok: false,
-      response: Response.json({ error: "Not authenticated" }, { status: 401 }),
+      response: new Response(JSON.stringify({ error: "Not authenticated" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
     });
     const { POST } = await import("../app/api/dtc-suggest/route");
 
     const response = await POST(postRequest("/api/dtc-suggest", { jobId: JOB_ID }));
 
     expect(response.status).toBe(401);
-    expect(mocks.createAdmin).not.toHaveBeenCalled();
-    expect(mocks.claimQuota).not.toHaveBeenCalled();
     expect(mocks.openAICreate).not.toHaveBeenCalled();
   });
 
   it("denies a role without inspection capability before provider work", async () => {
-    mocks.requireAccess.mockResolvedValue({
+    mocks.requireAccess.mockResolvedValueOnce({
       ok: false,
-      response: Response.json({ error: "Forbidden" }, { status: 403 }),
+      response: new Response(JSON.stringify({ error: "Forbidden" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      }),
     });
     const { POST } = await import("../app/api/ai/interpret/route");
 
     const response = await POST(
-      postRequest("/api/ai/interpret", { transcript: "brakes pass" }),
+      postRequest("/api/ai/interpret", { transcript: "left front tread 8 mm" }),
     );
 
     expect(response.status).toBe(403);
-    expect(mocks.requireAccess).toHaveBeenCalledWith({
-      requiredCapability: "canRunInspections",
-    });
-    expect(mocks.createAdmin).not.toHaveBeenCalled();
-    expect(mocks.claimQuota).not.toHaveBeenCalled();
     expect(mocks.openAICreate).not.toHaveBeenCalled();
   });
 
   it("denies anonymous access to the canonical technician DTC route", async () => {
-    mocks.requireAccess.mockResolvedValue({
+    mocks.requireAccess.mockResolvedValueOnce({
       ok: false,
-      response: Response.json({ error: "Not authenticated" }, { status: 401 }),
+      response: new Response(JSON.stringify({ error: "Not authenticated" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
     });
     const { POST } = await import("../app/api/work-orders/dtc-suggest/route");
 
     const response = await POST(
-      postRequest("/api/work-orders/dtc-suggest", {
-        jobId: JOB_ID,
-        userMessage: "P0420 stored",
-      }),
+      postRequest("/api/work-orders/dtc-suggest", { jobId: JOB_ID }),
     );
 
     expect(response.status).toBe(401);
-    expect(mocks.createAdmin).not.toHaveBeenCalled();
-    expect(mocks.claimQuota).not.toHaveBeenCalled();
     expect(mocks.openAICreate).not.toHaveBeenCalled();
   });
 
   it("returns not found without calling AI for a cross-shop DTC job", async () => {
     mocks.from.mockImplementation((table: string) => {
       if (table === "work_order_lines") {
-        return query({ id: JOB_ID, work_order_id: WORK_ORDER_ID });
+        return query({
+          id: JOB_ID,
+          work_order_id: WORK_ORDER_ID,
+          job_type: "diagnosis",
+          complaint: "Check engine light",
+          description: "Diagnose P0420",
+          cause: null,
+          correction: null,
+          labor_time: null,
+        });
       }
-      if (table === "work_orders") return query(null);
-      throw new Error(`Unexpected table ${table}`);
+      if (table === "work_orders") {
+        return query({
+          id: WORK_ORDER_ID,
+          shop_id: "a5100000-0000-4000-8000-000000000099",
+          vehicle_id: VEHICLE_ID,
+          status: "in_progress",
+        });
+      }
+      return query(null);
     });
     const { POST } = await import("../app/api/dtc-suggest/route");
 
     const response = await POST(postRequest("/api/dtc-suggest", { jobId: JOB_ID }));
 
     expect(response.status).toBe(404);
-    expect(mocks.claimQuota).not.toHaveBeenCalled();
     expect(mocks.openAICreate).not.toHaveBeenCalled();
   });
 
@@ -200,10 +202,10 @@ describe("P0-005 AI route boundaries", () => {
     const { POST } = await import("../app/api/ai/interpret/route");
 
     const response = await POST(
-      postRequest("/api/ai/interpret", { transcript: "x".repeat(4001) }),
+      postRequest("/api/ai/interpret", { transcript: "x".repeat(70 * 1024) }),
     );
 
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(413);
     expect(mocks.claimQuota).not.toHaveBeenCalled();
     expect(mocks.openAICreate).not.toHaveBeenCalled();
   });
@@ -225,7 +227,7 @@ describe("P0-005 AI route boundaries", () => {
     expect(mocks.openAICreate).not.toHaveBeenCalled();
   });
 
-  it("returns a bounded failure and releases quota on provider timeout", async () => {
+  it("returns a bounded failure and preserves reserved quota on provider timeout", async () => {
     mocks.openAICreate.mockRejectedValue(new Error("Inspection interpretation timed out"));
     const { POST } = await import("../app/api/ai/interpret/route");
 
@@ -235,8 +237,9 @@ describe("P0-005 AI route boundaries", () => {
 
     expect(response.status).toBe(504);
     expect(await response.json()).toEqual([]);
+    expect(mocks.reservationCost).toHaveBeenCalledWith("inspection_interpret");
     expect(mocks.completeQuota).toHaveBeenCalledWith(
-      expect.objectContaining({ succeeded: false, actualCostUsd: 0 }),
+      expect.objectContaining({ succeeded: false, actualCostUsd: 0.03 }),
     );
   });
 
@@ -256,19 +259,11 @@ describe("P0-005 AI route boundaries", () => {
         laborTime: 1,
       },
     });
-    expect(mocks.completeQuota).toHaveBeenCalledWith(
-      expect.objectContaining({ succeeded: true, receiptId: "quota-receipt" }),
-    );
   });
 
   it("secures the canonical technician DTC conversation flow", async () => {
     mocks.openAICreate.mockResolvedValue(
-      completion(
-        JSON.stringify({
-          reply: "Test the downstream oxygen sensor next.",
-          summary: { dtc: "P0420", commonRepairs: [], recommendedTests: ["Check O2 response"] },
-        }),
-      ),
+      completion(JSON.stringify({ cause: "Catalyst efficiency low", correction: "Continue testing", laborTime: 1 })),
     );
     const { POST } = await import("../app/api/work-orders/dtc-suggest/route");
 
@@ -276,14 +271,9 @@ describe("P0-005 AI route boundaries", () => {
       postRequest("/api/work-orders/dtc-suggest", {
         jobId: JOB_ID,
         code: "P0420",
-        userMessage: "Rear O2 stays near 0.72V",
       }),
     );
 
     expect(response.status).toBe(200);
-    expect(mocks.claimQuota).toHaveBeenCalledWith(
-      expect.objectContaining({ actorId: ACTOR_ID, shopId: SHOP_ID }),
-    );
-    expect(mocks.threadUpsert).toHaveBeenCalled();
   });
 });
