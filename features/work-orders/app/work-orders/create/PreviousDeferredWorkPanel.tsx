@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { useCustomerVehicleDraft } from "app/work-orders/state/useCustomerVehicleDraft";
+import { useTabState } from "@/features/shared/hooks/useTabState";
 
 type DeferredItem = {
   rootLineId: string;
@@ -48,21 +49,25 @@ function dateLabel(value: string): string {
 export default function PreviousDeferredWorkPanel() {
   const searchParams = useSearchParams();
   const vehicle = useCustomerVehicleDraft((state) => state.vehicle);
+  const [selectedVehicleId] = useTabState<string | null>("vehicleId", null);
   const [items, setItems] = useState<DeferredItem[]>([]);
   const [loading, setLoading] = useState(false);
 
   const requestQuery = useMemo(() => {
     const params = new URLSearchParams();
-    const queryVehicleId =
+    const canonicalVehicleId =
+      selectedVehicleId ||
       searchParams.get("vehicleId")?.trim() ||
       searchParams.get("vehicle_id")?.trim() ||
       "";
 
-    if (queryVehicleId) {
-      params.set("vehicleId", queryVehicleId);
+    if (canonicalVehicleId) {
+      params.set("vehicleId", canonicalVehicleId);
       return params.toString();
     }
 
+    // Identifier fallback only covers prefill/hydration before the canonical
+    // selected vehicle id is available. Never guess from year/make/model.
     const vin = vehicle.vin?.trim() ?? "";
     const plate = vehicle.license_plate?.trim() ?? "";
     const unit = vehicle.unit_number?.trim() ?? "";
@@ -71,7 +76,13 @@ export default function PreviousDeferredWorkPanel() {
     else if (unit) params.set("unit", unit);
 
     return params.toString();
-  }, [searchParams, vehicle.license_plate, vehicle.unit_number, vehicle.vin]);
+  }, [
+    searchParams,
+    selectedVehicleId,
+    vehicle.license_plate,
+    vehicle.unit_number,
+    vehicle.vin,
+  ]);
 
   useEffect(() => {
     if (!requestQuery) {
