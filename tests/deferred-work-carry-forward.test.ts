@@ -43,6 +43,12 @@ describe("create-work-order deferred history", () => {
     );
   });
 
+  it("chunks dependent line and work-order reads so long vehicle history cannot overflow one request", () => {
+    expect(route).toContain("loadRowsForIdChunks");
+    expect(route).toContain("lines = await loadRowsForIdChunks(lineIds");
+    expect(route).toContain("workOrders = await loadRowsForIdChunks(workOrderIds");
+  });
+
   it("keeps displayed history aligned with carry-forward resolution/source guards", () => {
     expect(route).toContain("RESOLVED_LINE_STATES");
     expect(route).toContain("isArchivedSource");
