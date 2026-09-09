@@ -28,16 +28,17 @@ type DeferredPayload = {
 };
 
 function money(value: number): string {
-  return new Intl.NumberFormat("en-CA", {
-    style: "currency",
-    currency: "CAD",
-  }).format(Number.isFinite(value) ? value : 0);
+  const amount = Number.isFinite(value) ? value : 0;
+  return `$${amount.toLocaleString(undefined, {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  })}`;
 }
 
 function dateLabel(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Previous visit";
-  return date.toLocaleDateString("en-CA", {
+  return date.toLocaleDateString(undefined, {
     year: "numeric",
     month: "short",
     day: "numeric",
