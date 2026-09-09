@@ -16,6 +16,10 @@ import type { AIFeature } from "@/features/shared/lib/server/ai-policy";
 import type { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type AdminSupabaseClient = ReturnType<typeof createAdminSupabase>;
+type AIOpsTelemetryFeature = Exclude<
+  AIFeature,
+  "technician_copilot_documentation"
+>;
 
 export class AIQuotaExceededError extends Error {
   constructor(
@@ -38,7 +42,11 @@ export class AIQuotaUnavailableError extends Error {
 export type AIRouteQuotaConfig = {
   admin: AdminSupabaseClient;
   durableFeature: DurableAIFeature;
-  telemetryFeature: AIFeature;
+  // Silent CoPilot documentation is telemetry-only and is governed by the
+  // parent technician_copilot_text turn. This durable quota wrapper also
+  // advances the operational anomaly counters, so it must use a feature that
+  // participates in those counters.
+  telemetryFeature: AIOpsTelemetryFeature;
   endpoint: string;
   actorId: string;
   shopId: string;
