@@ -195,7 +195,7 @@ values (
   '73200000-0000-4000-8000-000000000001',
   'DEF-PORTAL-1',
   '73300000-0000-4000-8000-000000000001',
-  'draft', 'work_order', 'portal_quote:runtime-1',
+  'new', 'work_order', 'portal_quote:runtime-1',
   '73100000-0000-4000-8000-000000000001'
 );
 
