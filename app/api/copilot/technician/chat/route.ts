@@ -111,10 +111,15 @@ export async function POST(request: NextRequest) {
       );
     }
     if (error instanceof TechnicianCopilotQuotaError) {
+      // Short-window throttles are intentionally retryable (429). A monthly
+      // hard-budget exhaustion is not: the client treats non-429 failures as
+      // terminal for that turn and clears its pending idempotency payload rather
+      // than replaying stale technician intent after a future budget reset.
+      const status = error.code === "hard_budget_exceeded" ? 402 : error.status;
       return NextResponse.json(
         { error: error.message, code: error.code },
         {
-          status: error.status,
+          status,
           headers: { "Retry-After": String(error.retryAfterSeconds) },
         },
       );
