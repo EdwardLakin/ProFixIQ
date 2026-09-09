@@ -639,21 +639,53 @@ function buildAttentionItems(input: {
 }): VehicleAttentionItem[] {
   const items: VehicleAttentionItem[] = [];
   const representedMaintenanceServices = new Set<string>();
+  const deferredQuoteLines = input.quoteLines.filter(quoteLineIsDeferred);
   const representedLineIds = new Set(
-    input.quoteLines
-      .filter(quoteLineIsDeferred)
-      .flatMap((line) =>
-        [line.work_order_line_id, line.source_work_order_line_id].filter(
-          (id): id is string => Boolean(id),
-        ),
+    deferredQuoteLines.flatMap((line) =>
+      [line.work_order_line_id, line.source_work_order_line_id].filter(
+        (id): id is string => Boolean(id),
       ),
+    ),
   );
+  const newestDeferredQuoteByRoot = new Map<string, WorkspaceQuoteLineRow>();
+  for (const quoteLine of deferredQuoteLines) {
+    const rootLineId =
+      quoteLine.source_work_order_line_id ??
+      quoteLine.work_order_line_id ??
+      quoteLine.id;
+    const existing = newestDeferredQuoteByRoot.get(rootLineId);
+    if (!existing) {
+      newestDeferredQuoteByRoot.set(rootLineId, quoteLine);
+      continue;
+    }
+    const candidateTime = Date.parse(
+      dateValue(
+        quoteLine.deferred_at,
+        quoteLine.declined_at,
+        quoteLine.updated_at,
+        quoteLine.created_at,
+      ),
+    );
+    const existingTime = Date.parse(
+      dateValue(
+        existing.deferred_at,
+        existing.declined_at,
+        existing.updated_at,
+        existing.created_at,
+      ),
+    );
+    if (
+      candidateTime > existingTime ||
+      (candidateTime === existingTime && quoteLine.id > existing.id)
+    ) {
+      newestDeferredQuoteByRoot.set(rootLineId, quoteLine);
+    }
+  }
 
-  for (const quoteLine of input.quoteLines) {
+  for (const quoteLine of newestDeferredQuoteByRoot.values()) {
     const status = normalizedOperationalState(
       quoteLine.decision ?? quoteLine.status,
     );
-    if (!quoteLineIsDeferred(quoteLine)) continue;
     const workOrder = input.workOrdersById.get(quoteLine.work_order_id);
     const reason = quoteLine.defer_reason ?? quoteLine.decline_reason;
     items.push({
