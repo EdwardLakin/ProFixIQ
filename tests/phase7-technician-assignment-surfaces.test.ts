@@ -36,8 +36,29 @@ describe("PFX-004 assignment surface regressions", () => {
     expect(queue).toContain("resolveTechnicianAssignmentContract");
     expect(queue).toContain('.from("work_order_line_technicians")');
     expect(queue).toContain("resolveCanonicalStaffProfile");
-    expect(queue).toContain("technicianIds.includes(me.id)");
     expect(queue).toContain('table: "work_order_line_technicians"');
+
+    // Assigned-only actors are fenced out of work_orders/work_order_lines by
+    // the restrictive financial-capability policies, so their queue is built
+    // from the server projection instead of a browser read that returns zero
+    // rows. The assignment narrowing itself still runs through the shared
+    // contract, just on the server.
+    expect(queue).toContain("fetchAssignedQueue");
+    const assignedQueueRoute = read(
+      "app/api/mobile/work-orders/assigned-queue/route.ts",
+    );
+    expect(assignedQueueRoute).toContain("resolveTechnicianAssignmentContract");
+    expect(assignedQueueRoute).toContain('.eq("assigned_tech_id", id)');
+    expect(assignedQueueRoute).toContain('.eq("assigned_to", id)');
+    expect(assignedQueueRoute).toContain(
+      '.from("work_order_line_technicians")',
+    );
+
+    const technicianBundle = read(
+      "app/api/offline/technician-work-orders/route.ts",
+    );
+    expect(technicianBundle).toContain("resolveTechnicianAssignmentContract");
+    expect(technicianBundle).toContain(".technicianIds.includes(profile.id)");
 
     const desktopQueue = read("app/tech/queue/page.tsx");
     expect(desktopQueue).toContain("resolveCanonicalStaffProfile");

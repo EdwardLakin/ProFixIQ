@@ -70,7 +70,9 @@ const suggestions = readFileSync(
 describe("technician-first mobile UX", () => {
   it("keeps the technician home operational and opens focused work directly", () => {
     expect(mobileHome).toContain('`/mobile/work-orders/${line.work_order_id}`');
-    expect(mobileHome).toContain('"in_progress"');
+    // Open work is resolved through the shared technician rollup so Home,
+    // My jobs and the shop queue cannot drift apart on legacy statuses.
+    expect(mobileHome).toContain("isOpenTechnicianJob");
     expect(techHome).toContain(
       '`/mobile/work-orders/${workOrder.id}?focus=${encodeURIComponent(job.id)}`',
     );

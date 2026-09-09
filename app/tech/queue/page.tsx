@@ -9,6 +9,11 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
 import {
+  isOpenTechnicianJob,
+  toTechnicianJobBucket,
+  type TechnicianJobBucket,
+} from "@/features/work-orders/lib/technicianJobQueue";
+import {
   buildTechQueueWorkOrderMap,
   TechQueueWorkOrderLabel,
   type WorkOrderDisplayMap,
@@ -34,7 +39,7 @@ type TechPrefs = {
   autoRefresh: boolean;
 };
 
-type RollupStatus = "awaiting" | "in_progress" | "on_hold";
+type RollupStatus = TechnicianJobBucket;
 type JobPriority = "low" | "normal" | "high" | "urgent";
 
 const STATUS_LABELS: Record<RollupStatus, string> = {
@@ -95,20 +100,8 @@ const HOLD_BADGE =
 
 const CLOSED_PART_STATUSES = ["fulfilled", "rejected", "cancelled"] as const;
 
-function isCompletedLike(status: string | null | undefined): boolean {
-  const s = (status ?? "").toLowerCase().replaceAll(" ", "_");
-  return s === "completed" || s === "ready_to_invoice" || s === "invoiced";
-}
-
 function toBucket(line: Line): RollupStatus {
-  const punchedIn = !!line.punched_in_at && !line.punched_out_at;
-  if (punchedIn) return "in_progress";
-
-  const s = (line.status ?? "").toLowerCase().replaceAll(" ", "_");
-  if (s === "in_progress" || s === "in-progress" || s === "active")
-    return "in_progress";
-  if (s === "on_hold") return "on_hold";
-  return "awaiting";
+  return toTechnicianJobBucket(line);
 }
 
 function toPriority(line: Line): JobPriority {
@@ -303,7 +296,7 @@ export default function TechQueuePage() {
 
       const activeQueue = raw.filter(
         (l) =>
-          !isCompletedLike(l.status) &&
+          isOpenTechnicianJob(l) &&
           woTypeMap[l.work_order_id ?? ""] !== "historical_import",
       );
       setLines(activeQueue);
