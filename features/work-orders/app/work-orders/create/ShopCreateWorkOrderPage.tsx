@@ -3,6 +3,7 @@
 import { useState } from "react";
 
 import CreateWorkOrderPage from "./page";
+import PreviousDeferredWorkPanel from "./PreviousDeferredWorkPanel";
 
 const LEGACY_QUICK_INTAKE_DISMISS_KEY = "pfq.create.intake.dismiss.v1";
 
@@ -22,5 +23,10 @@ export default function ShopCreateWorkOrderPage() {
     return true;
   });
 
-  return <CreateWorkOrderPage />;
+  return (
+    <>
+      <PreviousDeferredWorkPanel />
+      <CreateWorkOrderPage />
+    </>
+  );
 }
