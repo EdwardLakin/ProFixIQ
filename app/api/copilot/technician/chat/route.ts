@@ -5,20 +5,12 @@ import {
   requireTechnicianCopilotAccess,
   TechnicianCopilotAccessError,
 } from "@/features/copilot/technician/server/auth";
+import { TechnicianCopilotConflictError } from "@/features/copilot/technician/server/chat";
 import {
-  runTechnicianCopilotTurn,
-  TechnicianCopilotConflictError,
-} from "@/features/copilot/technician/server/chat";
-import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
+  runGovernedTechnicianCopilotTurn,
+  TechnicianCopilotQuotaError,
+} from "@/features/copilot/technician/server/governedTurn";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
-import {
-  estimateCopilotTurnCostUsd,
-  registerAIUsageEvent,
-} from "@/features/shared/lib/server/ai-ops-guard";
-import {
-  claimDurableAIRouteQuota,
-  completeDurableAIRouteQuota,
-} from "@/features/shared/lib/server/durable-ai-guard";
 
 export const runtime = "nodejs";
 
@@ -84,47 +76,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // The CoPilot turn runs two model calls and was previously the only AI
-    // route with no spend ceiling at all. 120 turns / 5 min is far above any
-    // human conversational rate, so this bounds a runaway without touching
-    // ordinary technician use.
-    // Durable ceiling on the platform's highest-frequency AI call. Unlike the
-    // in-memory operational guard this survives serverless restarts, so it is a
-    // real cap rather than a per-instance one. A quota outage must not take the
-    // CoPilot down, so an unavailable RPC fails open and is logged.
-    const admin = createAdminSupabase();
-    let claim: Awaited<ReturnType<typeof claimDurableAIRouteQuota>> | null = null;
-    try {
-      claim = await claimDurableAIRouteQuota({
-        admin,
-        feature: "technician_copilot_text",
-        shopId: access.shopId,
-        actorId: access.profileId,
-      });
-    } catch (error) {
-      console.error("technician_copilot_quota_unavailable", {
-        shopId: access.shopId,
-        error: error instanceof Error ? error.message.slice(0, 200) : "unknown_error",
-      });
-    }
-
-    if (claim && !claim.allowed) {
-      return NextResponse.json(
-        {
-          error:
-            claim.reason === "hard_budget_exceeded"
-              ? "This shop has reached its monthly CoPilot budget."
-              : "CoPilot is temporarily rate limited for this shop. Retry shortly.",
-          code: claim.reason,
-        },
-        {
-          status: 429,
-          headers: { "Retry-After": String(claim.retryAfterSeconds) },
-        },
-      );
-    }
-    const receiptId = claim?.allowed ? claim.receiptId : null;
-
     const turnId =
       typeof body.turnId === "string" && body.turnId.trim()
         ? body.turnId.trim().slice(0, 128)
@@ -132,65 +83,23 @@ export async function POST(request: NextRequest) {
     const sessionId = typeof body.sessionId === "string" ? body.sessionId : null;
     const recentConversations = parseRecentConversations(body.recentConversations);
 
-    const settleReceipt = async (succeeded: boolean) => {
-      if (!receiptId) return;
-      await completeDurableAIRouteQuota({
-        admin,
-        feature: "technician_copilot_text",
-        shopId: access.shopId,
-        actorId: access.profileId,
-        receiptId,
-        actualCostUsd: succeeded ? estimateCopilotTurnCostUsd() : 0,
-        succeeded,
-      });
-    };
-
-    let result: Awaited<ReturnType<typeof runTechnicianCopilotTurn>>;
-    try {
-      result = await withAITelemetryContext(
-      {
-        endpoint: "/api/copilot/technician/chat",
-        shopId: access.shopId,
-        userId: access.profileId,
-      },
-      () =>
-        runTechnicianCopilotTurn({
-          identity: {
-            authUserId: access.authUserId,
-            profileId: access.profileId,
-            shopId: access.shopId,
-            documentationEnabled: access.capabilities.documentation,
-            voiceEnabled: access.capabilities.voice,
-            supabase: createAdminSupabase(),
-          },
-          message,
-          turnId,
-          sessionId,
-          inputSource,
-          recentConversations,
-        }),
-      );
-    } catch (error) {
-      // A claimed reservation must always settle, or it counts against the
-      // shop's window and budget until the 30-minute stale sweep reclaims it.
-      await settleReceipt(false);
-      throw error;
-    }
-
-    await settleReceipt(true);
-
-    // Also advance the in-memory operational counters, which drive the anomaly
-    // alerts (spike, high-cost, repeated-denial). The durable receipt above is
-    // the actual ceiling.
-    registerAIUsageEvent({
-      feature: "technician_copilot_text",
+    const result = await runGovernedTechnicianCopilotTurn({
       endpoint: "/api/copilot/technician/chat",
-      shopId: access.shopId,
-      model: null,
-      totalTokens: null,
-      estimatedCostUsd: estimateCopilotTurnCostUsd(),
-      status: "success",
-      errorCode: null,
+      turn: {
+        identity: {
+          authUserId: access.authUserId,
+          profileId: access.profileId,
+          shopId: access.shopId,
+          documentationEnabled: access.capabilities.documentation,
+          voiceEnabled: access.capabilities.voice,
+          supabase: createAdminSupabase(),
+        },
+        message,
+        turnId,
+        sessionId,
+        inputSource,
+        recentConversations,
+      },
     });
 
     return NextResponse.json({ ...result, turnId });
@@ -199,6 +108,15 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: error.message, code: error.code },
         { status: error.status },
+      );
+    }
+    if (error instanceof TechnicianCopilotQuotaError) {
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        {
+          status: error.status,
+          headers: { "Retry-After": String(error.retryAfterSeconds) },
+        },
       );
     }
     const conflict = runtimeConflict(error);
