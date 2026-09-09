@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const durableGuard = vi.hoisted(() => ({
   claimDurableAIRouteQuota: vi.fn(),
   completeDurableAIRouteQuota: vi.fn(async () => undefined),
+  getDurableAIReservationCostUsd: vi.fn(() => 0.03),
 }));
 const opsGuard = vi.hoisted(() => ({
   estimateAICostUsd: vi.fn(() => 0.01),
@@ -34,6 +35,7 @@ const baseConfig = {
 describe("withDurableAIQuota", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    durableGuard.getDurableAIReservationCostUsd.mockReturnValue(0.03);
   });
 
   it("runs the operation and records success when the claim is allowed", async () => {
@@ -131,7 +133,7 @@ describe("withDurableAIQuota", () => {
     ).rejects.toThrow(AIQuotaUnavailableError);
   });
 
-  it("records a failed completion and rethrows when the operation fails", async () => {
+  it("preserves the reserved cost and rethrows when the operation fails", async () => {
     durableGuard.claimDurableAIRouteQuota.mockResolvedValueOnce({
       allowed: true,
       receiptId: "receipt-2",
@@ -143,15 +145,22 @@ describe("withDurableAIQuota", () => {
       }),
     ).rejects.toThrow("provider exploded");
 
+    expect(durableGuard.getDurableAIReservationCostUsd).toHaveBeenCalledWith(
+      "inspection_interpret",
+    );
     expect(durableGuard.completeDurableAIRouteQuota).toHaveBeenCalledWith(
       expect.objectContaining({
         receiptId: "receipt-2",
         succeeded: false,
-        actualCostUsd: 0,
+        actualCostUsd: 0.03,
       }),
     );
     expect(telemetry.recordDurableAIUsage).toHaveBeenCalledWith(
-      expect.objectContaining({ status: "error", error_code: "provider_error" }),
+      expect.objectContaining({
+        status: "error",
+        error_code: "provider_error",
+        estimated_cost_usd: 0.03,
+      }),
     );
   });
 
@@ -168,7 +177,10 @@ describe("withDurableAIQuota", () => {
     ).rejects.toThrow("timed out");
 
     expect(telemetry.recordDurableAIUsage).toHaveBeenCalledWith(
-      expect.objectContaining({ error_code: "provider_timeout" }),
+      expect.objectContaining({
+        error_code: "provider_timeout",
+        estimated_cost_usd: 0.03,
+      }),
     );
   });
 });
