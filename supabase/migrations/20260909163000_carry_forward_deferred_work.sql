@@ -7,6 +7,54 @@ begin;
 set local lock_timeout = '5s';
 set local statement_timeout = '15min';
 
+-- The application already treats deferred as a canonical terminal line state,
+-- but the database normalizer still predates it. Extend only that existing
+-- contract; keep all legacy aliases and behavior unchanged.
+create or replace function public.normalize_work_order_line_status()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.status := coalesce(lower(replace(new.status, ' ', '_')), 'awaiting');
+
+  new.status := case new.status
+    when 'queued' then 'active'
+    when 'in_progress' then 'active'
+    when 'assigned' then 'active'
+    when 'paused' then 'on_hold'
+    when 'declined' then 'on_hold'
+    when 'unassigned' then 'awaiting'
+    when 'ready_to_invoice' then 'completed'
+    when 'quoted' then 'awaiting_approval'
+    else new.status
+  end;
+
+  if new.status not in (
+    'awaiting', 'awaiting_approval', 'active', 'waiting_parts',
+    'on_hold', 'completed', 'invoiced', 'deferred'
+  ) then
+    raise exception 'Invalid work_order_lines.status: %', new.status;
+  end if;
+
+  return new;
+end;
+$$;
+
+alter table public.work_order_lines
+  drop constraint if exists work_order_lines_status_check;
+alter table public.work_order_lines
+  add constraint work_order_lines_status_check
+  check (status = any (array[
+    'awaiting'::text,
+    'awaiting_approval'::text,
+    'active'::text,
+    'waiting_parts'::text,
+    'on_hold'::text,
+    'completed'::text,
+    'invoiced'::text,
+    'deferred'::text
+  ]));
+
 create or replace function public.carry_forward_deferred_work_for_work_order()
 returns trigger
 language plpgsql
@@ -23,9 +71,9 @@ begin
     return new;
   end if;
 
-  -- The parent row is already locked by its INSERT transaction. The trigger is
-  -- therefore atomic with work-order creation: either the work order and all
-  -- carried history commit, or neither does.
+  -- This trigger runs in the same transaction as the parent INSERT. Either the
+  -- new work order and every carried deferred line commit together, or neither
+  -- does.
   for v_candidate in
     with ranked as (
       select
@@ -86,8 +134,8 @@ begin
      and source_line.vehicle_id = new.vehicle_id
      and source_line.voided_at is null
     where not exists (
-      -- Once any descendant of this recommendation has actually been
-      -- completed, it is resolved and must stop following the vehicle.
+      -- A completed descendant resolves the recommendation and stops it from
+      -- following the vehicle again.
       select 1
       from public.work_order_quote_lines descendant_quote
       join public.work_order_lines descendant_line
@@ -105,7 +153,8 @@ begin
         and descendant_line.voided_at is null
     )
     and not exists (
-      -- Idempotency for explicit trigger re-entry/replay on the same parent.
+      -- The quote provenance row is the idempotency receipt for this source
+      -- repair on this destination work order.
       select 1
       from public.work_order_quote_lines existing
       where existing.shop_id = new.shop_id
@@ -140,7 +189,7 @@ begin
       coalesce(v_candidate.line_description, v_candidate.quote_description, v_candidate.quote_title),
       v_candidate.line_notes,
       'deferred',
-      'deferred',
+      'declined',
       coalesce(v_candidate.job_type, 'repair'),
       new.shop_id,
       v_candidate.user_id,
