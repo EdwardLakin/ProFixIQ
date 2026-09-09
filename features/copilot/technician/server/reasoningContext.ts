@@ -9,7 +9,7 @@ import type {
 } from "../session/projectTechnicianContext";
 
 export const TECHNICIAN_COPILOT_RECENT_TURN_LIMIT = 8;
-export const TECHNICIAN_COPILOT_MODEL_CONTEXT_MAX_CHARS = 32000;
+export const TECHNICIAN_COPILOT_MODEL_CONTEXT_MAX_CHARS = 48000;
 
 const RECENT_MESSAGE_MAX_CHARS = 1600;
 const OLDER_CONVERSATION_SUMMARY_MAX_CHARS = 2400;
@@ -36,6 +36,10 @@ function turnKey(turn: TechnicianConversationTurn, index: number): string {
 function clip(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   return `${text.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
+}
+
+function clipNullable(value: string | null, maxChars: number): string | null {
+  return value == null ? null : clip(value, maxChars);
 }
 
 function clipMiddle(text: string, maxChars: number): string {
@@ -158,6 +162,138 @@ function boundRecordByOccurredAt<T extends { occurredAt: string }>(
   };
 }
 
+function latestRecordEntries<T>(record: Record<string, T>, limit: number) {
+  return Object.entries(record).slice(-limit);
+}
+
+function compactBoundedContext(
+  context: TechnicianReasoningContext,
+): TechnicianReasoningContext {
+  return {
+    ...context,
+    currentTask: clipNullable(context.currentTask, 400),
+    complaint: clipNullable(context.complaint, 700),
+    conversation: context.conversation.slice(-TECHNICIAN_COPILOT_RECENT_TURN_LIMIT).map(
+      (turn) => ({ ...turn, text: clip(turn.text, 800) }),
+    ),
+    conversationSummary: context.conversationSummary
+      ? clip(context.conversationSummary, 1400)
+      : null,
+    repairContextSummary: context.repairContextSummary
+      ? clip(context.repairContextSummary, 2000)
+      : null,
+    observations: context.observations.slice(-10).map((value) => ({
+      ...value,
+      text: clip(value.text, 280),
+      system: clipNullable(value.system, 100),
+      component: clipNullable(value.component, 100),
+      location: clipNullable(value.location, 100),
+    })),
+    measurements: context.measurements.slice(-10).map((value) => ({
+      ...value,
+      label: clip(value.label, 120),
+      value: clip(value.value, 80),
+      unit: clipNullable(value.unit, 32),
+      condition: clipNullable(value.condition, 120),
+      component: clipNullable(value.component, 100),
+      location: clipNullable(value.location, 100),
+    })),
+    dtcs: context.dtcs.slice(-8).map((value) => ({
+      ...value,
+      code: clip(value.code, 32),
+      module: clipNullable(value.module, 64),
+      status: clipNullable(value.status, 64),
+      description: clipNullable(value.description, 220),
+    })),
+    findings: context.findings.slice(-10).map((value) => ({
+      ...value,
+      text: clip(value.text, 280),
+      system: clipNullable(value.system, 100),
+      component: clipNullable(value.component, 100),
+      location: clipNullable(value.location, 100),
+    })),
+    componentStates: Object.fromEntries(
+      latestRecordEntries(context.componentStates, 12).map(([key, value]) => [
+        clip(key, 180),
+        {
+          ...value,
+          component: clip(value.component, 120),
+          location: clipNullable(value.location, 100),
+        },
+      ]),
+    ),
+    fluidStates: Object.fromEntries(
+      latestRecordEntries(context.fluidStates, 12).map(([key, value]) => [
+        clip(key, 180),
+        {
+          ...value,
+          fluid: clip(value.fluid, 100),
+          system: clipNullable(value.system, 100),
+        },
+      ]),
+    ),
+    pendingActions: Object.fromEntries(
+      Object.entries(context.pendingActions)
+        .slice(-8)
+        .map(([key, value]) => [clip(key, 120), clip(value, 180)]),
+    ),
+    documentation: {
+      ...context.documentation,
+      repairNoteDraft: clipMiddle(context.documentation.repairNoteDraft, 1400),
+      timeline: context.documentation.timeline.slice(-12).map((entry) => ({
+        ...entry,
+        label: clip(entry.label, 180),
+      })),
+    },
+  };
+}
+
+function enforceSerializedCeiling(
+  context: TechnicianReasoningContext,
+): TechnicianReasoningContext {
+  if (JSON.stringify(context).length <= TECHNICIAN_COPILOT_MODEL_CONTEXT_MAX_CHARS) {
+    return context;
+  }
+
+  const compact = compactBoundedContext(context);
+  if (JSON.stringify(compact).length <= TECHNICIAN_COPILOT_MODEL_CONTEXT_MAX_CHARS) {
+    return compact;
+  }
+
+  // Last-resort deterministic projection. This path exists only for malformed
+  // or exceptionally verbose historical data; it still keeps the latest source
+  // facts and never mutates the persisted session.
+  return {
+    ...compact,
+    conversation: compact.conversation.slice(-4).map((turn) => ({
+      ...turn,
+      text: clip(turn.text, 500),
+    })),
+    conversationSummary: compact.conversationSummary
+      ? clip(compact.conversationSummary, 800)
+      : null,
+    repairContextSummary: compact.repairContextSummary
+      ? clip(compact.repairContextSummary, 900)
+      : null,
+    observations: compact.observations.slice(-5),
+    measurements: compact.measurements.slice(-5),
+    dtcs: compact.dtcs.slice(-5),
+    findings: compact.findings.slice(-5),
+    componentStates: Object.fromEntries(
+      latestRecordEntries(compact.componentStates, 6),
+    ),
+    fluidStates: Object.fromEntries(latestRecordEntries(compact.fluidStates, 6)),
+    pendingActions: Object.fromEntries(
+      Object.entries(compact.pendingActions).slice(-4),
+    ),
+    documentation: {
+      ...compact.documentation,
+      repairNoteDraft: clipMiddle(compact.documentation.repairNoteDraft, 700),
+      timeline: compact.documentation.timeline.slice(-6),
+    },
+  };
+}
+
 export function boundTechnicianReasoningContext(
   context: TechnicianContext,
 ): TechnicianReasoningContext {
@@ -268,7 +404,7 @@ export function boundTechnicianReasoningContext(
     repairContextSummary: summarizeLines(summaryLines),
   };
 
-  return bounded;
+  return enforceSerializedCeiling(bounded);
 }
 
 export function boundTechnicianCopilotModelInput(input: unknown): unknown {
@@ -280,17 +416,10 @@ export function boundTechnicianCopilotModelInput(input: unknown): unknown {
     return input;
   }
 
-  const bounded = boundTechnicianReasoningContext(repairContext as TechnicianContext);
-  const serialized = JSON.stringify(bounded);
-  if (serialized.length > TECHNICIAN_COPILOT_MODEL_CONTEXT_MAX_CHARS) {
-    console.warn("[technician-copilot] bounded model context exceeded target", {
-      serializedChars: serialized.length,
-      targetChars: TECHNICIAN_COPILOT_MODEL_CONTEXT_MAX_CHARS,
-    });
-  }
-
   return {
     ...value,
-    repairContext: bounded,
+    repairContext: boundTechnicianReasoningContext(
+      repairContext as TechnicianContext,
+    ),
   };
 }
