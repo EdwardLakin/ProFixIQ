@@ -26,9 +26,6 @@ export class TechnicianCopilotQuotaError extends Error {
         : "CoPilot is temporarily rate limited. Retry shortly.",
     );
     this.name = "TechnicianCopilotQuotaError";
-    // A short-window throttle can be retried. A monthly spend exhaustion must
-    // not remain in the technician client's retry queue and execute after a
-    // later billing-period reset, so surface it as a non-retryable status.
     this.status = code === "hard_budget_exceeded" ? 402 : 429;
   }
 }
@@ -73,6 +70,39 @@ function successfulCompletionForTurn(
   );
 }
 
+function recordDurableDenial(input: {
+  endpoint: string;
+  shopId: string;
+  actorId: string;
+  turnId: string;
+  reason: "rate_limited" | "hard_budget_exceeded";
+  retryAfterSeconds: number;
+}) {
+  // Durable quota decisions happen in Postgres, while ai-ops-guard's anomaly
+  // buckets are intentionally per-instance. Emit the same structured alert
+  // envelope here so an actual durable denial is never invisible merely
+  // because the in-memory guard was not the enforcing layer.
+  console.warn(
+    JSON.stringify({
+      type: "ai_anomaly_alert",
+      alert_type:
+        input.reason === "hard_budget_exceeded"
+          ? "hard_budget_denial"
+          : "rate_limit_exceeded",
+      feature: "technician_copilot_text",
+      endpoint: input.endpoint,
+      shop_id: input.shopId,
+      actor_id: input.actorId,
+      turn_id: input.turnId,
+      emitted_at: new Date().toISOString(),
+      details: {
+        source: "durable_quota",
+        retryAfterSeconds: input.retryAfterSeconds,
+      },
+    }),
+  );
+}
+
 /**
  * The canonical turn service has deliberate replay exits before either provider
  * call. Check those persisted facts before reserving quota so a browser/mobile
@@ -113,13 +143,8 @@ async function turnMayCallProvider(input: TurnInput): Promise<boolean> {
       return false;
     }
 
-    // Once the active-session path is reached, enabled silent documentation is
-    // itself a provider call even when the decision call is a replay.
     return true;
   } catch (error) {
-    // A preflight read is an optimization for exact replay accounting, not an
-    // authorization bypass. If it cannot be read, conservatively reserve the
-    // turn and let the canonical service perform its normal checks.
     console.warn("technician_copilot_replay_preflight_unavailable", {
       shopId: input.identity.shopId,
       turnId: input.turnId,
@@ -148,6 +173,7 @@ export async function runGovernedTechnicianCopilotTurn(input: {
   }
 
   const admin = createAdminSupabase();
+  const turnCostUsd = estimateCopilotTurnCostUsd();
   let receiptId: string | null = null;
   try {
     const claim = await claimDurableAIRouteQuota({
@@ -157,6 +183,14 @@ export async function runGovernedTechnicianCopilotTurn(input: {
       actorId: turn.identity.profileId,
     });
     if (!claim.allowed) {
+      recordDurableDenial({
+        endpoint: input.endpoint,
+        shopId: turn.identity.shopId,
+        actorId: turn.identity.profileId,
+        turnId: turn.turnId,
+        reason: claim.reason,
+        retryAfterSeconds: claim.retryAfterSeconds,
+      });
       throw new TechnicianCopilotQuotaError(
         claim.reason,
         claim.retryAfterSeconds,
@@ -165,9 +199,6 @@ export async function runGovernedTechnicianCopilotTurn(input: {
     receiptId = claim.receiptId;
   } catch (error) {
     if (error instanceof TechnicianCopilotQuotaError) throw error;
-    // Quota infrastructure remains fail-open so an accounting outage cannot
-    // strand a technician in an active repair. The provider ledger still
-    // records actual model usage independently when telemetry is available.
     console.error("technician_copilot_quota_unavailable", {
       shopId: turn.identity.shopId,
       turnId: turn.turnId,
@@ -192,7 +223,7 @@ export async function runGovernedTechnicianCopilotTurn(input: {
         shopId: turn.identity.shopId,
         actorId: turn.identity.profileId,
         receiptId,
-        actualCostUsd: estimateCopilotTurnCostUsd(),
+        actualCostUsd: turnCostUsd,
         succeeded: true,
       });
     }
@@ -203,7 +234,7 @@ export async function runGovernedTechnicianCopilotTurn(input: {
       shopId: turn.identity.shopId,
       model: null,
       totalTokens: null,
-      estimatedCostUsd: estimateCopilotTurnCostUsd(),
+      estimatedCostUsd: turnCostUsd,
       status: "success",
       errorCode: null,
     });
@@ -211,13 +242,17 @@ export async function runGovernedTechnicianCopilotTurn(input: {
     return result;
   } catch (error) {
     if (receiptId) {
+      // Keep the reservation's conservative per-turn proxy in the monthly
+      // budget on failure. OpenAI may already have returned billable tokens
+      // before JSON parsing/validation failed, and settling at $0 would let
+      // repeated malformed responses bypass the hard spend ceiling.
       await completeDurableAIRouteQuota({
         admin,
         feature: "technician_copilot_text",
         shopId: turn.identity.shopId,
         actorId: turn.identity.profileId,
         receiptId,
-        actualCostUsd: 0,
+        actualCostUsd: turnCostUsd,
         succeeded: false,
       });
     }
@@ -227,7 +262,7 @@ export async function runGovernedTechnicianCopilotTurn(input: {
       shopId: turn.identity.shopId,
       model: null,
       totalTokens: null,
-      estimatedCostUsd: 0,
+      estimatedCostUsd: turnCostUsd,
       status: "error",
       errorCode: error instanceof Error ? error.name : "unknown_error",
     });
