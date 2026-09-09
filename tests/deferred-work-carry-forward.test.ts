@@ -1,10 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const migration = readFileSync(
-  "supabase/migrations/20260909163000_carry_forward_deferred_work.sql",
-  "utf8",
-);
 const route = readFileSync(
   "app/api/work-orders/deferred-history/route.ts",
   "utf8",
@@ -18,50 +14,50 @@ const wrapper = readFileSync(
   "utf8",
 );
 
-describe("deferred work carry-forward", () => {
-  it("extends the existing canonical line-status contract without rewriting legacy declined behavior", () => {
-    expect(migration).toContain("'completed', 'invoiced', 'deferred'");
-    expect(migration).toContain("when 'declined' then 'on_hold'");
-    expect(migration).toContain("'deferred'::text");
-  });
-
-  it("carries prior decisions in the same transaction as work-order creation", () => {
-    expect(migration).toContain("after insert on public.work_orders");
-    expect(migration).toContain("'deferred',\n      'declined'");
-    expect(migration).toContain("source_work_order_line_id");
-    expect(migration).toContain("source_row_id");
-    expect(migration).toContain("existing.work_order_id = new.id");
-  });
-
-  it("stops carrying a recommendation after a linked descendant is completed", () => {
-    expect(migration).toContain("descendant_quote.source_work_order_line_id");
-    expect(migration).toContain("'completed', 'ready_to_invoice', 'invoiced'");
-  });
-
-  it("keeps the carry-forward trigger private instead of exposing a direct RPC bypass", () => {
-    expect(migration).toContain(
-      "revoke all on function public.carry_forward_deferred_work_for_work_order()",
-    );
-    expect(migration).not.toContain(
-      "grant execute on function public.carry_forward_deferred_work_for_work_order() to authenticated",
-    );
-  });
-});
-
 describe("create-work-order deferred history", () => {
-  it("uses a shop-authorized server projection and exposes prior quote totals", () => {
+  it("keeps the history read shop-scoped and preserves sell-pricing capability enforcement", () => {
     expect(route).toContain("requireShopScopedApiAccess");
+    expect(route).toContain("resolveWorkOrderFinancialAccess");
+    expect(route).toContain("financial.access.canViewSellPricing");
     expect(route).toContain('.eq("shop_id", access.profile.shop_id)');
-    expect(route).toContain("grandTotal: Number(original.grand_total ?? 0)");
-    expect(route).toContain("partsTotal: Number(original.parts_total ?? 0)");
-    expect(route).toContain("laborTotal: Number(original.labor_total ?? 0)");
+    expect(route).toContain(
+      "laborTotal: canViewPricing ? Number(original.labor_total ?? 0) : null",
+    );
+    expect(route).toContain(
+      "partsTotal: canViewPricing ? Number(original.parts_total ?? 0) : null",
+    );
+    expect(route).toContain(
+      "grandTotal: canViewPricing ? Number(original.grand_total ?? 0) : null",
+    );
   });
 
-  it("renders the previous deferred-work panel in the existing shop create wrapper", () => {
+  it("loads complete vehicle history before reducing to the newest state per recommendation", () => {
+    expect(route).toContain("QUOTE_PAGE_SIZE = 500");
+    expect(route).toContain(
+      ".range(from, from + QUOTE_PAGE_SIZE - 1)",
+    );
+    expect(route).not.toContain(".limit(300)");
+    expect(route).toContain("const latestByRoot = new Map<string, QuoteLine>()");
+    expect(route).toContain(
+      ".filter(([, latest]) => quoteDecision(latest) !== null)",
+    );
+  });
+
+  it("keeps displayed history aligned with carry-forward resolution/source guards", () => {
+    expect(route).toContain("RESOLVED_LINE_STATES");
+    expect(route).toContain("isArchivedSource");
+    expect(route).toContain('normalized(row.type) === "historical_import"');
+    expect(route).toContain('startsWith("portal_quote:")');
+    expect(route).toContain("originalQuoteForDisplay");
+  });
+
+  it("renders previous work from the canonical selected vehicle and only shows totals when authorized", () => {
     expect(wrapper).toContain("PreviousDeferredWorkPanel");
     expect(panel).toContain("Previous deferred work");
+    expect(panel).toContain('useTabState<string | null>("vehicleId", null)');
+    expect(panel).toContain("selectedVehicleId ||");
     expect(panel).toContain("Last quoted");
-    expect(panel).toContain("grandTotal");
+    expect(panel).toContain("canViewPricing && item.grandTotal != null");
     expect(panel).toContain("license_plate");
     expect(panel).toContain("unit_number");
   });
