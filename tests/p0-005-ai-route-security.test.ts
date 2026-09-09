@@ -91,110 +91,111 @@ describe("P0-005 AI route boundaries", () => {
           cause: null,
           correction: null,
           labor_time: null,
+          notes: null,
         });
       }
       if (table === "work_orders") {
         return query({
           id: WORK_ORDER_ID,
+          custom_id: "WO-005",
           shop_id: SHOP_ID,
           vehicle_id: VEHICLE_ID,
-          status: "in_progress",
+          notes: null,
         });
       }
       if (table === "vehicles") {
-        return query({ id: VEHICLE_ID, year: 2020, make: "Ford", model: "F-150" });
+        return query({
+          year: 2020,
+          make: "Honda",
+          model: "Accord",
+          engine: "2.0L",
+          fuel_type: "gas",
+          drivetrain: "FWD",
+          transmission: "automatic",
+          vin: "1HGCM82633A004352",
+          unit_number: null,
+          license_plate: null,
+        });
       }
-      return query(null);
+      if (table === "work_order_line_dtc_threads") return query(null);
+      throw new Error(`Unexpected table ${table}`);
     });
     mocks.createAdmin.mockReturnValue({ from: mocks.from });
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
-    vi.resetModules();
   });
 
   it("denies anonymous DTC access before privileged or provider work", async () => {
-    mocks.requireAccess.mockResolvedValueOnce({
+    mocks.requireAccess.mockResolvedValue({
       ok: false,
-      response: new Response(JSON.stringify({ error: "Not authenticated" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      }),
+      response: Response.json({ error: "Not authenticated" }, { status: 401 }),
     });
     const { POST } = await import("../app/api/dtc-suggest/route");
 
     const response = await POST(postRequest("/api/dtc-suggest", { jobId: JOB_ID }));
 
     expect(response.status).toBe(401);
+    expect(mocks.createAdmin).not.toHaveBeenCalled();
+    expect(mocks.claimQuota).not.toHaveBeenCalled();
     expect(mocks.openAICreate).not.toHaveBeenCalled();
   });
 
   it("denies a role without inspection capability before provider work", async () => {
-    mocks.requireAccess.mockResolvedValueOnce({
+    mocks.requireAccess.mockResolvedValue({
       ok: false,
-      response: new Response(JSON.stringify({ error: "Forbidden" }), {
-        status: 403,
-        headers: { "Content-Type": "application/json" },
-      }),
+      response: Response.json({ error: "Forbidden" }, { status: 403 }),
     });
     const { POST } = await import("../app/api/ai/interpret/route");
 
     const response = await POST(
-      postRequest("/api/ai/interpret", { transcript: "left front tread 8 mm" }),
+      postRequest("/api/ai/interpret", { transcript: "brakes pass" }),
     );
 
     expect(response.status).toBe(403);
+    expect(mocks.requireAccess).toHaveBeenCalledWith({
+      requiredCapability: "canRunInspections",
+    });
+    expect(mocks.createAdmin).not.toHaveBeenCalled();
+    expect(mocks.claimQuota).not.toHaveBeenCalled();
     expect(mocks.openAICreate).not.toHaveBeenCalled();
   });
 
   it("denies anonymous access to the canonical technician DTC route", async () => {
-    mocks.requireAccess.mockResolvedValueOnce({
+    mocks.requireAccess.mockResolvedValue({
       ok: false,
-      response: new Response(JSON.stringify({ error: "Not authenticated" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      }),
+      response: Response.json({ error: "Not authenticated" }, { status: 401 }),
     });
     const { POST } = await import("../app/api/work-orders/dtc-suggest/route");
 
     const response = await POST(
-      postRequest("/api/work-orders/dtc-suggest", { jobId: JOB_ID }),
+      postRequest("/api/work-orders/dtc-suggest", {
+        jobId: JOB_ID,
+        userMessage: "P0420 stored",
+      }),
     );
 
     expect(response.status).toBe(401);
+    expect(mocks.createAdmin).not.toHaveBeenCalled();
+    expect(mocks.claimQuota).not.toHaveBeenCalled();
     expect(mocks.openAICreate).not.toHaveBeenCalled();
   });
 
   it("returns not found without calling AI for a cross-shop DTC job", async () => {
     mocks.from.mockImplementation((table: string) => {
       if (table === "work_order_lines") {
-        return query({
-          id: JOB_ID,
-          work_order_id: WORK_ORDER_ID,
-          job_type: "diagnosis",
-          complaint: "Check engine light",
-          description: "Diagnose P0420",
-          cause: null,
-          correction: null,
-          labor_time: null,
-        });
+        return query({ id: JOB_ID, work_order_id: WORK_ORDER_ID });
       }
-      if (table === "work_orders") {
-        return query({
-          id: WORK_ORDER_ID,
-          shop_id: "a5100000-0000-4000-8000-000000000099",
-          vehicle_id: VEHICLE_ID,
-          status: "in_progress",
-        });
-      }
-      return query(null);
+      if (table === "work_orders") return query(null);
+      throw new Error(`Unexpected table ${table}`);
     });
     const { POST } = await import("../app/api/dtc-suggest/route");
 
     const response = await POST(postRequest("/api/dtc-suggest", { jobId: JOB_ID }));
 
     expect(response.status).toBe(404);
+    expect(mocks.claimQuota).not.toHaveBeenCalled();
     expect(mocks.openAICreate).not.toHaveBeenCalled();
   });
 
@@ -202,10 +203,10 @@ describe("P0-005 AI route boundaries", () => {
     const { POST } = await import("../app/api/ai/interpret/route");
 
     const response = await POST(
-      postRequest("/api/ai/interpret", { transcript: "x".repeat(70 * 1024) }),
+      postRequest("/api/ai/interpret", { transcript: "x".repeat(4001) }),
     );
 
-    expect(response.status).toBe(413);
+    expect(response.status).toBe(400);
     expect(mocks.claimQuota).not.toHaveBeenCalled();
     expect(mocks.openAICreate).not.toHaveBeenCalled();
   });
@@ -259,11 +260,19 @@ describe("P0-005 AI route boundaries", () => {
         laborTime: 1,
       },
     });
+    expect(mocks.completeQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ succeeded: true, receiptId: "quota-receipt" }),
+    );
   });
 
   it("secures the canonical technician DTC conversation flow", async () => {
     mocks.openAICreate.mockResolvedValue(
-      completion(JSON.stringify({ cause: "Catalyst efficiency low", correction: "Continue testing", laborTime: 1 })),
+      completion(
+        JSON.stringify({
+          reply: "Test the downstream oxygen sensor next.",
+          summary: { dtc: "P0420", commonRepairs: [], recommendedTests: ["Check O2 response"] },
+        }),
+      ),
     );
     const { POST } = await import("../app/api/work-orders/dtc-suggest/route");
 
@@ -271,9 +280,14 @@ describe("P0-005 AI route boundaries", () => {
       postRequest("/api/work-orders/dtc-suggest", {
         jobId: JOB_ID,
         code: "P0420",
+        userMessage: "Rear O2 stays near 0.72V",
       }),
     );
 
     expect(response.status).toBe(200);
+    expect(mocks.claimQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ actorId: ACTOR_ID, shopId: SHOP_ID }),
+    );
+    expect(mocks.threadUpsert).toHaveBeenCalled();
   });
 });
