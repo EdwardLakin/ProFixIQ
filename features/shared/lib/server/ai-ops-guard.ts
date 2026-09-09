@@ -13,14 +13,20 @@ type AIOpsPolicy = {
   anomalyHardDenialThreshold: number;
 };
 
+// Silent CoPilot documentation is model/telemetry policy only. Its spend is
+// governed by the one durable technician_copilot_text reservation for the whole
+// turn, so exposing a second in-memory budget here would be misleading and could
+// deny only half of an otherwise valid technician turn.
+type AIOpsFeature = Exclude<AIFeature, "technician_copilot_documentation">;
+
 type EnforceInput = {
-  feature: AIFeature;
+  feature: AIOpsFeature;
   endpoint: string;
   shopId: string | null;
 };
 
 type UsageEventInput = {
-  feature: AIFeature;
+  feature: AIOpsFeature;
   endpoint: string;
   shopId: string | null;
   model: string | null;
@@ -46,7 +52,7 @@ function startOfMonthEpoch(now: Date): number {
   return Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0, 0, 0, 0);
 }
 
-function usageKey(shopId: string | null, feature: AIFeature, now: Date): string {
+function usageKey(shopId: string | null, feature: AIOpsFeature, now: Date): string {
   const shopScope = shopId ?? "unknown_shop";
   return `${shopScope}:${feature}:${startOfMonthEpoch(now)}`;
 }
@@ -55,7 +61,7 @@ function scopedKey(shopId: string | null, endpoint: string): string {
   return `${shopId ?? "unknown_shop"}:${endpoint}`;
 }
 
-const FEATURE_POLICY: Record<AIFeature, AIOpsPolicy> = {
+const FEATURE_POLICY: Record<AIOpsFeature, AIOpsPolicy> = {
   work_orders_suggest_lines: {
     budgetSoftUsd: envNum("AI_BUDGET_SOFT_USD_SUGGEST_LINES", 40),
     budgetHardUsd: envNum("AI_BUDGET_HARD_USD_SUGGEST_LINES", 60),
@@ -161,10 +167,9 @@ const FEATURE_POLICY: Record<AIFeature, AIOpsPolicy> = {
     anomalyHighCostUsd: 0.2,
     anomalyHardDenialThreshold: 4,
   },
-  // Sized so ordinary technician use is never touched: 120 turns / 5 min is far
-  // above any human conversational rate, and the monthly budget only bites on a
-  // runaway. Every value is env-overridable for tuning once the durable ledger
-  // has real per-shop data.
+  // This in-memory policy is anomaly signaling only for text CoPilot turns.
+  // The actual rate/budget ceiling is the durable per-turn quota, shared by
+  // reasoning and silent documentation.
   technician_copilot_text: {
     budgetSoftUsd: envNum("AI_BUDGET_SOFT_USD_COPILOT_TEXT", 400),
     budgetHardUsd: envNum("AI_BUDGET_HARD_USD_COPILOT_TEXT", 600),
@@ -174,22 +179,6 @@ const FEATURE_POLICY: Record<AIFeature, AIOpsPolicy> = {
     anomalyFailureThreshold: envNum("AI_ANOMALY_FAIL_COPILOT_TEXT", 8),
     anomalyHighCostUsd: envNum("AI_ANOMALY_COST_COPILOT_TEXT", 0.3),
     anomalyHardDenialThreshold: envNum("AI_ANOMALY_DENIAL_COPILOT_TEXT", 6),
-  },
-  technician_copilot_documentation: {
-    budgetSoftUsd: envNum("AI_BUDGET_SOFT_USD_COPILOT_DOCUMENTATION", 60),
-    budgetHardUsd: envNum("AI_BUDGET_HARD_USD_COPILOT_DOCUMENTATION", 100),
-    rateLimitMax: envNum("AI_RATE_LIMIT_COPILOT_DOCUMENTATION_MAX", 120),
-    rateLimitWindowMs: envNum(
-      "AI_RATE_LIMIT_COPILOT_DOCUMENTATION_WINDOW_MS",
-      5 * 60 * 1000,
-    ),
-    anomalySpikeThreshold: envNum("AI_ANOMALY_SPIKE_COPILOT_DOCUMENTATION", 90),
-    anomalyFailureThreshold: envNum("AI_ANOMALY_FAIL_COPILOT_DOCUMENTATION", 8),
-    anomalyHighCostUsd: envNum("AI_ANOMALY_COST_COPILOT_DOCUMENTATION", 0.1),
-    anomalyHardDenialThreshold: envNum(
-      "AI_ANOMALY_DENIAL_COPILOT_DOCUMENTATION",
-      6,
-    ),
   },
   inspection_interpret: {
     budgetSoftUsd: 35,
@@ -214,11 +203,9 @@ export function estimateAICostUsd(feature: AIFeature, totalTokens: number | null
 }
 
 /**
- * Per-turn proxy used to advance the CoPilot's monthly operational budget.
- * `enforceAIOperationalPolicy` only reads a counter that `registerAIUsageEvent`
- * increments, so without registering a cost the budget never moves and the
- * guard degrades to a rate limit. Real per-turn cost lands in the durable
- * ledger; replace this proxy once that data exists.
+ * Per-turn proxy used to settle the durable CoPilot reservation and feed
+ * anomaly counters. Real provider cost is recorded separately in the durable
+ * AI ledger; replace this proxy once production distributions are established.
  */
 export function estimateCopilotTurnCostUsd(): number {
   return envNum("AI_COST_PER_COPILOT_TURN_USD", 0.02);
@@ -247,7 +234,10 @@ export function enforceAIOperationalPolicy(input: EnforceInput):
   const filtered = bucket.filter((ts) => now - ts <= policy.rateLimitWindowMs);
   if (filtered.length >= policy.rateLimitMax) {
     hardDenialBuckets.set(key, [...(hardDenialBuckets.get(key) ?? []), now]);
-    emitAlert("rate_limit_exceeded", input, { windowMs: policy.rateLimitWindowMs, max: policy.rateLimitMax });
+    emitAlert("rate_limit_exceeded", input, {
+      windowMs: policy.rateLimitWindowMs,
+      max: policy.rateLimitMax,
+    });
     return { allowed: false, reason: "rate_limited", code: "ai_rate_limit_exceeded" };
   }
   filtered.push(now);
@@ -258,11 +248,21 @@ export function enforceAIOperationalPolicy(input: EnforceInput):
 
   if (currentBudget >= policy.budgetHardUsd) {
     hardDenialBuckets.set(key, [...(hardDenialBuckets.get(key) ?? []), now]);
-    emitAlert("hard_budget_denial", input, { currentBudget, hardLimit: policy.budgetHardUsd });
-    return { allowed: false, reason: "hard_budget_exceeded", code: "ai_budget_hard_limit_exceeded" };
+    emitAlert("hard_budget_denial", input, {
+      currentBudget,
+      hardLimit: policy.budgetHardUsd,
+    });
+    return {
+      allowed: false,
+      reason: "hard_budget_exceeded",
+      code: "ai_budget_hard_limit_exceeded",
+    };
   }
 
-  return { allowed: true, softBudgetWarning: currentBudget >= policy.budgetSoftUsd };
+  return {
+    allowed: true,
+    softBudgetWarning: currentBudget >= policy.budgetSoftUsd,
+  };
 }
 
 export function registerAIUsageEvent(event: UsageEventInput): void {
@@ -270,7 +270,10 @@ export function registerAIUsageEvent(event: UsageEventInput): void {
   const nowDate = new Date(now);
   const policy = FEATURE_POLICY[event.feature];
   const mKey = usageKey(event.shopId, event.feature, nowDate);
-  monthUsage.set(mKey, (monthUsage.get(mKey) ?? 0) + Math.max(event.estimatedCostUsd, 0));
+  monthUsage.set(
+    mKey,
+    (monthUsage.get(mKey) ?? 0) + Math.max(event.estimatedCostUsd, 0),
+  );
 
   const key = scopedKey(event.shopId, event.endpoint);
 
@@ -280,7 +283,11 @@ export function registerAIUsageEvent(event: UsageEventInput): void {
     );
     failureBuckets.set(key, failures);
     if (failures.length >= policy.anomalyFailureThreshold) {
-      emitAlert("failure_spike", { feature: event.feature, endpoint: event.endpoint, shopId: event.shopId }, { count: failures.length });
+      emitAlert(
+        "failure_spike",
+        { feature: event.feature, endpoint: event.endpoint, shopId: event.shopId },
+        { count: failures.length },
+      );
     }
   }
 
@@ -288,22 +295,38 @@ export function registerAIUsageEvent(event: UsageEventInput): void {
     (ts) => now - ts <= policy.rateLimitWindowMs,
   ).length;
   if (requestsInWindow >= policy.anomalySpikeThreshold) {
-    emitAlert("request_spike", { feature: event.feature, endpoint: event.endpoint, shopId: event.shopId }, { count: requestsInWindow });
+    emitAlert(
+      "request_spike",
+      { feature: event.feature, endpoint: event.endpoint, shopId: event.shopId },
+      { count: requestsInWindow },
+    );
   }
 
   if (event.estimatedCostUsd >= policy.anomalyHighCostUsd) {
-    emitAlert("high_request_cost", { feature: event.feature, endpoint: event.endpoint, shopId: event.shopId }, { estimatedCostUsd: event.estimatedCostUsd, model: event.model });
+    emitAlert(
+      "high_request_cost",
+      { feature: event.feature, endpoint: event.endpoint, shopId: event.shopId },
+      { estimatedCostUsd: event.estimatedCostUsd, model: event.model },
+    );
   }
 
   const denialCount = (hardDenialBuckets.get(key) ?? []).filter(
     (ts) => now - ts <= policy.rateLimitWindowMs,
   ).length;
   if (denialCount >= policy.anomalyHardDenialThreshold) {
-    emitAlert("repeated_denials", { feature: event.feature, endpoint: event.endpoint, shopId: event.shopId }, { denialCount });
+    emitAlert(
+      "repeated_denials",
+      { feature: event.feature, endpoint: event.endpoint, shopId: event.shopId },
+      { denialCount },
+    );
   }
 }
 
-function emitAlert(type: string, input: EnforceInput, details: Record<string, unknown>): void {
+function emitAlert(
+  type: string,
+  input: EnforceInput,
+  details: Record<string, unknown>,
+): void {
   console.warn(
     JSON.stringify({
       type: "ai_anomaly_alert",
