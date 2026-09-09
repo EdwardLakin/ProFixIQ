@@ -51,9 +51,6 @@ function copilotPolicy(): DurablePolicy {
       0.01,
       envNum("AI_BUDGET_HARD_USD_COPILOT_TEXT", 600),
     ),
-    // Reserve exactly the same configurable proxy used to settle successful
-    // turns. This prevents concurrent requests near the hard budget from all
-    // reserving an understated fixed amount.
     reservationCostUsd: Math.max(0, estimateCopilotTurnCostUsd()),
   };
 }
@@ -76,6 +73,12 @@ function durablePolicy(feature: DurableAIFeature): DurablePolicy {
     hardBudgetUsd: 50,
     reservationCostUsd: 0.03,
   };
+}
+
+export function getDurableAIReservationCostUsd(
+  feature: DurableAIFeature,
+): number {
+  return durablePolicy(feature).reservationCostUsd;
 }
 
 type QuotaRow = {
