@@ -15,15 +15,16 @@ type DeferredItem = {
   complaint: string | null;
   decision: "declined" | "deferred";
   decisionAt: string;
-  laborTotal: number;
-  partsTotal: number;
-  taxTotal: number;
-  grandTotal: number;
+  laborTotal: number | null;
+  partsTotal: number | null;
+  taxTotal: number | null;
+  grandTotal: number | null;
 };
 
 type DeferredPayload = {
   ok?: boolean;
   vehicleId?: string | null;
+  canViewPricing?: boolean;
   items?: DeferredItem[];
   error?: string;
 };
@@ -51,6 +52,7 @@ export default function PreviousDeferredWorkPanel() {
   const vehicle = useCustomerVehicleDraft((state) => state.vehicle);
   const [selectedVehicleId] = useTabState<string | null>("vehicleId", null);
   const [items, setItems] = useState<DeferredItem[]>([]);
+  const [canViewPricing, setCanViewPricing] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const requestQuery = useMemo(() => {
@@ -87,6 +89,7 @@ export default function PreviousDeferredWorkPanel() {
   useEffect(() => {
     if (!requestQuery) {
       setItems([]);
+      setCanViewPricing(false);
       return;
     }
 
@@ -98,14 +101,20 @@ export default function PreviousDeferredWorkPanel() {
       signal: controller.signal,
     })
       .then(async (response) => {
-        const payload = (await response.json().catch(() => null)) as DeferredPayload | null;
+        const payload = (await response.json().catch(() => null)) as
+          | DeferredPayload
+          | null;
         if (!response.ok || !payload?.ok) {
-          throw new Error(payload?.error || "Previous deferred work could not be loaded.");
+          throw new Error(
+            payload?.error || "Previous deferred work could not be loaded.",
+          );
         }
+        setCanViewPricing(payload.canViewPricing === true);
         setItems(Array.isArray(payload.items) ? payload.items : []);
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
+        setCanViewPricing(false);
         setItems([]);
       })
       .finally(() => {
@@ -118,7 +127,10 @@ export default function PreviousDeferredWorkPanel() {
   if (!requestQuery || (!loading && items.length === 0)) return null;
 
   return (
-    <section className="mx-auto mb-4 w-full max-w-[1600px] px-3 sm:px-4 lg:px-6" aria-label="Previous deferred work">
+    <section
+      className="mx-auto mb-4 w-full max-w-[1600px] px-3 sm:px-4 lg:px-6"
+      aria-label="Previous deferred work"
+    >
       <div className="rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 shadow-[var(--theme-shadow-medium)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -126,7 +138,8 @@ export default function PreviousDeferredWorkPanel() {
               Previous deferred work
             </div>
             <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-              Unresolved work from earlier visits will follow this vehicle into the new work order as deferred, non-punchable lines.
+              Unresolved work from earlier visits will follow this vehicle into
+              the new work order as deferred, non-punchable lines.
             </p>
           </div>
           {items.length > 0 ? (
@@ -137,7 +150,9 @@ export default function PreviousDeferredWorkPanel() {
         </div>
 
         {loading && items.length === 0 ? (
-          <div className="mt-3 text-sm text-[color:var(--theme-text-muted)]">Checking previous recommendations…</div>
+          <div className="mt-3 text-sm text-[color:var(--theme-text-muted)]">
+            Checking previous recommendations…
+          </div>
         ) : (
           <div className="mt-3 grid gap-2 lg:grid-cols-2">
             {items.map((item) => (
@@ -147,27 +162,44 @@ export default function PreviousDeferredWorkPanel() {
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="font-semibold text-[color:var(--theme-text-primary)]">{item.title}</div>
+                    <div className="font-semibold text-[color:var(--theme-text-primary)]">
+                      {item.title}
+                    </div>
                     <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                      {item.decision === "declined" ? "Declined" : "Deferred"} {dateLabel(item.decisionAt)}
+                      {item.decision === "declined" ? "Declined" : "Deferred"}{" "}
+                      {dateLabel(item.decisionAt)}
                       {item.workOrderNumber ? ` · ${item.workOrderNumber}` : ""}
                     </div>
                   </div>
-                  <div className="shrink-0 text-right">
-                    <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">Last quoted</div>
-                    <div className="text-base font-bold text-[color:var(--theme-text-primary)]">{money(item.grandTotal)}</div>
-                  </div>
+                  {canViewPricing && item.grandTotal != null ? (
+                    <div className="shrink-0 text-right">
+                      <div className="text-[11px] uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
+                        Last quoted
+                      </div>
+                      <div className="text-base font-bold text-[color:var(--theme-text-primary)]">
+                        {money(item.grandTotal)}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
 
                 {item.complaint && item.complaint.trim() !== item.title.trim() ? (
-                  <p className="mt-2 line-clamp-2 text-xs leading-5 text-[color:var(--theme-text-secondary)]">{item.complaint}</p>
+                  <p className="mt-2 line-clamp-2 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+                    {item.complaint}
+                  </p>
                 ) : null}
 
-                <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                  <span>Labor {money(item.laborTotal)}</span>
-                  <span>Parts {money(item.partsTotal)}</span>
-                  {item.taxTotal > 0 ? <span>Tax {money(item.taxTotal)}</span> : null}
-                </div>
+                {canViewPricing &&
+                item.laborTotal != null &&
+                item.partsTotal != null ? (
+                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[color:var(--theme-text-muted)]">
+                    <span>Labor {money(item.laborTotal)}</span>
+                    <span>Parts {money(item.partsTotal)}</span>
+                    {item.taxTotal != null && item.taxTotal > 0 ? (
+                      <span>Tax {money(item.taxTotal)}</span>
+                    ) : null}
+                  </div>
+                ) : null}
               </article>
             ))}
           </div>
