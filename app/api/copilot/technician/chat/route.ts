@@ -12,10 +12,13 @@ import {
 import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import {
-  enforceAIOperationalPolicy,
   estimateCopilotTurnCostUsd,
   registerAIUsageEvent,
 } from "@/features/shared/lib/server/ai-ops-guard";
+import {
+  claimDurableAIRouteQuota,
+  completeDurableAIRouteQuota,
+} from "@/features/shared/lib/server/durable-ai-guard";
 
 export const runtime = "nodejs";
 
@@ -85,21 +88,42 @@ export async function POST(request: NextRequest) {
     // route with no spend ceiling at all. 120 turns / 5 min is far above any
     // human conversational rate, so this bounds a runaway without touching
     // ordinary technician use.
-    const enforcement = enforceAIOperationalPolicy({
-      feature: "technician_copilot_text",
-      endpoint: "/api/copilot/technician/chat",
-      shopId: access.shopId,
-    });
-    if (!enforcement.allowed) {
+    // Durable ceiling on the platform's highest-frequency AI call. Unlike the
+    // in-memory operational guard this survives serverless restarts, so it is a
+    // real cap rather than a per-instance one. A quota outage must not take the
+    // CoPilot down, so an unavailable RPC fails open and is logged.
+    const admin = createAdminSupabase();
+    let claim: Awaited<ReturnType<typeof claimDurableAIRouteQuota>> | null = null;
+    try {
+      claim = await claimDurableAIRouteQuota({
+        admin,
+        feature: "technician_copilot_text",
+        shopId: access.shopId,
+        actorId: access.profileId,
+      });
+    } catch (error) {
+      console.error("technician_copilot_quota_unavailable", {
+        shopId: access.shopId,
+        error: error instanceof Error ? error.message.slice(0, 200) : "unknown_error",
+      });
+    }
+
+    if (claim && !claim.allowed) {
       return NextResponse.json(
         {
           error:
-            "CoPilot is temporarily rate limited for this shop. Retry shortly.",
-          code: enforcement.code,
+            claim.reason === "hard_budget_exceeded"
+              ? "This shop has reached its monthly CoPilot budget."
+              : "CoPilot is temporarily rate limited for this shop. Retry shortly.",
+          code: claim.reason,
         },
-        { status: 429 },
+        {
+          status: 429,
+          headers: { "Retry-After": String(claim.retryAfterSeconds) },
+        },
       );
     }
+    const receiptId = claim?.allowed ? claim.receiptId : null;
 
     const turnId =
       typeof body.turnId === "string" && body.turnId.trim()
@@ -108,7 +132,22 @@ export async function POST(request: NextRequest) {
     const sessionId = typeof body.sessionId === "string" ? body.sessionId : null;
     const recentConversations = parseRecentConversations(body.recentConversations);
 
-    const result = await withAITelemetryContext(
+    const settleReceipt = async (succeeded: boolean) => {
+      if (!receiptId) return;
+      await completeDurableAIRouteQuota({
+        admin,
+        feature: "technician_copilot_text",
+        shopId: access.shopId,
+        actorId: access.profileId,
+        receiptId,
+        actualCostUsd: succeeded ? estimateCopilotTurnCostUsd() : 0,
+        succeeded,
+      });
+    };
+
+    let result: Awaited<ReturnType<typeof runTechnicianCopilotTurn>>;
+    try {
+      result = await withAITelemetryContext(
       {
         endpoint: "/api/copilot/technician/chat",
         shopId: access.shopId,
@@ -130,11 +169,19 @@ export async function POST(request: NextRequest) {
           inputSource,
           recentConversations,
         }),
-    );
+      );
+    } catch (error) {
+      // A claimed reservation must always settle, or it counts against the
+      // shop's window and budget until the 30-minute stale sweep reclaims it.
+      await settleReceipt(false);
+      throw error;
+    }
 
-    // Advance the shop's monthly CoPilot budget. enforceAIOperationalPolicy
-    // above only reads a counter this call increments, so without it the guard
-    // would degrade to a rate limit and the budget would never move.
+    await settleReceipt(true);
+
+    // Also advance the in-memory operational counters, which drive the anomaly
+    // alerts (spike, high-cost, repeated-denial). The durable receipt above is
+    // the actual ceiling.
     registerAIUsageEvent({
       feature: "technician_copilot_text",
       endpoint: "/api/copilot/technician/chat",

@@ -2,7 +2,14 @@ import "server-only";
 
 import type { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
-export type DurableAIFeature = "dtc_suggest" | "inspection_interpret";
+// Every value here must also be present in the receipts table CHECK and in
+// both quota RPCs, or a claim is rejected as AI_ROUTE_QUOTA_INPUT_INVALID at
+// runtime while typechecking cleanly. See
+// 20260909050000_extend_ai_route_quota_to_copilot.sql.
+export type DurableAIFeature =
+  | "dtc_suggest"
+  | "inspection_interpret"
+  | "technician_copilot_text";
 
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
@@ -21,6 +28,17 @@ const DURABLE_POLICIES: Record<DurableAIFeature, DurablePolicy> = {
     windowSeconds: 5 * 60,
     hardBudgetUsd: 75,
     reservationCostUsd: 0.1,
+  },
+  // One claim per CoPilot turn, covering both model calls that turn makes.
+  // 120 turns / 5 min per technician is far above any human conversational
+  // rate, so this bounds a runaway without touching ordinary use. The budget
+  // is the real per-shop monthly ceiling.
+  technician_copilot_text: {
+    actorMax: 120,
+    shopMax: 480,
+    windowSeconds: 5 * 60,
+    hardBudgetUsd: 600,
+    reservationCostUsd: 0.02,
   },
   inspection_interpret: {
     actorMax: 60,
