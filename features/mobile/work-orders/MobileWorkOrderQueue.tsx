@@ -22,8 +22,12 @@ import { hasActivePartsWaitingSignal } from "@/features/work-orders/lib/preLabor
 import {
   ACTIVE_WORK_ORDER_STATUSES,
   countActiveWorkOrders,
+  isActiveWorkOrderStatus,
   normalizeWorkOrderStatus,
 } from "@/features/work-orders/lib/work-order-status";
+import { toTechnicianJobBucket } from "@/features/work-orders/lib/technicianJobQueue";
+import { fetchAssignedTechnicianWork } from "@/features/work-orders/mobile/technicianOfflineDownload";
+import type { TechnicianOfflineBundle } from "@/features/work-orders/mobile/technicianOfflineTypes";
 import {
   buildMobileWorkOrderListHref,
   resolveMobileWorkOrderHref,
@@ -170,6 +174,109 @@ function emptySignal(): WorkOrderSignal {
   };
 }
 
+/**
+ * A line's contribution to its work order's badge row. Both the shop-wide read
+ * and the assigned-technician read fold lines through here so a job counted as
+ * active on one surface is never counted as idle on the other.
+ */
+function accumulateLineSignal(
+  signal: WorkOrderSignal,
+  line: {
+    status?: string | null;
+    approval_state?: string | null;
+    hold_reason?: string | null;
+    punched_in_at?: string | null;
+    punched_out_at?: string | null;
+  },
+  technicianIds: string[],
+): void {
+  if (toTechnicianJobBucket(line) === "in_progress") signal.inProgress += 1;
+  if (cleanText(line.approval_state).toLowerCase() === "pending") {
+    signal.pendingApproval += 1;
+  }
+  if (technicianIds.length === 0) signal.unassigned += 1;
+  if (hasActivePartsWaitingSignal(line)) signal.waitingParts += 1;
+}
+
+function matchesQueueStatus(
+  workOrderStatus: string | null | undefined,
+  status: string,
+): boolean {
+  if (status === "") return isActiveWorkOrderStatus(workOrderStatus);
+  return (
+    String(workOrderStatus ?? "")
+      .trim()
+      .toLowerCase()
+      .replaceAll(" ", "_") === status
+  );
+}
+
+/**
+ * Technicians cannot read work_orders/work_order_lines directly: the
+ * restrictive financial-capability RLS policies deliberately fail closed for
+ * any staff actor without sell/invoice visibility, which is why the browser
+ * query returned an empty queue while assigned jobs clearly existed. The
+ * server bundle is the projection those policies expect such actors to use, so
+ * the assigned queue is rebuilt from it here.
+ */
+function assignedQueueFromBundle(
+  bundle: TechnicianOfflineBundle,
+  status: string,
+): { rows: Row[]; signals: Record<string, WorkOrderSignal> } {
+  const rows: Row[] = [];
+  const signals: Record<string, WorkOrderSignal> = {};
+
+  for (const entry of bundle.workOrders) {
+    const workOrder = entry.workOrder;
+    if (workOrder.archived_at) continue;
+    if (cleanText(workOrder.record_type) !== "work_order") continue;
+    if (!matchesQueueStatus(workOrder.status, status)) continue;
+
+    rows.push({
+      ...workOrder,
+      customers: entry.customer
+        ? {
+            first_name: entry.customer.first_name,
+            last_name: entry.customer.last_name,
+            phone: entry.customer.phone,
+          }
+        : null,
+      vehicles: entry.vehicle
+        ? {
+            year: entry.vehicle.year,
+            make: entry.vehicle.make,
+            model: entry.vehicle.model,
+            license_plate: entry.vehicle.license_plate,
+          }
+        : null,
+    } as Row);
+
+    const signal = emptySignal();
+    for (const line of entry.lines) {
+      if ((line.line_type ?? "job") !== "job") continue;
+      accumulateLineSignal(
+        signal,
+        line,
+        resolveTechnicianAssignmentContract({
+          primaryTechnicianId: line.assigned_tech_id,
+          legacyAssignedTo: line.assigned_to,
+          canonicalTechnicianIds:
+            entry.lineContext.technicianIdsByLine[line.id],
+        }).technicianIds,
+      );
+    }
+    signals[workOrder.id] = signal;
+  }
+
+  rows.sort(
+    (left, right) =>
+      new Date(right.created_at ?? 0).getTime() -
+      new Date(left.created_at ?? 0).getTime(),
+  );
+
+  return { rows, signals };
+}
+
 function primarySignal(signal: WorkOrderSignal): string | null {
   if (signal.inProgress > 0) {
     return `${signal.inProgress} active job${signal.inProgress === 1 ? "" : "s"}`;
@@ -296,6 +403,28 @@ export default function MobileWorkOrderQueue({
         setOfflineMutationScope(scope);
         setScopeShopId(me.shop_id);
 
+        if (canViewAssignedWork) {
+          const bundle = await fetchAssignedTechnicianWork({ scope });
+          if (!isLatestLoad()) return;
+          const assigned = assignedQueueFromBundle(bundle, status);
+          setLineSignals(assigned.signals);
+          setRows(assigned.rows);
+          setTotalCount(assigned.rows.length);
+          setLastUpdatedAt(new Date());
+          await saveOfflineSnapshot({
+            scope,
+            kind: "mobile-work-order-list",
+            entityId: status || "active",
+            data: {
+              rows: assigned.rows,
+              signals: assigned.signals,
+              totalCount: assigned.rows.length,
+              assignedOnly: true,
+            },
+          });
+          return;
+        }
+
         let query = supabase
           .from("work_orders")
           .select(
@@ -331,7 +460,7 @@ export default function MobileWorkOrderQueue({
         const list = (data ?? []) as Row[];
         const workOrderIds = list.map((item) => item.id);
         const signals: Record<string, WorkOrderSignal> = {};
-        let visibleList = list;
+        const visibleList = list;
 
         if (workOrderIds.length > 0) {
           const { data: linesData, error: linesError } = await supabase
@@ -386,26 +515,6 @@ export default function MobileWorkOrderQueue({
             ]),
           );
 
-          if (canViewAssignedWork) {
-            const myAssignedLineIds = new Set(
-              lineRows
-                .filter((line) =>
-                  assignmentByLine
-                    .get(line.id)
-                    ?.technicianIds.includes(me.id),
-                )
-                .map((line) => line.id),
-            );
-            const myWorkOrderIds = new Set(
-              lineRows
-                .filter((line) => myAssignedLineIds.has(line.id))
-                .map((line) => line.work_order_id),
-            );
-            visibleList = list.filter((workOrder) =>
-              myWorkOrderIds.has(workOrder.id),
-            );
-          }
-
           const visibleWorkOrderIds = new Set(
             visibleList.map((workOrder) => workOrder.id),
           );
@@ -414,28 +523,18 @@ export default function MobileWorkOrderQueue({
             const workOrderId = item.work_order_id;
             if (!workOrderId || !visibleWorkOrderIds.has(workOrderId)) return;
             if (!signals[workOrderId]) signals[workOrderId] = emptySignal();
-            const target = signals[workOrderId];
-            const lineStatus = String(item.status ?? "").toLowerCase();
-
-            if (lineStatus === "in_progress") target.inProgress += 1;
-            if (String(item.approval_state ?? "").toLowerCase() === "pending") {
-              target.pendingApproval += 1;
-            }
-            if (assignmentByLine.get(item.id)?.technicianIds.length === 0) {
-              target.unassigned += 1;
-            }
-            if (hasActivePartsWaitingSignal(item)) {
-              target.waitingParts += 1;
-            }
+            accumulateLineSignal(
+              signals[workOrderId],
+              item,
+              assignmentByLine.get(item.id)?.technicianIds ?? [],
+            );
           });
         }
 
         if (!isLatestLoad()) return;
         setLineSignals(signals);
         setRows(visibleList);
-        setTotalCount(
-          canViewAssignedWork ? visibleList.length : (count ?? list.length),
-        );
+        setTotalCount(count ?? list.length);
         setLastUpdatedAt(new Date());
         await saveOfflineSnapshot({
           scope,
@@ -444,10 +543,8 @@ export default function MobileWorkOrderQueue({
           data: {
             rows: visibleList,
             signals,
-            totalCount: canViewAssignedWork
-              ? visibleList.length
-              : (count ?? list.length),
-            assignedOnly: canViewAssignedWork,
+            totalCount: count ?? list.length,
+            assignedOnly: false,
           },
         });
       } finally {

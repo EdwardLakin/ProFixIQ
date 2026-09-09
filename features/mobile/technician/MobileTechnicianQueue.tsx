@@ -16,6 +16,11 @@ import {
   getCachedTechnicianWork,
 } from "@/features/work-orders/mobile/technicianOfflineDownload";
 import type { TechnicianOfflineBundle } from "@/features/work-orders/mobile/technicianOfflineTypes";
+import {
+  isOpenTechnicianJob,
+  toTechnicianJobBucket,
+  type TechnicianJobBucket,
+} from "@/features/work-orders/lib/technicianJobQueue";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -25,7 +30,7 @@ type VehiclePick = Pick<
   "id" | "year" | "make" | "model" | "license_plate"
 >;
 
-type RollupStatus = "awaiting" | "in_progress" | "on_hold" | "completed";
+type RollupStatus = TechnicianJobBucket;
 type QueueFilter = "all" | RollupStatus;
 type JobPriority = "low" | "normal" | "high" | "urgent";
 
@@ -39,7 +44,6 @@ const STATUS_LABELS: Record<RollupStatus, string> = {
   awaiting: "Awaiting",
   in_progress: "Active",
   on_hold: "On hold",
-  completed: "Completed",
 };
 
 const FILTERS: Array<{ value: QueueFilter; label: string }> = [
@@ -47,14 +51,12 @@ const FILTERS: Array<{ value: QueueFilter; label: string }> = [
   { value: "in_progress", label: "Active" },
   { value: "awaiting", label: "Awaiting" },
   { value: "on_hold", label: "On hold" },
-  { value: "completed", label: "Completed" },
 ];
 
 const STATUS_RANK: Record<RollupStatus, number> = {
   in_progress: 0,
   awaiting: 1,
   on_hold: 2,
-  completed: 3,
 };
 
 const PRIORITY_RANK: Record<JobPriority, number> = {
@@ -71,20 +73,7 @@ function cleanText(value: unknown): string {
 }
 
 function toBucket(line: Line): RollupStatus {
-  if (line.punched_in_at && !line.punched_out_at) return "in_progress";
-  const status = cleanText(line.status).toLowerCase().replaceAll(" ", "_");
-  if (status === "active" || status === "in_progress" || status === "in-progress") {
-    return "in_progress";
-  }
-  if (status === "on_hold") return "on_hold";
-  if (
-    status === "completed" ||
-    status === "ready_to_invoice" ||
-    status === "invoiced"
-  ) {
-    return "completed";
-  }
-  return "awaiting";
+  return toTechnicianJobBucket(line);
 }
 
 function toPriority(line: Line): JobPriority {
@@ -165,7 +154,9 @@ function queueViewFromBundle(bundle: TechnicianOfflineBundle): {
     .flatMap((workOrder) => workOrder.lines)
     .filter(
       (line) =>
-        assignedIds.has(line.id) && (line.line_type ?? "job") === "job",
+        assignedIds.has(line.id) &&
+        (line.line_type ?? "job") === "job" &&
+        isOpenTechnicianJob(line),
     );
   const workOrderMap: Record<string, WorkOrderMapRow> = {};
   const allLines: Array<
@@ -197,9 +188,6 @@ function statusTone(status: RollupStatus): string {
   }
   if (status === "on_hold") {
     return "border-amber-400/45 bg-amber-500/10 text-amber-100";
-  }
-  if (status === "completed") {
-    return "border-sky-400/35 bg-sky-500/10 text-sky-100";
   }
   return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-primary)]";
 }
@@ -343,7 +331,6 @@ export default function MobileTechnicianQueue() {
       awaiting: 0,
       in_progress: 0,
       on_hold: 0,
-      completed: 0,
     };
     for (const line of lines) result[toBucket(line)] += 1;
     return result;
@@ -392,7 +379,7 @@ export default function MobileTechnicianQueue() {
           Tap a job to review its work order, then open the focused job or inspection.
         </p>
         <div className="mt-4 grid grid-cols-3 gap-2">
-          <QueueMetric label="Assigned" value={lines.length} />
+          <QueueMetric label="Awaiting" value={counts.awaiting} />
           <QueueMetric label="Active" value={counts.in_progress} accent />
           <QueueMetric label="On hold" value={counts.on_hold} />
         </div>

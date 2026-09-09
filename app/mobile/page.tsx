@@ -25,6 +25,7 @@ import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { useOperationsLiveRefresh } from "@/features/work-orders/hooks/useOperationsLiveRefresh";
+import { isOpenTechnicianJob } from "@/features/work-orders/lib/technicianJobQueue";
 
 type DB = Database;
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
@@ -275,16 +276,11 @@ export default function MobileHome() {
               line.punched_out_at! <= week.end,
           ),
         })),
+        // Open work is every assigned line that is not closed out. A literal
+        // status list silently dropped legacy buckets such as waiting_parts,
+        // so Home disagreed with My jobs and the shop queue.
         operationalLinesPromise.then((rows) => ({
-          data: rows.filter((line) =>
-            [
-              "awaiting",
-              "assigned",
-              "active",
-              "in_progress",
-              "on_hold",
-            ].includes(line.status),
-          ),
+          data: rows.filter((line) => isOpenTechnicianJob(line)),
         })),
         operationalLinesPromise.then((rows) => ({
           data: rows
@@ -317,9 +313,7 @@ export default function MobileHome() {
 
       setTechStats({
         openJobs: active.length,
-        assignedJobs:
-          active.filter((line) => line.status === "assigned").length ||
-          active.length,
+        assignedJobs: active.length,
         jobsCompletedToday: todayDone.data?.length ?? 0,
         today: {
           workedHours: todayWorked,
