@@ -5,6 +5,10 @@ import {
   recordDurableAIUsage,
   type AITelemetryFeature,
 } from "@/features/shared/lib/server/ai-telemetry";
+import {
+  getAIPolicy,
+  type AIFeature,
+} from "@/features/shared/lib/server/ai-policy";
 import { getOpenAIClient, isOpenAIConfigured } from "@/features/shared/lib/server/openai";
 import {
   getOpenAIModelForPurpose,
@@ -69,6 +73,11 @@ function responseId(response: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function canonicalPolicyTimeoutMs(feature: string): number | undefined {
+  const policy = getAIPolicy(feature as AIFeature);
+  return policy?.feature === feature ? policy.timeoutMs : undefined;
+}
+
 export async function runOpenAIStructuredJson<T>(params: {
   purpose: OpenAIModelPurpose;
   feature: string;
@@ -95,6 +104,7 @@ export async function runOpenAIStructuredJson<T>(params: {
   const started = Date.now();
   const model = getOpenAIModelForPurpose(params.purpose);
   const telemetry = params.telemetry ?? getAITelemetryContext();
+  const timeoutMs = params.timeoutMs ?? canonicalPolicyTimeoutMs(params.feature);
   if (!telemetry) {
     // The canonical structured-AI path can only write a durable ledger row when
     // the caller supplies (or is wrapped in) authenticated tenant/actor context.
@@ -140,8 +150,11 @@ export async function runOpenAIStructuredJson<T>(params: {
       ],
     };
 
-    const response = params.timeoutMs
-      ? await runWithProviderTimeout(params.timeoutMs, (signal) =>
+    // Explicit caller deadlines still win. Otherwise every feature registered in
+    // the canonical AI policy automatically receives its declared provider
+    // timeout, so a new call site cannot accidentally leave the policy inert.
+    const response = timeoutMs
+      ? await runWithProviderTimeout(timeoutMs, (signal) =>
           client.responses.create(requestBody, { signal }),
         )
       : await client.responses.create(requestBody);
