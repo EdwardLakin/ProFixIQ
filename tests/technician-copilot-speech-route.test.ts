@@ -163,13 +163,19 @@ describe("POST /api/copilot/technician/speech", () => {
     expect(mocks.createSpeech).not.toHaveBeenCalled();
   });
 
-  it("fails safely when generated speech is not configured", async () => {
+  it("fails safely when generated speech is not configured, before ever touching the rate/budget policy", async () => {
     mocks.isOpenAIConfigured.mockReturnValueOnce(false);
 
     const response = await POST(speechRequest({ text: "Hello" }));
+    const body = await response.json();
 
     expect(response.status).toBe(503);
+    expect(body).toEqual({
+      error: "Generated CoPilot voice is not configured.",
+      code: "speech_not_configured",
+    });
     expect(mocks.createSpeech).not.toHaveBeenCalled();
+    expect(mocks.enforcePolicy).not.toHaveBeenCalled();
     expect(mocks.recordTelemetry).toHaveBeenCalledWith(
       expect.objectContaining({
         status: "error",

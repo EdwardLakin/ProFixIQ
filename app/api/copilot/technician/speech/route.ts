@@ -10,6 +10,7 @@ import {
   registerAIUsageEvent,
 } from "@/features/shared/lib/server/ai-ops-guard";
 import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
+import { isOpenAIConfigured } from "@/features/shared/lib/server/openai";
 import {
   synthesizeNaturalSpeech,
   NATURAL_SPEECH_MODEL,
@@ -129,6 +130,28 @@ export async function POST(request: NextRequest) {
         code: "invalid_speech_text",
       },
       { status: 400 },
+    );
+  }
+
+  // Checked before the rate/budget policy (and thus before ever spending
+  // an enforcement slot) so a misconfigured deployment always gets this
+  // exact, actionable 503 — never a confusing 429 once enough requests
+  // have piled up against the policy while the key is missing.
+  if (!isOpenAIConfigured()) {
+    await recordSpeechResult({
+      access,
+      startedAt,
+      textLength: text.length,
+      status: "error",
+      errorCode: "speech_not_configured",
+      errorMessage: "OPENAI_API_KEY is not configured",
+    });
+    return NextResponse.json(
+      {
+        error: "Generated CoPilot voice is not configured.",
+        code: "speech_not_configured",
+      },
+      { status: 503 },
     );
   }
 

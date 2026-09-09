@@ -1,6 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { WORKFORCE_STAFF_ROLES } from "@/features/workforce/lib/roster";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import {
   enforceAIOperationalPolicy,
@@ -8,6 +7,7 @@ import {
   registerAIUsageEvent,
 } from "@/features/shared/lib/server/ai-ops-guard";
 import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
+import { isOpenAIConfigured } from "@/features/shared/lib/server/openai";
 import {
   synthesizeNaturalSpeech,
   NATURAL_SPEECH_MODEL,
@@ -17,10 +17,13 @@ import {
 // Natural-voice spoken feedback for inspection voice control
 // (GenericInspectionScreen.tsx's speak()), mirroring
 // /api/copilot/technician/speech/route.ts exactly — same shared TTS call,
-// same telemetry/policy shape — but scoped to whoever can already run an
-// inspection (any shop staff role), not gated behind the Technician
-// CoPilot's own text/voice capability toggle, which is a separate feature
-// inspection voice control has never depended on.
+// same telemetry/policy shape — but gated on the canRunInspections
+// capability (the same one /api/ai/interpret/route.ts already requires for
+// inspection voice *input*), not the Technician CoPilot's own text/voice
+// capability toggle, which is a separate feature inspection voice control
+// has never depended on. A workforce-roles allowlist would have been too
+// broad here: it includes "parts", which canRunInspections is explicitly
+// false for.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 30;
@@ -87,7 +90,7 @@ export async function POST(request: NextRequest) {
   const startedAt = Date.now();
 
   const access = await requireShopScopedApiAccess({
-    allowRoles: [...WORKFORCE_STAFF_ROLES],
+    requiredCapability: "canRunInspections",
   });
   if (!access.ok) return access.response;
 
@@ -113,6 +116,29 @@ export async function POST(request: NextRequest) {
         code: "invalid_speech_text",
       },
       { status: 400 },
+    );
+  }
+
+  // Checked before the rate/budget policy (and thus before ever spending
+  // an enforcement slot) so a misconfigured deployment always gets this
+  // exact, actionable 503 — never a confusing 429 once enough requests
+  // have piled up against the policy while the key is missing.
+  if (!isOpenAIConfigured()) {
+    await recordSpeechResult({
+      shopId,
+      userId,
+      startedAt,
+      textLength: text.length,
+      status: "error",
+      errorCode: "speech_not_configured",
+      errorMessage: "OPENAI_API_KEY is not configured",
+    });
+    return NextResponse.json(
+      {
+        error: "Generated voice is not configured.",
+        code: "speech_not_configured",
+      },
+      { status: 503 },
     );
   }
 

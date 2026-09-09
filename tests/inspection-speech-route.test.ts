@@ -71,10 +71,13 @@ describe("POST /api/inspections/speech", () => {
     });
   });
 
-  it("authenticates any shop staff role (not just the CoPilot's own capability) and returns generated MP3 audio", async () => {
+  it("authenticates on canRunInspections (not the CoPilot's own capability, and not a broader staff-role allowlist) and returns generated MP3 audio", async () => {
     const response = await POST(speechRequest({ text: "Front left tire is flat." }));
 
     expect(response.status).toBe(200);
+    expect(mocks.requireAccess).toHaveBeenCalledWith({
+      requiredCapability: "canRunInspections",
+    });
     expect(response.headers.get("content-type")).toBe("audio/mpeg");
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     expect(new Uint8Array(await response.arrayBuffer())).toEqual(encodedAudio);
@@ -122,13 +125,25 @@ describe("POST /api/inspections/speech", () => {
     expect(mocks.createSpeech).not.toHaveBeenCalled();
   });
 
-  it("fails safely when generated speech is not configured", async () => {
+  it("fails safely when generated speech is not configured, before ever touching the rate/budget policy", async () => {
     mocks.isOpenAIConfigured.mockReturnValueOnce(false);
 
     const response = await POST(speechRequest({ text: "Hello" }));
+    const body = await response.json();
 
     expect(response.status).toBe(503);
+    expect(body).toEqual({
+      error: "Generated voice is not configured.",
+      code: "speech_not_configured",
+    });
     expect(mocks.createSpeech).not.toHaveBeenCalled();
+    expect(mocks.enforcePolicy).not.toHaveBeenCalled();
+    expect(mocks.recordTelemetry).toHaveBeenCalledWith(
+      expect.objectContaining({
+        status: "error",
+        error_code: "speech_not_configured",
+      }),
+    );
   });
 
   it("enforces tenant-scoped AI rate and budget policy", async () => {
