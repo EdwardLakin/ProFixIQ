@@ -21,6 +21,24 @@ describe("deferred-work shared application contracts", () => {
     expect(review).toContain("invoicePartIssues.filter");
   });
 
+  it("keeps invoice attachment resolution fail-closed for unanchored parts", () => {
+    const snapshot = read("features/invoices/server/getInvoiceSnapshot.ts");
+
+    expect(snapshot).toContain("const deferredInvoiceLineIds = new Set");
+    expect(snapshot).toContain("const hasUnresolvedAttachedParts =");
+    expect(snapshot).toContain("!allocation.work_order_line_id ||");
+    expect(snapshot).toContain("!part.lineId || !deferredInvoiceLineIds.has(part.lineId)");
+    expect(snapshot).toContain("parts.length === 0 && hasUnresolvedAttachedParts");
+  });
+
+  it("deduplicates vehicle deferred attention by root repair lineage", () => {
+    const workspace = read("features/vehicles/server/loadVehicleWorkspaceSnapshot.ts");
+
+    expect(workspace).toContain("const newestDeferredQuoteByRoot = new Map");
+    expect(workspace).toContain("source_work_order_line_id ??");
+    expect(workspace).toContain("for (const quoteLine of newestDeferredQuoteByRoot.values())");
+  });
+
   it("runs deferred runtime coverage inside the required Supabase clean replay", () => {
     const cleanReplay = read(".github/workflows/supabase-clean-replay-audit.yml");
 
