@@ -284,7 +284,7 @@ begin
 
   if not found
      or v_quote.source_work_order_line_id is distinct from '73500000-0000-4000-8000-000000000001'::uuid
-     or v_quote.source_row_id is distinct from '73600000-0000-4000-8000-000000000001'::uuid
+     or v_quote.source_row_id is distinct from '73600000-0000-4000-8000-000000000001'
      or lower(coalesce(v_quote.metadata ->> 'carry_forward', 'false')) <> 'true'
      or (v_quote.metadata ->> 'source_actor_user_id') is distinct from '73100000-0000-4000-8000-000000000002' then
     raise exception 'Initial carried quote provenance is incomplete.';
