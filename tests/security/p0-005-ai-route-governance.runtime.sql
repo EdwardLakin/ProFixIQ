@@ -539,5 +539,102 @@ begin
 end
 $$;
 
+-- The Technician CoPilot was added to the durable quota by
+-- 20260909050000_extend_ai_route_quota_to_copilot.sql. Prove the widened
+-- whitelist actually reaches the database: a TypeScript-only change would
+-- typecheck and then fail every claim as AI_ROUTE_QUOTA_INPUT_INVALID.
+do $$
+declare
+  v_allowed boolean;
+  v_reason text;
+  v_receipt uuid;
+  v_settled boolean;
+begin
+  select allowed, denial_reason, receipt_id
+  into v_allowed, v_reason, v_receipt
+  from public.consume_ai_route_quota(
+    'a5100000-0000-4000-8000-000000000001',
+    '57000000-0000-4000-8000-000000000013',
+    'technician_copilot_text',
+    120,
+    480,
+    300,
+    600,
+    0.02
+  );
+
+  if not v_allowed or v_receipt is null then
+    raise exception
+      'P0-005 runtime assertion failed: CoPilot durable quota claim was rejected (%)',
+      coalesce(v_reason, 'no reason');
+  end if;
+
+  select public.complete_ai_route_quota(
+    v_receipt,
+    'a5100000-0000-4000-8000-000000000001',
+    '57000000-0000-4000-8000-000000000013',
+    'technician_copilot_text',
+    0.0234,
+    true
+  )
+  into v_settled;
+
+  if not v_settled then
+    raise exception 'P0-005 runtime assertion failed: CoPilot receipt did not settle';
+  end if;
+
+  -- The receipt row itself is verified after `reset role` below: service_role
+  -- is deliberately revoked from reading private.ai_route_usage_receipts.
+
+  -- The widening must not have opened the whitelist to arbitrary values.
+  begin
+    perform public.consume_ai_route_quota(
+      'a5100000-0000-4000-8000-000000000001',
+      '57000000-0000-4000-8000-000000000013',
+      'not_a_real_feature',
+      10,
+      20,
+      300,
+      10,
+      0.01
+    );
+    raise exception
+      'P0-005 runtime assertion failed: unknown quota feature was accepted';
+  exception
+    when sqlstate '22023' then null;
+  end;
+end
+$$;
+
 reset role;
+
+do $$
+declare
+  v_status text;
+  v_cost numeric;
+  v_count integer;
+begin
+  select count(*)::integer into v_count
+  from private.ai_route_usage_receipts receipt
+  where receipt.feature = 'technician_copilot_text';
+
+  if v_count <> 1 then
+    raise exception
+      'P0-005 runtime assertion failed: expected exactly one CoPilot receipt, found %',
+      v_count;
+  end if;
+
+  select receipt.status, receipt.actual_cost_usd
+  into v_status, v_cost
+  from private.ai_route_usage_receipts receipt
+  where receipt.feature = 'technician_copilot_text';
+
+  if v_status is distinct from 'success' or v_cost is distinct from 0.0234 then
+    raise exception
+      'P0-005 runtime assertion failed: CoPilot receipt settled as % / %',
+      coalesce(v_status, 'null'), coalesce(v_cost::text, 'null');
+  end if;
+end
+$$;
+
 rollback;

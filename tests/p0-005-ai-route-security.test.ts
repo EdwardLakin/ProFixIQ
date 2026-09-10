@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
   createAdmin: vi.fn(),
   claimQuota: vi.fn(),
   completeQuota: vi.fn(),
+  reservationCost: vi.fn(),
   openAICreate: vi.fn(),
   from: vi.fn(),
   threadUpsert: vi.fn(),
@@ -27,6 +28,7 @@ vi.mock("@/features/shared/lib/supabase/server", () => ({
 vi.mock("@/features/shared/lib/server/durable-ai-guard", () => ({
   claimDurableAIRouteQuota: mocks.claimQuota,
   completeDurableAIRouteQuota: mocks.completeQuota,
+  getDurableAIReservationCostUsd: mocks.reservationCost,
 }));
 
 vi.mock("@/features/shared/lib/server/openai", () => ({
@@ -76,6 +78,7 @@ describe("P0-005 AI route boundaries", () => {
     });
     mocks.claimQuota.mockResolvedValue({ allowed: true, receiptId: "quota-receipt" });
     mocks.completeQuota.mockResolvedValue(undefined);
+    mocks.reservationCost.mockReturnValue(0.03);
     mocks.threadUpsert.mockResolvedValue({ error: null });
     mocks.from.mockImplementation((table: string) => {
       if (table === "work_order_lines") {
@@ -225,7 +228,7 @@ describe("P0-005 AI route boundaries", () => {
     expect(mocks.openAICreate).not.toHaveBeenCalled();
   });
 
-  it("returns a bounded failure and releases quota on provider timeout", async () => {
+  it("returns a bounded failure and preserves reserved quota on provider timeout", async () => {
     mocks.openAICreate.mockRejectedValue(new Error("Inspection interpretation timed out"));
     const { POST } = await import("../app/api/ai/interpret/route");
 
@@ -235,8 +238,9 @@ describe("P0-005 AI route boundaries", () => {
 
     expect(response.status).toBe(504);
     expect(await response.json()).toEqual([]);
+    expect(mocks.reservationCost).toHaveBeenCalledWith("inspection_interpret");
     expect(mocks.completeQuota).toHaveBeenCalledWith(
-      expect.objectContaining({ succeeded: false, actualCostUsd: 0 }),
+      expect.objectContaining({ succeeded: false, actualCostUsd: 0.03 }),
     );
   });
 

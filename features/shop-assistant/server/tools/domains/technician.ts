@@ -2,10 +2,13 @@ import "server-only";
 
 import { z } from "zod";
 
-import { runTechnicianCopilotTurn } from "@/features/copilot/technician/server/chat";
 import { technicianWorkLineLabel } from "@/features/copilot/technician/server/actions";
 import { listTechnicianWorkCandidates } from "@/features/copilot/technician/server/assignedWork";
 import { requireTechnicianCopilotAccess } from "@/features/copilot/technician/server/auth";
+import {
+  runGovernedTechnicianCopilotTurn,
+  TechnicianCopilotQuotaError,
+} from "@/features/copilot/technician/server/governedTurn";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { ShopAssistantHttpError } from "@/features/shop-assistant/server/requireShopAssistantActor";
 import { defineShopAssistantTool } from "../types";
@@ -262,23 +265,36 @@ export const requestTechnicianCopilotTool = defineShopAssistantTool({
         "The confirmed technician job version is unavailable. Ask again to review its current state.",
       );
     }
-    const result = await runTechnicianCopilotTurn({
-      identity: {
-        authUserId: access.authUserId,
-        profileId: access.profileId,
-        shopId: access.shopId,
-        documentationEnabled: access.capabilities.documentation,
-        voiceEnabled: access.capabilities.voice,
-        supabase: createAdminSupabase(),
-      },
-      message: input.message,
-      turnId: context.actionId,
-      sessionId: null,
-      inputSource: "ui",
-      requiredWorkOrderId: workOrderId,
-      requiredWorkOrderLineId: workOrderLineId,
-      requiredWorkOrderLineUpdatedAt: expectedLineVersion,
-    });
+
+    let result;
+    try {
+      result = await runGovernedTechnicianCopilotTurn({
+        endpoint: "/api/shop-assistant/technician-copilot",
+        turn: {
+          identity: {
+            authUserId: access.authUserId,
+            profileId: access.profileId,
+            shopId: access.shopId,
+            documentationEnabled: access.capabilities.documentation,
+            voiceEnabled: access.capabilities.voice,
+            supabase: createAdminSupabase(),
+          },
+          message: input.message,
+          turnId: context.actionId,
+          sessionId: null,
+          inputSource: "ui",
+          requiredWorkOrderId: workOrderId,
+          requiredWorkOrderLineId: workOrderLineId,
+          requiredWorkOrderLineUpdatedAt: expectedLineVersion,
+        },
+      });
+    } catch (error) {
+      if (error instanceof TechnicianCopilotQuotaError) {
+        throw new ShopAssistantHttpError(429, error.message);
+      }
+      throw error;
+    }
+
     return {
       ok: true as const,
       reply: result.reply,

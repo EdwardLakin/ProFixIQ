@@ -20,7 +20,9 @@ export type AIFeature =
   | "work_order_documentation_rewrite"
   | "branding_generate_logo"
   | "dtc_suggest"
-  | "inspection_interpret";
+  | "inspection_interpret"
+  | "technician_copilot_text"
+  | "technician_copilot_documentation";
 
 const AI_POLICIES: Record<AIFeature, AIPolicy> = {
   work_orders_suggest_lines: {
@@ -91,6 +93,24 @@ const AI_POLICIES: Record<AIFeature, AIPolicy> = {
     modelPurpose: "extraction",
     timeoutMs: 12000,
     maxTokens: 700,
+    fallbackMode: "graceful_empty",
+  },
+  // The CoPilot turn is the platform's highest-frequency AI call and runs two
+  // model requests per turn (decision + silent documentation). Both are now
+  // first-class policy features so they can be budgeted and rate limited like
+  // every other route rather than being unbounded.
+  technician_copilot_text: {
+    feature: "technician_copilot_text",
+    modelPurpose: "reasoning",
+    timeoutMs: 30000,
+    maxTokens: 1000,
+    fallbackMode: "hard_fail",
+  },
+  technician_copilot_documentation: {
+    feature: "technician_copilot_documentation",
+    modelPurpose: "fast",
+    timeoutMs: 20000,
+    maxTokens: 1000,
     fallbackMode: "graceful_empty",
   },
 };

@@ -5,11 +5,11 @@ import {
   requireTechnicianCopilotAccess,
   TechnicianCopilotAccessError,
 } from "@/features/copilot/technician/server/auth";
+import { TechnicianCopilotConflictError } from "@/features/copilot/technician/server/chat";
 import {
-  runTechnicianCopilotTurn,
-  TechnicianCopilotConflictError,
-} from "@/features/copilot/technician/server/chat";
-import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
+  runGovernedTechnicianCopilotTurn,
+  TechnicianCopilotQuotaError,
+} from "@/features/copilot/technician/server/governedTurn";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 export const runtime = "nodejs";
@@ -83,29 +83,24 @@ export async function POST(request: NextRequest) {
     const sessionId = typeof body.sessionId === "string" ? body.sessionId : null;
     const recentConversations = parseRecentConversations(body.recentConversations);
 
-    const result = await withAITelemetryContext(
-      {
-        endpoint: "/api/copilot/technician/chat",
-        shopId: access.shopId,
-        userId: access.profileId,
+    const result = await runGovernedTechnicianCopilotTurn({
+      endpoint: "/api/copilot/technician/chat",
+      turn: {
+        identity: {
+          authUserId: access.authUserId,
+          profileId: access.profileId,
+          shopId: access.shopId,
+          documentationEnabled: access.capabilities.documentation,
+          voiceEnabled: access.capabilities.voice,
+          supabase: createAdminSupabase(),
+        },
+        message,
+        turnId,
+        sessionId,
+        inputSource,
+        recentConversations,
       },
-      () =>
-        runTechnicianCopilotTurn({
-          identity: {
-            authUserId: access.authUserId,
-            profileId: access.profileId,
-            shopId: access.shopId,
-            documentationEnabled: access.capabilities.documentation,
-            voiceEnabled: access.capabilities.voice,
-            supabase: createAdminSupabase(),
-          },
-          message,
-          turnId,
-          sessionId,
-          inputSource,
-          recentConversations,
-        }),
-    );
+    });
 
     return NextResponse.json({ ...result, turnId });
   } catch (error) {
@@ -113,6 +108,20 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: error.message, code: error.code },
         { status: error.status },
+      );
+    }
+    if (error instanceof TechnicianCopilotQuotaError) {
+      // Short-window throttles are intentionally retryable (429). A monthly
+      // hard-budget exhaustion is not: the client treats non-429 failures as
+      // terminal for that turn and clears its pending idempotency payload rather
+      // than replaying stale technician intent after a future budget reset.
+      const status = error.code === "hard_budget_exceeded" ? 402 : error.status;
+      return NextResponse.json(
+        { error: error.message, code: error.code },
+        {
+          status,
+          headers: { "Retry-After": String(error.retryAfterSeconds) },
+        },
       );
     }
     const conflict = runtimeConflict(error);

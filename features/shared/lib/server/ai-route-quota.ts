@@ -5,6 +5,7 @@ import "server-only";
 import {
   claimDurableAIRouteQuota,
   completeDurableAIRouteQuota,
+  getDurableAIReservationCostUsd,
   type DurableAIFeature,
 } from "@/features/shared/lib/server/durable-ai-guard";
 import {
@@ -16,6 +17,10 @@ import type { AIFeature } from "@/features/shared/lib/server/ai-policy";
 import type { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type AdminSupabaseClient = ReturnType<typeof createAdminSupabase>;
+type AIOpsTelemetryFeature = Exclude<
+  AIFeature,
+  "technician_copilot_documentation"
+>;
 
 export class AIQuotaExceededError extends Error {
   constructor(
@@ -38,7 +43,7 @@ export class AIQuotaUnavailableError extends Error {
 export type AIRouteQuotaConfig = {
   admin: AdminSupabaseClient;
   durableFeature: DurableAIFeature;
-  telemetryFeature: AIFeature;
+  telemetryFeature: AIOpsTelemetryFeature;
   endpoint: string;
   actorId: string;
   shopId: string;
@@ -125,6 +130,12 @@ export async function withDurableAIQuota<T>(
     const errorCode = /timed out/i.test(message)
       ? "provider_timeout"
       : "provider_error";
+    // A provider may have returned billable tokens before parsing/validation
+    // failed. Preserve the conservative reservation rather than converting the
+    // receipt to $0 and allowing repeated failures to evade the monthly cap.
+    const reservedCostUsd = getDurableAIReservationCostUsd(
+      config.durableFeature,
+    );
 
     await completeDurableAIRouteQuota({
       admin: config.admin,
@@ -132,7 +143,7 @@ export async function withDurableAIQuota<T>(
       shopId: config.shopId,
       actorId: config.actorId,
       receiptId: claim.receiptId,
-      actualCostUsd: 0,
+      actualCostUsd: reservedCostUsd,
       succeeded: false,
     });
     await recordDurableAIUsage({
@@ -147,7 +158,7 @@ export async function withDurableAIQuota<T>(
       prompt_tokens: null,
       completion_tokens: null,
       total_tokens: null,
-      estimated_cost_usd: 0,
+      estimated_cost_usd: reservedCostUsd,
       status: "error",
       error_code: errorCode,
       error_message: message.slice(0, 200),
@@ -158,7 +169,7 @@ export async function withDurableAIQuota<T>(
       shopId: config.shopId,
       model: null,
       totalTokens: null,
-      estimatedCostUsd: 0,
+      estimatedCostUsd: reservedCostUsd,
       status: "error",
       errorCode,
     });
