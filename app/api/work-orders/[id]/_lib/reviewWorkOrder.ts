@@ -43,6 +43,12 @@ function isInfoLine(line: Record<string, unknown>): boolean {
   return lineType === "info" || lineType === "note" || jobType === "info";
 }
 
+function isDeferredHistoryLine(line: Record<string, unknown>): boolean {
+  const status = String(line.status ?? "").trim().toLowerCase();
+  const lineStatus = String(line.line_status ?? "").trim().toLowerCase();
+  return status === "deferred" || lineStatus === "deferred";
+}
+
 function partRequestItemHasBillablePrice(row: Record<string, unknown>): boolean {
   const price =
     numericValue(row.quoted_price) ??
@@ -192,7 +198,15 @@ export async function reviewWorkOrder({
     .eq("shop_id", shopId);
   if (lineError) throw lineError;
 
-  const issues: ReviewIssue[] = [...invoicePartIssues];
+  const deferredHistoryLineIds = new Set(
+    (lines ?? [])
+      .filter((line) => isDeferredHistoryLine(line as Record<string, unknown>))
+      .map((line) => String(line.id)),
+  );
+
+  const issues: ReviewIssue[] = invoicePartIssues.filter(
+    (issue) => !issue.lineId || !deferredHistoryLineIds.has(issue.lineId),
+  );
   const { data: quoteLines, error: quoteError } = await supabase
     .from("work_order_quote_lines")
     .select("id,status,stage,approved_at,declined_at,work_order_line_id")
@@ -214,9 +228,10 @@ export async function reviewWorkOrder({
     issues.push({ kind: "no_lines", message: "Work order has no lines" });
   }
 
-  const actionableLines = (lines ?? []).filter(
-    (line) => !isInfoLine(line as Record<string, unknown>),
-  );
+  const actionableLines = (lines ?? []).filter((line) => {
+    const record = line as Record<string, unknown>;
+    return !isInfoLine(record) && !isDeferredHistoryLine(record);
+  });
   if ((lines?.length ?? 0) > 0 && actionableLines.length === 0) {
     issues.push({
       kind: "no_billable_lines",
