@@ -67,11 +67,17 @@ function asRecord(value: Json | null): Record<string, Json | undefined> | null {
 }
 
 function isArchivedSource(
-  row: Pick<WorkOrder, "archived_at" | "type" | "external_id"> | undefined,
+  row:
+    | Pick<WorkOrder, "archived_at" | "source_intake_id" | "external_id">
+    | undefined,
 ): boolean {
   if (!row) return true;
   if (row.archived_at) return true;
-  if (normalized(row.type) === "historical_import") return true;
+  // source_intake_id is the repository's durable imported-history marker, and
+  // matches the exclusion the carry-forward trigger applies. work_orders.type
+  // only ever holds inspection/repair/maintenance, so it cannot identify an
+  // import.
+  if (row.source_intake_id) return true;
   return String(row.external_id ?? "").startsWith("portal_quote:");
 }
 
@@ -256,13 +262,16 @@ export async function GET(request: Request) {
   ];
 
   let workOrders: Array<
-    Pick<WorkOrder, "id" | "custom_id" | "type" | "external_id" | "archived_at">
+    Pick<
+      WorkOrder,
+      "id" | "custom_id" | "source_intake_id" | "external_id" | "archived_at"
+    >
   >;
   try {
     workOrders = await loadRowsForIdChunks(workOrderIds, (ids, from, to) =>
       admin
         .from("work_orders")
-        .select("id,custom_id,type,external_id,archived_at")
+        .select("id,custom_id,source_intake_id,external_id,archived_at")
         .eq("shop_id", access.profile.shop_id)
         .in("id", ids)
         .order("id", { ascending: true })
