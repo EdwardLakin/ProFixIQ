@@ -181,10 +181,14 @@ describe("CoPilot governance covers every entry point", () => {
     const governed = source(
       "features/copilot/technician/server/governedTurn.ts",
     );
-    expect(governed.indexOf("turnMayCallProvider(turn)")).toBeGreaterThan(-1);
-    expect(governed.indexOf("turnMayCallProvider(turn)")).toBeLessThan(
-      governed.indexOf("claimDurableAIRouteQuota"),
-    );
+    // Both needles must be call sites. Matching the bare symbol finds the
+    // import at the top of the file instead, which can never sort after a
+    // call and so fails regardless of the real order.
+    const replayCheck = governed.indexOf("await turnMayCallProvider(turn)");
+    const quotaClaim = governed.indexOf("await claimDurableAIRouteQuota(");
+    expect(replayCheck).toBeGreaterThan(-1);
+    expect(quotaClaim).toBeGreaterThan(-1);
+    expect(replayCheck).toBeLessThan(quotaClaim);
   });
 
   it("makes provider timeouts canonical for registered AI features", () => {
