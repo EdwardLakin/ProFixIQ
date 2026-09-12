@@ -177,6 +177,7 @@ type WorkspaceInspectionRow = Pick<
   | "updated_at"
   | "pdf_url"
   | "pdf_storage_path"
+  | "is_canonical"
 >;
 
 type WorkspaceHistoryRow = Pick<
@@ -1047,6 +1048,13 @@ function buildDocumentSummary(input: {
     vehicleMediaCount: input.vehicleMedia.length,
     workOrderMediaCount: input.workOrderMedia.length,
     inspectionReportCount: reports.length,
+    // Must match listInspectionReportsForActor exactly: it serves canonical
+    // rows with a stored object only. Canonicalisation keeps superseded
+    // duplicates for audit history, so counting those would advertise reports
+    // the list route will not return.
+    downloadableInspectionReportCount: reports.filter(
+      (row) => Boolean(row.pdf_storage_path) && row.is_canonical === true,
+    ).length,
     latestReference: newestWorkOrderMedia
       ? {
           sourceType: "work_order_media",
@@ -1361,7 +1369,7 @@ export async function loadVehicleWorkspaceSnapshot(input: {
         const result = await input.supabase
           .from("inspections")
           .select(
-            "id,work_order_id,work_order_line_id,inspection_type,status,completed,summary,created_at,started_at,finalized_at,updated_at,pdf_url,pdf_storage_path",
+            "id,work_order_id,work_order_line_id,inspection_type,status,completed,summary,created_at,started_at,finalized_at,updated_at,pdf_url,pdf_storage_path,is_canonical",
           )
           .eq("shop_id", input.shopId)
           .eq("vehicle_id", input.vehicleId)
