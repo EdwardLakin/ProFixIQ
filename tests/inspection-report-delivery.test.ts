@@ -35,6 +35,28 @@ describe("inspection report delivery contracts", () => {
     expect(pdf).toContain("drawSignatureCard");
   });
 
+  it("only embeds signature images the server itself owns", () => {
+    const publish = source("features/inspections/server/publishInspectionPdf.ts");
+    // sign_inspection hardens the image path for technicians only; customer and
+    // advisor rows keep a client-supplied path, so a service-role download of
+    // one would read any object in the bucket.
+    expect(publish).toContain("isServerOwnedSignaturePath");
+    expect(publish).toContain("tech_signature_path");
+    expect(publish).toContain(
+      "if (path && (await isServerOwnedSignaturePath(admin, row.signed_by, path)))",
+    );
+  });
+
+  it("fails publication rather than certifying an incomplete report", () => {
+    const publish = source("features/inspections/server/publishInspectionPdf.ts");
+    // The attached PDF path is immutable, so a transient read failure must not
+    // publish a report that contradicts the durable evidence.
+    expect(publish).toContain("Unable to resolve inspection signing cycle");
+    expect(publish).toContain("Unable to load inspection signatures");
+    expect(publish).toContain("Unable to resolve shop name");
+    expect(publish).not.toContain("if (error || !rows?.length) return [];");
+  });
+
   it("anchors evidence signing to canonical job-photo rows", () => {
     const access = source(
       "features/inspections/server/inspectionReportAccess.ts",

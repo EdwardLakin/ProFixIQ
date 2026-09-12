@@ -7,6 +7,7 @@ import {
   type PDFFont,
   type PDFPage,
 } from "pdf-lib";
+import { assembleInspectionReport } from "./report";
 import type {
   InspectionSession,
   InspectionItem,
@@ -1338,6 +1339,43 @@ export async function generateInspectionPDF(
       color: COLOR_MUTED,
       lineGap: 14,
     });
+  }
+
+  /* --------------------------------------------------- Imported form context */
+
+  // An imported customer form carries blocks the checklist cannot express: the
+  // trip and vehicle record, the printed regulatory declaration, the free-text
+  // defect boxes and the completion and certification block. These live in
+  // session.formContext, outside session.sections, so rendering the checklist
+  // alone would drop them from a finalized regulatory report.
+  const contextBlocks = assembleInspectionReport(session).formContext;
+  for (const block of contextBlocks) {
+    drawRule();
+    drawSectionHeader(block.title);
+    for (const item of block.items) {
+      if (block.block === "branding" || block.block === "notices") {
+        drawWrappedParagraph(item.label, {
+          widthChars: 92,
+          size: 9,
+          color: COLOR_MUTED,
+          lineGap: 12,
+        });
+        continue;
+      }
+      const label = item.unit ? `${item.label} (${item.unit})` : item.label;
+      if (block.block === "notes") {
+        ensureSpace(14);
+        drawText(label, MARGIN_X, y, { size: 10, bold: true });
+        y -= 14;
+        drawWrappedParagraph(item.value ?? "—", {
+          widthChars: 92,
+          size: 10,
+          lineGap: 13,
+        });
+        continue;
+      }
+      drawMetaRow(label, item.value ?? undefined);
+    }
   }
 
   /* -------------------------------------------------------- Full item detail */

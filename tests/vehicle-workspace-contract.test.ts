@@ -1621,6 +1621,23 @@ describe("Shop Vehicle Workspace contract", () => {
           pdf_storage_path: null,
         },
         {
+          id: "inspection-superseded-duplicate",
+          work_order_id: "wo-1",
+          work_order_line_id: null,
+          inspection_type: "Superseded duplicate",
+          status: "finalized",
+          completed: true,
+          summary: null,
+          created_at: "2026-01-01T10:00:00.000Z",
+          started_at: "2026-01-01T10:00:00.000Z",
+          finalized_at: "2026-01-01T11:00:00.000Z",
+          updated_at: "2026-01-01T11:00:00.000Z",
+          pdf_url: "/api/inspections/inspection-superseded-duplicate/report/pdf",
+          pdf_storage_path:
+            "shops/shop-a/work_orders/wo-1/inspections/inspection-superseded-duplicate/line_a_r1_hash.pdf",
+          is_canonical: false,
+        },
+        {
           id: "inspection-stored-pdf",
           work_order_id: "wo-1",
           work_order_line_id: null,
@@ -1635,6 +1652,7 @@ describe("Shop Vehicle Workspace contract", () => {
           pdf_url: "/api/inspections/inspection-stored-pdf/report/pdf",
           pdf_storage_path:
             "shops/shop-a/work_orders/wo-1/inspections/inspection-stored-pdf/line_a_r1_hash.pdf",
+          is_canonical: true,
         },
       ],
     });
@@ -1646,7 +1664,10 @@ describe("Shop Vehicle Workspace contract", () => {
       vehicleId: "vehicle-1",
     });
 
-    expect(snapshot?.documentSummary.inspectionReportCount).toBe(2);
+    expect(snapshot?.documentSummary.inspectionReportCount).toBe(3);
+    // Only the canonical row with a stored object is one the list route serves:
+    // the legacy pdf_url row has no object, and the superseded duplicate is
+    // retained for audit history but filtered out by listInspectionReportsForActor.
     expect(snapshot?.documentSummary.downloadableInspectionReportCount).toBe(1);
   });
 

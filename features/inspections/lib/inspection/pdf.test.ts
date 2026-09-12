@@ -190,6 +190,62 @@ describe("generateInspectionPDF", () => {
     expect(text).toContain("Page 1 of ");
   });
 
+  it("preserves imported form-context blocks that live outside sections", async () => {
+    // Imported regulatory forms keep trip headers, printed declarations and
+    // completion blocks in session.formContext, not session.sections.
+    const imported = {
+      ...session(),
+      formContext: {
+        header: [
+          {
+            title: "Trip Record",
+            items: [{ item: "Trip number", unit: null }],
+          },
+        ],
+        notices: [
+          {
+            title: "Regulatory Notice",
+            items: [
+              {
+                item: "Inspected under NSC Standard 13 as adopted by the province.",
+                unit: null,
+              },
+            ],
+          },
+        ],
+        notes: [
+          {
+            title: "Defects Noted",
+            items: [{ item: "Driver remarks", unit: null }],
+          },
+        ],
+        completion: [],
+        branding: [],
+      },
+      formContextValues: {
+        "header::0::Trip Record::Trip number": "TR-99182",
+        "notes::0::Defects Noted::Driver remarks":
+          "Reported pulling right under braking.",
+      },
+    } as unknown as InspectionSession;
+
+    const text = renderedText(
+      await generateInspectionPDF(imported, { shopName: "Northside Truck" }),
+    );
+
+    // Block titles render as section headings, which are set in upper case.
+    expect(text).toContain("TRIP RECORD");
+    expect(text).toContain("Trip number");
+    expect(text).toContain("TR-99182");
+    expect(text).toContain("REGULATORY NOTICE");
+    expect(text).toContain("NSC Standard 13");
+    expect(text).toContain("DEFECTS NOTED");
+    expect(text).toContain("Driver remarks");
+    expect(text).toContain("Reported pulling right under braking.");
+    // The checklist still renders alongside the imported blocks.
+    expect(text).toContain("Front pads");
+  });
+
   it("renders a signature block for each recorded signature", async () => {
     const bytes = await generateInspectionPDF(session(), {
       shopName: "Northside Truck",
