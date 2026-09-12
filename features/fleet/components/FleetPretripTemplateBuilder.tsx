@@ -417,6 +417,7 @@ export default function FleetPretripTemplateBuilder({
                         className="rounded-lg border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-2 py-2 text-xs"
                       >
                         <option value="pass_fail">Pass / fail</option>
+                        <option value="defect">Minor / major defect</option>
                         <option value="number">Measurement</option>
                         <option value="photo">Photo</option>
                         <option value="voice">Voice note</option>
@@ -464,7 +465,7 @@ export default function FleetPretripTemplateBuilder({
                       </button>
                     </div>
 
-                    {item.type === "pass_fail" ? (
+                    {item.type === "pass_fail" || item.type === "defect" ? (
                       <div className="mt-3 flex flex-wrap items-center gap-3 text-[10px] text-[color:var(--theme-text-secondary)]">
                         <label className="flex items-center gap-1">
                           <input
@@ -506,7 +507,9 @@ export default function FleetPretripTemplateBuilder({
                               })
                             }
                           />{" "}
-                          Require photo on fail
+                          {item.type === "defect"
+                            ? "Require photo on major"
+                            : "Require photo on fail"}
                         </label>
                         <label className="flex items-center gap-1">
                           <input
@@ -552,6 +555,13 @@ export default function FleetPretripTemplateBuilder({
                   className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-[color:var(--theme-border-soft)] px-2.5 text-[10px] font-semibold"
                 >
                   <Plus className="h-3 w-3" /> Pass/fail
+                </button>
+                <button
+                  type="button"
+                  onClick={() => addItem(section.id, "defect")}
+                  className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-[color:var(--theme-border-soft)] px-2.5 text-[10px] font-semibold"
+                >
+                  <Plus className="h-3 w-3" /> Minor/major
                 </button>
                 <button
                   type="button"

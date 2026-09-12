@@ -1,4 +1,45 @@
-export type FleetPretripFieldType = "pass_fail" | "number" | "photo" | "voice";
+export type FleetPretripFieldType =
+  | "pass_fail"
+  | "number"
+  | "photo"
+  | "voice"
+  /**
+   * A row the source form classifies as a minor or major defect, the way
+   * commercial trip-inspection reports do (NSC Standard 13 and the provincial
+   * forms built on it). Answered no defect / minor / major / N/A rather than
+   * pass / fail, so an imported paper form keeps the distinction its own
+   * legend defines.
+   */
+  | "defect";
+
+/** How a driver answers a `defect` row. */
+export type FleetPretripDefectStatus = "ok" | "minor" | "major" | "na";
+
+export const FLEET_PRETRIP_DEFECT_STATUSES = [
+  "ok",
+  "minor",
+  "major",
+  "na",
+] as const satisfies readonly FleetPretripDefectStatus[];
+
+export function isFleetPretripDefectStatus(
+  value: unknown,
+): value is FleetPretripDefectStatus {
+  return (
+    typeof value === "string" &&
+    (FLEET_PRETRIP_DEFECT_STATUSES as readonly string[]).includes(value)
+  );
+}
+
+/**
+ * Minor and major both count as defects everywhere a defect is counted; the
+ * classification rides alongside so dispatch can tell them apart.
+ */
+export function fleetPretripDefectStatusIsDefect(
+  status: FleetPretripDefectStatus,
+): boolean {
+  return status === "minor" || status === "major";
+}
 
 export type FleetPretripFailureActions = {
   notifyDispatcher: boolean;
@@ -110,6 +151,7 @@ const FLEET_PRETRIP_FIELD_TYPES = new Set<FleetPretripFieldType>([
   "number",
   "photo",
   "voice",
+  "defect",
 ]);
 const FLEET_PRETRIP_SEVERITIES = new Set<FleetPretripTemplateItem["severity"]>([
   "safety",

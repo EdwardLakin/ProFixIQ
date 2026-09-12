@@ -44,7 +44,9 @@ function validSections(value: unknown): value is FleetPretripTemplateSection[] {
             /^[A-Za-z0-9][A-Za-z0-9_-]{0,79}$/.test(item.id) &&
             typeof item.label === "string" &&
             item.label.trim().length > 0 &&
-            ["pass_fail", "number", "photo", "voice"].includes(item.type),
+            ["pass_fail", "number", "photo", "voice", "defect"].includes(
+              item.type,
+            ),
         ),
     )
   );

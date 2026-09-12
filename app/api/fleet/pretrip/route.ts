@@ -19,6 +19,8 @@ import {
 import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
 import {
   DEFAULT_FLEET_PRETRIP_TEMPLATE,
+  fleetPretripDefectStatusIsDefect,
+  isFleetPretripDefectStatus,
   normalizeFleetPretripTemplateSections,
   type FleetPretripTemplateSection,
 } from "@/features/fleet/types/driverPortal";
@@ -45,7 +47,12 @@ type CreatePretripBody = {
   defects: Record<string, "ok" | "defect" | "na">;
   answers?: Record<
     string,
-    { status?: "ok" | "defect" | "na"; value?: string | number | null }
+    {
+      // "minor" and "major" are only valid on a defect row; every other row
+      // keeps the original pass/fail vocabulary.
+      status?: "ok" | "defect" | "na" | "minor" | "major";
+      value?: string | number | null;
+    }
   >;
   evidenceMeta?: Array<{
     itemId?: string | null;
@@ -141,6 +148,45 @@ function sanitizeChecklist(args: {
           label: item.label,
           severity: item.severity,
           failureActions: item.failureActions,
+        };
+      }
+      continue;
+    }
+
+    if (item.type === "defect") {
+      const status = answer.status;
+      if (!isFleetPretripDefectStatus(status)) {
+        if (item.required) throw new Error(`Complete ${item.label}.`);
+        continue;
+      }
+      const isDefect = fleetPretripDefectStatusIsDefect(status);
+      answers[item.id] = { status };
+      // Minor and major both land in the existing defect vocabulary, so the
+      // report's defect count, the dispatch intake trigger and every other
+      // consumer keep working unchanged. The classification rides alongside.
+      defects[item.id] = isDefect ? "defect" : status === "na" ? "na" : "ok";
+      if (isDefect) {
+        // A major defect is the one that takes a unit out of service, so it
+        // alone carries the configured photo requirement and vehicle-attention
+        // escalation. A minor defect still reaches dispatch and review.
+        const isMajor = status === "major";
+        if (
+          isMajor &&
+          item.failureActions?.requirePhoto &&
+          !matchingUploads.some((upload) => upload.mediaType === "photo")
+        ) {
+          throw new Error(`Add a photo for ${item.label}.`);
+        }
+        defectMeta[item.id] = {
+          label: `${isMajor ? "Major" : "Minor"} defect — ${item.label}`,
+          severity: item.severity,
+          defectClassification: status,
+          failureActions: {
+            ...item.failureActions,
+            requirePhoto: isMajor && Boolean(item.failureActions?.requirePhoto),
+            markVehicleAttention:
+              isMajor && Boolean(item.failureActions?.markVehicleAttention),
+          },
         };
       }
       continue;
