@@ -1,3 +1,9 @@
+import {
+  INSPECTION_FORM_CONTEXT_BLOCKS,
+  inspectionFormContextValueKey,
+  type InspectionFormContextBlock,
+} from "@/features/inspections/lib/form-import";
+
 import type {
   InspectionItemStatus,
   InspectionSession,
@@ -14,6 +20,24 @@ export type InspectionReportItem = {
   photoUrls: string[];
 };
 
+/**
+ * One preserved block of an imported customer form, with whatever was captured
+ * against it during the run. Read-only blocks (the form's own branding and its
+ * printed regulatory wording) carry no value and are reproduced verbatim so the
+ * report stays recognisable as the customer's document.
+ */
+export type InspectionReportContextItem = {
+  label: string;
+  value: string | null;
+  unit: string | null;
+};
+
+export type InspectionReportContextSection = {
+  block: InspectionFormContextBlock;
+  title: string;
+  items: InspectionReportContextItem[];
+};
+
 export type InspectionReport = {
   title: string;
   completedAt: string | null;
@@ -22,6 +46,7 @@ export type InspectionReport = {
   vin: string | null;
   mileage: string | null;
   sections: Array<{ title: string; items: InspectionReportItem[] }>;
+  formContext: InspectionReportContextSection[];
   totals: {
     checked: number;
     ok: number;
@@ -126,6 +151,32 @@ export function assembleInspectionReport(
       .join(" "),
   );
 
+  const capturedValues = session.formContextValues ?? {};
+  const formContext: InspectionReportContextSection[] = [];
+  for (const block of INSPECTION_FORM_CONTEXT_BLOCKS) {
+    for (const [sectionIndex, section] of (
+      session.formContext?.[block] ?? []
+    ).entries()) {
+      const items = (section.items ?? []).map((item) => ({
+        label: item.item,
+        value: text(
+          capturedValues[
+            inspectionFormContextValueKey(
+              block,
+              sectionIndex,
+              section.title,
+              item.item,
+            )
+          ],
+        ),
+        unit: text(item.unit),
+      }));
+      if (items.length) {
+        formContext.push({ block, title: section.title, items });
+      }
+    }
+  }
+
   return {
     title: text(session.templateName ?? session.templateitem) ?? "Vehicle inspection report",
     completedAt: text(session.lastUpdated),
@@ -134,6 +185,7 @@ export function assembleInspectionReport(
     vin: text(session.vehicle?.vin),
     mileage: text(session.vehicle?.mileage),
     sections,
+    formContext,
     totals,
   };
 }

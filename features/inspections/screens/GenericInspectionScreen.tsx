@@ -41,6 +41,12 @@ import type {
   VoiceCommandApplyResult,
 } from "@inspections/lib/inspection/types";
 
+import ImportedFormContextCard from "@/features/inspections/components/inspection/ImportedFormContextCard";
+import {
+  isInspectionFormContextEmpty,
+  normalizeInspectionFormContext,
+  type InspectionFormContext,
+} from "@/features/inspections/lib/form-import";
 import SectionDisplay from "@inspections/lib/inspection/SectionDisplay";
 import CornerGrid from "@inspections/lib/inspection/ui/CornerGrid";
 import AirCornerGrid from "@inspections/lib/inspection/ui/AirCornerGrid";
@@ -901,6 +907,35 @@ type SmartMatchRow = {
     ]);
   }, [sp]);
 
+  // An imported customer form stages the non-checklist half of its paper
+  // document beside the sections. Boot it so the run can collect the same
+  // record the paper form did.
+  //
+  // The staged value is stamped with the template it came from, and every
+  // other launcher stages inspection:sections without clearing this key. Only
+  // honour it when it belongs to the template actually being run, so a form
+  // run earlier in this tab cannot print its trip header and signatures on an
+  // unrelated inspection.
+  const bootFormContext = useMemo<InspectionFormContext | null>(() => {
+    const staged = readStaged<{ templateId?: unknown; context?: unknown }>(
+      "inspection:formContext",
+    );
+    if (!staged || typeof staged !== "object") return null;
+
+    const stagedTemplateId =
+      typeof staged.templateId === "string" ? staged.templateId : "";
+    const runningTemplateId =
+      sp.get("templateId") ??
+      readStaged<Record<string, string>>("inspection:params")?.templateId ??
+      "";
+    if (!stagedTemplateId || stagedTemplateId !== runningTemplateId) {
+      return null;
+    }
+
+    const context = normalizeInspectionFormContext(staged.context);
+    return isInspectionFormContextEmpty(context) ? null : context;
+  }, [sp]);
+
   const inspectionId = useMemo(() => {
     const fromUrl = sp.get("inspectionId");
     if (fromUrl) return fromUrl;
@@ -1003,12 +1038,15 @@ type SmartMatchRow = {
       customer,
       vehicle,
       sections: bootSections,
+      formContext: bootFormContext,
+      formContextValues: {},
       currentSectionIndex: 0,
       currentItemIndex: 0,
       started: false,
       completed: false,
     }),
     [
+      bootFormContext,
       bootSections,
       inspectionId,
       templateName,
@@ -1057,6 +1095,12 @@ type SmartMatchRow = {
   };
   const updateSection = (...args: Parameters<typeof updateSessionSection>) => {
     if (!isLockedRef.current) updateSessionSection(...args);
+  };
+  const updateFormContextValue = (key: string, value: string) => {
+    if (isLockedRef.current) return;
+    updateInspection({
+      formContextValues: { ...(session.formContextValues ?? {}), [key]: value },
+    });
   };
   const resumeSession = (
     ...args: Parameters<typeof resumeInspectionSession>
@@ -3013,6 +3057,14 @@ type SmartMatchRow = {
           )}
         </div>
 
+        <ImportedFormContextCard
+          context={session.formContext}
+          values={session.formContextValues ?? {}}
+          placement="before"
+          disabled={isLocked}
+          onChange={updateFormContextValue}
+        />
+
         <InspectionFormCtx.Provider value={{ updateItem, updateSection }}>
           {session.sections.map((section, sectionIndex) => {
             const itemsWithHints = (section.items ?? []).map((it) => {
@@ -3478,6 +3530,14 @@ type SmartMatchRow = {
             );
           })}
         </InspectionFormCtx.Provider>
+
+        <ImportedFormContextCard
+          context={session.formContext}
+          values={session.formContextValues ?? {}}
+          placement="after"
+          disabled={isLocked}
+          onChange={updateFormContextValue}
+        />
 
         {findingSubmissionSummary.outstanding.length > 0 ||
         findingSubmissionSummary.submitted > 0 ? (

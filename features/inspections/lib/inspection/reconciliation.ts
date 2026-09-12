@@ -31,6 +31,17 @@ export function hasMeaningfulInspectionProgress(
 ): boolean {
   if (session.transcript?.trim()) return true;
   if ((session.quote?.length ?? 0) > 0) return true;
+  // On an imported customer form the trip header, meter readings and sign-off
+  // are typed before any checklist row is marked. Without this, a session
+  // holding only those is treated as empty and can be replaced by canonical
+  // hydration, losing what the person just entered.
+  if (
+    Object.values(session.formContextValues ?? {}).some(
+      (value) => typeof value === "string" && value.trim().length > 0,
+    )
+  ) {
+    return true;
+  }
 
   return (session.sections ?? []).some((section) =>
     (section.items ?? []).some((item) => {

@@ -169,4 +169,20 @@ describe("mobile inspection form imports", () => {
     expect(pdf).toContain("MAJOR DEFECT");
     expect(pdf).toContain("MINOR DEFECT");
   });
+
+  it("lets the OCR review screen correct a misclassified field type", () => {
+    const review = read(
+      "features/inspections/components/InspectionFormImportReview.tsx",
+    );
+
+    // A push-rod travel row read back as a defect instead of a measurement has
+    // to be fixable while approving, not only later in the template editor.
+    expect(review).toContain("RUNNABLE_INSPECTION_FORM_FIELD_TYPES");
+    expect(review).toContain("Field type for ${item.item}");
+    expect(review).toContain("fieldType: nextType");
+    // Units are meaningless on pass/fail and defect rows, so reclassifying away
+    // from measurement clears the unit instead of leaving a stale one behind.
+    expect(review).toContain('nextType === "measurement" ? {} : { unit: null }');
+    expect(review).toContain('disabled={fieldType !== "measurement"}');
+  });
 });

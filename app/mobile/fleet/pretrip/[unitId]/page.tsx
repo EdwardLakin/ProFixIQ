@@ -1,24 +1,66 @@
-"use client";
-
 import Link from "next/link";
-import { useParams, useSearchParams } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+
 import PretripForm from "@/features/fleet/components/PretripForm";
-import { DEFAULT_FLEET_PRETRIP_TEMPLATE } from "@/features/fleet/types/driverPortal";
+import {
+  resolveFleetActorContext,
+  resolveFleetActorScope,
+} from "@/features/fleet/lib/resolveFleetActorContext";
+import { loadFleetPretripContext } from "@/features/fleet/server/loadFleetPretripContext";
+import {
+  createAdminSupabase,
+  createServerSupabaseRSC,
+} from "@/features/shared/lib/supabase/server";
 
-export default function MobileFleetPretripPage() {
-  const params = useParams<{ unitId: string }>();
-  const search = useSearchParams();
-  const unitId = params?.unitId ? String(params.unitId) : null;
-  const driverHint = search.get("driver");
-  const fleetId = search.get("fleetId");
+export const dynamic = "force-dynamic";
 
-  if (!unitId) {
-    return (
-      <main className="flex min-h-[calc(100vh-3rem)] items-center justify-center bg-[color:var(--theme-surface-page)] px-3 py-4 text-sm text-red-300">
-        Missing fleet unit id.
-      </main>
-    );
+type Props = {
+  params: Promise<{ unitId: string }>;
+  searchParams: Promise<{ fleetId?: string; driver?: string }>;
+};
+
+export default async function MobileFleetPretripPage({
+  params,
+  searchParams,
+}: Props) {
+  const [{ unitId }, query] = await Promise.all([params, searchParams]);
+  if (!unitId) notFound();
+
+  const supabase = createServerSupabaseRSC();
+  const actor = await resolveFleetActorContext(supabase, {
+    requestedFleetId: query.fleetId ?? null,
+  });
+  if (!actor.userId || !actor.capabilities.canCreatePretripReports) {
+    redirect("/portal/auth/fleet-sign-in");
   }
+
+  const fleetId = query.fleetId ?? actor.primaryFleetId;
+  const scope = resolveFleetActorScope(actor, {
+    explicitFleetId: fleetId,
+    preferMembershipFleet: true,
+  });
+  if (
+    !fleetId ||
+    !scope?.shopId ||
+    (!actor.isInternal && !actor.fleetIds.includes(fleetId))
+  ) {
+    notFound();
+  }
+
+  // This page used to hardcode the built-in walk-around, so a fleet running its
+  // own published template — including one imported from its paper form — still
+  // saw ProFixIQ's generic rows here while the portal showed the real one.
+  const context = await loadFleetPretripContext(createAdminSupabase(), {
+    shopId: scope.shopId,
+    fleetId,
+    unitId,
+    userId: actor.userId,
+  });
+  if (!context.enrollment || (!actor.isInternal && !context.isAssignedDriver)) {
+    notFound();
+  }
+
+  const driverHint = query.driver || context.driverHint;
 
   return (
     <main className="mx-auto flex min-h-[calc(100vh-3rem)] max-w-xl flex-col bg-[color:var(--theme-surface-page)] px-3 py-4 text-[color:var(--theme-text-primary)]">
@@ -43,7 +85,7 @@ export default function MobileFleetPretripPage() {
               className="text-lg font-semibold text-[color:var(--theme-text-primary)]"
               style={{ fontFamily: "var(--font-blackops)" }}
             >
-              Unit {unitId}
+              Unit {context.unitLabel}
             </div>
             {driverHint ? (
               <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
@@ -60,8 +102,9 @@ export default function MobileFleetPretripPage() {
           </span>
         </div>
         <p className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
-          Complete this walk-around before leaving the yard. Defects can be
-          converted to service requests by dispatch.
+          {context.template.name} · v{context.template.version}. Complete this
+          walk-around before leaving the yard. Defects can be converted to
+          service requests by dispatch.
         </p>
       </header>
 
@@ -70,8 +113,8 @@ export default function MobileFleetPretripPage() {
           unitId={unitId}
           fleetId={fleetId}
           driverHint={driverHint}
-          template={DEFAULT_FLEET_PRETRIP_TEMPLATE}
-          trailers={[]}
+          template={context.template}
+          trailers={context.trailers}
         />
       </div>
     </main>
