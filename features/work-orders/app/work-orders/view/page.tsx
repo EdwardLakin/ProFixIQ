@@ -269,6 +269,12 @@ export default function WorkOrdersView(): JSX.Element {
   const [canArchive, setCanArchive] = useState(false);
 
   const [rows, setRows] = useState<Row[]>([]);
+  // Newest vehicle photo per vehicle id, as a short-lived signed URL. The
+  // vehicle-photos bucket is private, so these are display-only and re-minted
+  // on each load rather than stored.
+  const [vehiclePhotoByVehicle, setVehiclePhotoByVehicle] = useState<
+    Record<string, string>
+  >({});
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState<string>("");
@@ -324,6 +330,80 @@ export default function WorkOrdersView(): JSX.Element {
       cancelled = true;
     };
   }, [supabase]);
+
+  /**
+   * Resolve one thumbnail per vehicle for the rows on screen.
+   *
+   * The work-order create page has always written vehicle photos to
+   * vehicle_media, but nothing read them back. Two bounded queries per load:
+   * the newest photo for each visible vehicle, then a single batch of signed
+   * URLs. Any failure leaves the list rendering its text vehicle label.
+   */
+  const loadVehiclePhotos = useCallback(
+    async (visible: Row[]) => {
+      const vehicleIds = Array.from(
+        new Set(
+          visible
+            .map((row) => row.vehicle_id)
+            .filter((id): id is string => Boolean(id)),
+        ),
+      );
+      if (!vehicleIds.length) {
+        setVehiclePhotoByVehicle({});
+        return;
+      }
+
+      const { data: media, error: mediaError } = await supabase
+        .from("vehicle_media")
+        .select("vehicle_id,storage_path,created_at")
+        .in("vehicle_id", vehicleIds)
+        .eq("type", "photo")
+        .order("created_at", { ascending: false });
+      if (mediaError || !media?.length) {
+        setVehiclePhotoByVehicle({});
+        return;
+      }
+
+      // Ordered newest first, so the first path seen for a vehicle wins.
+      const newestPathByVehicle = new Map<string, string>();
+      for (const entry of media) {
+        const vehicleId = entry.vehicle_id;
+        const path = entry.storage_path;
+        if (!vehicleId || !path?.trim()) continue;
+        if (!newestPathByVehicle.has(vehicleId)) {
+          newestPathByVehicle.set(vehicleId, path);
+        }
+      }
+      if (!newestPathByVehicle.size) {
+        setVehiclePhotoByVehicle({});
+        return;
+      }
+
+      const paths = Array.from(newestPathByVehicle.values());
+      const { data: signed, error: signError } = await supabase.storage
+        .from("vehicle-photos")
+        .createSignedUrls(paths, 600);
+      if (signError || !signed) {
+        setVehiclePhotoByVehicle({});
+        return;
+      }
+
+      const signedByPath = new Map<string, string>();
+      for (const entry of signed) {
+        if (entry.path && entry.signedUrl) {
+          signedByPath.set(entry.path, entry.signedUrl);
+        }
+      }
+
+      const next: Record<string, string> = {};
+      for (const [vehicleId, path] of newestPathByVehicle) {
+        const url = signedByPath.get(path);
+        if (url) next[vehicleId] = url;
+      }
+      setVehiclePhotoByVehicle(next);
+    },
+    [supabase],
+  );
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -502,6 +582,7 @@ export default function WorkOrdersView(): JSX.Element {
           });
 
     setRows(filtered);
+    void loadVehiclePhotos(filtered);
 
     const ids = filtered.map((r) => r.id).filter(Boolean);
     if (ids.length === 0) {
@@ -602,7 +683,14 @@ export default function WorkOrdersView(): JSX.Element {
     setAssignedByWo(assignedMap);
     setHasLinesByWo(hasLinesMap);
     setLoading(false);
-  }, [isSeededShop, q, status, supabase, workforceDrilldownActive]);
+  }, [
+    isSeededShop,
+    loadVehiclePhotos,
+    q,
+    status,
+    supabase,
+    workforceDrilldownActive,
+  ]);
 
   const runInvoiceReview = useCallback(
     async (woId: string) => {
@@ -1209,6 +1297,9 @@ export default function WorkOrdersView(): JSX.Element {
                   ? `${row.vehicles.year ?? ""} ${row.vehicles.make ?? ""} ${row.vehicles.model ?? ""}`.trim()
                   : "";
                 const plate = row.vehicles?.license_plate ?? "";
+                const vehiclePhoto = row.vehicle_id
+                  ? vehiclePhotoByVehicle[row.vehicle_id]
+                  : undefined;
                 const operationalStage =
                   operationalStageByWo[row.id] ??
                   normalizeWorkOrderOperationalStage(row.status);
@@ -1307,14 +1398,28 @@ export default function WorkOrdersView(): JSX.Element {
                         <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)] lg:hidden">
                           Vehicle
                         </div>
-                        <div className="truncate text-sm text-[color:var(--theme-text-primary)]">
-                          {vehicleLabel || "No vehicle"}
-                        </div>
-                        {plate ? (
-                          <div className="mt-0.5 truncate text-xs text-[color:var(--theme-text-muted)]">
-                            {plate}
+                        <div className="flex items-center gap-2.5">
+                          {vehiclePhoto ? (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={vehiclePhoto}
+                              alt=""
+                              loading="lazy"
+                              decoding="async"
+                              className="h-10 w-10 shrink-0 rounded-lg border border-[color:var(--theme-border-soft)] object-cover"
+                            />
+                          ) : null}
+                          <div className="min-w-0">
+                            <div className="truncate text-sm text-[color:var(--theme-text-primary)]">
+                              {vehicleLabel || "No vehicle"}
+                            </div>
+                            {plate ? (
+                              <div className="mt-0.5 truncate text-xs text-[color:var(--theme-text-muted)]">
+                                {plate}
+                              </div>
+                            ) : null}
                           </div>
-                        ) : null}
+                        </div>
                       </div>
 
                       <div className="min-w-0">

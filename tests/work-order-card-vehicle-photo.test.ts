@@ -79,6 +79,23 @@ describe("vehicle photo on work order cards", () => {
     expect(hook).toContain("publishRows");
   });
 
+  it("renders the photo on the Work Orders list, which is its own component", () => {
+    // /work-orders renders WorkOrdersView, not the board components: it runs its
+    // own query and its own vehicle column, so the board change alone would not
+    // have reached the page operators actually use.
+    const listPage = read("features/work-orders/app/work-orders/view/page.tsx");
+
+    expect(listPage).toContain('.from("vehicle_media")');
+    expect(listPage).toContain('.eq("type", "photo")');
+    expect(listPage).toContain('.order("created_at", { ascending: false })');
+    expect(listPage).toContain('.from("vehicle-photos")');
+    expect(listPage).toContain("createSignedUrls(paths, 600)");
+    expect(listPage).toContain("vehiclePhotoByVehicle");
+    // Newest wins, and the list still shows its label when nothing resolves.
+    expect(listPage).toContain("newestPathByVehicle.has(vehicleId)");
+    expect(listPage).toContain('{vehicleLabel || "No vehicle"}');
+  });
+
   it("renders the photo on both card surfaces with a text fallback", () => {
     const boardCard = read(
       "features/shared/components/workboard/WorkOrderBoardCard.tsx",
