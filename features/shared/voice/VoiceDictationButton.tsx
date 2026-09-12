@@ -63,6 +63,16 @@ export default function VoiceDictationButton({
     {
       onStateChange: setState,
       onError: setError,
+      // A spend cap ends the session without an error state, so say why.
+      // Otherwise the button silently returns to its idle label and whatever
+      // was being dictated at the time just stops being captured.
+      onAutoStop: (reason) => {
+        setError(
+          reason === "idle"
+            ? "Dictation stopped after a stretch of silence. Tap to resume."
+            : "Dictation reached its session limit. Tap to resume.",
+        );
+      },
     },
   );
 

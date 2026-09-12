@@ -368,6 +368,15 @@ export function useTechnicianInteractionGateway({
     (text) => normalizedTranscript(text),
     {
       onStateChange: handleTransportState,
+      // The transport has already settled to idle by this point, so this only
+      // replaces the generic "connection ended" text with the real reason.
+      onAutoStop: (reason) => {
+        setError(
+          reason === "idle"
+            ? "Voice stopped after a stretch of silence. Start voice to continue."
+            : "Voice reached its session limit. Start voice to continue.",
+        );
+      },
       onError: (message) => {
         if (!activeRef.current) return;
         transportStartedRef.current = false;
