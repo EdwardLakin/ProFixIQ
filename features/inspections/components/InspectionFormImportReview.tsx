@@ -66,6 +66,8 @@ export default function InspectionFormImportReview({
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [approving, setApproving] = useState(false);
+  const [publishing, setPublishing] = useState(false);
+  const [published, setPublished] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const initialized = useRef(false);
 
@@ -226,6 +228,47 @@ export default function InspectionFormImportReview({
     }
   };
 
+  /**
+   * Approving an import creates a shop inspection template; it does not reach
+   * the fleet's drivers. Publishing adapts it into the driver pre-trip shape
+   * and assigns it, which is the step that makes an imported paper form the
+   * form drivers actually run.
+   */
+  const publishToFleet = async () => {
+    if (!record?.templateId || !record.fleetId) return;
+    setPublishing(true);
+    setError(null);
+    try {
+      const response = await fetch("/api/fleet/pretrip/templates/from-import", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fleetId: record.fleetId,
+          templateId: record.templateId,
+          vehicleType: record.vehicleType || undefined,
+          operationKey: crypto.randomUUID(),
+        }),
+      });
+      const body = (await response.json().catch(() => null)) as
+        | { error?: string; itemCount?: number; vehicleType?: string }
+        | null;
+      if (!response.ok) {
+        throw new Error(body?.error || "Unable to publish to fleet drivers.");
+      }
+      setPublished(
+        `Published ${body?.itemCount ?? 0} rows to ${record.fleetName || "this fleet"}${body?.vehicleType ? ` for ${body.vehicleType}` : ""}.`,
+      );
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Unable to publish to fleet drivers.",
+      );
+    } finally {
+      setPublishing(false);
+    }
+  };
+
   const copyDesktopLink = async () => {
     const url = `${window.location.origin}/inspections/fleet-review?jobId=${jobId}`;
     try {
@@ -281,6 +324,21 @@ export default function InspectionFormImportReview({
           <div className="text-lg font-semibold text-emerald-100">Inspection template saved</div>
           <p className="mt-1 text-sm text-emerald-200/80">It is now available with the shop’s normal inspection templates.</p>
           <Link href={mobile ? "/mobile/inspections" : "/inspections/templates"} className="mt-4 inline-flex rounded-xl border border-emerald-400/50 px-4 py-2 text-sm font-semibold">View inspections</Link>
+
+          {record.fleetId ? (
+            <div className="mt-4 border-t border-emerald-500/30 pt-4">
+              {published ? (
+                <p className="text-sm text-emerald-200/90">{published}</p>
+              ) : (
+                <>
+                  <p className="text-xs text-emerald-200/80">
+                    Drivers in {record.fleetName || "this fleet"} still run their assigned pre-trip. Publish this form to make it the one they run.
+                  </p>
+                  <Button type="button" variant="copper" size="lg" isLoading={publishing} onClick={() => void publishToFleet()} className="mt-3 w-full">Publish to fleet drivers</Button>
+                </>
+              )}
+            </div>
+          ) : null}
         </section>
       ) : null}
 

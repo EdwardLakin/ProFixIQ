@@ -90,11 +90,20 @@ describe("fleet pre-trip, defects, and compliance", () => {
     expect(form.replace(/\s+/g, " ")).toContain("Fleet managers—not drivers");
     expect(tower).toContain("Start today’s pre-trip");
     expect(tower).toContain("/portal/fleet/pretrip/");
-    expect(page).toContain("const admin = createAdminSupabase()");
-    expect(page).toContain('.eq("shop_id", scope.shopId)');
-    expect(page).toContain('.eq("fleet_id", fleetId)');
-    expect(page).toContain('.eq("driver_profile_id", actor.userId)');
-    expect(page).toContain('.eq("active", true)');
+    // Both driver surfaces load the unit through one shared server loader, so
+    // the shop/fleet scoping and the assigned-driver requirement are asserted
+    // where they are implemented rather than duplicated per page.
+    const pretripLoader = read(
+      "features/fleet/server/loadFleetPretripContext.ts",
+    );
+    expect(page).toContain("loadFleetPretripContext(createAdminSupabase()");
+    expect(page).toContain("shopId: scope.shopId");
+    expect(page).toContain("fleetId,");
+    expect(page).toContain("userId: actor.userId");
+    expect(pretripLoader).toContain('.eq("shop_id", args.shopId)');
+    expect(pretripLoader).toContain('.eq("fleet_id", args.fleetId)');
+    expect(pretripLoader).toContain('.eq("driver_profile_id", args.userId)');
+    expect(pretripLoader).toContain('.eq("active", true)');
     expect(route).toContain('"submit_fleet_pretrip_report"');
     expect(driverMigration).toContain(
       "v_inspection_date := (now() at time zone v_timezone)::date",

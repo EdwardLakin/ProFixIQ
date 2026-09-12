@@ -56,7 +56,20 @@ describe("Fleet security, billing, and history hardening", () => {
     expect(driverMigration).toContain(
       "coalesce(nullif(btrim(v_profile.full_name), ''), nullif(btrim(v_profile.email), ''), 'Driver')",
     );
-    expect(page).toContain("(!actor.isInternal && !assignment)");
+    // The driver-assignment gate and its dispatch-assignment lookup now live
+    // in the loader both driver surfaces share, so assert the invariant there
+    // and assert each surface still refuses an unassigned driver.
+    const pretripLoader = read(
+      "features/fleet/server/loadFleetPretripContext.ts",
+    );
+    const mobilePage = read("app/mobile/fleet/pretrip/[unitId]/page.tsx");
+    expect(pretripLoader).toContain('.from("fleet_dispatch_assignments")');
+    expect(pretripLoader).toContain('.eq("driver_profile_id", args.userId)');
+    expect(pretripLoader).toContain('.eq("active", true)');
+    expect(page).toContain("(!actor.isInternal && !context.isAssignedDriver)");
+    expect(mobilePage).toContain(
+      "(!actor.isInternal && !context.isAssignedDriver)",
+    );
     expect(form).toContain("readOnly");
     expect(form).toContain('aria-readonly="true"');
     expect(form).not.toContain("driverName,");
