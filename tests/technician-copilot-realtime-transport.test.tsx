@@ -346,7 +346,7 @@ describe("Technician CoPilot-owned Realtime transport", () => {
       unmount();
     });
 
-    it("treats upstream server-VAD speech as activity and keeps the session open", async () => {
+    it("treats recognized speech as activity and keeps the session open", async () => {
       const { onAutoStop, unmount } = await startGuarded();
 
       // Well past the idle window in total, but never idle for a full window.
@@ -354,10 +354,60 @@ describe("Technician CoPilot-owned Realtime transport", () => {
         await act(async () => {
           vi.advanceTimersByTime(IDLE_TIMEOUT_MS - 2_000);
         });
-        act(() => sockets[0]?.emit({ type: "input_audio_buffer.speech_started" }));
+        act(() =>
+          sockets[0]?.emit({
+            type: "conversation.item.input_audio_transcription.delta",
+            delta: "left front hub",
+          }),
+        );
       }
 
       expect(onAutoStop).not.toHaveBeenCalled();
+      unmount();
+    });
+
+    it("ignores raw server-VAD events, so shop noise cannot hold a session open", async () => {
+      const { onAutoStop, unmount } = await startGuarded();
+
+      // Server VAD's threshold is a speech-probability gate, so a radio or a
+      // conversation across the bay trips these with nobody dictating. They
+      // must not count as activity or the idle cap never fires where it
+      // matters most.
+      for (let i = 0; i < 4; i += 1) {
+        await act(async () => {
+          vi.advanceTimersByTime(IDLE_TIMEOUT_MS / 4);
+        });
+        act(() => {
+          sockets[0]?.emit({ type: "input_audio_buffer.speech_started" });
+          sockets[0]?.emit({ type: "input_audio_buffer.speech_stopped" });
+          sockets[0]?.emit({ type: "input_audio_buffer.committed" });
+        });
+      }
+
+      await act(async () => {
+        vi.advanceTimersByTime(2_000);
+      });
+      expect(onAutoStop).toHaveBeenCalledWith("idle");
+      unmount();
+    });
+
+    it("does not count an empty final transcript as activity", async () => {
+      const { onAutoStop, unmount } = await startGuarded();
+
+      await act(async () => {
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS - 2_000);
+      });
+      act(() =>
+        sockets[0]?.emit({
+          type: "conversation.item.input_audio_transcription.completed",
+          transcript: "   ",
+        }),
+      );
+      await act(async () => {
+        vi.advanceTimersByTime(3_000);
+      });
+
+      expect(onAutoStop).toHaveBeenCalledWith("idle");
       unmount();
     });
 
@@ -368,7 +418,12 @@ describe("Technician CoPilot-owned Realtime transport", () => {
         await act(async () => {
           vi.advanceTimersByTime(5_000);
         });
-        act(() => sockets[0]?.emit({ type: "input_audio_buffer.speech_started" }));
+        act(() =>
+          sockets[0]?.emit({
+            type: "conversation.item.input_audio_transcription.delta",
+            delta: "still dictating",
+          }),
+        );
       }
 
       expect(onAutoStop).toHaveBeenCalledWith("max_duration");

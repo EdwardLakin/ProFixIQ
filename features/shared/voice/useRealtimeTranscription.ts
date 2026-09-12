@@ -239,16 +239,19 @@ function cleanupSession(session: RealtimeSessionResources): void {
 }
 
 /**
- * Server VAD decides what counts as speech. Keying idle detection off these
- * upstream events rather than a local RMS gate keeps the audio we send
- * untouched, so `prefix_padding_ms` / `silence_duration_ms` still see the
- * lead-in they need to catch the start of an utterance.
+ * Idle is measured against *recognized speech* — a non-empty transcription
+ * delta or final — never against the raw `input_audio_buffer.speech_*` VAD
+ * events. Server VAD's `threshold` is a speech-probability gate, so shop
+ * noise, a radio or a conversation across the bay crosses it routinely with
+ * nobody addressing the device; resetting on those would keep a parked
+ * handset alive indefinitely, which is precisely the case the idle cap
+ * exists to stop.
+ *
+ * Reading the transcription stream rather than gating the microphone also
+ * leaves the audio we send untouched, so `prefix_padding_ms` /
+ * `silence_duration_ms` still see the lead-in they need to catch the start of
+ * an utterance.
  */
-const SPEECH_ACTIVITY_TYPES = new Set<string>([
-  "input_audio_buffer.speech_started",
-  "input_audio_buffer.speech_stopped",
-  "input_audio_buffer.committed",
-]);
 
 const TRANSCRIPTION_DELTA_TYPES = new Set<string>([
   "conversation.item.input_audio_transcription.delta",
@@ -602,11 +605,6 @@ export function useRealtimeTranscription(
           console.log("[RealtimeTranscription] event:", type);
         }
 
-        if (SPEECH_ACTIVITY_TYPES.has(type)) {
-          markActivity(session);
-          return;
-        }
-
         if (TRANSCRIPTION_DELTA_TYPES.has(type)) {
           const delta = getStringField(msgUnknown, ["delta", "transcript", "text"]);
           if (!delta) return;
@@ -617,7 +615,6 @@ export function useRealtimeTranscription(
         }
 
         if (TRANSCRIPTION_COMPLETE_TYPES.has(type)) {
-          markActivity(session);
           const finalText = getStringField(msgUnknown, [
             "transcript",
             "text",
@@ -625,6 +622,7 @@ export function useRealtimeTranscription(
           ]).trim();
           session.live = "";
           if (!finalText) return;
+          markActivity(session);
 
           const cmd = (maybeHandleWakeWordRef.current(finalText) ?? "").trim();
           if (!cmd) return;
