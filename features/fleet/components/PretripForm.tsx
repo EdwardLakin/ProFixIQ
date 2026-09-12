@@ -18,9 +18,21 @@ type Props = {
 };
 
 type Answer = {
-  status?: "ok" | "defect" | "na";
+  status?: "ok" | "defect" | "na" | "minor" | "major";
   value?: string;
 };
+
+/**
+ * A defect row is answered the way the source paper form asks for it: no
+ * defect, minor, major, or not applicable. Both minor and major count as
+ * defects; only a major takes the unit out of service.
+ */
+const DEFECT_CHOICES = [
+  { value: "ok", label: "None" },
+  { value: "minor", label: "Minor" },
+  { value: "major", label: "Major" },
+  { value: "na", label: "N/A" },
+] as const;
 
 type EvidenceEntry = {
   key: string;
@@ -37,7 +49,9 @@ function initialAnswers(
       (item) =>
         [
           item.id,
-          item.type === "pass_fail" ? { status: "ok" as const } : { value: "" },
+          item.type === "pass_fail" || item.type === "defect"
+            ? { status: "ok" as const }
+            : { value: "" },
         ] as const,
     ),
   );
@@ -74,7 +88,12 @@ export default function PretripForm({
     () =>
       template.sections
         .flatMap((section) => section.items)
-        .filter((item) => answers[item.id]?.status === "defect"),
+        .filter((item) => {
+          const status = answers[item.id]?.status;
+          return (
+            status === "defect" || status === "minor" || status === "major"
+          );
+        }),
     [answers, template.sections],
   );
   const canSubmit = Boolean(driverHint?.trim()) && !submitting && !submitted;
@@ -343,6 +362,89 @@ export default function PretripForm({
                       {needsPhoto ? (
                         <label className="mt-3 block rounded-xl border border-dashed border-red-400/35 p-3 text-xs font-semibold text-red-700 dark:text-red-100">
                           Photo required for this item
+                          <input
+                            required
+                            type="file"
+                            accept="image/*"
+                            capture="environment"
+                            onChange={(event) =>
+                              replaceItemEvidence(
+                                item.id,
+                                "photo",
+                                event.target.files?.[0] ?? null,
+                              )
+                            }
+                            className="mt-2 block w-full text-xs font-normal"
+                          />
+                        </label>
+                      ) : null}
+                    </div>
+                  );
+                }
+
+                if (item.type === "defect") {
+                  const status = answer.status ?? "ok";
+                  const isMajor = status === "major";
+                  const isDefect = isMajor || status === "minor";
+                  const needsPhoto = isMajor && item.failureActions.requirePhoto;
+                  return (
+                    <div
+                      key={item.id}
+                      className={`rounded-2xl border p-3 ${
+                        isMajor
+                          ? "border-red-400/35 bg-red-400/[0.08]"
+                          : isDefect
+                            ? "border-amber-400/35 bg-amber-400/[0.08]"
+                            : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]"
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <span className="text-sm font-medium">
+                          {item.label}
+                        </span>
+                        <div
+                          className="flex shrink-0 gap-1"
+                          role="group"
+                          aria-label={`${item.label} defect classification`}
+                        >
+                          {DEFECT_CHOICES.map((choice) => (
+                            <button
+                              key={choice.value}
+                              type="button"
+                              onClick={() => {
+                                setAnswers((current) => ({
+                                  ...current,
+                                  [item.id]: { status: choice.value },
+                                }));
+                                // The photo control only appears for a major
+                                // defect. Reclassifying away from major hides
+                                // it, so drop the file too rather than
+                                // uploading it onto a minor or clear report.
+                                if (choice.value !== "major") {
+                                  replaceItemEvidence(item.id, "photo", null);
+                                }
+                              }}
+                              aria-pressed={status === choice.value}
+                              className={`flex min-h-10 items-center justify-center rounded-xl border px-2.5 text-[10px] font-semibold uppercase ${
+                                status === choice.value
+                                  ? choice.value === "major"
+                                    ? "border-red-400 bg-red-500 text-white"
+                                    : choice.value === "minor"
+                                      ? "border-amber-400 bg-amber-500 text-white"
+                                      : choice.value === "ok"
+                                        ? "border-emerald-400 bg-emerald-500 text-white"
+                                        : "border-slate-400 bg-slate-500 text-white"
+                                  : "border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-muted)]"
+                              }`}
+                            >
+                              {choice.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                      {needsPhoto ? (
+                        <label className="mt-3 block rounded-xl border border-dashed border-red-400/35 p-3 text-xs font-semibold text-red-700 dark:text-red-100">
+                          Photo required for this major defect
                           <input
                             required
                             type="file"

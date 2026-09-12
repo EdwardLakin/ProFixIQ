@@ -63,13 +63,15 @@ describe("imported template to fleet pre-trip bridge", () => {
     }
   });
 
-  it("maps defect rows to pass/fail and measurements to numbers", () => {
+  it("keeps defect rows classifiable and maps measurements to numbers", () => {
     const items = adaptImportedTemplateForFleetPretrip(
       calgaryTemplateSections(),
     ).sections.flatMap((section) => section.items);
 
+    // The source form's minor/major legend governs these rows, so they stay
+    // defect rows for the driver rather than flattening to pass/fail.
     const airBrake = items.find((item) => item.label === "1. Air Brake System");
-    expect(airBrake?.type).toBe("pass_fail");
+    expect(airBrake?.type).toBe("defect");
     expect(airBrake?.severity).toBe("safety");
     expect(airBrake?.failureActions).toMatchObject({
       notifyDispatcher: true,
@@ -105,6 +107,16 @@ describe("imported template to fleet pre-trip bridge", () => {
 
     const ids = sections[0]?.items.map((item) => item.id) ?? [];
     expect(ids).toEqual(["Brakes", "Brakes-2", "Brakes-3"]);
+  });
+
+  it("keeps every Calgary defect row answerable as minor or major", () => {
+    const types = adaptImportedTemplateForFleetPretrip(calgaryTemplateSections())
+      .sections.flatMap((section) => section.items)
+      .filter((item) => item.label.startsWith("24. Miscellaneous") || /^\d+\./.test(item.label))
+      .map((item) => item.type);
+
+    expect(types).toHaveLength(32);
+    expect(new Set(types)).toEqual(new Set(["defect"]));
   });
 
   it("publishes legacy rows that carry no field type", () => {

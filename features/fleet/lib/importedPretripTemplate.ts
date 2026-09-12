@@ -27,10 +27,10 @@ const FIELD_TYPE_MAP: Record<
   FleetPretripTemplateItem["type"]
 > = {
   check: "pass_fail",
-  // The driver runner has no minor/major classification, so a defect row
-  // becomes a pass/fail the driver can fail and annotate. The severity and
-  // failure actions below are what decide how seriously a failure is treated.
-  defect: "pass_fail",
+  // A row governed by the source form's minor/major legend stays a defect row
+  // for the driver, so the classification the paper form asks for survives all
+  // the way to the driver's answer instead of flattening to pass/fail.
+  defect: "defect",
   measurement: "number",
 };
 
