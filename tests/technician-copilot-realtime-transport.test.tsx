@@ -290,4 +290,127 @@ describe("Technician CoPilot-owned Realtime transport", () => {
     expect(sockets).toHaveLength(1);
     unmount();
   });
+
+  describe("streaming spend guards", () => {
+    const MAX_STREAMING_MS = 60_000;
+    const IDLE_TIMEOUT_MS = 10_000;
+
+    async function startGuarded(
+      overrides: {
+        maxStreamingMs?: number;
+        idleTimeoutMs?: number;
+      } = {},
+    ) {
+      const { stream, track } = fakeStream();
+      getUserMedia.mockResolvedValue(stream);
+      const onAutoStop = vi.fn();
+      const onStateChange = vi.fn();
+      const rendered = renderHook(() =>
+        useTechnicianRealtimeVoice(vi.fn(), (text) => text.trim(), {
+          onStateChange,
+          onAutoStop,
+          maxStreamingMs: overrides.maxStreamingMs ?? MAX_STREAMING_MS,
+          idleTimeoutMs: overrides.idleTimeoutMs ?? IDLE_TIMEOUT_MS,
+        }),
+      );
+
+      await act(async () => {
+        await rendered.result.current.start();
+      });
+      act(() => sockets[0]?.open());
+
+      return { ...rendered, onAutoStop, onStateChange, track };
+    }
+
+    beforeEach(() => {
+      vi.useFakeTimers({ shouldAdvanceTime: false });
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("stops a silent session once the idle window elapses", async () => {
+      const { onAutoStop, onStateChange, unmount } = await startGuarded();
+
+      await act(async () => {
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS - 2_000);
+      });
+      expect(onAutoStop).not.toHaveBeenCalled();
+
+      await act(async () => {
+        vi.advanceTimersByTime(3_000);
+      });
+      expect(onAutoStop).toHaveBeenCalledWith("idle");
+      expect(onStateChange).toHaveBeenLastCalledWith("idle");
+      unmount();
+    });
+
+    it("treats upstream server-VAD speech as activity and keeps the session open", async () => {
+      const { onAutoStop, unmount } = await startGuarded();
+
+      // Well past the idle window in total, but never idle for a full window.
+      for (let i = 0; i < 4; i += 1) {
+        await act(async () => {
+          vi.advanceTimersByTime(IDLE_TIMEOUT_MS - 2_000);
+        });
+        act(() => sockets[0]?.emit({ type: "input_audio_buffer.speech_started" }));
+      }
+
+      expect(onAutoStop).not.toHaveBeenCalled();
+      unmount();
+    });
+
+    it("stops at the cumulative streaming ceiling even while speech continues", async () => {
+      const { onAutoStop, unmount } = await startGuarded();
+
+      for (let elapsed = 0; elapsed < MAX_STREAMING_MS; elapsed += 5_000) {
+        await act(async () => {
+          vi.advanceTimersByTime(5_000);
+        });
+        act(() => sockets[0]?.emit({ type: "input_audio_buffer.speech_started" }));
+      }
+
+      expect(onAutoStop).toHaveBeenCalledWith("max_duration");
+      unmount();
+    });
+
+    it("does not count paused time against either cap", async () => {
+      const { result, onAutoStop, unmount } = await startGuarded();
+
+      act(() => {
+        result.current.pause();
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(MAX_STREAMING_MS * 2);
+      });
+
+      // A paused session sends no frames, so it accrues no spend and must not
+      // be torn down underneath a consumer playing a spoken reply.
+      expect(onAutoStop).not.toHaveBeenCalled();
+
+      act(() => {
+        result.current.resume();
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(IDLE_TIMEOUT_MS - 2_000);
+      });
+      // Resuming counts as activity, so the idle window restarts from there.
+      expect(onAutoStop).not.toHaveBeenCalled();
+      unmount();
+    });
+
+    it("leaves the session unbounded when both caps are disabled", async () => {
+      const { onAutoStop, unmount } = await startGuarded({
+        maxStreamingMs: 0,
+        idleTimeoutMs: 0,
+      });
+
+      await act(async () => {
+        vi.advanceTimersByTime(MAX_STREAMING_MS * 5);
+      });
+      expect(onAutoStop).not.toHaveBeenCalled();
+      unmount();
+    });
+  });
 });

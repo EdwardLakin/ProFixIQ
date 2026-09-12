@@ -21,6 +21,23 @@ import { getOpenAIRealtimeTranscriptionModel } from "@/features/shared/lib/opena
 
 export type RealtimeTranscriptionState = "idle" | "connecting" | "listening" | "error";
 
+export type RealtimeAutoStopReason = "max_duration" | "idle";
+
+/**
+ * Ceiling on cumulative *streaming* time — the audio actually sent upstream,
+ * which is what Realtime bills for. Paused time is excluded because a paused
+ * session sends no frames.
+ */
+export const DEFAULT_MAX_STREAMING_MS = 10 * 60_000;
+
+/**
+ * Auto-stop after this long with no speech detected while streaming. A handset
+ * left face-up on a bench otherwise streams room noise until the tab closes.
+ */
+export const DEFAULT_IDLE_TIMEOUT_MS = 90_000;
+
+const GUARD_TICK_MS = 1_000;
+
 type HandleTranscriptFn = (text: string) => void;
 
 type RealtimeTranscriptionOptions = {
@@ -30,6 +47,12 @@ type RealtimeTranscriptionOptions = {
   audioPulseThreshold?: number;
   pulseDebounceMs?: number;
   debug?: boolean;
+  /** Cumulative streaming ceiling in ms. <= 0 disables the cap. */
+  maxStreamingMs?: number;
+  /** Silence window in ms before auto-stop. <= 0 disables the cap. */
+  idleTimeoutMs?: number;
+  /** Fired after an automatic teardown, once the state has settled to idle. */
+  onAutoStop?: (reason: RealtimeAutoStopReason) => void;
 };
 
 type RealtimeTokenResponse = {
@@ -57,7 +80,47 @@ type RealtimeSessionResources = {
   playback: RealtimePlayback | null;
   paused: boolean;
   live: string;
+  guardTimer: ReturnType<typeof setInterval> | null;
+  /** Streaming time already banked from earlier unpaused stretches. */
+  streamedMs: number;
+  /** When the current unpaused stretch began, or null while paused. */
+  streamingSince: number | null;
+  /** Last upstream speech signal observed while streaming. */
+  lastActivityAt: number;
 };
+
+/** Bank the open streaming stretch, if any. Safe to call repeatedly. */
+function suspendStreamingClock(
+  session: RealtimeSessionResources,
+  now: number,
+): void {
+  if (session.streamingSince === null) return;
+  session.streamedMs += Math.max(0, now - session.streamingSince);
+  session.streamingSince = null;
+}
+
+/**
+ * Open a streaming stretch. Resuming counts as activity in its own right, so
+ * a session paused longer than the idle window is not torn down the instant
+ * it comes back.
+ */
+function resumeStreamingClock(
+  session: RealtimeSessionResources,
+  now: number,
+): void {
+  if (session.streamingSince !== null) return;
+  session.streamingSince = now;
+  session.lastActivityAt = now;
+}
+
+function streamedTotalMs(
+  session: RealtimeSessionResources,
+  now: number,
+): number {
+  const open =
+    session.streamingSince === null ? 0 : Math.max(0, now - session.streamingSince);
+  return session.streamedMs + open;
+}
 
 async function getRealtimeTokenError(response: Response): Promise<string> {
   let body: RealtimeTokenErrorResponse | null = null;
@@ -134,6 +197,11 @@ function stopPlayback(session: RealtimeSessionResources): void {
 function cleanupSession(session: RealtimeSessionResources): void {
   stopPlayback(session);
 
+  if (session.guardTimer !== null) {
+    clearInterval(session.guardTimer);
+    session.guardTimer = null;
+  }
+
   try {
     session.worklet?.disconnect();
   } catch {}
@@ -167,7 +235,20 @@ function cleanupSession(session: RealtimeSessionResources): void {
 
   session.live = "";
   session.paused = false;
+  session.streamingSince = null;
 }
+
+/**
+ * Server VAD decides what counts as speech. Keying idle detection off these
+ * upstream events rather than a local RMS gate keeps the audio we send
+ * untouched, so `prefix_padding_ms` / `silence_duration_ms` still see the
+ * lead-in they need to catch the start of an utterance.
+ */
+const SPEECH_ACTIVITY_TYPES = new Set<string>([
+  "input_audio_buffer.speech_started",
+  "input_audio_buffer.speech_stopped",
+  "input_audio_buffer.committed",
+]);
 
 const TRANSCRIPTION_DELTA_TYPES = new Set<string>([
   "conversation.item.input_audio_transcription.delta",
@@ -258,6 +339,67 @@ export function useRealtimeTranscription(
     opts?.onError?.(message);
   }
 
+  function markActivity(session: RealtimeSessionResources): void {
+    session.lastActivityAt = Date.now();
+  }
+
+  /**
+   * Settle to `idle` rather than `error`: an exhausted cap is an ordinary end
+   * of session, and consumers already treat an unsolicited idle as "transport
+   * ended, offer restart" because an upstream socket close does the same.
+   */
+  function autoStopSession(
+    session: RealtimeSessionResources,
+    reason: RealtimeAutoStopReason,
+  ): void {
+    if (!detachCurrentSession(session)) {
+      cleanupSession(session);
+      return;
+    }
+    cleanupSession(session);
+    setState("idle");
+    opts?.onAutoStop?.(reason);
+  }
+
+  function startGuardTimer(session: RealtimeSessionResources): void {
+    const maxStreamingMs =
+      typeof opts?.maxStreamingMs === "number"
+        ? opts.maxStreamingMs
+        : DEFAULT_MAX_STREAMING_MS;
+    const idleTimeoutMs =
+      typeof opts?.idleTimeoutMs === "number"
+        ? opts.idleTimeoutMs
+        : DEFAULT_IDLE_TIMEOUT_MS;
+
+    if (maxStreamingMs <= 0 && idleTimeoutMs <= 0) return;
+    if (session.guardTimer !== null) return;
+
+    session.guardTimer = setInterval(() => {
+      if (!sessionIsCurrent(session)) return;
+
+      const now = Date.now();
+
+      // Neither cap advances while paused. No frames are being sent, so no
+      // spend accrues, and tearing down mid-pause would strand a consumer
+      // that pauses deliberately to play a spoken reply.
+      if (session.paused) {
+        suspendStreamingClock(session, now);
+        return;
+      }
+
+      resumeStreamingClock(session, now);
+
+      if (maxStreamingMs > 0 && streamedTotalMs(session, now) >= maxStreamingMs) {
+        autoStopSession(session, "max_duration");
+        return;
+      }
+
+      if (idleTimeoutMs > 0 && now - session.lastActivityAt >= idleTimeoutMs) {
+        autoStopSession(session, "idle");
+      }
+    }, GUARD_TICK_MS);
+  }
+
   async function start(): Promise<void> {
     if (!stoppedRef.current || activeSessionRef.current) return;
 
@@ -275,6 +417,10 @@ export function useRealtimeTranscription(
       playback: null,
       paused: false,
       live: "",
+      guardTimer: null,
+      streamedMs: 0,
+      streamingSince: null,
+      lastActivityAt: Date.now(),
     };
     activeSessionRef.current = session;
     setState("connecting");
@@ -373,7 +519,9 @@ export function useRealtimeTranscription(
 
         if (!session.paused) {
           setState("listening");
+          resumeStreamingClock(session, Date.now());
         }
+        startGuardTimer(session);
 
         ws.send(
           JSON.stringify({
@@ -454,15 +602,22 @@ export function useRealtimeTranscription(
           console.log("[RealtimeTranscription] event:", type);
         }
 
+        if (SPEECH_ACTIVITY_TYPES.has(type)) {
+          markActivity(session);
+          return;
+        }
+
         if (TRANSCRIPTION_DELTA_TYPES.has(type)) {
           const delta = getStringField(msgUnknown, ["delta", "transcript", "text"]);
           if (!delta) return;
+          markActivity(session);
           session.live += delta;
           pulse();
           return;
         }
 
         if (TRANSCRIPTION_COMPLETE_TYPES.has(type)) {
+          markActivity(session);
           const finalText = getStringField(msgUnknown, [
             "transcript",
             "text",
@@ -530,6 +685,7 @@ export function useRealtimeTranscription(
     if (stoppedRef.current || !session) return false;
     session.paused = true;
     session.live = "";
+    suspendStreamingClock(session, Date.now());
     try {
       session.mediaStream?.getTracks().forEach((track) => {
         track.enabled = false;
@@ -621,6 +777,7 @@ export function useRealtimeTranscription(
     }
 
     session.paused = false;
+    resumeStreamingClock(session, Date.now());
     try {
       session.mediaStream?.getTracks().forEach((track) => {
         track.enabled = true;
