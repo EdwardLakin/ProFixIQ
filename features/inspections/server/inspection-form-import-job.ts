@@ -5,9 +5,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import {
   INSPECTION_FORM_IMPORT_FORMAT_VERSION,
+  mergeInspectionFormContexts,
   normalizeInspectionFormImportSummary,
   normalizeInspectionFormSections,
   normalizeInspectionFormSectionsV2,
+  selectInspectionFormContext,
   selectRunnableInspectionFormSections,
   type InspectionFormSection,
 } from "@/features/inspections/lib/form-import";
@@ -184,6 +186,22 @@ async function finalizeJob(
       payload.formatVersion ?? 1,
     );
   });
+  // Header, regulatory wording, defect-detail boxes and signature blocks are
+  // not runnable checklist rows, but they are what make the import the
+  // customer's actual form. Keep them beside the checklist instead of dropping
+  // them on the floor.
+  const formContext = mergeInspectionFormContexts(
+    successful.map((page) => {
+      const payload = asPagePayload(page.raw_row);
+      if (!payload?.parsedSections?.length) {
+        return selectInspectionFormContext([], 1);
+      }
+      return selectInspectionFormContext(
+        payload.parsedSections,
+        payload.formatVersion ?? 1,
+      );
+    }),
+  );
   const extractedText = successful
     .map((page) => asPagePayload(page.raw_row)?.extractedText || "")
     .filter(Boolean)
@@ -197,7 +215,7 @@ async function finalizeJob(
         failed_count: failedPages.length || pages.length,
         error_message: "No uploaded pages contained reusable inspection rows.",
         completed_at: new Date().toISOString(),
-        summary: { ...hints, state: "failed", failedPages },
+        summary: { ...hints, state: "failed", formContext, failedPages },
       })
       .eq("id", job.id);
     return { completed: true, failed: true };
@@ -215,6 +233,7 @@ async function finalizeJob(
         ...hints,
         state: "ready_for_review",
         draftSections,
+        formContext,
         extractedText,
         failedPages,
       },

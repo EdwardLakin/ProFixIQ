@@ -4,7 +4,12 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  INSPECTION_FORM_CONTEXT_BLOCKS,
   RUNNABLE_INSPECTION_FORM_FIELD_TYPES,
+  emptyInspectionFormContext,
+  isInspectionFormContextEmpty,
+  type InspectionFormContext,
+  type InspectionFormContextBlock,
   type InspectionFormFieldType,
   type InspectionFormImportView,
   type InspectionFormSection,
@@ -18,6 +23,22 @@ const FIELD_TYPE_LABEL: Record<
   check: "Pass / fail",
   defect: "Minor / major defect",
   measurement: "Measurement",
+};
+
+const CONTEXT_BLOCK_LABEL: Record<InspectionFormContextBlock, string> = {
+  header: "Trip and vehicle header",
+  notices: "Printed statements and instructions",
+  notes: "Free-text boxes",
+  completion: "Completion and signatures",
+  branding: "Form identification",
+};
+
+const CONTEXT_BLOCK_HINT: Record<InspectionFormContextBlock, string> = {
+  header: "Captured at the start of the inspection and printed on the report.",
+  notices: "Shown to whoever runs the inspection and printed on the report.",
+  notes: "Captured as free text and printed on the report.",
+  completion: "Captured when the inspection is completed and signed.",
+  branding: "Printed on the report so it stays the customer's document.",
 };
 
 const STATE_LABEL: Record<InspectionFormImportView["state"], string> = {
@@ -38,6 +59,9 @@ export default function InspectionFormImportReview({
   const [record, setRecord] = useState<InspectionFormImportView | null>(null);
   const [title, setTitle] = useState("");
   const [sections, setSections] = useState<InspectionFormSection[]>([]);
+  const [formContext, setFormContext] = useState<InspectionFormContext>(
+    emptyInspectionFormContext,
+  );
   const [loading, setLoading] = useState(true);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -62,6 +86,9 @@ export default function InspectionFormImportReview({
       initialized.current = true;
       setTitle(body.import.title);
       setSections(body.import.draftSections);
+      setFormContext(
+        body.import.formContext ?? emptyInspectionFormContext(),
+      );
     }
     setLoading(false);
   }, [jobId]);
@@ -83,7 +110,7 @@ export default function InspectionFormImportReview({
       const response = await fetch(`/api/inspection-form-imports/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, sections }),
+        body: JSON.stringify({ title, sections, formContext }),
       });
       const body = (await response.json().catch(() => null)) as
         | { error?: string }
@@ -93,7 +120,7 @@ export default function InspectionFormImportReview({
       setSaving(false);
     }, 700);
     return () => window.clearTimeout(timeout);
-  }, [dirty, jobId, record?.state, sections, title]);
+  }, [dirty, formContext, jobId, record?.state, sections, title]);
 
   const mutateSections = (next: InspectionFormSection[]) => {
     setSections(next);
@@ -119,6 +146,54 @@ export default function InspectionFormImportReview({
           : entry,
       ),
     );
+  };
+
+  /**
+   * Move a preserved row back into the runnable checklist. The reader
+   * occasionally files a real component row under the header or completion
+   * block; without this the reviewer can only delete it or accept the loss.
+   * The row rejoins its own printed section so the form's grouping survives.
+   */
+  const promoteContextItem = (
+    block: InspectionFormContextBlock,
+    sectionIndex: number,
+    itemIndex: number,
+  ) => {
+    const contextSection = formContext[block][sectionIndex];
+    const contextItem = contextSection?.items[itemIndex];
+    if (!contextItem) return;
+
+    const promoted = {
+      item: contextItem.item,
+      unit: contextItem.unit ?? null,
+      fieldType: "check" as const,
+    };
+    const targetIndex = sections.findIndex(
+      (entry) => entry.title === contextSection.title,
+    );
+    setSections(
+      targetIndex >= 0
+        ? sections.map((entry, index) =>
+            index === targetIndex
+              ? { ...entry, items: [...entry.items, promoted] }
+              : entry,
+          )
+        : [...sections, { title: contextSection.title, items: [promoted] }],
+    );
+    setFormContext({
+      ...formContext,
+      [block]: formContext[block]
+        .map((entry, index) =>
+          index === sectionIndex
+            ? {
+                ...entry,
+                items: entry.items.filter((_, index2) => index2 !== itemIndex),
+              }
+            : entry,
+        )
+        .filter((entry) => entry.items.length > 0),
+    });
+    setDirty(true);
   };
 
   const approve = async () => {
@@ -250,6 +325,38 @@ export default function InspectionFormImportReview({
             </div>
             <Button type="button" variant="copper" size="lg" isLoading={approving} disabled={!title.trim() || !sections.length} onClick={() => void approve()} className="mt-4 w-full">Approve and save template</Button>
           </section>
+
+          {!isInspectionFormContextEmpty(formContext) ? (
+            <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
+              <h2 className="text-sm font-semibold uppercase tracking-[0.14em]">Kept from the form</h2>
+              <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                These are not checklist rows, so they are stored with the template and used when the inspection is run and reported. If the reader misfiled a real inspection item here, move it into the checklist.
+              </p>
+              <div className="mt-4 space-y-4">
+                {INSPECTION_FORM_CONTEXT_BLOCKS.filter((block) => formContext[block].length > 0).map((block) => (
+                  <div key={block}>
+                    <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">{CONTEXT_BLOCK_LABEL[block]}</div>
+                    <div className="text-[11px] text-[color:var(--theme-text-secondary)]">{CONTEXT_BLOCK_HINT[block]}</div>
+                    <div className="mt-2 space-y-2">
+                      {formContext[block].map((section, sectionIndex) => (
+                        <div key={`${section.title}-${sectionIndex}`} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+                          <div className="text-[11px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">{section.title}</div>
+                          <ul className="mt-2 space-y-1">
+                            {section.items.map((item, itemIndex) => (
+                              <li key={`${item.item}-${itemIndex}`} className="flex items-start justify-between gap-3 text-xs text-[color:var(--theme-text-primary)]">
+                                <span className="min-w-0 flex-1 break-words">{item.item}</span>
+                                <button type="button" onClick={() => promoteContextItem(block, sectionIndex, itemIndex)} className="shrink-0 text-[11px] font-semibold text-[var(--accent-copper)]">Move to checklist</button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          ) : null}
 
           {!mobile && record.extractedText ? (
             <details className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">

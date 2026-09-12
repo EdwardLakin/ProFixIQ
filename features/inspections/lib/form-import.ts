@@ -39,6 +39,7 @@ export type InspectionFormImportSummary = {
   fleetId: string | null;
   fleetName: string | null;
   draftSections: InspectionFormSection[];
+  formContext: InspectionFormContext;
   extractedText: string;
   failedPages: Array<{ page: number; message: string }>;
 };
@@ -55,6 +56,7 @@ export type InspectionFormImportView = {
   fleetId: string | null;
   fleetName: string | null;
   draftSections: InspectionFormSection[];
+  formContext: InspectionFormContext;
   extractedText: string;
   failedPages: Array<{ page: number; message: string }>;
   totalPages: number;
@@ -241,6 +243,135 @@ export function selectRunnableInspectionFormSections(
     .filter((section) => section.items.length > 0);
 }
 
+/**
+ * Everything on an imported form that the checklist runner cannot execute but
+ * the form still needs in order to be the customer's document: the trip/vehicle
+ * header, the regulatory wording, the free-text defect boxes, and the
+ * completion and certification blocks.
+ *
+ * These rows used to be classified and then discarded, which turned a
+ * commercial trip-inspection report into a bare checklist. They are preserved
+ * here, grouped by role, with their printed section titles intact.
+ */
+export type InspectionFormContextBlock =
+  | "header"
+  | "notices"
+  | "notes"
+  | "completion"
+  | "branding";
+
+export type InspectionFormContext = Record<
+  InspectionFormContextBlock,
+  InspectionFormSection[]
+>;
+
+const FORM_CONTEXT_BLOCK_BY_FIELD_TYPE: Partial<
+  Record<InspectionFormFieldType, InspectionFormContextBlock>
+> = {
+  identity: "header",
+  trip: "header",
+  instruction: "notices",
+  text: "notes",
+  signature: "completion",
+  branding: "branding",
+};
+
+export const INSPECTION_FORM_CONTEXT_BLOCKS = [
+  "header",
+  "notices",
+  "notes",
+  "completion",
+  "branding",
+] as const satisfies readonly InspectionFormContextBlock[];
+
+export function emptyInspectionFormContext(): InspectionFormContext {
+  return {
+    header: [],
+    notices: [],
+    notes: [],
+    completion: [],
+    branding: [],
+  };
+}
+
+export function isInspectionFormContextEmpty(
+  context: InspectionFormContext,
+): boolean {
+  return INSPECTION_FORM_CONTEXT_BLOCKS.every(
+    (block) => context[block].length === 0,
+  );
+}
+
+/**
+ * Split one persisted OCR page into the context blocks the runner should show
+ * around the checklist. Legacy pages carry no classifications at all, so they
+ * contribute no context and keep their existing "every row is an item"
+ * behaviour.
+ */
+export function selectInspectionFormContext(
+  value: unknown,
+  formatVersion = 1,
+): InspectionFormContext {
+  const context = emptyInspectionFormContext();
+  if (formatVersion < INSPECTION_FORM_IMPORT_FORMAT_VERSION) return context;
+
+  for (const section of normalizeInspectionFormSections(value)) {
+    const byBlock = new Map<InspectionFormContextBlock, InspectionFormItem[]>();
+    for (const item of section.items) {
+      if (!item.fieldType || RUNNABLE_FIELD_TYPE_SET.has(item.fieldType)) {
+        continue;
+      }
+      const block = FORM_CONTEXT_BLOCK_BY_FIELD_TYPE[item.fieldType];
+      if (!block) continue;
+      const bucket = byBlock.get(block);
+      if (bucket) bucket.push(item);
+      else byBlock.set(block, [item]);
+    }
+    for (const [block, items] of byBlock) {
+      context[block].push({ title: section.title, items });
+    }
+  }
+
+  return context;
+}
+
+export function mergeInspectionFormContexts(
+  contexts: InspectionFormContext[],
+): InspectionFormContext {
+  const merged = emptyInspectionFormContext();
+  for (const context of contexts) {
+    for (const block of INSPECTION_FORM_CONTEXT_BLOCKS) {
+      merged[block].push(...context[block]);
+    }
+  }
+  return merged;
+}
+
+export function normalizeInspectionFormContext(
+  value: unknown,
+): InspectionFormContext {
+  const source = record(value);
+  const context = emptyInspectionFormContext();
+  for (const block of INSPECTION_FORM_CONTEXT_BLOCKS) {
+    context[block] = normalizeInspectionFormSections(source[block]);
+  }
+  return context;
+}
+
+/**
+ * Stable key for one captured form-context value. Section titles repeat across
+ * blocks on real forms (Calgary prints "Date (yyyy/mm/dd)" in both the trip
+ * header and the corrective-action block), so the block and section title are
+ * both part of the key.
+ */
+export function inspectionFormContextValueKey(
+  block: InspectionFormContextBlock,
+  sectionTitle: string,
+  label: string,
+): string {
+  return [block, sectionTitle, label].join("::");
+}
+
 export function inspectionFormImportState(
   jobStatus: string | null | undefined,
   summaryValue: unknown,
@@ -291,6 +422,7 @@ export function normalizeInspectionFormImportSummary(
     fleetId: nullableText(summary.fleetId),
     fleetName: nullableText(summary.fleetName),
     draftSections: normalizeInspectionFormSections(summary.draftSections),
+    formContext: normalizeInspectionFormContext(summary.formContext),
     extractedText: text(summary.extractedText),
     failedPages,
   };

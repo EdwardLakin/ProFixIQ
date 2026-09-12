@@ -1,3 +1,5 @@
+import type { InspectionFormContext } from "@/features/inspections/lib/form-import";
+
 /** ---------- Item / Section ---------- */
 export type InspectionItemStatus = "ok" | "fail" | "na" | "recommend";
 export type BrakeType = "air" | "hydraulic";
@@ -343,6 +345,14 @@ export type InspectionStatus =
 
 export interface InspectionSession {
   id?: string;
+  /**
+   * For templates imported from a customer's paper form: the parts of that
+   * document that are not checklist rows (trip header, printed statements,
+   * free-text boxes, completion block), plus whatever has been captured
+   * against them during this run.
+   */
+  formContext?: InspectionFormContext | null;
+  formContextValues?: Record<string, string>;
   customerId?: string | null;
   vehicleId?: string | null;
   workOrderId?: string | null;

@@ -3,6 +3,7 @@ import { after, NextResponse } from "next/server";
 import {
   inspectionFormImportState,
   normalizeInspectionFormImportSummary,
+  normalizeInspectionFormContext,
   normalizeInspectionFormSections,
 } from "@/features/inspections/lib/form-import";
 import {
@@ -77,6 +78,7 @@ export async function GET(_req: Request, context: Context) {
       fleetId: summary.fleetId,
       fleetName: summary.fleetName,
       draftSections: summary.draftSections,
+      formContext: summary.formContext,
       extractedText: summary.extractedText,
       failedPages: summary.failedPages,
       totalPages: job.total_rows,
@@ -105,7 +107,7 @@ export async function PATCH(req: Request, context: Context) {
   }
 
   const body = (await req.json().catch(() => null)) as
-    | { title?: unknown; sections?: unknown }
+    | { title?: unknown; sections?: unknown; formContext?: unknown }
     | null;
   const title = typeof body?.title === "string" ? body.title.trim().slice(0, 160) : "";
   const sections = normalizeInspectionFormSections(body?.sections);
@@ -117,10 +119,17 @@ export async function PATCH(req: Request, context: Context) {
   }
 
   const current = normalizeInspectionFormImportSummary(loaded.job.summary);
+  // A reviewer can move a row the reader misfiled as header or signature
+  // content back into the checklist, so the preserved context is editable too.
+  // Leaving it out of the request keeps whatever the reader produced.
+  const formContext =
+    body?.formContext === undefined
+      ? current.formContext
+      : normalizeInspectionFormContext(body.formContext);
   const admin = createAdminSupabase();
   const { error } = await admin
     .from("import_jobs")
-    .update({ summary: { ...current, title, draftSections: sections } })
+    .update({ summary: { ...current, title, draftSections: sections, formContext } })
     .eq("id", jobId)
     .eq("shop_id", loaded.access.profile.shop_id)
     .eq("import_type", "inspection_form")
@@ -130,5 +139,5 @@ export async function PATCH(req: Request, context: Context) {
     return NextResponse.json({ error: "Unable to save the review." }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, title, sections });
+  return NextResponse.json({ ok: true, title, sections, formContext });
 }

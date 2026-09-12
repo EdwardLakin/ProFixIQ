@@ -6,6 +6,10 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import type { Database } from "@shared/types/types/supabase";
+import {
+  isInspectionFormContextEmpty,
+  normalizeInspectionFormContext,
+} from "@inspections/lib/form-import";
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 import PageShell from "@/features/shared/components/PageShell";
 import Card from "@/features/shared/components/ui/Card";
@@ -131,7 +135,7 @@ export default function RunInspectionPage() {
     (async () => {
       const { data, error } = await supabase
         .from("inspection_templates")
-        .select("id, template_name, sections, vehicle_type")
+        .select("id, template_name, sections, vehicle_type, form_context")
         .eq("id", templateId)
         .maybeSingle<TemplateRow>();
 
@@ -166,6 +170,22 @@ export default function RunInspectionPage() {
         params.vehicleType = vehicleType;
         params.mode = params.mode || "run";
         if (importedFleetForm) params.grid = "none";
+
+        // An imported customer form carries the parts of the paper document
+        // that are not checklist rows: its trip header, printed statements,
+        // free-text boxes and completion block. Stage them alongside the
+        // sections so the run and the report stay the customer's form.
+        const formContext = normalizeInspectionFormContext(
+          (data as TemplateRow & { form_context?: unknown }).form_context,
+        );
+        if (isInspectionFormContextEmpty(formContext)) {
+          sessionStorage.removeItem("inspection:formContext");
+        } else {
+          sessionStorage.setItem(
+            "inspection:formContext",
+            JSON.stringify(formContext),
+          );
+        }
 
         sessionStorage.setItem("inspection:sections", JSON.stringify(sections));
         sessionStorage.setItem("inspection:title", title);
