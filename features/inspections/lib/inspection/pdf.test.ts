@@ -50,6 +50,20 @@ function session(): InspectionSession {
             notes: "Below service limit",
             recommend: ["Replace rear pads"],
           },
+          { item: "Parking brake", status: "na" },
+        ],
+      },
+      {
+        title: "Lighting",
+        items: [
+          { item: "Headlamps", status: "ok" },
+          {
+            item: "Marker lamp",
+            status: "recommend",
+            notes: "Right rear intermittent",
+            recommend: ["Replace marker lamp"],
+          },
+          { item: "Reverse lamps" },
         ],
       },
     ],
@@ -111,6 +125,71 @@ describe("generateInspectionPDF", () => {
     expect(text).toContain("ProFixIQ");
   });
 
+  it("lists every inspection point, in section and template order", async () => {
+    const text = renderedText(
+      await generateInspectionPDF(session(), { shopName: "Northside Truck" }),
+    );
+
+    for (const label of [
+      "Brakes",
+      "Front pads",
+      "Rear pads",
+      "Parking brake",
+      "Lighting",
+      "Headlamps",
+      "Marker lamp",
+      "Reverse lamps",
+    ]) {
+      expect(text).toContain(label);
+    }
+
+    // Passed items are no longer summarised away into a count.
+    expect(text).not.toContain("Rendering Mode: Actionable findings only");
+
+    const order = [
+      "Front pads",
+      "Rear pads",
+      "Parking brake",
+      "Headlamps",
+      "Marker lamp",
+      "Reverse lamps",
+    ].map((label) => text.lastIndexOf(label));
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+  });
+
+  it("keeps passed items to a single row and expands findings with evidence", async () => {
+    const text = renderedText(
+      await generateInspectionPDF(session(), { shopName: "Northside Truck" }),
+    );
+
+    expect(text).toContain("PASS");
+    expect(text).toContain("N/A");
+    // Only the findings carry notes and recommendations.
+    expect(text).toContain("TECHNICIAN NOTES");
+    expect(text).toContain("Below service limit");
+    expect(text).toContain("RECOMMENDED");
+    expect(text).toContain("Replace rear pads");
+    expect(text).toContain("Right rear intermittent");
+  });
+
+  it("marks an item the technician never scored rather than implying a pass", async () => {
+    const text = renderedText(
+      await generateInspectionPDF(session(), { shopName: "Northside Truck" }),
+    );
+    expect(text).toContain("NOT CHECKED");
+  });
+
+  it("leads with a priority findings list and paginates the report", async () => {
+    const text = renderedText(
+      await generateInspectionPDF(session(), { shopName: "Northside Truck" }),
+    );
+
+    expect(text).toContain("PRIORITY FINDINGS");
+    expect(text).toContain("Brakes ");
+    expect(text).toContain("FULL INSPECTION DETAIL");
+    expect(text).toContain("Page 1 of ");
+  });
+
   it("renders a signature block for each recorded signature", async () => {
     const bytes = await generateInspectionPDF(session(), {
       shopName: "Northside Truck",
@@ -133,7 +212,7 @@ describe("generateInspectionPDF", () => {
     });
     const text = renderedText(bytes);
 
-    expect(text).toContain("Signatures");
+    expect(text).toContain("SIGNATURES");
     expect(text).toContain("Technician");
     expect(text).toContain("Dana Whitfield");
     expect(text).toContain("Customer");
@@ -149,7 +228,7 @@ describe("generateInspectionPDF", () => {
     const text = renderedText(
       await generateInspectionPDF(session(), { shopName: "Northside Truck" }),
     );
-    expect(text).toContain("Signatures");
+    expect(text).toContain("SIGNATURES");
     expect(text).toContain("No signature has been recorded");
   });
 
