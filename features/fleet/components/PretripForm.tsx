@@ -411,12 +411,19 @@ export default function PretripForm({
                             <button
                               key={choice.value}
                               type="button"
-                              onClick={() =>
+                              onClick={() => {
                                 setAnswers((current) => ({
                                   ...current,
                                   [item.id]: { status: choice.value },
-                                }))
-                              }
+                                }));
+                                // The photo control only appears for a major
+                                // defect. Reclassifying away from major hides
+                                // it, so drop the file too rather than
+                                // uploading it onto a minor or clear report.
+                                if (choice.value !== "major") {
+                                  replaceItemEvidence(item.id, "photo", null);
+                                }
+                              }}
                               aria-pressed={status === choice.value}
                               className={`flex min-h-10 items-center justify-center rounded-xl border px-2.5 text-[10px] font-semibold uppercase ${
                                 status === choice.value

@@ -184,8 +184,14 @@ function sanitizeChecklist(args: {
           failureActions: {
             ...item.failureActions,
             requirePhoto: isMajor && Boolean(item.failureActions?.requirePhoto),
+            // A major defect is out-of-service by definition, so it grounds the
+            // unit on its own. The template flag can only add attention to a
+            // minor defect, never withhold it from a major one: the fleet tower
+            // and the unit list both derive unit status from
+            // marks_vehicle_attention, so leaving it false would let a unit
+            // with a reported major defect keep showing as in service.
             markVehicleAttention:
-              isMajor && Boolean(item.failureActions?.markVehicleAttention),
+              isMajor || Boolean(item.failureActions?.markVehicleAttention),
           },
         };
       }

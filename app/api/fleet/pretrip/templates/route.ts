@@ -4,7 +4,10 @@ import {
   canAdministerFleetForActor,
   resolveFleetActorContext,
 } from "@/features/fleet/lib/resolveFleetActorContext";
-import type { FleetPretripTemplateSection } from "@/features/fleet/types/driverPortal";
+import {
+  toPersistedFleetPretripSections,
+  type FleetPretripTemplateSection,
+} from "@/features/fleet/types/driverPortal";
 import {
   createAdminSupabase,
   createServerSupabaseRoute,
@@ -151,7 +154,8 @@ export async function POST(request: Request) {
       );
     }
 
-    const sections = body.sections.map((section) => ({
+    const sections = toPersistedFleetPretripSections(
+      body.sections.map((section) => ({
       id: section.id,
       title: section.title.trim().slice(0, 120),
       items: section.items.map((item) => ({
@@ -174,7 +178,8 @@ export async function POST(request: Request) {
           ),
         },
       })),
-    }));
+      })),
+    );
 
     const { data, error } = await supabase.rpc("save_fleet_pretrip_template", {
       p_fleet_id: fleetId,

@@ -57,6 +57,12 @@ export type FleetPretripTemplateItem = {
   unit: string | null;
   severity: "safety" | "compliance" | "maintenance" | "recommend";
   failureActions: FleetPretripFailureActions;
+  /**
+   * True on a row answered minor/major. Set alongside a persisted
+   * `pass_fail` type so a reader that predates the defect type still sees a
+   * working row — see toPersistedFleetPretripSections.
+   */
+  defectClassification?: boolean;
 };
 
 export type FleetPretripTemplateSection = {
@@ -196,7 +202,14 @@ export function normalizeFleetPretripTemplateSections(
           : typeof item?.item === "string"
             ? item.item.trim().slice(0, 240)
             : "";
-      const type = item?.type as FleetPretripFieldType;
+      const storedType = item?.type as FleetPretripFieldType;
+      // A defect row is stored as pass_fail plus a flag, so this reader and any
+      // older one agree on the row's existence even though only this one knows
+      // it is classified. A literal "defect" type is accepted too, so a
+      // template written by a newer writer still reads correctly here.
+      const isDefectRow =
+        item?.defectClassification === true || storedType === "defect";
+      const type: FleetPretripFieldType = isDefectRow ? "defect" : storedType;
       if (
         !FLEET_PRETRIP_ITEM_ID.test(itemId) ||
         !label ||
@@ -215,6 +228,7 @@ export function normalizeFleetPretripTemplateSections(
         item: label,
         label,
         type,
+        ...(isDefectRow ? { defectClassification: true } : {}),
         required: item.required !== false,
         unit:
           typeof item.unit === "string" && item.unit.trim()
@@ -236,6 +250,31 @@ export function normalizeFleetPretripTemplateSections(
   }
 
   return sections;
+}
+
+/**
+ * Convert runnable sections into the shape that gets persisted on the template.
+ *
+ * A defect row is written as `pass_fail` carrying `defectClassification: true`.
+ * That keeps published templates readable by an application version that
+ * predates the defect type: it renders the row as pass/fail instead of dropping
+ * it, so a rollback degrades the classification rather than silently shortening
+ * a fleet's checklist — or, for an all-defect import, falling back to the
+ * built-in walk-around and recording that as the fleet's compliance pre-trip.
+ * It also means the stored type stays inside the set the database save function
+ * already accepts.
+ */
+export function toPersistedFleetPretripSections(
+  sections: FleetPretripTemplateSection[],
+): FleetPretripTemplateSection[] {
+  return sections.map((section) => ({
+    ...section,
+    items: section.items.map((item) =>
+      item.type === "defect"
+        ? { ...item, type: "pass_fail" as const, defectClassification: true }
+        : item,
+    ),
+  }));
 }
 
 export const DEFAULT_FLEET_PRETRIP_TEMPLATE: FleetPretripTemplate = {

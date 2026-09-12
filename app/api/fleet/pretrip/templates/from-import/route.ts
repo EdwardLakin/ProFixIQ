@@ -5,6 +5,7 @@ import {
   canAdministerFleetForActor,
   resolveFleetActorContext,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { toPersistedFleetPretripSections } from "@/features/fleet/types/driverPortal";
 import {
   createAdminSupabase,
   createServerSupabaseRoute,
@@ -132,7 +133,7 @@ export async function POST(request: Request) {
       p_fleet_id: fleetId,
       p_name: (template.template_name ?? "Imported pre-trip").slice(0, 120),
       p_vehicle_type: vehicleType.slice(0, 80),
-      p_sections: sections,
+      p_sections: toPersistedFleetPretripSections(sections),
       p_failure_config: {
         dispatcherGatekeeper: true,
         driverCreatesWorkOrders: false,
