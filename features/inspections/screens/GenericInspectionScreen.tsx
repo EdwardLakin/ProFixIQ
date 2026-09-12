@@ -2155,6 +2155,21 @@ type SmartMatchRow = {
     {
       onStateChange: setVoiceState,
       onPulse: triggerVoicePulse,
+      // A spend cap tears the transport down without going through
+      // stopListening, so clear hold here too: the panel would otherwise keep
+      // inviting "Buster resume" with no mic left to hear it. Bumping the
+      // generation matches stopVoice() so in-flight speak() feedback is not
+      // played into the dead session.
+      onAutoStop: (reason) => {
+        voiceGenerationRef.current += 1;
+        voiceHeldRef.current = false;
+        setVoiceHeld(false);
+        toast.message(
+          reason === "idle"
+            ? "Voice stopped after a stretch of silence. Start voice to continue."
+            : "Voice reached its session limit. Start voice to continue.",
+        );
+      },
       onError: (m) => {
         // eslint-disable-next-line no-console
         console.error("[Voice]", m);
