@@ -24,14 +24,65 @@ describe("vehicle media bucket provisioning", () => {
     expect(migration).toContain("'vehicle-docs'");
   });
 
-  it("keeps vehicle imagery private", () => {
-    // Customer vehicle photos can show plates and premises, so the buckets are
-    // private and readers mint signed URLs.
-    expect(migration).toContain("set public = false");
-    expect(migration).not.toContain("public, true");
+  it("never rewrites an existing bucket's contract", () => {
+    // An existing bucket may accept formats or sizes this migration does not
+    // list; rewriting its visibility, size limit or MIME rules would start
+    // rejecting files the create page's accept="image/*" input still offers.
+    expect(migration).toContain("on conflict (id) do nothing");
+    expect(migration).not.toContain("do update");
+    expect(migration).not.toContain("allowed_mime_types");
   });
 
-  it("scopes object access to the shop that owns the vehicle", () => {
+  it("creates new buckets private", () => {
+    // Customer vehicle photos can show plates and premises, so a bucket this
+    // migration creates is private and readers mint signed URLs.
+    expect(migration).toContain(
+      "values ('vehicle-photos', 'vehicle-photos', false, 15728640)",
+    );
+    expect(migration).toContain(
+      "values ('vehicle-docs', 'vehicle-docs', false, 15728640)",
+    );
+  });
+
+  it("requires a shop staff role, not just shop scope", () => {
+    // The session shop setting carries no role gate, so a shop-scoped driver
+    // or fleet_manager would otherwise be able to read and delete raw vehicle
+    // media directly.
+    expect(migration).toContain("join public.profiles p on p.id = auth.uid()");
+    expect(migration).toContain("p.shop_id = v.shop_id");
+    expect(migration).toContain("p.role in (");
+    expect(migration).not.toContain("current_shop_id()");
+
+    for (const role of [
+      "'owner'",
+      "'admin'",
+      "'manager'",
+      "'advisor'",
+      "'service'",
+      "'lead_hand'",
+      "'foreman'",
+    ]) {
+      expect(migration).toContain(role);
+    }
+    // Fleet-side and customer roles must not reach these objects.
+    for (const role of ["'driver'", "'fleet_manager'", "'dispatcher'", "'customer'"]) {
+      expect(migration).not.toContain(role);
+    }
+
+    // is_staff_for_shop omits service, lead_hand and foreman, which
+    // ROLE_GROUPS.workOrderCreators includes and which upload these photos.
+    const rbac = read("features/shared/lib/rbac.ts");
+    const creators = rbac.slice(
+      rbac.indexOf("workOrderCreators: ["),
+      rbac.indexOf("schedulerBookingWriters"),
+    );
+    for (const role of ["service", "lead_hand", "foreman"]) {
+      expect(creators).toContain(`"${role}"`);
+    }
+    expect(migration).not.toContain("is_staff_for_shop(");
+  });
+
+  it("scopes object access to the vehicle's shop", () => {
     for (const policy of [
       "vehicle_media_objects_select",
       "vehicle_media_objects_insert",
@@ -43,7 +94,7 @@ describe("vehicle media bucket provisioning", () => {
     }
 
     expect(migration).toContain("public.vehicle_media_object_in_shop(");
-    expect(migration).toContain("v.shop_id = public.current_shop_id()");
+    expect(migration).toContain("v.shop_id is not null");
     // Paths are <vehicle uuid>/<file>, which is what the create page writes.
     expect(migration).toContain("(storage.foldername(name))[1]");
   });

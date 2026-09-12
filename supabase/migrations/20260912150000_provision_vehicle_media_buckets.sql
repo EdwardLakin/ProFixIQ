@@ -34,7 +34,18 @@ revoke all on function public.vehicle_storage_path_uuid(text) from public, anon;
 grant execute on function public.vehicle_storage_path_uuid(text)
   to authenticated, service_role;
 
--- True when the caller's shop owns the vehicle the object path is filed under.
+-- True when the caller is shop staff for the shop that owns the vehicle the
+-- object is filed under.
+--
+-- Shop scope alone is not enough: the session shop setting carries
+-- no role gate, so a shop-scoped driver or fleet_manager profile would pass it
+-- and could read or delete raw vehicle media directly, going around the fleet
+-- evidence route's enrolment and visibility checks. The caller's own profile row
+-- supplies both the shop and the role here.
+--
+-- is_staff_for_shop is deliberately not reused: it omits service, lead_hand and
+-- foreman, which ROLE_GROUPS.workOrderCreators includes, and those users upload
+-- these very photos from the work-order create page.
 create or replace function public.vehicle_media_object_in_shop(p_vehicle_id uuid)
 returns boolean
 language sql
@@ -45,9 +56,14 @@ as $$
   select exists (
     select 1
     from public.vehicles v
+    join public.profiles p on p.id = auth.uid()
     where v.id = p_vehicle_id
       and v.shop_id is not null
-      and v.shop_id = public.current_shop_id()
+      and p.shop_id = v.shop_id
+      and p.role in (
+        'owner', 'admin', 'manager', 'advisor', 'service',
+        'parts', 'mechanic', 'lead_hand', 'foreman'
+      )
   );
 $$;
 
@@ -55,33 +71,22 @@ revoke all on function public.vehicle_media_object_in_shop(uuid) from public, an
 grant execute on function public.vehicle_media_object_in_shop(uuid)
   to authenticated, service_role;
 
--- Private buckets. Object paths are always <vehicle uuid>/<file>, matching what
--- the create page already writes.
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values (
-  'vehicle-photos',
-  'vehicle-photos',
-  false,
-  10485760,
-  array['image/jpeg','image/png','image/webp','image/heic','image/heif']
-)
-on conflict (id) do update
-set public = false,
-    file_size_limit = excluded.file_size_limit,
-    allowed_mime_types = excluded.allowed_mime_types;
+-- Create the buckets only where they are absent. An existing bucket keeps its
+-- current visibility, size limit and MIME rules untouched: rewriting them would
+-- silently change contracts the create page already relies on, and a narrower
+-- MIME list would start rejecting files its accept="image/*" input still offers.
+-- Bringing an existing bucket onto these terms is a separate, staged change.
+--
+-- New buckets are private, so readers mint signed URLs, and carry no MIME
+-- allowlist, matching how the hand-made buckets behave today rather than
+-- rejecting formats the UI permits. Object paths are <vehicle uuid>/<file>.
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('vehicle-photos', 'vehicle-photos', false, 15728640)
+on conflict (id) do nothing;
 
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values (
-  'vehicle-docs',
-  'vehicle-docs',
-  false,
-  10485760,
-  array['application/pdf','image/jpeg','image/png','image/webp']
-)
-on conflict (id) do update
-set public = false,
-    file_size_limit = excluded.file_size_limit,
-    allowed_mime_types = excluded.allowed_mime_types;
+insert into storage.buckets (id, name, public, file_size_limit)
+values ('vehicle-docs', 'vehicle-docs', false, 15728640)
+on conflict (id) do nothing;
 
 drop policy if exists vehicle_media_objects_select on storage.objects;
 create policy vehicle_media_objects_select
