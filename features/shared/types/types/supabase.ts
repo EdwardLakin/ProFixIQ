@@ -31102,6 +31102,14 @@ export type Database = {
       }
       user_is_in_shop: { Args: { target_shop_id: string }; Returns: boolean }
       validate_estimate_lines: { Args: { p_lines: Json }; Returns: undefined }
+      vehicle_media_object_in_shop: {
+        Args: { p_vehicle_id: string }
+        Returns: boolean
+      }
+      vehicle_storage_path_uuid: {
+        Args: { p_segment: string }
+        Returns: string
+      }
       void_invoice_version: {
         Args: {
           p_actor_user_id: string

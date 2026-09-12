@@ -57,6 +57,7 @@ function snapshot(
       vehicleMediaCount: 0,
       workOrderMediaCount: 0,
       inspectionReportCount: 0,
+      downloadableInspectionReportCount: 0,
       latestReference: null,
     },
     relatedVehicles: [],

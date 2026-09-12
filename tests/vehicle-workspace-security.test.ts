@@ -157,6 +157,17 @@ describe("Shop Vehicle Workspace security contract", () => {
     );
   });
 
+  it("gates the vehicle inspection report list behind inspection permission", () => {
+    expect(workspaceComponent).toContain("InspectionReportAttachments");
+    expect(workspaceComponent).toContain(
+      "snapshot.permissions.canOpenInspections &&",
+    );
+    expect(workspaceComponent).toContain(
+      "snapshot.documentSummary.downloadableInspectionReportCount > 0",
+    );
+    expect(workspaceComponent).toContain("vehicleId={snapshot.identity.id}");
+  });
+
   it("guards the search API with the exact workspace role allowlist", () => {
     const guard = searchRoute.indexOf("await requireShopScopedApiAccess");
     const searchCall = searchRoute.indexOf("await searchShopVehicleRecords");
