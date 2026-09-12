@@ -41,7 +41,18 @@ type EnrolledVehicleRow = {
     | null;
 };
 
-const ANY_VEHICLE_TYPES = ["all", "all fleet assets", "fleet asset"];
+// Vehicle types that mean "every unit in this fleet" rather than naming one
+// asset type. "mixed" is what the form importer's uploader calls a mixed
+// fleet, and an assignment published under it must not be unreachable.
+const ANY_VEHICLE_TYPES = [
+  "all",
+  "any",
+  "all fleet assets",
+  "fleet asset",
+  "fleet assets",
+  "mixed",
+  "mixed fleet",
+];
 
 function joined<T>(value: T | T[] | null | undefined): T | null {
   if (Array.isArray(value)) return value[0] ?? null;

@@ -359,17 +359,22 @@ export function normalizeInspectionFormContext(
 }
 
 /**
- * Stable key for one captured form-context value. Section titles repeat across
- * blocks on real forms (Calgary prints "Date (yyyy/mm/dd)" in both the trip
- * header and the corrective-action block), so the block and section title are
- * both part of the key.
+ * Stable key for one captured form-context value.
+ *
+ * Section titles repeat across blocks on real forms (Calgary prints
+ * "Date (yyyy/mm/dd)" in both the trip header and the corrective-action
+ * block), and a multi-page import can contribute two same-titled sections to
+ * one block, so the key carries the block, the section's position within that
+ * block, and the section title as well as the label. Every reader derives the
+ * index by iterating the block in order, which is the order it is stored in.
  */
 export function inspectionFormContextValueKey(
   block: InspectionFormContextBlock,
+  sectionIndex: number,
   sectionTitle: string,
   label: string,
 ): string {
-  return [block, sectionTitle, label].join("::");
+  return [block, String(sectionIndex), sectionTitle, label].join("::");
 }
 
 export function inspectionFormImportState(

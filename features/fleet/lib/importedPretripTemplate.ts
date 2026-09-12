@@ -102,7 +102,13 @@ export function adaptImportedTemplateForFleetPretrip(
 
     const items: FleetPretripTemplateItem[] = [];
     for (const item of section.items) {
-      const fieldType = item.fieldType;
+      // Templates imported before field types were recorded, and rows the old
+      // generic editor stripped, carry no fieldType. The review screen and the
+      // imported-template editor both fall back the same way, so publishing
+      // has to as well — otherwise a legacy template either publishes a
+      // silently shorter driver checklist or is rejected as having no rows.
+      const fieldType =
+        item.fieldType ?? (item.unit ? "measurement" : "check");
       if (
         fieldType !== "check" &&
         fieldType !== "defect" &&

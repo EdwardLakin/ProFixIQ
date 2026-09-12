@@ -15,6 +15,8 @@ export const dynamic = "force-dynamic";
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const MIXED_VEHICLE_TYPES = new Set(["", "mixed", "mixed fleet", "all", "any"]);
+
 type Body = {
   fleetId?: string;
   templateId?: string;
@@ -114,10 +116,17 @@ export async function POST(request: Request) {
       );
     }
 
-    const vehicleType =
-      body.vehicleType?.trim() ||
-      template.vehicle_type?.trim() ||
-      "All fleet assets";
+    // The importer's uploader records a broad class (car, truck, bus, trailer,
+    // mixed), while assignments are matched against each vehicle's own
+    // asset_type/body_type. A mixed-fleet import names no asset type at all,
+    // so publish it fleet-wide instead of under a value no vehicle can match.
+    const requestedVehicleType =
+      body.vehicleType?.trim() || template.vehicle_type?.trim() || "";
+    const vehicleType = MIXED_VEHICLE_TYPES.has(
+      requestedVehicleType.toLowerCase(),
+    )
+      ? "All fleet assets"
+      : requestedVehicleType || "All fleet assets";
 
     const { data, error } = await supabase.rpc("save_fleet_pretrip_template", {
       p_fleet_id: fleetId,

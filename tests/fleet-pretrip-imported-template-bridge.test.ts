@@ -107,6 +107,29 @@ describe("imported template to fleet pre-trip bridge", () => {
     expect(ids).toEqual(["Brakes", "Brakes-2", "Brakes-3"]);
   });
 
+  it("publishes legacy rows that carry no field type", () => {
+    // The review screen and the imported-template editor both fall back to
+    // unit ? measurement : check for rows imported before field types were
+    // recorded. Publishing has to agree, or a legacy template is rejected as
+    // having no rows or silently publishes a shorter driver checklist.
+    const { sections, droppedItems } = adaptImportedTemplateForFleetPretrip([
+      {
+        title: "Legacy checks",
+        items: [
+          { item: "Brakes" },
+          { item: "Brake lining", unit: "mm" },
+        ],
+      },
+    ]);
+
+    expect(droppedItems).toBe(0);
+    expect(sections[0]?.items.map((item) => [item.label, item.type])).toEqual([
+      ["Brakes", "pass_fail"],
+      ["Brake lining", "number"],
+    ]);
+    expect(sections[0]?.items[1]?.unit).toBe("mm");
+  });
+
   it("drops nothing but non-runnable rows", () => {
     const { sections } = adaptImportedTemplateForFleetPretrip([
       {
@@ -157,6 +180,21 @@ describe("fleet pre-trip template resolution", () => {
       selectFleetPretripTemplate([assignment("All fleet assets", "Fleet wide")], "Trailer")
         .name,
     ).toBe("Fleet wide");
+  });
+
+  it("reaches drivers when the import named a mixed fleet", () => {
+    // The importer's uploader records a broad class (car, truck, bus, trailer,
+    // mixed) while assignments match a vehicle's own asset_type/body_type. A
+    // "mixed" assignment matched nothing, so publishing reported success while
+    // every driver kept the built-in walk-around.
+    expect(
+      selectFleetPretripTemplate([assignment("mixed", "Imported form")], "Tractor")
+        .name,
+    ).toBe("Imported form");
+
+    const route = read("app/api/fleet/pretrip/templates/from-import/route.ts");
+    expect(route).toContain("MIXED_VEHICLE_TYPES");
+    expect(route).toContain('"All fleet assets"');
   });
 
   it("uses the built-in walk-around only when nothing is published", () => {

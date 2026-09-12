@@ -117,6 +117,7 @@ export default function ImportedFormContextCard({
                     {section.items.map((item, itemIndex) => {
                       const key = inspectionFormContextValueKey(
                         block,
+                        sectionIndex,
                         section.title,
                         item.item,
                       );

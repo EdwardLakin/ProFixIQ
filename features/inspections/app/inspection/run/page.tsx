@@ -178,12 +178,17 @@ export default function RunInspectionPage() {
         const formContext = normalizeInspectionFormContext(
           (data as TemplateRow & { form_context?: unknown }).form_context,
         );
+        // Stamp the template this context belongs to. sessionStorage outlives a
+        // single inspection, and every other launcher stages
+        // inspection:sections without knowing this key exists, so an unstamped
+        // value would follow the tab onto the next, unrelated inspection and
+        // print one customer's trip header and signatures on another's report.
         if (isInspectionFormContextEmpty(formContext)) {
           sessionStorage.removeItem("inspection:formContext");
         } else {
           sessionStorage.setItem(
             "inspection:formContext",
-            JSON.stringify(formContext),
+            JSON.stringify({ templateId: data.id, context: formContext }),
           );
         }
 

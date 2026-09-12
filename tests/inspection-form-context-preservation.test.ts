@@ -13,6 +13,7 @@ import {
   selectRunnableInspectionFormSections,
 } from "../features/inspections/lib/form-import";
 import { assembleInspectionReport } from "../features/inspections/lib/inspection/report";
+import { hasMeaningfulInspectionProgress } from "../features/inspections/lib/inspection/reconciliation";
 import type { InspectionSession } from "../features/inspections/lib/inspection/types";
 
 const calgary = JSON.parse(
@@ -149,11 +150,13 @@ describe("imported form context preservation", () => {
       formContextValues: {
         [inspectionFormContextValueKey(
           "header",
+          0,
           "Vehicle and trip record",
           "Unit Number",
         )]: "4412",
         [inspectionFormContextValueKey(
           "completion",
+          0,
           "Driver completion",
           "Driver's Name (Print)",
         )]: "J. Nguyen",
@@ -171,21 +174,105 @@ describe("imported form context preservation", () => {
     expect(captured).toContainEqual(["Location of Inspection", null]);
   });
 
+  it("treats typed header values as real inspection progress", () => {
+    const base = {
+      sections: [],
+      currentSectionIndex: 0,
+      currentItemIndex: 0,
+      isListening: false,
+      status: "in_progress",
+      started: true,
+      completed: false,
+      isPaused: false,
+    };
+
+    // On an imported form the trip header is filled in before any checklist
+    // row is marked. Treating that session as empty loses the typed values.
+    expect(
+      hasMeaningfulInspectionProgress({
+        ...base,
+        formContextValues: {
+          [inspectionFormContextValueKey(
+            "header",
+            0,
+            "Vehicle and trip record",
+            "Unit Number",
+          )]: "4412",
+        },
+      } as unknown as InspectionSession),
+    ).toBe(true);
+
+    expect(
+      hasMeaningfulInspectionProgress({
+        ...base,
+        formContextValues: { "header::0::Trip::Unit Number": "   " },
+      } as unknown as InspectionSession),
+    ).toBe(false);
+  });
+
+  it("only stages preserved context for the template it came from", () => {
+    const runPage = readFileSync(
+      resolve(
+        __dirname,
+        "../features/inspections/app/inspection/run/page.tsx",
+      ),
+      "utf8",
+    );
+    const screen = readFileSync(
+      resolve(
+        __dirname,
+        "../features/inspections/screens/GenericInspectionScreen.tsx",
+      ),
+      "utf8",
+    );
+
+    // sessionStorage outlives one inspection and every other launcher stages
+    // inspection:sections without knowing this key exists, so an unstamped
+    // value would print one customer's trip header on another's report.
+    expect(runPage).toContain("{ templateId: data.id, context: formContext }");
+    expect(screen).toContain("stagedTemplateId !== runningTemplateId");
+  });
+
+  it("flushes a pending review edit before approving", () => {
+    const review = readFileSync(
+      resolve(
+        __dirname,
+        "../features/inspections/components/InspectionFormImportReview.tsx",
+      ),
+      "utf8",
+    );
+
+    // Approval reads the preserved context back from the saved import, so an
+    // edit still sitting in the debounce window has to land first. Clearing
+    // dirty would cancel that save instead of completing it.
+    expect(review).toContain("if (dirty && !(await saveReview())) return;");
+  });
+
   it("keys captured values so repeated printed labels stay distinct", () => {
     // Calgary prints "Date (yyyy/mm/dd)" in both the trip header and the
     // corrective-action block. They must not collide.
     expect(
       inspectionFormContextValueKey(
         "header",
+        0,
         "Vehicle and trip record",
         "Date (yyyy/mm/dd)",
       ),
     ).not.toBe(
       inspectionFormContextValueKey(
         "completion",
+        1,
         "Corrective Action",
         "Date (yyyy/mm/dd)",
       ),
+    );
+
+    // A multi-page import can contribute two same-titled sections to one
+    // block. Those are different printed fields and must stay separate.
+    expect(
+      inspectionFormContextValueKey("notes", 0, "Defect details", "Remarks"),
+    ).not.toBe(
+      inspectionFormContextValueKey("notes", 1, "Defect details", "Remarks"),
     );
   });
 });

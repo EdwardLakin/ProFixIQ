@@ -105,10 +105,16 @@ export default function InspectionFormImportReview({
     return () => window.clearInterval(interval);
   }, [load, record?.state]);
 
-  useEffect(() => {
-    if (!dirty || record?.state !== "ready_for_review") return;
-    const timeout = window.setTimeout(async () => {
-      setSaving(true);
+  /**
+   * Persist the review. Approval reads the preserved form context back from
+   * the saved import rather than from the approve request, so this has to have
+   * landed before approving or an edit made inside the debounce window is lost
+   * — and a row promoted to the checklist would be stored twice, once in the
+   * runnable sections and once in the stale context.
+   */
+  const saveReview = useCallback(async () => {
+    setSaving(true);
+    try {
       const response = await fetch(`/api/inspection-form-imports/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
@@ -117,12 +123,22 @@ export default function InspectionFormImportReview({
       const body = (await response.json().catch(() => null)) as
         | { error?: string }
         | null;
-      if (!response.ok) setError(body?.error || "Unable to save your review.");
-      else setDirty(false);
+      if (!response.ok) {
+        setError(body?.error || "Unable to save your review.");
+        return false;
+      }
+      setDirty(false);
+      return true;
+    } finally {
       setSaving(false);
-    }, 700);
+    }
+  }, [formContext, jobId, sections, title]);
+
+  useEffect(() => {
+    if (!dirty || record?.state !== "ready_for_review") return;
+    const timeout = window.setTimeout(() => void saveReview(), 700);
     return () => window.clearTimeout(timeout);
-  }, [dirty, formContext, jobId, record?.state, sections, title]);
+  }, [dirty, record?.state, saveReview]);
 
   const mutateSections = (next: InspectionFormSection[]) => {
     setSections(next);
@@ -199,10 +215,13 @@ export default function InspectionFormImportReview({
   };
 
   const approve = async () => {
-    setDirty(false);
     setApproving(true);
     setError(null);
     try {
+      // Flush any pending review edit first. Setting dirty=false here would
+      // cancel the debounced save instead of completing it.
+      if (dirty && !(await saveReview())) return;
+      setDirty(false);
       const response = await fetch(`/api/inspection-form-imports/${jobId}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },

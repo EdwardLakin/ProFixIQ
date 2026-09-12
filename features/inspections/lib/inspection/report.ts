@@ -154,12 +154,19 @@ export function assembleInspectionReport(
   const capturedValues = session.formContextValues ?? {};
   const formContext: InspectionReportContextSection[] = [];
   for (const block of INSPECTION_FORM_CONTEXT_BLOCKS) {
-    for (const section of session.formContext?.[block] ?? []) {
+    for (const [sectionIndex, section] of (
+      session.formContext?.[block] ?? []
+    ).entries()) {
       const items = (section.items ?? []).map((item) => ({
         label: item.item,
         value: text(
           capturedValues[
-            inspectionFormContextValueKey(block, section.title, item.item)
+            inspectionFormContextValueKey(
+              block,
+              sectionIndex,
+              section.title,
+              item.item,
+            )
           ],
         ),
         unit: text(item.unit),

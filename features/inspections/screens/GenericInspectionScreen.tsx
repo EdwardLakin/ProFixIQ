@@ -910,12 +910,31 @@ type SmartMatchRow = {
   // An imported customer form stages the non-checklist half of its paper
   // document beside the sections. Boot it so the run can collect the same
   // record the paper form did.
+  //
+  // The staged value is stamped with the template it came from, and every
+  // other launcher stages inspection:sections without clearing this key. Only
+  // honour it when it belongs to the template actually being run, so a form
+  // run earlier in this tab cannot print its trip header and signatures on an
+  // unrelated inspection.
   const bootFormContext = useMemo<InspectionFormContext | null>(() => {
-    const staged = readStaged<unknown>("inspection:formContext");
-    if (!staged) return null;
-    const context = normalizeInspectionFormContext(staged);
+    const staged = readStaged<{ templateId?: unknown; context?: unknown }>(
+      "inspection:formContext",
+    );
+    if (!staged || typeof staged !== "object") return null;
+
+    const stagedTemplateId =
+      typeof staged.templateId === "string" ? staged.templateId : "";
+    const runningTemplateId =
+      sp.get("templateId") ??
+      readStaged<Record<string, string>>("inspection:params")?.templateId ??
+      "";
+    if (!stagedTemplateId || stagedTemplateId !== runningTemplateId) {
+      return null;
+    }
+
+    const context = normalizeInspectionFormContext(staged.context);
     return isInspectionFormContextEmpty(context) ? null : context;
-  }, []);
+  }, [sp]);
 
   const inspectionId = useMemo(() => {
     const fromUrl = sp.get("inspectionId");
