@@ -132,7 +132,12 @@ export function resolveShopAssistantError(
     return {
       status: error.status,
       message: error.message,
-      retryable: error.status >= 500,
+      // 429 is a transient throttle, not a verdict on the request. Persisting
+      // it as non-retryable strands an action the technician already
+      // confirmed: acquireActionExecution only re-runs failures marked
+      // retryable, so it would never execute once the window cleared. A
+      // terminal ceiling (402) stays non-retryable.
+      retryable: error.status >= 500 || error.status === 429,
     };
   }
   if (error instanceof Error && error.name === "ZodError") {

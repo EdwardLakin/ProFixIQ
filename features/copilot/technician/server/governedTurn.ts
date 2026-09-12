@@ -216,6 +216,14 @@ export async function runGovernedTechnicianCopilotTurn(input: {
       () => runTechnicianCopilotTurn(turn),
     );
 
+    // A turn that short-circuited on persisted replay state reached no
+    // provider, so it must not consume the reservation's proxy cost: a client
+    // retrying one turnId would otherwise inflate the shop's monthly budget
+    // without any spend behind it. Any turn that did call a provider still
+    // settles the full conservative proxy, so this can only ever bill less
+    // than the work performed, never more.
+    const settledCostUsd = result.modelCalls > 0 ? turnCostUsd : 0;
+
     if (receiptId) {
       await completeDurableAIRouteQuota({
         admin,
@@ -223,7 +231,7 @@ export async function runGovernedTechnicianCopilotTurn(input: {
         shopId: turn.identity.shopId,
         actorId: turn.identity.profileId,
         receiptId,
-        actualCostUsd: turnCostUsd,
+        actualCostUsd: settledCostUsd,
         succeeded: true,
       });
     }
@@ -234,7 +242,7 @@ export async function runGovernedTechnicianCopilotTurn(input: {
       shopId: turn.identity.shopId,
       model: null,
       totalTokens: null,
-      estimatedCostUsd: turnCostUsd,
+      estimatedCostUsd: settledCostUsd,
       status: "success",
       errorCode: null,
     });

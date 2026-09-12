@@ -290,7 +290,10 @@ export const requestTechnicianCopilotTool = defineShopAssistantTool({
       });
     } catch (error) {
       if (error instanceof TechnicianCopilotQuotaError) {
-        throw new ShopAssistantHttpError(429, error.message);
+        // Carry the quota error's own status through: a monthly hard budget is
+        // 402 and terminal, a short-window rate limit is 429 and retryable.
+        // Collapsing both to 429 made an exhausted budget look retryable.
+        throw new ShopAssistantHttpError(error.status, error.message);
       }
       throw error;
     }
