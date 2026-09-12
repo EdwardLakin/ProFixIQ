@@ -115,16 +115,30 @@ export default function WorkOrderBoardCard(props: {
             ) : null}
           </div>
 
-          <div className="mt-1 truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
-            {row.display_name ?? "Customer"}
-          </div>
+          <div className="mt-1 flex items-start gap-2.5">
+            {row.vehicle_photo_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={row.vehicle_photo_url}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                className="h-11 w-11 shrink-0 rounded-lg border border-[color:var(--theme-border-soft)] object-cover"
+              />
+            ) : null}
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                {row.display_name ?? "Customer"}
+              </div>
 
-          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[color:var(--theme-text-secondary)]">
+              <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[color:var(--theme-text-secondary)]">
             {row.unit_label ? <span>Unit {row.unit_label}</span> : null}
             {row.vehicle_label ? <span>{row.vehicle_label}</span> : null}
             {variant !== "portal" && row.assigned_summary ? (
               <span>{row.assigned_summary}</span>
             ) : null}
+              </div>
+            </div>
           </div>
 
           {variant !== "portal" && (row.advisor_name || techLabel) ? (

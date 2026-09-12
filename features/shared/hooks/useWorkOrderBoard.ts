@@ -40,6 +40,53 @@ export function useWorkOrderBoard(
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  /**
+   * The vehicle-photos bucket is private, so a card cannot render a stored path
+   * directly. Mint one batch of short-lived signed URLs for the rows actually on
+   * screen; they are display-only and never persisted. A failure here leaves the
+   * rows untouched, so a card falls back to its text vehicle label.
+   */
+  const signVehiclePhotos = useCallback(
+    async (boardRows: WorkOrderBoardRow[]): Promise<WorkOrderBoardRow[]> => {
+      const paths = Array.from(
+        new Set(
+          boardRows
+            .map((row) => row.vehicle_photo_path)
+            .filter((path): path is string => Boolean(path?.trim())),
+        ),
+      );
+      if (!paths.length) return boardRows;
+
+      const { data, error: signError } = await supabase.storage
+        .from("vehicle-photos")
+        .createSignedUrls(paths, 600);
+      if (signError || !data) return boardRows;
+
+      const signedByPath = new Map<string, string>();
+      for (const entry of data) {
+        if (entry.path && entry.signedUrl) {
+          signedByPath.set(entry.path, entry.signedUrl);
+        }
+      }
+      if (!signedByPath.size) return boardRows;
+
+      return boardRows.map((row) => {
+        const signed = row.vehicle_photo_path
+          ? signedByPath.get(row.vehicle_photo_path)
+          : undefined;
+        return signed ? { ...row, vehicle_photo_url: signed } : row;
+      });
+    },
+    [supabase],
+  );
+
+  const publishRows = useCallback(
+    async (boardRows: WorkOrderBoardRow[]) => {
+      setRows(await signVehiclePhotos(boardRows));
+    },
+    [signVehiclePhotos],
+  );
+
   const fetchRows = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -124,7 +171,7 @@ export function useWorkOrderBoard(
         setLoading(false);
         return;
       }
-      setRows(page.rows);
+      await publishRows(page.rows);
       setLoading(false);
       return;
     }
@@ -291,7 +338,7 @@ export function useWorkOrderBoard(
       result.error ? [] : ((result.data ?? []) as OpenPartsItem[]),
     );
 
-    setRows(
+    await publishRows(
       reconcileBoardPartsState(
         rowsWithDirectTechnicians,
         countOpenPartsObligationsByWorkOrder(requests, items),
@@ -299,7 +346,7 @@ export function useWorkOrderBoard(
       ),
     );
     setLoading(false);
-  }, [opts?.fleetId, opts?.limit, supabase, variant]);
+  }, [opts?.fleetId, opts?.limit, publishRows, supabase, variant]);
 
   useEffect(() => {
     fetchRows();

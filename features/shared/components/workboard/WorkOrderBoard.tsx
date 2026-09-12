@@ -131,12 +131,24 @@ function BoardCard({
       className={`rounded-xl border p-3 shadow-sm transition hover:border-[var(--brand-accent,#E39A6E)]/60 hover:shadow-md ${stageSurface.card}`}
     >
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
-          <div className="font-extrabold text-[color:var(--theme-text-primary)]">
-            {row.custom_id ?? "Work order"}
-          </div>
-          <div className="mt-1 truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
-            {row.display_name ?? "Customer"}
+        <div className="flex min-w-0 items-start gap-2.5">
+          {row.vehicle_photo_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={row.vehicle_photo_url}
+              alt=""
+              loading="lazy"
+              decoding="async"
+              className="h-10 w-10 shrink-0 rounded-lg border border-[color:var(--theme-border-soft)] object-cover"
+            />
+          ) : null}
+          <div className="min-w-0">
+            <div className="font-extrabold text-[color:var(--theme-text-primary)]">
+              {row.custom_id ?? "Work order"}
+            </div>
+            <div className="mt-1 truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
+              {row.display_name ?? "Customer"}
+            </div>
           </div>
         </div>
         <span
