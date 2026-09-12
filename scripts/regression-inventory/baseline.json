@@ -1243,16 +1243,6 @@
       "expiresOn": "2026-10-07"
     },
     {
-      "fingerprint": "e89e74621eb0c97c7ada",
-      "rule": "missing-storage-bucket",
-      "severity": "error",
-      "domain": "parts",
-      "file": "features/parts/components/VehiclePhotoUploader.tsx",
-      "subject": "vehicle-photos",
-      "message": "Storage bucket vehicle-photos is not provisioned by the migration chain",
-      "expiresOn": "2026-10-07"
-    },
-    {
       "fingerprint": "3c2c0872f57bb059da8a",
       "rule": "missing-storage-bucket",
       "severity": "error",
