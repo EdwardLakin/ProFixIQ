@@ -1183,6 +1183,16 @@
       "expiresOn": "2026-10-07"
     },
     {
+      "fingerprint": "a81df94782cc180e5e00",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "inspections",
+      "file": "features/inspections/server/publishInspectionPdf.ts",
+      "subject": "signatures",
+      "message": "Storage bucket signatures is not provisioned by the migration chain",
+      "expiresOn": "2026-10-07"
+    },
+    {
       "fingerprint": "29c193fad23b0da213af",
       "rule": "missing-storage-bucket",
       "severity": "error",
