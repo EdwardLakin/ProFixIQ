@@ -16,9 +16,22 @@ vi.mock("@/features/copilot/technician/server/transport", () => ({
 vi.mock("@/features/copilot/technician/server/chat", () => ({
   runTechnicianCopilotTurn: mocks.runTechnicianCopilotTurn,
 }));
+const { FakeQuotaUnavailable } = vi.hoisted(() => ({
+  FakeQuotaUnavailable: class extends Error {
+    constructor(
+      readonly code: string,
+      readonly deterministic: boolean,
+    ) {
+      super(`AI route quota unavailable (${code})`);
+      this.name = "DurableAIQuotaUnavailableError";
+    }
+  },
+}));
+
 vi.mock("@/features/shared/lib/server/durable-ai-guard", () => ({
   claimDurableAIRouteQuota: mocks.claimDurableAIRouteQuota,
   completeDurableAIRouteQuota: mocks.completeDurableAIRouteQuota,
+  DurableAIQuotaUnavailableError: FakeQuotaUnavailable,
 }));
 vi.mock("@/features/shared/lib/server/ai-ops-guard", () => ({
   registerAIUsageEvent: mocks.registerAIUsageEvent,
@@ -205,6 +218,39 @@ describe("governed technician CoPilot turn", () => {
     expect(mocks.registerAIUsageEvent.mock.calls[0][0]).toMatchObject({
       estimatedCostUsd: 0,
     });
+  });
+
+  it("refuses the turn when the quota RPC rejects the claim deterministically", async () => {
+    // The app deploying ahead of its migration rejects every claim as invalid
+    // input. Failing open there disables the ceiling for the whole rollout
+    // window, silently, which is precisely when it is load-bearing.
+    mocks.sendCopilotServerCommand.mockResolvedValue(freshEnvelope());
+    mocks.claimDurableAIRouteQuota.mockRejectedValue(
+      new FakeQuotaUnavailable("22023", true),
+    );
+
+    const error = await run().catch((thrown: unknown) => thrown);
+
+    expect(error).toBeInstanceOf(TechnicianCopilotQuotaError);
+    expect((error as TechnicianCopilotQuotaError).code).toBe(
+      "governance_unavailable",
+    );
+    // Retryable, so the client keeps the technician's pending intent rather
+    // than discarding it as it does for terminal failures.
+    expect((error as TechnicianCopilotQuotaError).status).toBe(429);
+    expect(mocks.runTechnicianCopilotTurn).not.toHaveBeenCalled();
+  });
+
+  it("still fails open when the quota RPC fault is transient", async () => {
+    mocks.sendCopilotServerCommand.mockResolvedValue(freshEnvelope());
+    mocks.claimDurableAIRouteQuota.mockRejectedValue(
+      new FakeQuotaUnavailable("57014", false),
+    );
+
+    // Accounting must not take the CoPilot down for a timeout or a dropped
+    // connection; only a systematic rejection is worth refusing service over.
+    await expect(run()).resolves.toEqual({ ok: true, modelCalls: 2 });
+    expect(mocks.completeDurableAIRouteQuota).not.toHaveBeenCalled();
   });
 
   it("still bills a replayed turn that re-ran the documentation extractor", async () => {

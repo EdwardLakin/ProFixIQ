@@ -987,10 +987,17 @@ export async function runTechnicianCopilotTurn(input: {
         workOrder: activeWorkOrder,
         repairContext: context,
       });
+  // The extraction's only consumer is the append below, which already refuses
+  // to run once this turn's documentation is finalized. Calling the provider
+  // anyway spent real money on a result that was then discarded, which is the
+  // dominant cost of a client retrying a single turnId. Captured before the
+  // append can flip the flag, so it still describes this turn's own calls.
+  const documentationCallMade =
+    input.identity.documentationEnabled && !documentationAlreadyFinalized;
   const [decision, documentationExtraction] = await Promise.all([
     decisionPromise,
     extractDocumentation({
-      enabled: input.identity.documentationEnabled,
+      enabled: documentationCallMade,
       message: boundTurn.message,
       turnId: input.turnId,
       context,
@@ -1291,9 +1298,7 @@ export async function runTechnicianCopilotTurn(input: {
     workOrder: activeWorkOrder,
     capabilities,
     replayed: Boolean(existingAssistant || replayedActionResult),
-    modelCalls:
-      (decisionCallMade ? 1 : 0) +
-      (input.identity.documentationEnabled ? 1 : 0),
+    modelCalls: (decisionCallMade ? 1 : 0) + (documentationCallMade ? 1 : 0),
     clientAction,
   };
 }

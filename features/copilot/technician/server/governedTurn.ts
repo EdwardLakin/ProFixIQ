@@ -8,24 +8,37 @@ import {
 import {
   claimDurableAIRouteQuota,
   completeDurableAIRouteQuota,
+  DurableAIQuotaUnavailableError,
 } from "@/features/shared/lib/server/durable-ai-guard";
 import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import { runTechnicianCopilotTurn } from "./chat";
 import { sendCopilotServerCommand } from "./transport";
 
+const QUOTA_ERROR_MESSAGES = {
+  hard_budget_exceeded: "This shop has reached its monthly CoPilot budget.",
+  rate_limited: "CoPilot is temporarily rate limited. Retry shortly.",
+  governance_unavailable:
+    "CoPilot spend controls are unavailable. Retry shortly.",
+} as const;
+
+export type TechnicianCopilotQuotaCode = keyof typeof QUOTA_ERROR_MESSAGES;
+
+/** Seconds to advertise when spend governance itself is the blocker. */
+export const GOVERNANCE_UNAVAILABLE_RETRY_SECONDS = 60;
+
 export class TechnicianCopilotQuotaError extends Error {
   readonly status: 402 | 429;
 
   constructor(
-    public readonly code: "rate_limited" | "hard_budget_exceeded",
+    public readonly code: TechnicianCopilotQuotaCode,
     public readonly retryAfterSeconds: number,
   ) {
-    super(
-      code === "hard_budget_exceeded"
-        ? "This shop has reached its monthly CoPilot budget."
-        : "CoPilot is temporarily rate limited. Retry shortly.",
-    );
+    super(QUOTA_ERROR_MESSAGES[code]);
     this.name = "TechnicianCopilotQuotaError";
+    // Only an exhausted monthly ceiling is terminal. A throttle and a missing
+    // governance layer both clear on their own, and the client preserves the
+    // technician's pending intent for 429 while discarding it for anything
+    // else, so neither may be surfaced as terminal.
     this.status = code === "hard_budget_exceeded" ? 402 : 429;
   }
 }
@@ -75,7 +88,7 @@ function recordDurableDenial(input: {
   shopId: string;
   actorId: string;
   turnId: string;
-  reason: "rate_limited" | "hard_budget_exceeded";
+  reason: TechnicianCopilotQuotaCode;
   retryAfterSeconds: number;
 }) {
   // Durable quota decisions happen in Postgres, while ai-ops-guard's anomaly
@@ -88,7 +101,9 @@ function recordDurableDenial(input: {
       alert_type:
         input.reason === "hard_budget_exceeded"
           ? "hard_budget_denial"
-          : "rate_limit_exceeded",
+          : input.reason === "governance_unavailable"
+            ? "governance_unavailable"
+            : "rate_limit_exceeded",
       feature: "technician_copilot_text",
       endpoint: input.endpoint,
       shop_id: input.shopId,
@@ -199,6 +214,35 @@ export async function runGovernedTechnicianCopilotTurn(input: {
     receiptId = claim.receiptId;
   } catch (error) {
     if (error instanceof TechnicianCopilotQuotaError) throw error;
+
+    // A deterministic rejection means the claim will never be accepted as
+    // constructed — typically the app deployed ahead of the migration that
+    // whitelists this feature. Failing open there is not a blip: it silently
+    // disables the spend ceiling for every turn, for the whole rollout window,
+    // which is exactly when it matters. Refuse instead, retryably, so the turn
+    // is not served ungoverned and the technician's intent survives.
+    if (error instanceof DurableAIQuotaUnavailableError && error.deterministic) {
+      console.error("technician_copilot_quota_misconfigured", {
+        shopId: turn.identity.shopId,
+        turnId: turn.turnId,
+        code: error.code,
+      });
+      recordDurableDenial({
+        endpoint: input.endpoint,
+        shopId: turn.identity.shopId,
+        actorId: turn.identity.profileId,
+        turnId: turn.turnId,
+        reason: "governance_unavailable",
+        retryAfterSeconds: GOVERNANCE_UNAVAILABLE_RETRY_SECONDS,
+      });
+      throw new TechnicianCopilotQuotaError(
+        "governance_unavailable",
+        GOVERNANCE_UNAVAILABLE_RETRY_SECONDS,
+      );
+    }
+
+    // Anything else is a transient fault — a timeout, a dropped connection, a
+    // momentary outage. Accounting must not take the CoPilot down for those.
     console.error("technician_copilot_quota_unavailable", {
       shopId: turn.identity.shopId,
       turnId: turn.turnId,
