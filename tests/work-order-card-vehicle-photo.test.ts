@@ -9,32 +9,28 @@ const migration = read(
 );
 
 describe("vehicle photo on work order cards", () => {
-  it("provisions the buckets the create page already writes to", () => {
-    // The work-order create page has always uploaded to these buckets, but no
-    // migration created them, so they only existed where someone made them by
-    // hand and uploads failed in a freshly provisioned environment.
-    expect(migration).toContain("'vehicle-photos'");
-    expect(migration).toContain("'vehicle-docs'");
-    expect(migration).toContain("insert into storage.buckets");
-    // Vehicle imagery is customer data, so the buckets stay private and the
-    // board mints signed URLs instead.
-    expect(migration).toContain("set public = false");
+  it("stays additive: no shared storage configuration or policy changes", () => {
+    // AGENTS.md requires shared integration work to land in its own PR that
+    // proves backward compatibility first. Reconfiguring pre-existing buckets or
+    // installing policies on the shared storage.objects table is exactly that,
+    // so this feature migration must not carry any of it.
+    expect(migration).not.toContain("storage.buckets");
+    expect(migration).not.toContain("storage.objects");
+    expect(migration).not.toContain("create policy");
+    expect(migration).not.toContain("drop policy");
+    expect(migration).not.toContain("set public = false");
   });
 
-  it("scopes every storage policy to the shop that owns the vehicle", () => {
-    for (const policy of [
-      "vehicle_media_objects_select",
-      "vehicle_media_objects_insert",
-      "vehicle_media_objects_delete",
-    ]) {
-      expect(migration).toContain(`create policy ${policy}`);
-    }
-    expect(migration).toContain("public.vehicle_media_object_in_shop(");
-    expect(migration).toContain("v.shop_id = public.current_shop_id()");
-    // A non-uuid folder must yield null rather than raising, so a malformed
-    // object name simply matches no policy.
-    expect(migration).toContain("vehicle_storage_path_uuid");
-    expect(migration).toContain("else null");
+  it("indexes the newest-photo lookup it introduces", () => {
+    // The lateral runs per board row; vehicle_media carried only a shop_id
+    // index, which would leave every load scanning and sorting tenant media.
+    expect(migration).toContain(
+      "create index if not exists vehicle_media_vehicle_photo_recent_idx",
+    );
+    expect(migration).toContain(
+      "on public.vehicle_media (vehicle_id, created_at desc, id desc)",
+    );
+    expect(migration).toContain("where type = 'photo'");
   });
 
   it("carries the newest vehicle photo through both board views", () => {
@@ -67,16 +63,39 @@ describe("vehicle photo on work order cards", () => {
     expect(selectList.trimEnd().endsWith("vphoto.storage_path as vehicle_photo_path")).toBe(true);
   });
 
-  it("signs the private paths once per board load", () => {
+  it("never blocks work-order rows on Storage signing", () => {
     const hook = read("features/shared/hooks/useWorkOrderBoard.ts");
 
     expect(hook).toContain('.from("vehicle-photos")');
-    expect(hook).toContain("createSignedUrls(paths, 600)");
     // One batched request for the rows on screen, not one per card.
     expect(hook).toContain("new Set(");
     // A signing failure must leave the rows renderable without a photo.
     expect(hook).toContain("if (signError || !data) return boardRows;");
-    expect(hook).toContain("publishRows");
+
+    // This hook also backs surfaces that render no imagery, so rows publish
+    // first and thumbnails merge in afterwards.
+    const publish = hook.slice(hook.indexOf("const publishRows"));
+    expect(publish).toContain("setRows(boardRows);");
+    expect(publish).toContain("void signVehiclePhotos(boardRows).then(");
+    expect(hook).not.toContain("await publishRows(");
+  });
+
+  it("outlives a ten-minute URL and notices photos added later", () => {
+    const hook = read("features/shared/hooks/useWorkOrderBoard.ts");
+    const listPage = read("features/work-orders/app/work-orders/view/page.tsx");
+
+    // A board is open for a shift, and a lazily loaded card can request its
+    // image long after the rows arrived.
+    for (const surface of [hook, listPage]) {
+      expect(surface).toContain("const VEHICLE_PHOTO_URL_TTL_SECONDS = 3600;");
+      expect(surface).toContain(
+        "createSignedUrls(paths, VEHICLE_PHOTO_URL_TTL_SECONDS)",
+      );
+    }
+
+    // Creation inserts the work order before uploading its media, so the board
+    // has to watch the media table too or it stays thumbnail-less.
+    expect(hook).toContain('table: "vehicle_media"');
   });
 
   it("renders the photo on the Work Orders list, which is its own component", () => {
@@ -89,7 +108,6 @@ describe("vehicle photo on work order cards", () => {
     expect(listPage).toContain('.eq("type", "photo")');
     expect(listPage).toContain('.order("created_at", { ascending: false })');
     expect(listPage).toContain('.from("vehicle-photos")');
-    expect(listPage).toContain("createSignedUrls(paths, 600)");
     expect(listPage).toContain("vehiclePhotoByVehicle");
     // Newest wins, and the list still shows its label when nothing resolves.
     expect(listPage).toContain("newestPathByVehicle.has(vehicleId)");

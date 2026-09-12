@@ -6,108 +6,18 @@
 -- a text vehicle label. This threads the newest photo for a work order's
 -- vehicle through the board card views so those cards can show it.
 --
--- It also provisions the vehicle-photos and vehicle-docs buckets, which the
--- create page already writes to but which no migration ever created. They only
--- exist where someone made them by hand, so uploads fail outright in any freshly
--- provisioned environment.
+-- Deliberately additive. The vehicle-photos and vehicle-docs buckets are not
+-- provisioned by any migration, and reconfiguring pre-existing buckets or
+-- installing policies on the shared storage objects table is a shared-contract
+-- change that belongs in its own PR, landing and proving backward compatibility
+-- first. Nothing here alters existing storage configuration or policies.
 
--- Narrow uuid cast for storage path segments; a non-uuid folder yields null
--- rather than raising, so a malformed object name simply matches no policy.
-create or replace function public.vehicle_storage_path_uuid(p_segment text)
-returns uuid
-language sql
-immutable
-set search_path = ''
-as $$
-  select case
-    when p_segment ~ '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$'
-      then p_segment::uuid
-    else null
-  end;
-$$;
-
-revoke all on function public.vehicle_storage_path_uuid(text) from public, anon;
-grant execute on function public.vehicle_storage_path_uuid(text)
-  to authenticated, service_role;
-
--- True when the caller's shop owns the vehicle the object path is filed under.
-create or replace function public.vehicle_media_object_in_shop(p_vehicle_id uuid)
-returns boolean
-language sql
-stable
-security definer
-set search_path = ''
-as $$
-  select exists (
-    select 1
-    from public.vehicles v
-    where v.id = p_vehicle_id
-      and v.shop_id is not null
-      and v.shop_id = public.current_shop_id()
-  );
-$$;
-
-revoke all on function public.vehicle_media_object_in_shop(uuid) from public, anon;
-grant execute on function public.vehicle_media_object_in_shop(uuid)
-  to authenticated, service_role;
-
--- Private buckets. Object paths are always <vehicle uuid>/<file>, matching what
--- the create page already writes.
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values (
-  'vehicle-photos',
-  'vehicle-photos',
-  false,
-  10485760,
-  array['image/jpeg','image/png','image/webp','image/heic','image/heif']
-)
-on conflict (id) do update
-set public = false,
-    file_size_limit = excluded.file_size_limit,
-    allowed_mime_types = excluded.allowed_mime_types;
-
-insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values (
-  'vehicle-docs',
-  'vehicle-docs',
-  false,
-  10485760,
-  array['application/pdf','image/jpeg','image/png','image/webp']
-)
-on conflict (id) do update
-set public = false,
-    file_size_limit = excluded.file_size_limit,
-    allowed_mime_types = excluded.allowed_mime_types;
-
-drop policy if exists vehicle_media_objects_select on storage.objects;
-create policy vehicle_media_objects_select
-on storage.objects for select to authenticated
-using (
-  bucket_id in ('vehicle-photos', 'vehicle-docs')
-  and public.vehicle_media_object_in_shop(
-    public.vehicle_storage_path_uuid((storage.foldername(name))[1])
-  )
-);
-
-drop policy if exists vehicle_media_objects_insert on storage.objects;
-create policy vehicle_media_objects_insert
-on storage.objects for insert to authenticated
-with check (
-  bucket_id in ('vehicle-photos', 'vehicle-docs')
-  and public.vehicle_media_object_in_shop(
-    public.vehicle_storage_path_uuid((storage.foldername(name))[1])
-  )
-);
-
-drop policy if exists vehicle_media_objects_delete on storage.objects;
-create policy vehicle_media_objects_delete
-on storage.objects for delete to authenticated
-using (
-  bucket_id in ('vehicle-photos', 'vehicle-docs')
-  and public.vehicle_media_object_in_shop(
-    public.vehicle_storage_path_uuid((storage.foldername(name))[1])
-  )
-);
+-- The lateral lookup below filters by vehicle_id and takes the newest photo, so
+-- give it an index to match. vehicle_media carried only vehicle_media_shop_id_idx,
+-- which would leave every board load scanning and sorting the tenant's media.
+create index if not exists vehicle_media_vehicle_photo_recent_idx
+  on public.vehicle_media (vehicle_id, created_at desc, id desc)
+  where type = 'photo';
 
 -- Board card views gain the newest photo for the work order's vehicle. The
 -- column is appended last so create-or-replace accepts it.
@@ -471,7 +381,6 @@ from public.v_work_order_board_cards_shop s
 left join public.fleet_vehicles fv on fv.vehicle_id = s.vehicle_id
 left join public.fleets f on f.id = fv.fleet_id;
 
-comment on function public.vehicle_media_object_in_shop(uuid) is
-  'Authorizes a vehicle-photos/vehicle-docs storage object against the caller''s shop. Object paths are <vehicle uuid>/<file>.';
+notify pgrst, 'reload schema';
 
 notify pgrst, 'reload schema';

@@ -42,6 +42,9 @@ import {
   type WorkOrderOperationalStage,
 } from "@/features/work-orders/lib/operational-stage";
 
+/** A list left open outlives a ten-minute signed URL; an hour covers a shift. */
+const VEHICLE_PHOTO_URL_TTL_SECONDS = 3600;
+
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
@@ -382,7 +385,7 @@ export default function WorkOrdersView(): JSX.Element {
       const paths = Array.from(newestPathByVehicle.values());
       const { data: signed, error: signError } = await supabase.storage
         .from("vehicle-photos")
-        .createSignedUrls(paths, 600);
+        .createSignedUrls(paths, VEHICLE_PHOTO_URL_TTL_SECONDS);
       if (signError || !signed) {
         setVehiclePhotoByVehicle({});
         return;

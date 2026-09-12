@@ -28,6 +28,14 @@ function viewForVariant(variant: WorkOrderBoardVariant): ViewName {
   return "v_work_order_board_cards_shop";
 }
 
+/**
+ * Signed thumbnails outlive a ten-minute URL: a board is left open for a shift,
+ * and a lazily loaded off-screen card can make its first request long after the
+ * rows arrived. An hour covers a working session, and every realtime refresh
+ * re-signs anyway.
+ */
+const VEHICLE_PHOTO_URL_TTL_SECONDS = 3600;
+
 export function useWorkOrderBoard(
   variant: WorkOrderBoardVariant,
   opts?: {
@@ -59,7 +67,7 @@ export function useWorkOrderBoard(
 
       const { data, error: signError } = await supabase.storage
         .from("vehicle-photos")
-        .createSignedUrls(paths, 600);
+        .createSignedUrls(paths, VEHICLE_PHOTO_URL_TTL_SECONDS);
       if (signError || !data) return boardRows;
 
       const signedByPath = new Map<string, string>();
@@ -80,9 +88,34 @@ export function useWorkOrderBoard(
     [supabase],
   );
 
+  /**
+   * Publish the database-backed rows immediately, then fill in thumbnails.
+   *
+   * This hook also backs surfaces that render no imagery at all, so a slow or
+   * degraded Storage service must never hold up work-order data that already
+   * loaded. Signing runs after the rows are on screen and merges into whatever
+   * is current, so a stale result from a superseded load cannot overwrite it.
+   */
   const publishRows = useCallback(
-    async (boardRows: WorkOrderBoardRow[]) => {
-      setRows(await signVehiclePhotos(boardRows));
+    (boardRows: WorkOrderBoardRow[]) => {
+      setRows(boardRows);
+      if (!boardRows.some((row) => row.vehicle_photo_path?.trim())) return;
+
+      void signVehiclePhotos(boardRows).then((signed) => {
+        const urlByWorkOrder = new Map<string, string>();
+        for (const row of signed) {
+          if (row.vehicle_photo_url) {
+            urlByWorkOrder.set(row.work_order_id, row.vehicle_photo_url);
+          }
+        }
+        if (!urlByWorkOrder.size) return;
+        setRows((current) =>
+          current.map((row) => {
+            const url = urlByWorkOrder.get(row.work_order_id);
+            return url ? { ...row, vehicle_photo_url: url } : row;
+          }),
+        );
+      });
     },
     [signVehiclePhotos],
   );
@@ -171,7 +204,7 @@ export function useWorkOrderBoard(
         setLoading(false);
         return;
       }
-      await publishRows(page.rows);
+      publishRows(page.rows);
       setLoading(false);
       return;
     }
@@ -338,7 +371,7 @@ export function useWorkOrderBoard(
       result.error ? [] : ((result.data ?? []) as OpenPartsItem[]),
     );
 
-    await publishRows(
+    publishRows(
       reconcileBoardPartsState(
         rowsWithDirectTechnicians,
         countOpenPartsObligationsByWorkOrder(requests, items),
@@ -361,6 +394,14 @@ export function useWorkOrderBoard(
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "work_order_lines" },
+        () => fetchRows(),
+      )
+      // Creation inserts the work order before uploading its media, and a photo
+      // can be added to an existing vehicle at any time. Neither touches a table
+      // below, so without this an open board keeps showing no thumbnail.
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "vehicle_media" },
         () => fetchRows(),
       )
       .on(
