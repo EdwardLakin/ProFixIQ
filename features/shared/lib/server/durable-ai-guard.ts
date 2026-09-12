@@ -96,6 +96,30 @@ export type DurableAIClaim =
       retryAfterSeconds: number;
     };
 
+/**
+ * Postgres codes that mean the claim will never be accepted as constructed:
+ * the feature is missing from the deployed whitelist (22023), or the RPC
+ * itself is absent (42883 / PGRST202) because the app is running ahead of its
+ * migration. Retrying cannot clear any of these and every subsequent turn hits
+ * the same wall, so the caller must not treat them as a transient blip.
+ */
+const DETERMINISTIC_QUOTA_ERROR_CODES = new Set([
+  "22023",
+  "42883",
+  "PGRST202",
+]);
+
+export class DurableAIQuotaUnavailableError extends Error {
+  constructor(
+    readonly code: string,
+    /** True when retrying is futile and failing open would be systematic. */
+    readonly deterministic: boolean,
+  ) {
+    super(`AI route quota unavailable (${code})`);
+    this.name = "DurableAIQuotaUnavailableError";
+  }
+}
+
 export async function claimDurableAIRouteQuota(input: {
   admin: AdminClient;
   feature: DurableAIFeature;
@@ -115,7 +139,11 @@ export async function claimDurableAIRouteQuota(input: {
   });
 
   if (error) {
-    throw new Error(`AI route quota unavailable (${error.code ?? "unknown"})`);
+    const code = error.code ?? "unknown";
+    throw new DurableAIQuotaUnavailableError(
+      code,
+      DETERMINISTIC_QUOTA_ERROR_CODES.has(code),
+    );
   }
 
   const row = Array.isArray(data) ? (data[0] as QuotaRow | undefined) : undefined;

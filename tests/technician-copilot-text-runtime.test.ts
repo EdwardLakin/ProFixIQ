@@ -695,5 +695,32 @@ describe("Technician CoPilot persistent text runtime", () => {
         ([call]) => call.action === "session.close",
       ),
     ).toBe(false);
+
+    // A successful completion is the one replay that falls past the early
+    // exit at chat.ts with documentation already finalized, so it is the only
+    // path that could re-invoke the extractor. Its output would be discarded
+    // by the persistence guard, making the provider call pure waste.
+    const extractionsAfterCompletion =
+      mocks.extractTechnicianDocumentationTurn.mock.calls.length;
+    const replayedCompletion = await runTechnicianCopilotTurn({
+      identity: {
+        authUserId: "auth-tech",
+        profileId: "profile-tech",
+        shopId: "shop-1",
+        documentationEnabled: true,
+        voiceEnabled: true,
+        supabase: {} as never,
+      },
+      message: "Complete the Ford.",
+      turnId: "turn-complete-reanchor",
+      sessionId: started.sessionId,
+      inputSource: "voice",
+    });
+
+    expect(replayedCompletion.replayed).toBe(true);
+    expect(mocks.extractTechnicianDocumentationTurn).toHaveBeenCalledTimes(
+      extractionsAfterCompletion,
+    );
+    expect(replayedCompletion.modelCalls).toBe(0);
   });
 });

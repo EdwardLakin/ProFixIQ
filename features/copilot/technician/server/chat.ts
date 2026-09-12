@@ -696,6 +696,7 @@ export async function runTechnicianCopilotTurn(input: {
         workOrder: null,
         capabilities,
         replayed: true,
+        modelCalls: 0,
         clientAction: null,
       };
     }
@@ -731,6 +732,7 @@ export async function runTechnicianCopilotTurn(input: {
       workOrder: activeWorkOrder,
       capabilities,
       replayed: true,
+      modelCalls: 0,
       clientAction: storedAction?.result?.clientAction ?? null,
     };
   }
@@ -755,6 +757,7 @@ export async function runTechnicianCopilotTurn(input: {
         workOrder: null,
         capabilities,
         replayed: false,
+        modelCalls: 1,
         clientAction: null,
       };
     }
@@ -770,6 +773,7 @@ export async function runTechnicianCopilotTurn(input: {
         workOrder: null,
         capabilities,
         replayed: false,
+        modelCalls: 1,
         clientAction: null,
       };
     }
@@ -781,6 +785,7 @@ export async function runTechnicianCopilotTurn(input: {
         workOrder: null,
         capabilities,
         replayed: false,
+        modelCalls: 1,
         clientAction: null,
       };
     }
@@ -814,6 +819,7 @@ export async function runTechnicianCopilotTurn(input: {
           workOrder: null,
           capabilities,
           replayed: false,
+          modelCalls: 1,
           clientAction: null,
         };
       }
@@ -840,6 +846,7 @@ export async function runTechnicianCopilotTurn(input: {
         workOrder: null,
         capabilities,
         replayed: false,
+        modelCalls: 1,
         clientAction: null,
       };
     }
@@ -959,24 +966,38 @@ export async function runTechnicianCopilotTurn(input: {
   let replayedActionResult = Boolean(storedAction?.result);
   let completionNeedsDisposition =
     isStoredCompletion(storedAction) && storedAction.result?.ok === true;
-  const decisionPromise =
-    existingAssistant || storedAction?.result || storedAction
-      ? Promise.resolve(null)
-      : decideTechnicianCopilotTurn({
-          message: boundTurn.message,
-          activeSession: {
-            id: session.id,
-            workOrderId: session.workOrderId,
-            activeWorkOrderLineId: session.activeWorkOrderLineId,
-          },
-          assignedWork: candidates,
-          workOrder: activeWorkOrder,
-          repairContext: context,
-        });
+  // Captured here rather than recomputed at the return: `storedAction` is
+  // rebound during action binding below, so the late value no longer describes
+  // whether this turn actually reached the decision model.
+  const decisionCallMade = !(
+    existingAssistant ||
+    storedAction?.result ||
+    storedAction
+  );
+  const decisionPromise = !decisionCallMade
+    ? Promise.resolve(null)
+    : decideTechnicianCopilotTurn({
+        message: boundTurn.message,
+        activeSession: {
+          id: session.id,
+          workOrderId: session.workOrderId,
+          activeWorkOrderLineId: session.activeWorkOrderLineId,
+        },
+        assignedWork: candidates,
+        workOrder: activeWorkOrder,
+        repairContext: context,
+      });
+  // The extraction's only consumer is the append below, which already refuses
+  // to run once this turn's documentation is finalized. Calling the provider
+  // anyway spent real money on a result that was then discarded, which is the
+  // dominant cost of a client retrying a single turnId. Captured before the
+  // append can flip the flag, so it still describes this turn's own calls.
+  const documentationCallMade =
+    input.identity.documentationEnabled && !documentationAlreadyFinalized;
   const [decision, documentationExtraction] = await Promise.all([
     decisionPromise,
     extractDocumentation({
-      enabled: input.identity.documentationEnabled,
+      enabled: documentationCallMade,
       message: boundTurn.message,
       turnId: input.turnId,
       context,
@@ -1277,6 +1298,7 @@ export async function runTechnicianCopilotTurn(input: {
     workOrder: activeWorkOrder,
     capabilities,
     replayed: Boolean(existingAssistant || replayedActionResult),
+    modelCalls: (decisionCallMade ? 1 : 0) + (documentationCallMade ? 1 : 0),
     clientAction,
   };
 }
