@@ -12,6 +12,29 @@ describe("inspection report delivery contracts", () => {
     ).toContain("/api/inspections/${args.inspectionId}/report/pdf");
   });
 
+  it("renders the report under the shop's own identity", () => {
+    const publish = source("features/inspections/server/publishInspectionPdf.ts");
+    expect(publish).toContain('.from("shops")');
+    expect(publish).toContain("business_name,shop_name,name");
+    expect(publish).toContain("shopName,");
+    expect(publish).not.toContain("shopName: null");
+  });
+
+  it("renders current-cycle signatures into the published report", () => {
+    const publish = source("features/inspections/server/publishInspectionPdf.ts");
+    expect(publish).toContain('.from("inspection_signatures")');
+    expect(publish).toContain('.eq("signing_cycle"');
+    expect(publish).toContain("signatures,");
+    // Signature images are read as bytes so the report never depends on a
+    // signed URL that expires after publication.
+    expect(publish).toContain('.from(SIGNATURE_BUCKET)');
+    expect(publish).toContain("imageBytes");
+
+    const pdf = source("features/inspections/lib/inspection/pdf.ts");
+    expect(pdf).toContain('drawSectionHeader("Signatures")');
+    expect(pdf).toContain("drawSignatureCard");
+  });
+
   it("anchors evidence signing to canonical job-photo rows", () => {
     const access = source(
       "features/inspections/server/inspectionReportAccess.ts",

@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { InspectionReportAttachments } from "@/features/inspections/components/InspectionReportAttachments";
 import type {
   ActiveWorkSummary,
   AppointmentSummary,
@@ -625,6 +626,27 @@ export function VehicleWorkspace({
           </div>
         )}
       </WorkspaceSection>
+
+      {snapshot.permissions.canOpenInspections &&
+      snapshot.documentSummary.downloadableInspectionReportCount > 0 ? (
+        <WorkspaceSection
+          headingId="inspection-reports-heading"
+          eyebrow="Signed evidence"
+          title="Inspection reports"
+          summary={`${snapshot.documentSummary.downloadableInspectionReportCount} published report${
+            snapshot.documentSummary.downloadableInspectionReportCount === 1
+              ? ""
+              : "s"
+          }`}
+        >
+          <div className="mt-4">
+            <InspectionReportAttachments
+              vehicleId={snapshot.identity.id}
+              variant="plain"
+            />
+          </div>
+        </WorkspaceSection>
+      ) : null}
 
       <aside
         aria-label="Vehicle workspace summaries"

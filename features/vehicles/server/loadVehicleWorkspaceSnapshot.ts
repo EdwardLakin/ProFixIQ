@@ -1047,6 +1047,9 @@ function buildDocumentSummary(input: {
     vehicleMediaCount: input.vehicleMedia.length,
     workOrderMediaCount: input.workOrderMedia.length,
     inspectionReportCount: reports.length,
+    downloadableInspectionReportCount: reports.filter((row) =>
+      Boolean(row.pdf_storage_path),
+    ).length,
     latestReference: newestWorkOrderMedia
       ? {
           sourceType: "work_order_media",

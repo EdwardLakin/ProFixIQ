@@ -16,11 +16,17 @@ export function InspectionReportAttachments({
   vehicleId,
   invoiceId,
   title = "Inspection reports",
+  variant = "section",
 }: {
   workOrderId?: string;
   vehicleId?: string;
   invoiceId?: string;
   title?: string;
+  /**
+   * "plain" drops the bordered wrapper and heading so the list can sit inside a
+   * host section that already supplies its own chrome.
+   */
+  variant?: "section" | "plain";
 }) {
   const [reports, setReports] = useState<ReportLink[]>([]);
   useEffect(() => {
@@ -63,44 +69,51 @@ export function InspectionReportAttachments({
   }, [invoiceId, vehicleId, workOrderId]);
 
   if (!reports.length) return null;
+
+  const list = (
+    <div className={variant === "plain" ? "space-y-2" : "mt-3 space-y-2"}>
+      {reports.map((report) => (
+        <div
+          key={report.inspectionId}
+          className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] p-4"
+        >
+          <div>
+            <div className="font-semibold">{report.title}</div>
+            {report.finalizedAt || report.technicianName ? (
+              <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                {report.finalizedAt
+                  ? new Date(report.finalizedAt).toLocaleString()
+                  : "Finalized"}
+                {report.technicianName ? ` · ${report.technicianName}` : ""}
+              </div>
+            ) : null}
+          </div>
+          <div className="flex gap-2">
+            <a className="rounded-full border px-3 py-2 text-xs" href={report.viewUrl}>
+              View report
+            </a>
+            <a
+              className="rounded-full border px-3 py-2 text-xs"
+              href={report.pdfUrl}
+              target="_blank"
+              rel="noreferrer"
+            >
+              PDF
+            </a>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
+  if (variant === "plain") return list;
+
   return (
     <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
       <h2 className="text-sm font-semibold uppercase tracking-[0.18em]">
         {title}
       </h2>
-      <div className="mt-3 space-y-2">
-        {reports.map((report) => (
-          <div
-            key={report.inspectionId}
-            className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] p-4"
-          >
-            <div>
-              <div className="font-semibold">{report.title}</div>
-              {report.finalizedAt || report.technicianName ? (
-                <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                  {report.finalizedAt
-                    ? new Date(report.finalizedAt).toLocaleString()
-                    : "Finalized"}
-                  {report.technicianName ? ` · ${report.technicianName}` : ""}
-                </div>
-              ) : null}
-            </div>
-            <div className="flex gap-2">
-              <a className="rounded-full border px-3 py-2 text-xs" href={report.viewUrl}>
-                View report
-              </a>
-              <a
-                className="rounded-full border px-3 py-2 text-xs"
-                href={report.pdfUrl}
-                target="_blank"
-                rel="noreferrer"
-              >
-                PDF
-              </a>
-            </div>
-          </div>
-        ))}
-      </div>
+      {list}
     </section>
   );
 }

@@ -145,6 +145,12 @@ export type VehicleDocumentSummary = {
   vehicleMediaCount: number;
   workOrderMediaCount: number;
   inspectionReportCount: number;
+  /**
+   * Reports backed by a stored PDF object, which is the subset the report
+   * routes can actually serve. Legacy rows carrying only a pdf_url still count
+   * toward inspectionReportCount but cannot be opened or downloaded.
+   */
+  downloadableInspectionReportCount: number;
   latestReference: VehicleWorkspaceReference | null;
 };
 

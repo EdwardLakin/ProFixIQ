@@ -24,6 +24,23 @@ type InspectionPdfBrand = {
   } | null;
 };
 
+/**
+ * A signature recorded against the inspection's current signing cycle. Image
+ * bytes are passed in already resolved so the renderer never depends on a
+ * signed URL that can expire between signing and rendering.
+ */
+export type InspectionPdfSignature = {
+  role: string;
+  signedName: string | null;
+  signedAt: string | null;
+  signatureHash?: string | null;
+  imageBytes?: Uint8Array | null;
+};
+
+export type InspectionPdfOptions = InspectionPdfBrand & {
+  signatures?: InspectionPdfSignature[] | null;
+};
+
 type PdfRgb = ReturnType<typeof rgb>;
 
 type FindingRow = {
@@ -145,16 +162,105 @@ function hexToRgbColor(hex: string | null | undefined, fallback: PdfRgb): PdfRgb
   return rgb(r / 255, g / 255, b / 255);
 }
 
+const PNG_MAGIC = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a];
+
+function readUint32BE(bytes: Uint8Array, offset: number): number {
+  return (
+    bytes[offset] * 0x1000000 +
+    (bytes[offset + 1] << 16) +
+    (bytes[offset + 2] << 8) +
+    bytes[offset + 3]
+  );
+}
+
+/**
+ * Walks the PNG chunk table without decoding pixels. A PNG whose chunk lengths
+ * do not line up can send the decoder into a non-terminating loop that blocks
+ * the event loop rather than throwing, so malformed bytes have to be rejected
+ * before they reach it.
+ */
+function isStructurallyValidPng(bytes: Uint8Array): boolean {
+  if (bytes.length < PNG_MAGIC.length + 12) return false;
+  for (let i = 0; i < PNG_MAGIC.length; i += 1) {
+    if (bytes[i] !== PNG_MAGIC[i]) return false;
+  }
+
+  let offset = PNG_MAGIC.length;
+  let sawHeaderChunk = false;
+
+  while (offset + 8 <= bytes.length) {
+    const length = readUint32BE(bytes, offset);
+    const type = String.fromCharCode(
+      bytes[offset + 4],
+      bytes[offset + 5],
+      bytes[offset + 6],
+      bytes[offset + 7],
+    );
+    if (!/^[A-Za-z]{4}$/.test(type)) return false;
+
+    // 4 length bytes + 4 type bytes + payload + 4 CRC bytes.
+    const nextOffset = offset + 12 + length;
+    if (nextOffset > bytes.length) return false;
+
+    if (offset === PNG_MAGIC.length) {
+      if (type !== "IHDR") return false;
+      sawHeaderChunk = true;
+    }
+    if (type === "IEND") return sawHeaderChunk && nextOffset === bytes.length;
+
+    offset = nextOffset;
+  }
+
+  return false;
+}
+
+function isStructurallyValidJpeg(bytes: Uint8Array): boolean {
+  return (
+    bytes.length > 4 &&
+    bytes[0] === 0xff &&
+    bytes[1] === 0xd8 &&
+    bytes[bytes.length - 2] === 0xff &&
+    bytes[bytes.length - 1] === 0xd9
+  );
+}
+
+async function embedImageBytes(
+  pdfDoc: PDFDocument,
+  bytes: Uint8Array,
+): Promise<PDFImage> {
+  if (isStructurallyValidJpeg(bytes)) return pdfDoc.embedJpg(bytes);
+  if (isStructurallyValidPng(bytes)) return pdfDoc.embedPng(bytes);
+  throw new Error("Image data is not a readable PNG or JPEG.");
+}
+
 async function tryEmbedImage(pdfDoc: PDFDocument, url: string): Promise<PDFImage> {
   const res = await fetch(url, { cache: "no-store" });
   if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
 
-  const bytes = new Uint8Array(await res.arrayBuffer());
+  return embedImageBytes(pdfDoc, new Uint8Array(await res.arrayBuffer()));
+}
 
+function signatureRoleLabel(role: string): string {
+  const normalized = safeStr(role).trim().toLowerCase();
+  if (normalized === "technician") return "Technician";
+  if (normalized === "advisor") return "Service Advisor";
+  if (normalized === "customer") return "Customer";
+  return normalized ? normalized.replaceAll("_", " ").toUpperCase() : "Signatory";
+}
+
+function formatSignedAt(value: string | null | undefined): string {
+  const raw = safeStr(value).trim();
+  if (!raw) return "—";
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return raw;
   try {
-    return await pdfDoc.embedJpg(bytes);
+    return `${parsed.toLocaleString("en-CA", {
+      dateStyle: "medium",
+      timeStyle: "short",
+      timeZone: "UTC",
+    })} UTC`;
   } catch {
-    return await pdfDoc.embedPng(bytes);
+    return parsed.toISOString();
   }
 }
 
@@ -246,8 +352,10 @@ function collectFindings(sections: InspectionSection[]): {
 
 export async function generateInspectionPDF(
   session: InspectionSession,
-  brand?: InspectionPdfBrand,
+  options?: InspectionPdfOptions,
 ): Promise<Uint8Array> {
+  const brand: InspectionPdfBrand | undefined = options;
+  const signatures = options?.signatures ?? [];
   const pdfDoc = await PDFDocument.create();
 
   const PAGE_W = 595.28;
@@ -560,6 +668,104 @@ export async function generateInspectionPDF(
     y -= 8;
   };
 
+  const drawSignatureCard = async (signature: InspectionPdfSignature) => {
+    const CARD_HEIGHT = 104;
+    const IMAGE_BOX_W = 190;
+    const IMAGE_BOX_H = 40;
+
+    ensureSpace(CARD_HEIGHT + 8);
+
+    const cardTop = y;
+    const cardBottom = cardTop - CARD_HEIGHT;
+
+    page.drawRectangle({
+      x: MARGIN_X,
+      y: cardBottom,
+      width: CONTENT_W,
+      height: CARD_HEIGHT,
+      color: COLOR_PANEL,
+    });
+    page.drawRectangle({
+      x: MARGIN_X,
+      y: cardBottom,
+      width: 6,
+      height: CARD_HEIGHT,
+      color: COLOR_SECONDARY,
+    });
+
+    drawText(signatureRoleLabel(signature.role), MARGIN_X + 16, cardTop - 16, {
+      size: 8,
+      bold: true,
+      color: COLOR_MUTED,
+    });
+
+    const imageBaseline = cardBottom + 34;
+    let drewImage = false;
+    if (signature.imageBytes && signature.imageBytes.byteLength > 0) {
+      try {
+        const img = await embedImageBytes(pdfDoc, signature.imageBytes);
+        const scale = Math.min(
+          IMAGE_BOX_W / img.width,
+          IMAGE_BOX_H / img.height,
+          1,
+        );
+        page.drawImage(img, {
+          x: MARGIN_X + 16,
+          y: imageBaseline,
+          width: img.width * scale,
+          height: img.height * scale,
+        });
+        drewImage = true;
+      } catch {
+        drewImage = false;
+      }
+    }
+
+    if (!drewImage) {
+      drawText(
+        signature.imageBytes
+          ? "Signature image unavailable"
+          : "Typed acknowledgement — no drawn signature captured",
+        MARGIN_X + 16,
+        imageBaseline + 12,
+        { size: 9, color: COLOR_MUTED },
+      );
+    }
+
+    page.drawLine({
+      start: { x: MARGIN_X + 16, y: imageBaseline - 6 },
+      end: { x: MARGIN_X + 16 + IMAGE_BOX_W, y: imageBaseline - 6 },
+      thickness: 1,
+      color: COLOR_RULE,
+    });
+
+    drawText(
+      safeStr(signature.signedName).trim() || "—",
+      MARGIN_X + 16,
+      imageBaseline - 20,
+      { size: 11, bold: true, color: COLOR_TEXT },
+    );
+
+    drawText(
+      `Signed ${formatSignedAt(signature.signedAt)}`,
+      PAGE_W - MARGIN_X - 200,
+      cardTop - 16,
+      { size: 9, color: COLOR_MUTED },
+    );
+
+    const hash = safeStr(signature.signatureHash).trim();
+    if (hash) {
+      drawText(
+        `Signature reference ${hash.slice(0, 16)}`,
+        PAGE_W - MARGIN_X - 200,
+        cardTop - 30,
+        { size: 7, color: COLOR_MUTED },
+      );
+    }
+
+    y = cardBottom - 10;
+  };
+
   const sections: InspectionSection[] = Array.isArray(session.sections)
     ? session.sections
     : [];
@@ -819,6 +1025,25 @@ export async function generateInspectionPDF(
 
     for (const row of notableRows) {
       await drawFindingCard(row);
+    }
+  }
+
+  drawRule();
+  drawSectionHeader("Signatures");
+
+  if (signatures.length === 0) {
+    drawWrappedParagraph(
+      "No signature has been recorded for this inspection. An inspection is only locked and certified once it is signed.",
+      {
+        widthChars: 82,
+        size: 10,
+        color: COLOR_MUTED,
+        lineGap: 14,
+      },
+    );
+  } else {
+    for (const signature of signatures) {
+      await drawSignatureCard(signature);
     }
   }
 

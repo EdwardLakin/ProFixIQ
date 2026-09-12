@@ -1602,6 +1602,54 @@ describe("Shop Vehicle Workspace contract", () => {
     });
   });
 
+  it("separates published reports from the ones a report route can serve", async () => {
+    const fixture = workspaceFixture({
+      inspections: [
+        {
+          id: "inspection-legacy-url-only",
+          work_order_id: "wo-1",
+          work_order_line_id: null,
+          inspection_type: "Legacy inspection",
+          status: "finalized",
+          completed: true,
+          summary: null,
+          created_at: "2026-01-02T10:00:00.000Z",
+          started_at: "2026-01-02T10:00:00.000Z",
+          finalized_at: "2026-01-02T11:00:00.000Z",
+          updated_at: "2026-01-02T11:00:00.000Z",
+          pdf_url: "/reports/legacy.pdf",
+          pdf_storage_path: null,
+        },
+        {
+          id: "inspection-stored-pdf",
+          work_order_id: "wo-1",
+          work_order_line_id: null,
+          inspection_type: "Signed inspection",
+          status: "finalized",
+          completed: true,
+          summary: null,
+          created_at: "2026-01-03T10:00:00.000Z",
+          started_at: "2026-01-03T10:00:00.000Z",
+          finalized_at: "2026-01-03T11:00:00.000Z",
+          updated_at: "2026-01-03T11:00:00.000Z",
+          pdf_url: "/api/inspections/inspection-stored-pdf/report/pdf",
+          pdf_storage_path:
+            "shops/shop-a/work_orders/wo-1/inspections/inspection-stored-pdf/line_a_r1_hash.pdf",
+        },
+      ],
+    });
+
+    const snapshot = await loadVehicleWorkspaceSnapshot({
+      supabase: fixture.client as never,
+      shopId: "shop-a",
+      role: "owner",
+      vehicleId: "vehicle-1",
+    });
+
+    expect(snapshot?.documentSummary.inspectionReportCount).toBe(2);
+    expect(snapshot?.documentSummary.downloadableInspectionReportCount).toBe(1);
+  });
+
   it("opens estimate records through their canonical estimate route", async () => {
     const fixture = workspaceFixture({
       additionalWorkOrders: [
