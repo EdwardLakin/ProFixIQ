@@ -1,0 +1,151 @@
+{
+  "source": "City of Calgary X 505 (R2024-10) Operator's Vehicle Trip Inspection Report",
+  "sourceImage": "calgary-x505.jpg",
+  "note": "Recorded structural-OCR result for the Calgary X505 page. This is the shape features/inspections/server/inspection-form-import-job.ts expects back from the vision model, captured so importer shaping stays deterministic in CI without a live model call.",
+  "format_version": 2,
+  "extracted_text": "OPERATOR'S VEHICLE TRIP INSPECTION REPORT — Cars, Vans, Trucks, Trailers and Mobile Equipment — X 505 (R2024-10) — The City of Calgary",
+  "sections": [
+    {
+      "title": "Form header",
+      "items": [
+        { "item": "Calgary", "unit": null, "field_type": "branding" },
+        { "item": "Operator's Vehicle Trip Inspection Report", "unit": null, "field_type": "branding" },
+        { "item": "Cars, Vans, Trucks, Trailers and Mobile Equipment", "unit": null, "field_type": "branding" },
+        { "item": "X 505 (R2024-10)", "unit": null, "field_type": "branding" }
+      ]
+    },
+    {
+      "title": "Vehicle and trip record",
+      "items": [
+        { "item": "Carrier Name", "unit": null, "field_type": "identity" },
+        { "item": "Odometer Reading Start", "unit": null, "field_type": "identity" },
+        { "item": "Odometer Reading Stop", "unit": null, "field_type": "identity" },
+        { "item": "Hour Meter Start", "unit": null, "field_type": "identity" },
+        { "item": "Hour Meter Stop", "unit": null, "field_type": "identity" },
+        { "item": "Date (yyyy/mm/dd)", "unit": null, "field_type": "identity" },
+        { "item": "Unit Number", "unit": null, "field_type": "identity" },
+        { "item": "Trailer Unit Number", "unit": null, "field_type": "identity" },
+        { "item": "Equipment Unit Number", "unit": null, "field_type": "identity" },
+        { "item": "Location of Inspection", "unit": null, "field_type": "identity" },
+        { "item": "Time of Inspection (24 hr)", "unit": null, "field_type": "identity" }
+      ]
+    },
+    {
+      "title": "Inspection declaration",
+      "items": [
+        { "item": "I performed an inspection of the vehicle noted above using the criteria set out in Schedule 1 of Part 2, NSC Standard 13 as per sections 10(4) and 10(10) of Alberta's Commercial Vehicle Safety Regulation, AR 121/2009 and report the following:", "unit": null, "field_type": "instruction" },
+        { "item": "No Defects Found During Pre-Trip Inspection.", "unit": null, "field_type": "instruction" },
+        { "item": "No Defects Found During Post-Trip Inspection", "unit": null, "field_type": "instruction" },
+        { "item": "Defects Detected (mark a check for a minor defect and an X for a major defect)", "unit": null, "field_type": "instruction" }
+      ]
+    },
+    {
+      "title": "Defects Detected",
+      "items": [
+        { "item": "1. Air Brake System", "unit": null, "field_type": "defect" },
+        { "item": "2. Cab", "unit": null, "field_type": "defect" },
+        { "item": "3. Cargo Securement", "unit": null, "field_type": "defect" },
+        { "item": "4. Coupling Device", "unit": null, "field_type": "defect" },
+        { "item": "5. Dangerous Goods", "unit": null, "field_type": "defect" },
+        { "item": "6. Driver Controls", "unit": null, "field_type": "defect" },
+        { "item": "7. Driver Seat", "unit": null, "field_type": "defect" },
+        { "item": "8. Electric Brake System", "unit": null, "field_type": "defect" },
+        { "item": "9. Emergency Equip/Safety Devices", "unit": null, "field_type": "defect" },
+        { "item": "10. Exhaust System", "unit": null, "field_type": "defect" },
+        { "item": "11. Frame and Cargo Body", "unit": null, "field_type": "defect" },
+        { "item": "12. Fuel System", "unit": null, "field_type": "defect" },
+        { "item": "13. General", "unit": null, "field_type": "defect" },
+        { "item": "14. Glass and Mirrors", "unit": null, "field_type": "defect" },
+        { "item": "15. Heater/Defroster", "unit": null, "field_type": "defect" },
+        { "item": "16. Horn", "unit": null, "field_type": "defect" },
+        { "item": "17. Hydraulic Brake System", "unit": null, "field_type": "defect" },
+        { "item": "18. Lamps and Reflectors", "unit": null, "field_type": "defect" },
+        { "item": "19. Steering", "unit": null, "field_type": "defect" },
+        { "item": "20. Suspension System", "unit": null, "field_type": "defect" },
+        { "item": "21. Tires", "unit": null, "field_type": "defect" },
+        { "item": "22. Wheels, Hubs and Fasteners", "unit": null, "field_type": "defect" },
+        { "item": "23. Windshield Wipers/Washer", "unit": null, "field_type": "defect" },
+        { "item": "24. Miscellaneous a) All Fluid Levels Under the Hood", "unit": null, "field_type": "defect" },
+        { "item": "24. Miscellaneous b) Hydraulic Oil", "unit": null, "field_type": "defect" },
+        { "item": "24. Miscellaneous c) Vehicle Documentation", "unit": null, "field_type": "defect" },
+        { "item": "24. Miscellaneous d) Emergency Lights/Sirens", "unit": null, "field_type": "defect" },
+        { "item": "24. Miscellaneous e) Mud Flaps", "unit": null, "field_type": "defect" },
+        { "item": "24. Miscellaneous f) Box/Hoist/Tarp", "unit": null, "field_type": "defect" },
+        { "item": "24. Miscellaneous g) Wheel Torque Decal", "unit": null, "field_type": "defect" },
+        { "item": "24. Miscellaneous h) Oil Change Decal", "unit": null, "field_type": "defect" },
+        { "item": "24. Miscellaneous i) Spill Kit", "unit": null, "field_type": "defect" }
+      ]
+    },
+    {
+      "title": "Indicate Body Damage (X)",
+      "items": [
+        { "item": "Indicate Body Damage (X)", "unit": null, "field_type": "text" }
+      ]
+    },
+    {
+      "title": "Indicate Brake Out of Adjustment (X)",
+      "items": [
+        { "item": "Air Brake Check", "unit": null, "field_type": "instruction" },
+        { "item": "Push Rod Travel Axle 1 Right", "unit": null, "field_type": "measurement" },
+        { "item": "Push Rod Travel Axle 1 Left", "unit": null, "field_type": "measurement" },
+        { "item": "Push Rod Travel Axle 2 Right", "unit": null, "field_type": "measurement" },
+        { "item": "Push Rod Travel Axle 2 Left", "unit": null, "field_type": "measurement" },
+        { "item": "Push Rod Travel Axle 3 Right", "unit": null, "field_type": "measurement" },
+        { "item": "Push Rod Travel Axle 3 Left", "unit": null, "field_type": "measurement" },
+        { "item": "Push Rod Travel Axle 4 Right", "unit": null, "field_type": "measurement" },
+        { "item": "Push Rod Travel Axle 4 Left", "unit": null, "field_type": "measurement" },
+        { "item": "Push Rod Travel Axle 5 Right", "unit": null, "field_type": "measurement" },
+        { "item": "Push Rod Travel Axle 5 Left", "unit": null, "field_type": "measurement" },
+        { "item": "Push Rod Travel Axle 6 Right", "unit": null, "field_type": "measurement" },
+        { "item": "Push Rod Travel Axle 6 Left", "unit": null, "field_type": "measurement" },
+        { "item": "Push Rod Travel Axle 7 Right", "unit": null, "field_type": "measurement" },
+        { "item": "Push Rod Travel Axle 7 Left", "unit": null, "field_type": "measurement" },
+        { "item": "Push Rod Travel Axle 8 Right", "unit": null, "field_type": "measurement" },
+        { "item": "Push Rod Travel Axle 8 Left", "unit": null, "field_type": "measurement" }
+      ]
+    },
+    {
+      "title": "Defect details",
+      "items": [
+        { "item": "Provide details of defect(s) detected and which Unit Number it was detected on:", "unit": null, "field_type": "text" },
+        { "item": "Post Trip Inspection", "unit": null, "field_type": "text" }
+      ]
+    },
+    {
+      "title": "Defect(s) Reported To",
+      "items": [
+        { "item": "Foreman", "unit": null, "field_type": "identity" },
+        { "item": "Supervisor", "unit": null, "field_type": "identity" },
+        { "item": "Maintenance Facility", "unit": null, "field_type": "identity" },
+        { "item": "Employee Number", "unit": null, "field_type": "identity" },
+        { "item": "Business Unit", "unit": null, "field_type": "identity" }
+      ]
+    },
+    {
+      "title": "Driver completion",
+      "items": [
+        { "item": "I have a valid Provincial Driver's Licence and it is with me today.", "unit": null, "field_type": "signature" },
+        { "item": "Driver's Name (Print)", "unit": null, "field_type": "signature" },
+        { "item": "Driver's Signature", "unit": null, "field_type": "signature" }
+      ]
+    },
+    {
+      "title": "Corrective Action",
+      "items": [
+        { "item": "I certify that: Repairs of the noted defects have been corrected.", "unit": null, "field_type": "signature" },
+        { "item": "Items noted do not affect the safe operation of this vehicle.", "unit": null, "field_type": "signature" },
+        { "item": "Mechanic's Signature", "unit": null, "field_type": "signature" },
+        { "item": "Work Order #", "unit": null, "field_type": "signature" },
+        { "item": "Date (yyyy/mm/dd)", "unit": null, "field_type": "signature" },
+        { "item": "Driver's Signature", "unit": null, "field_type": "signature" }
+      ]
+    },
+    {
+      "title": "Form footer",
+      "items": [
+        { "item": "The personal information collected through the Operator's Vehicle Trip Inspection Report (X505) is to ensure that City of Calgary owned vehicles are in compliance with Alberta Commercial Vehicle Safety Regulations, and that any required corrective actions listed on the form are completed.", "unit": null, "field_type": "instruction" },
+        { "item": "DRIVER'S COPY - FORWARD TO SUPERVISOR AT END OF SHIFT", "unit": null, "field_type": "instruction" }
+      ]
+    }
+  ]
+}

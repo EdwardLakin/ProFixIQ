@@ -3,11 +3,22 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type {
-  InspectionFormImportView,
-  InspectionFormSection,
+import {
+  RUNNABLE_INSPECTION_FORM_FIELD_TYPES,
+  type InspectionFormFieldType,
+  type InspectionFormImportView,
+  type InspectionFormSection,
 } from "@/features/inspections/lib/form-import";
 import { Button } from "@shared/components/ui/Button";
+
+const FIELD_TYPE_LABEL: Record<
+  (typeof RUNNABLE_INSPECTION_FORM_FIELD_TYPES)[number],
+  string
+> = {
+  check: "Pass / fail",
+  defect: "Minor / major defect",
+  measurement: "Measurement",
+};
 
 const STATE_LABEL: Record<InspectionFormImportView["state"], string> = {
   queued: "Upload saved",
@@ -87,6 +98,27 @@ export default function InspectionFormImportReview({
   const mutateSections = (next: InspectionFormSection[]) => {
     setSections(next);
     setDirty(true);
+  };
+
+  const mutateItem = (
+    sectionIndex: number,
+    itemIndex: number,
+    patch: Partial<InspectionFormSection["items"][number]>,
+  ) => {
+    mutateSections(
+      sections.map((entry, index) =>
+        index === sectionIndex
+          ? {
+              ...entry,
+              items: entry.items.map((candidate, candidateIndex) =>
+                candidateIndex === itemIndex
+                  ? { ...candidate, ...patch }
+                  : candidate,
+              ),
+            }
+          : entry,
+      ),
+    );
   };
 
   const approve = async () => {
@@ -195,13 +227,23 @@ export default function InspectionFormImportReview({
                 <div key={sectionIndex} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
                   <div className="flex gap-2"><input value={section.title} onChange={(event) => mutateSections(sections.map((entry, index) => index === sectionIndex ? { ...entry, title: event.target.value } : entry))} className="min-w-0 flex-1 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-2 text-sm font-semibold" /><button type="button" onClick={() => mutateSections(sections.filter((_, index) => index !== sectionIndex))} className="px-2 text-xs text-red-300">Remove</button></div>
                   <div className="mt-2 space-y-2">
-                    {section.items.map((item, itemIndex) => (
-                      <div key={itemIndex} className="grid grid-cols-[minmax(0,1fr),4.5rem,auto] gap-2">
-                        <input value={item.item} onChange={(event) => mutateSections(sections.map((entry, index) => index === sectionIndex ? { ...entry, items: entry.items.map((candidate, candidateIndex) => candidateIndex === itemIndex ? { ...candidate, item: event.target.value } : candidate) } : entry))} className="min-w-0 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-2 text-xs" />
-                        <input value={item.unit ?? ""} placeholder="Unit" onChange={(event) => mutateSections(sections.map((entry, index) => index === sectionIndex ? { ...entry, items: entry.items.map((candidate, candidateIndex) => candidateIndex === itemIndex ? { ...candidate, unit: event.target.value || null } : candidate) } : entry))} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-2 text-xs" />
+                    {section.items.map((item, itemIndex) => {
+                      // Imports approved before field types were reviewable can
+                      // still be missing one. Fall back the same way the
+                      // imported-template editor does so the row stays fixable.
+                      const fieldType: InspectionFormFieldType =
+                        item.fieldType ?? (item.unit ? "measurement" : "check");
+                      return (
+                      <div key={itemIndex} className="flex flex-wrap items-center gap-2">
+                        <input aria-label={`Label for ${item.item}`} value={item.item} onChange={(event) => mutateItem(sectionIndex, itemIndex, { item: event.target.value })} className="min-w-0 flex-1 basis-full sm:basis-0 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-2 text-xs" />
+                        <select aria-label={`Field type for ${item.item}`} value={fieldType} onChange={(event) => { const nextType = event.target.value as InspectionFormFieldType; mutateItem(sectionIndex, itemIndex, { fieldType: nextType, ...(nextType === "measurement" ? {} : { unit: null }) }); }} className="w-[9.5rem] shrink-0 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-2 text-xs">
+                          {RUNNABLE_INSPECTION_FORM_FIELD_TYPES.map((type) => <option key={type} value={type}>{FIELD_TYPE_LABEL[type]}</option>)}
+                        </select>
+                        <input aria-label={`Unit for ${item.item}`} value={item.unit ?? ""} placeholder="Unit" disabled={fieldType !== "measurement"} title={fieldType === "measurement" ? undefined : "Units apply to measurement rows only."} onChange={(event) => mutateItem(sectionIndex, itemIndex, { unit: event.target.value || null })} className="w-[4.5rem] shrink-0 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-2 text-xs disabled:opacity-40" />
                         <button type="button" aria-label={`Remove ${item.item}`} onClick={() => mutateSections(sections.map((entry, index) => index === sectionIndex ? { ...entry, items: entry.items.filter((_, candidateIndex) => candidateIndex !== itemIndex) } : entry))} className="px-2 text-red-300">×</button>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ))}

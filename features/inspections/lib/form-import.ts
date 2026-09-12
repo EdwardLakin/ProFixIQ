@@ -78,11 +78,31 @@ const INSPECTION_FORM_FIELD_TYPES = new Set<InspectionFormFieldType>([
   "branding",
 ]);
 
-const RUNNABLE_INSPECTION_FORM_FIELD_TYPES = new Set<InspectionFormFieldType>([
+/**
+ * The classifications the canonical inspection runner can execute. Everything
+ * else on an imported form is preserved as form context rather than run.
+ */
+export const RUNNABLE_INSPECTION_FORM_FIELD_TYPES = [
   "check",
   "defect",
   "measurement",
-]);
+] as const satisfies readonly InspectionFormFieldType[];
+
+export type RunnableInspectionFormFieldType =
+  (typeof RUNNABLE_INSPECTION_FORM_FIELD_TYPES)[number];
+
+const RUNNABLE_FIELD_TYPE_SET = new Set<InspectionFormFieldType>(
+  RUNNABLE_INSPECTION_FORM_FIELD_TYPES,
+);
+
+export function isRunnableInspectionFormFieldType(
+  value: unknown,
+): value is RunnableInspectionFormFieldType {
+  return (
+    typeof value === "string" &&
+    RUNNABLE_FIELD_TYPE_SET.has(value as InspectionFormFieldType)
+  );
+}
 
 function record(value: unknown): Record<string, unknown> {
   return typeof value === "object" && value !== null
@@ -214,8 +234,7 @@ export function selectRunnableInspectionFormSections(
       items: section.items.filter((item) => {
         if (!classified) return true;
         return Boolean(
-          item.fieldType &&
-            RUNNABLE_INSPECTION_FORM_FIELD_TYPES.has(item.fieldType),
+          item.fieldType && RUNNABLE_FIELD_TYPE_SET.has(item.fieldType),
         );
       }),
     }))
