@@ -66,11 +66,14 @@ describe("vehicle photo on work order cards", () => {
   it("never blocks work-order rows on Storage signing", () => {
     const hook = read("features/shared/hooks/useWorkOrderBoard.ts");
 
-    expect(hook).toContain('.from("vehicle-photos")');
-    // One batched request for the rows on screen, not one per card.
-    expect(hook).toContain("new Set(");
+    // Signing goes through the shared probe rather than the bucket directly,
+    // so both surfaces cover the legacy fallback in one place.
+    expect(hook).toContain(
+      'import { signVehiclePhotoPaths } from "@/features/shared/lib/storage/vehiclePhotoBuckets";',
+    );
+    expect(hook).toContain("await signVehiclePhotoPaths(");
     // A signing failure must leave the rows renderable without a photo.
-    expect(hook).toContain("if (signError || !data) return boardRows;");
+    expect(hook).toContain("if (!signedByPath.size) return boardRows;");
 
     // This hook also backs surfaces that render no imagery, so rows publish
     // first and thumbnails merge in afterwards.
@@ -88,14 +91,45 @@ describe("vehicle photo on work order cards", () => {
     // image long after the rows arrived.
     for (const surface of [hook, listPage]) {
       expect(surface).toContain("const VEHICLE_PHOTO_URL_TTL_SECONDS = 3600;");
-      expect(surface).toContain(
-        "createSignedUrls(paths, VEHICLE_PHOTO_URL_TTL_SECONDS)",
-      );
+      expect(surface).toContain("await signVehiclePhotoPaths(");
+      expect(surface).toContain("supabase,");
+      expect(surface).toContain("paths,");
+      expect(surface).toContain("VEHICLE_PHOTO_URL_TTL_SECONDS,");
     }
 
     // Creation inserts the work order before uploading its media, so the board
     // has to watch the media table too or it stays thumbnail-less.
     expect(hook).toContain('table: "vehicle_media"');
+  });
+
+  it("signs against the primary bucket first, falling back to the legacy bucket only for paths it misses", () => {
+    // The create page has always written to the hyphenated bucket, but the
+    // customer detail page's uploader falls back to an underscore-named
+    // legacy bucket whenever the primary bucket rejects an upload -- which,
+    // before the bucket migration, was every upload in a fresh environment.
+    // vehicle_media never records which bucket a path landed in, so both
+    // board surfaces have to probe rather than assume the primary one.
+    const helper = read("features/shared/lib/storage/vehiclePhotoBuckets.ts");
+
+    expect(helper).toContain('export const VEHICLE_PHOTO_BUCKET_PRIMARY = "vehicle-photos";');
+    expect(helper).toContain('export const VEHICLE_PHOTO_BUCKET_LEGACY = "vehicle_photos";');
+    expect(helper).toContain(".from(VEHICLE_PHOTO_BUCKET_PRIMARY)");
+    expect(helper).toContain(".from(VEHICLE_PHOTO_BUCKET_LEGACY)");
+    // The legacy bucket is only probed for whichever paths the primary
+    // bucket didn't resolve -- never a second request for every path.
+    expect(helper).toContain("if (!unresolved.length) return signed;");
+
+    for (const surface of [
+      read("features/shared/hooks/useWorkOrderBoard.ts"),
+      read("features/work-orders/app/work-orders/view/page.tsx"),
+    ]) {
+      expect(surface).toContain(
+        'import { signVehiclePhotoPaths } from "@/features/shared/lib/storage/vehiclePhotoBuckets";',
+      );
+      // Neither call site should hardcode the bucket name directly anymore --
+      // that would silently drop the legacy fallback again.
+      expect(surface).not.toContain('.storage.from("vehicle-photos")');
+    }
   });
 
   it("renders the photo on the Work Orders list, which is its own component", () => {
@@ -107,7 +141,7 @@ describe("vehicle photo on work order cards", () => {
     expect(listPage).toContain('.from("vehicle_media")');
     expect(listPage).toContain('.eq("type", "photo")');
     expect(listPage).toContain('.order("created_at", { ascending: false })');
-    expect(listPage).toContain('.from("vehicle-photos")');
+    expect(listPage).toContain("await signVehiclePhotoPaths(");
     expect(listPage).toContain("vehiclePhotoByVehicle");
     // Newest wins, and the list still shows its label when nothing resolves.
     expect(listPage).toContain("newestPathByVehicle.has(vehicleId)");

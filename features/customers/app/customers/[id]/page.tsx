@@ -13,6 +13,10 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
+import {
+  VEHICLE_PHOTO_BUCKET_PRIMARY,
+  VEHICLE_PHOTO_BUCKET_LEGACY,
+} from "@/features/shared/lib/storage/vehiclePhotoBuckets";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 import { CustomerCsvImportCard } from "@/features/customers/components/CustomerCsvImportCard";
 import { CustomerAccountDetails } from "@/features/customers/components/CustomerAccountDetails";
@@ -432,16 +436,16 @@ function importedHistorySummary(row: ImportedHistory): string | null {
   return strOrNull(row.description) ?? strOrNull(row.notes);
 }
 
-/** Storage buckets (from your screenshot set). We don't store bucket in DB, so we "probe" candidates. */
-const BUCKET_PHOTOS_PRIMARY = "vehicle-photos";
+/** Document buckets. We don't store bucket in DB, so we "probe" candidates. */
 const BUCKET_DOCS_PRIMARY = "vehicle-docs";
-/** Legacy fallbacks */
-const BUCKET_PHOTOS_LEGACY = "vehicle_photos";
 const BUCKET_DOCS_LEGACY = "vehicle_docs";
 
 function bucketCandidates(kind: "photo" | "document"): string[] {
+  // Photo bucket names are shared with the work-order board and view
+  // signing helper (features/shared/lib/storage/vehiclePhotoBuckets.ts) so
+  // there is one place that knows both candidates.
   return kind === "photo"
-    ? [BUCKET_PHOTOS_PRIMARY, BUCKET_PHOTOS_LEGACY]
+    ? [VEHICLE_PHOTO_BUCKET_PRIMARY, VEHICLE_PHOTO_BUCKET_LEGACY]
     : [BUCKET_DOCS_PRIMARY, BUCKET_DOCS_LEGACY];
 }
 

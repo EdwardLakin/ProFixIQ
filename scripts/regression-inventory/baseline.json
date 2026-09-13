@@ -393,26 +393,6 @@
       "expiresOn": "2026-10-07"
     },
     {
-      "fingerprint": "f4dc98751f2fc2a0a2b8",
-      "rule": "missing-column",
-      "severity": "error",
-      "domain": "core",
-      "file": "features/admin/components/AdminQuickPanel.tsx",
-      "subject": "vehicle_photos.reviewed",
-      "message": "select references missing column vehicle_photos.reviewed",
-      "expiresOn": "2026-10-07"
-    },
-    {
-      "fingerprint": "fc62ae3dc7fdad06ffa5",
-      "rule": "missing-column",
-      "severity": "error",
-      "domain": "core",
-      "file": "features/admin/components/AdminQuickPanel.tsx",
-      "subject": "vehicle_photos.reviewed",
-      "message": "or references missing column vehicle_photos.reviewed",
-      "expiresOn": "2026-10-07"
-    },
-    {
       "fingerprint": "3d604899e2d91140c18b",
       "rule": "missing-column",
       "severity": "error",
@@ -1270,6 +1250,16 @@
       "file": "features/shared/lib/utils/uploadSignature.ts",
       "subject": "signatures",
       "message": "Storage bucket signatures is not provisioned by the migration chain",
+      "expiresOn": "2026-10-07"
+    },
+    {
+      "fingerprint": "d6337ed56c8a77f0f339",
+      "rule": "missing-storage-bucket",
+      "severity": "error",
+      "domain": "core",
+      "file": "features/shared/lib/storage/vehiclePhotoBuckets.ts",
+      "subject": "vehicle_photos",
+      "message": "Storage bucket vehicle_photos is not provisioned by the migration chain",
       "expiresOn": "2026-10-07"
     },
     {
