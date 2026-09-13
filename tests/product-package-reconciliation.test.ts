@@ -9,13 +9,24 @@ const SHOP_ID = "10000000-0000-4000-8000-000000000001";
 
 const priceContract: ProductPackagePriceContract = {
   packagePriceIds: {
-    shop_operations: "price_shop",
-    field_service: "price_field",
-    fleet_maintenance: "price_fleet",
-    complete_operations: "price_complete",
+    shop_operations: "price_usd_shop",
+    field_service: "price_usd_field",
+    fleet_maintenance: "price_usd_fleet",
+    complete_operations: "price_usd_complete",
   },
-  additionalServiceTruckPriceId: "price_truck",
-  additionalFleetAssetPriceId: "price_asset",
+  additionalUserPriceId: "price_usd_user",
+  additionalServiceTruckPriceId: "price_usd_truck",
+  additionalFleetAssetPriceId: "price_usd_asset",
+  legacyCad: {
+    packagePriceIds: {
+      shop_operations: "price_cad_shop",
+      field_service: "price_cad_field",
+      fleet_maintenance: "price_cad_fleet",
+      complete_operations: "price_cad_complete",
+    },
+    additionalServiceTruckPriceId: "price_cad_truck",
+    additionalFleetAssetPriceId: "price_cad_asset",
+  },
 };
 
 function item(input: {
@@ -49,6 +60,7 @@ function subscription(
 
 function supabaseFixture(input: {
   packageKey: ProductPackageKey;
+  activeUsers: number;
   activeServiceTrucks: number;
   fleetAssetCounts: number[];
 }) {
@@ -64,6 +76,9 @@ function supabaseFixture(input: {
       if (updatePayload !== undefined) {
         updates.push(updatePayload);
         return { data: null, error: null };
+      }
+      if (table === "profiles") {
+        return { count: input.activeUsers, data: null, error: null };
       }
       if (table === "service_vehicles") {
         return { count: input.activeServiceTrucks, data: null, error: null };
@@ -106,17 +121,18 @@ function supabaseFixture(input: {
 }
 
 describe("product package subscription reconciliation", () => {
-  it("bills Fleet Maintenance only for active assets above ten", async () => {
+  it("bills Fleet Maintenance only for active assets above ten on the USD catalog", async () => {
     const supabase = supabaseFixture({
       packageKey: "fleet_maintenance",
+      activeUsers: 4,
       activeServiceTrucks: 0,
       fleetAssetCounts: [8, 5],
     });
     const current = subscription("fleet_maintenance", [
       item({
         id: "si_base",
-        priceId: "price_fleet",
-        lookupKey: "profixiq_fleet_maintenance_monthly_v1",
+        priceId: "price_usd_fleet",
+        lookupKey: "profixiq_fleet_maintenance_monthly_usd_v2",
       }),
     ]);
     const update = vi.fn().mockResolvedValue(current);
@@ -135,6 +151,8 @@ describe("product package subscription reconciliation", () => {
 
     expect(result).toMatchObject({
       state: "updated",
+      active_users: 4,
+      additional_user_quantity: 0,
       active_fleet_assets: 13,
       additional_fleet_asset_quantity: 3,
       additional_service_truck_quantity: 0,
@@ -144,7 +162,7 @@ describe("product package subscription reconciliation", () => {
     expect(update).toHaveBeenCalledWith(
       current.id,
       expect.objectContaining({
-        items: [{ price: "price_asset", quantity: 3 }],
+        items: [{ price: "price_usd_asset", quantity: 3 }],
         proration_behavior: "always_invoice",
       }),
       expect.objectContaining({
@@ -153,17 +171,18 @@ describe("product package subscription reconciliation", () => {
     );
   });
 
-  it("charges Complete for truck capacity but never for shop-managed fleet assets", async () => {
+  it("bills Complete for staff above ten and truck capacity, never shop-managed fleet assets", async () => {
     const supabase = supabaseFixture({
       packageKey: "complete_operations",
+      activeUsers: 13,
       activeServiceTrucks: 3,
       fleetAssetCounts: [12],
     });
     const current = subscription("complete_operations", [
       item({
         id: "si_base",
-        priceId: "price_complete",
-        lookupKey: "profixiq_complete_operations_monthly_v1",
+        priceId: "price_usd_complete",
+        lookupKey: "profixiq_complete_operations_monthly_usd_v2",
       }),
     ]);
     const update = vi.fn().mockResolvedValue(current);
@@ -182,18 +201,27 @@ describe("product package subscription reconciliation", () => {
 
     expect(result).toMatchObject({
       state: "updated",
+      active_users: 13,
+      included_users: 10,
+      additional_user_quantity: 3,
       active_service_trucks: 3,
       active_fleet_assets: 12,
       additional_service_truck_quantity: 1,
       additional_fleet_asset_quantity: 0,
       oversized_complete_fleets: 1,
-      estimated_monthly_price: 498,
+      estimated_monthly_price: 698,
     });
     expect(update).toHaveBeenCalledWith(
       current.id,
       expect.objectContaining({
-        items: [{ price: "price_truck", quantity: 1 }],
+        items: [
+          { price: "price_usd_user", quantity: 3 },
+          { price: "price_usd_truck", quantity: 1 },
+        ],
         metadata: expect.objectContaining({
+          billing_currency: "usd",
+          billable_user_count: "13",
+          additional_user_quantity: "3",
           oversized_complete_fleet_count: "1",
           additional_fleet_asset_quantity: "0",
         }),
@@ -202,9 +230,62 @@ describe("product package subscription reconciliation", () => {
     );
   });
 
-  it("repairs duplicate or drifted primary package items without issuing a credit", async () => {
+  it("preserves an existing CAD package instead of silently converting currency", async () => {
     const supabase = supabaseFixture({
       packageKey: "field_service",
+      activeUsers: 3,
+      activeServiceTrucks: 2,
+      fleetAssetCounts: [],
+    });
+    const current = subscription("field_service", [
+      item({
+        id: "si_base",
+        priceId: "price_cad_field",
+        lookupKey: "profixiq_field_service_monthly_v1",
+      }),
+    ]);
+    const updated = subscription("field_service", [
+      current.items.data[0]!,
+      item({
+        id: "si_truck",
+        priceId: "price_cad_truck",
+        lookupKey: "profixiq_additional_service_truck_monthly_v1",
+      }),
+    ]);
+    const update = vi.fn().mockResolvedValue(updated);
+
+    const result = await reconcileProductPackageSubscription({
+      stripe: {
+        subscriptions: {
+          retrieve: vi.fn().mockResolvedValue(current),
+          update,
+        },
+      } as never,
+      supabase: supabase.client,
+      shopId: SHOP_ID,
+      priceContract,
+    });
+
+    expect(result).toMatchObject({
+      state: "updated",
+      additional_user_quantity: 0,
+      additional_service_truck_quantity: 1,
+      reason: "legacy_cad_subscription_capacity_reconciled_without_currency_conversion",
+    });
+    expect(update).toHaveBeenCalledWith(
+      current.id,
+      expect.objectContaining({
+        items: [{ price: "price_cad_truck", quantity: 1 }],
+        metadata: expect.objectContaining({ billing_currency: "cad" }),
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("repairs duplicate current-catalog primary package items without issuing a credit", async () => {
+    const supabase = supabaseFixture({
+      packageKey: "field_service",
+      activeUsers: 2,
       activeServiceTrucks: 1,
       fleetAssetCounts: [],
     });
@@ -212,12 +293,12 @@ describe("product package subscription reconciliation", () => {
       item({
         id: "si_primary",
         priceId: "price_old_field",
-        lookupKey: "profixiq_field_service_monthly_v1",
+        lookupKey: "profixiq_field_service_monthly_usd_v2",
       }),
       item({
         id: "si_duplicate",
-        priceId: "price_field",
-        lookupKey: "profixiq_field_service_monthly_v1",
+        priceId: "price_usd_field",
+        lookupKey: "profixiq_field_service_monthly_usd_v2",
       }),
     ]);
     const update = vi.fn().mockResolvedValue(current);
@@ -239,7 +320,7 @@ describe("product package subscription reconciliation", () => {
       current.id,
       expect.objectContaining({
         items: [
-          { id: "si_primary", price: "price_field", quantity: 1 },
+          { id: "si_primary", price: "price_usd_field", quantity: 1 },
           { id: "si_duplicate", deleted: true },
         ],
         proration_behavior: "none",
