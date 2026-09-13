@@ -119,7 +119,7 @@ export default function AdminQuickPanel() {
   const [punchAnomalies, setPunchAnomalies] = useState<WorkOrderLine[] | null>(null);
 
   const [pendingQuotes, setPendingQuotes] = useState<WorkOrder[] | null>(null);
-  const [openPartsRequests] = useState<PartsRequest[] | null>(null);
+  const [openPartsRequests, setOpenPartsRequests] = useState<PartsRequest[] | null>(null);
   const [emailFailures, setEmailFailures] = useState<EmailLog[] | null>(null);
 
   const [shopUtil, setShopUtil] = useState<Shop | null>(null);
@@ -149,6 +149,7 @@ export default function AdminQuickPanel() {
         unassignedRes,
         punchedRes,
         woRes,
+        partsRes,
         emailsRes,
         shopRes,
         vehiclesRes,
@@ -206,6 +207,14 @@ export default function AdminQuickPanel() {
           .order("created_at", { ascending: false })
           .limit(15),
 
+        // This result had no destructured name until now, which shifted
+        // every later variable in the tuple onto the wrong promise:
+        // emailsRes, shopRes, vehiclesRes and photosRes each held the
+        // result meant for the position before it, and this query's own
+        // result -- meant for the "Open Parts Requests" card -- was
+        // silently discarded off the end. Array destructuring with fewer
+        // names than elements drops the excess without erroring, so
+        // nothing surfaced this until a diff added one more query.
         supabase
           .from("parts_requests")
           .select("id,status,created_at,needed_by,work_order_id")
@@ -262,6 +271,7 @@ export default function AdminQuickPanel() {
       setEmailFailures(get<EmailLog>(emailsRes));
       setVehiclesMissingVin(get<Vehicle>(vehiclesRes));
       setRecentVehiclePhotos(get<VehiclePhoto>(photosRes));
+      setOpenPartsRequests(get<PartsRequest>(partsRes));
 
       // Holds > 24h
       const holds = get<WorkOrderLine>(holdsRes);

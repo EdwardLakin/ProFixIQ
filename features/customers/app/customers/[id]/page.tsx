@@ -1233,6 +1233,16 @@ export default function CustomerProfilePage(): JSX.Element {
   const handleUpload = useCallback(
     async (file: File, kind: "photo" | "document"): Promise<void> => {
       if (!selectedVehicleId) return;
+      // vehicle_media has exactly one INSERT policy, and it requires
+      // shop_id = current_shop_id() -- there is no policy that admits a
+      // null shop_id, staff role or not. Every upload through this
+      // handler failed that check silently (the object still landed in
+      // Storage; only the metadata row's insert was rejected) until this
+      // guard and the shop_id below.
+      if (!customer?.shop_id) {
+        setViewError("Missing shop for this customer; cannot record the upload.");
+        return;
+      }
 
       const isPhoto = kind === "photo";
       if (isPhoto) setUploadingPhoto(true);
@@ -1274,6 +1284,7 @@ export default function CustomerProfilePage(): JSX.Element {
 
         const insertRow = {
           vehicle_id: selectedVehicleId,
+          shop_id: customer.shop_id,
           url: publicUrl,
           type: kind,
           filename: file.name,
@@ -1294,7 +1305,7 @@ export default function CustomerProfilePage(): JSX.Element {
         else setUploadingDoc(false);
       }
     },
-    [fetchRawMedia, selectedVehicleId, supabase],
+    [customer, fetchRawMedia, selectedVehicleId, supabase],
   );
 
   // ------------------ Edit Customer ------------------
