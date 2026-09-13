@@ -69,7 +69,6 @@ function turn(documentationEnabled = true) {
   >[0]["turn"];
 }
 
-/** A live session with no prior work recorded for this turn. */
 function freshEnvelope() {
   return {
     session: { status: "active" },
@@ -78,7 +77,6 @@ function freshEnvelope() {
   };
 }
 
-/** A session already closed, which is one of the canonical replay exits. */
 function closedEnvelope() {
   return {
     session: { status: "closed" },
@@ -115,8 +113,6 @@ describe("governed technician CoPilot turn", () => {
 
     await run();
 
-    // The point of the ordering: a retry of the same turnId must not burn a
-    // rate/budget slot when the canonical service will exit before OpenAI.
     expect(mocks.claimDurableAIRouteQuota).not.toHaveBeenCalled();
     expect(mocks.completeDurableAIRouteQuota).not.toHaveBeenCalled();
     expect(mocks.runTechnicianCopilotTurn).toHaveBeenCalledTimes(1);
@@ -154,7 +150,6 @@ describe("governed technician CoPilot turn", () => {
     await expect(run()).rejects.toThrow("provider");
 
     expect(mocks.completeDurableAIRouteQuota).toHaveBeenCalledTimes(1);
-    // Settling at $0 would let repeated malformed responses bypass the ceiling.
     expect(mocks.completeDurableAIRouteQuota.mock.calls[0][0]).toMatchObject({
       receiptId: "receipt-1",
       succeeded: false,
@@ -170,23 +165,29 @@ describe("governed technician CoPilot turn", () => {
       retryAfterSeconds: 900,
     });
 
-    await expect(run()).rejects.toBeInstanceOf(TechnicianCopilotQuotaError);
+    const error = await run().catch((thrown: unknown) => thrown);
+    expect(error).toBeInstanceOf(TechnicianCopilotQuotaError);
+    expect((error as TechnicianCopilotQuotaError).status).toBe(402);
+    expect((error as Error).message).toContain("AI fair-use limit");
     expect(mocks.runTechnicianCopilotTurn).not.toHaveBeenCalled();
   });
 
-  it("fails open and still serves the turn when the quota RPC is unavailable", async () => {
+  it("fails closed and preserves retryability when spend governance is unavailable", async () => {
     mocks.sendCopilotServerCommand.mockResolvedValue(freshEnvelope());
     mocks.claimDurableAIRouteQuota.mockRejectedValue(new Error("rpc down"));
 
-    await expect(run()).resolves.toEqual({ ok: true, modelCalls: 2 });
+    const error = await run().catch((thrown: unknown) => thrown);
 
-    // Accounting must never take the CoPilot down, and with no receipt there
-    // is nothing to settle.
-    expect(mocks.runTechnicianCopilotTurn).toHaveBeenCalledTimes(1);
+    expect(error).toBeInstanceOf(TechnicianCopilotQuotaError);
+    expect((error as TechnicianCopilotQuotaError).code).toBe(
+      "governance_unavailable",
+    );
+    expect((error as TechnicianCopilotQuotaError).status).toBe(429);
+    expect(mocks.runTechnicianCopilotTurn).not.toHaveBeenCalled();
     expect(mocks.completeDurableAIRouteQuota).not.toHaveBeenCalled();
   });
 
-  it("fails open when the replay preflight itself is unavailable", async () => {
+  it("continues to the durable claim when replay preflight itself is unavailable", async () => {
     mocks.sendCopilotServerCommand.mockRejectedValue(new Error("transport"));
 
     await run();
@@ -196,11 +197,6 @@ describe("governed technician CoPilot turn", () => {
   });
 
   it("settles a reserved turn at zero when it reached no provider", async () => {
-    // The preflight and the claim are not atomic, so two requests sharing a
-    // turnId can both reserve. The loser reaches the canonical service, finds
-    // the winner's persisted turn and returns without calling OpenAI. Billing
-    // the proxy there would let a retrying client inflate the shop's monthly
-    // budget with no spend behind it.
     mocks.sendCopilotServerCommand.mockResolvedValue(freshEnvelope());
     mocks.runTechnicianCopilotTurn.mockResolvedValue({
       ok: true,
@@ -221,9 +217,6 @@ describe("governed technician CoPilot turn", () => {
   });
 
   it("refuses the turn when the quota RPC rejects the claim deterministically", async () => {
-    // The app deploying ahead of its migration rejects every claim as invalid
-    // input. Failing open there disables the ceiling for the whole rollout
-    // window, silently, which is precisely when it is load-bearing.
     mocks.sendCopilotServerCommand.mockResolvedValue(freshEnvelope());
     mocks.claimDurableAIRouteQuota.mockRejectedValue(
       new FakeQuotaUnavailable("22023", true),
@@ -235,28 +228,28 @@ describe("governed technician CoPilot turn", () => {
     expect((error as TechnicianCopilotQuotaError).code).toBe(
       "governance_unavailable",
     );
-    // Retryable, so the client keeps the technician's pending intent rather
-    // than discarding it as it does for terminal failures.
     expect((error as TechnicianCopilotQuotaError).status).toBe(429);
     expect(mocks.runTechnicianCopilotTurn).not.toHaveBeenCalled();
   });
 
-  it("still fails open when the quota RPC fault is transient", async () => {
+  it("also fails closed when the quota RPC fault is transient", async () => {
     mocks.sendCopilotServerCommand.mockResolvedValue(freshEnvelope());
     mocks.claimDurableAIRouteQuota.mockRejectedValue(
       new FakeQuotaUnavailable("57014", false),
     );
 
-    // Accounting must not take the CoPilot down for a timeout or a dropped
-    // connection; only a systematic rejection is worth refusing service over.
-    await expect(run()).resolves.toEqual({ ok: true, modelCalls: 2 });
+    const error = await run().catch((thrown: unknown) => thrown);
+
+    expect(error).toBeInstanceOf(TechnicianCopilotQuotaError);
+    expect((error as TechnicianCopilotQuotaError).code).toBe(
+      "governance_unavailable",
+    );
+    expect((error as TechnicianCopilotQuotaError).status).toBe(429);
+    expect(mocks.runTechnicianCopilotTurn).not.toHaveBeenCalled();
     expect(mocks.completeDurableAIRouteQuota).not.toHaveBeenCalled();
   });
 
   it("still bills a replayed turn that re-ran the documentation extractor", async () => {
-    // `replayed` alone does not mean free: the documentation call is gated
-    // only on the capability, so a turn can skip the decision model and still
-    // spend. Settling those at zero would under-bill real provider calls.
     mocks.sendCopilotServerCommand.mockResolvedValue(freshEnvelope());
     mocks.runTechnicianCopilotTurn.mockResolvedValue({
       ok: true,
