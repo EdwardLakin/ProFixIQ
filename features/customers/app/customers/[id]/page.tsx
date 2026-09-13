@@ -13,6 +13,10 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 import { format } from "date-fns";
 import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicateCheck";
+import {
+  VEHICLE_PHOTO_BUCKET_PRIMARY,
+  VEHICLE_PHOTO_BUCKET_LEGACY,
+} from "@/features/shared/lib/storage/vehiclePhotoBuckets";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 import { CustomerCsvImportCard } from "@/features/customers/components/CustomerCsvImportCard";
 import { CustomerAccountDetails } from "@/features/customers/components/CustomerAccountDetails";
@@ -432,16 +436,16 @@ function importedHistorySummary(row: ImportedHistory): string | null {
   return strOrNull(row.description) ?? strOrNull(row.notes);
 }
 
-/** Storage buckets (from your screenshot set). We don't store bucket in DB, so we "probe" candidates. */
-const BUCKET_PHOTOS_PRIMARY = "vehicle-photos";
+/** Document buckets. We don't store bucket in DB, so we "probe" candidates. */
 const BUCKET_DOCS_PRIMARY = "vehicle-docs";
-/** Legacy fallbacks */
-const BUCKET_PHOTOS_LEGACY = "vehicle_photos";
 const BUCKET_DOCS_LEGACY = "vehicle_docs";
 
 function bucketCandidates(kind: "photo" | "document"): string[] {
+  // Photo bucket names are shared with the work-order board and view
+  // signing helper (features/shared/lib/storage/vehiclePhotoBuckets.ts) so
+  // there is one place that knows both candidates.
   return kind === "photo"
-    ? [BUCKET_PHOTOS_PRIMARY, BUCKET_PHOTOS_LEGACY]
+    ? [VEHICLE_PHOTO_BUCKET_PRIMARY, VEHICLE_PHOTO_BUCKET_LEGACY]
     : [BUCKET_DOCS_PRIMARY, BUCKET_DOCS_LEGACY];
 }
 
@@ -1229,6 +1233,16 @@ export default function CustomerProfilePage(): JSX.Element {
   const handleUpload = useCallback(
     async (file: File, kind: "photo" | "document"): Promise<void> => {
       if (!selectedVehicleId) return;
+      // vehicle_media has exactly one INSERT policy, and it requires
+      // shop_id = current_shop_id() -- there is no policy that admits a
+      // null shop_id, staff role or not. Every upload through this
+      // handler failed that check silently (the object still landed in
+      // Storage; only the metadata row's insert was rejected) until this
+      // guard and the shop_id below.
+      if (!customer?.shop_id) {
+        setViewError("Missing shop for this customer; cannot record the upload.");
+        return;
+      }
 
       const isPhoto = kind === "photo";
       if (isPhoto) setUploadingPhoto(true);
@@ -1270,6 +1284,7 @@ export default function CustomerProfilePage(): JSX.Element {
 
         const insertRow = {
           vehicle_id: selectedVehicleId,
+          shop_id: customer.shop_id,
           url: publicUrl,
           type: kind,
           filename: file.name,
@@ -1290,7 +1305,7 @@ export default function CustomerProfilePage(): JSX.Element {
         else setUploadingDoc(false);
       }
     },
-    [fetchRawMedia, selectedVehicleId, supabase],
+    [customer, fetchRawMedia, selectedVehicleId, supabase],
   );
 
   // ------------------ Edit Customer ------------------

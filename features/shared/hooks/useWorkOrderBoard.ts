@@ -10,6 +10,7 @@ import {
   type OpenPartsRequest,
 } from "@/features/parts/lib/open-parts-obligations";
 import { normalizeWorkOrderOperationalStage } from "@/features/work-orders/lib/operational-stage";
+import { signVehiclePhotoPaths } from "@/features/shared/lib/storage/vehiclePhotoBuckets";
 
 type ViewName =
   | "v_work_order_board_cards_shop"
@@ -53,29 +54,24 @@ export function useWorkOrderBoard(
    * directly. Mint one batch of short-lived signed URLs for the rows actually on
    * screen; they are display-only and never persisted. A failure here leaves the
    * rows untouched, so a card falls back to its text vehicle label.
+   *
+   * Not every path was written by the primary bucket: the customer detail
+   * page's uploader falls back to the legacy `vehicle_photos` bucket, and
+   * `vehicle_media` never records which one a path landed in. See
+   * signVehiclePhotoPaths for the probe.
    */
   const signVehiclePhotos = useCallback(
     async (boardRows: WorkOrderBoardRow[]): Promise<WorkOrderBoardRow[]> => {
-      const paths = Array.from(
-        new Set(
-          boardRows
-            .map((row) => row.vehicle_photo_path)
-            .filter((path): path is string => Boolean(path?.trim())),
-        ),
-      );
+      const paths = boardRows
+        .map((row) => row.vehicle_photo_path)
+        .filter((path): path is string => Boolean(path?.trim()));
       if (!paths.length) return boardRows;
 
-      const { data, error: signError } = await supabase.storage
-        .from("vehicle-photos")
-        .createSignedUrls(paths, VEHICLE_PHOTO_URL_TTL_SECONDS);
-      if (signError || !data) return boardRows;
-
-      const signedByPath = new Map<string, string>();
-      for (const entry of data) {
-        if (entry.path && entry.signedUrl) {
-          signedByPath.set(entry.path, entry.signedUrl);
-        }
-      }
+      const signedByPath = await signVehiclePhotoPaths(
+        supabase,
+        paths,
+        VEHICLE_PHOTO_URL_TTL_SECONDS,
+      );
       if (!signedByPath.size) return boardRows;
 
       return boardRows.map((row) => {

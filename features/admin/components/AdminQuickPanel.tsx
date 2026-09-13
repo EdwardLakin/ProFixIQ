@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import { format } from "date-fns";
 
 // ---- Lite shapes (kept independent from exact DB types) ----
 type ActivityLog = {
@@ -94,7 +95,6 @@ type VehiclePhoto = {
   vehicle_id?: string | null;
   created_at?: string | null;
   uploaded_by?: string | null;
-  reviewed?: boolean | null;
 };
 
 // ---- helpers ----
@@ -119,14 +119,14 @@ export default function AdminQuickPanel() {
   const [punchAnomalies, setPunchAnomalies] = useState<WorkOrderLine[] | null>(null);
 
   const [pendingQuotes, setPendingQuotes] = useState<WorkOrder[] | null>(null);
-  const [openPartsRequests] = useState<PartsRequest[] | null>(null);
+  const [openPartsRequests, setOpenPartsRequests] = useState<PartsRequest[] | null>(null);
   const [emailFailures, setEmailFailures] = useState<EmailLog[] | null>(null);
 
   const [shopUtil, setShopUtil] = useState<Shop | null>(null);
   const [shopMissingFields, setShopMissingFields] = useState<string[] | null>(null);
 
   const [vehiclesMissingVin, setVehiclesMissingVin] = useState<Vehicle[] | null>(null);
-  const [unreviewedPhotos, setUnreviewedPhotos] = useState<VehiclePhoto[] | null>(null);
+  const [recentVehiclePhotos, setRecentVehiclePhotos] = useState<VehiclePhoto[] | null>(null);
 
   const [loading, setLoading] = useState(true);
 
@@ -149,6 +149,7 @@ export default function AdminQuickPanel() {
         unassignedRes,
         punchedRes,
         woRes,
+        partsRes,
         emailsRes,
         shopRes,
         vehiclesRes,
@@ -206,6 +207,14 @@ export default function AdminQuickPanel() {
           .order("created_at", { ascending: false })
           .limit(15),
 
+        // This result had no destructured name until now, which shifted
+        // every later variable in the tuple onto the wrong promise:
+        // emailsRes, shopRes, vehiclesRes and photosRes each held the
+        // result meant for the position before it, and this query's own
+        // result -- meant for the "Open Parts Requests" card -- was
+        // silently discarded off the end. Array destructuring with fewer
+        // names than elements drops the excess without erroring, so
+        // nothing surfaced this until a diff added one more query.
         supabase
           .from("parts_requests")
           .select("id,status,created_at,needed_by,work_order_id")
@@ -235,10 +244,16 @@ export default function AdminQuickPanel() {
           .order("created_at", { ascending: false })
           .limit(5),
 
+        // vehicle_photos has no writer anywhere in the app (its uploader
+        // component is dead code and never inserted shop_id, which every
+        // RLS policy on that table requires) and never had a `reviewed`
+        // column, so this always queried an empty table for a column that
+        // doesn't exist. vehicle_media is the table every upload path
+        // actually writes to.
         supabase
-          .from("vehicle_photos")
-          .select("id,vehicle_id,created_at,uploaded_by,reviewed")
-          .or("reviewed.is.null,reviewed.eq.false")
+          .from("vehicle_media")
+          .select("id,vehicle_id,created_at,uploaded_by")
+          .eq("type", "photo")
           .order("created_at", { ascending: false })
           .limit(6),
       ]);
@@ -255,7 +270,8 @@ export default function AdminQuickPanel() {
       setUnassignedJobs(get<WorkOrderLine>(unassignedRes));
       setEmailFailures(get<EmailLog>(emailsRes));
       setVehiclesMissingVin(get<Vehicle>(vehiclesRes));
-      setUnreviewedPhotos(get<VehiclePhoto>(photosRes));
+      setRecentVehiclePhotos(get<VehiclePhoto>(photosRes));
+      setOpenPartsRequests(get<PartsRequest>(partsRes));
 
       // Holds > 24h
       const holds = get<WorkOrderLine>(holdsRes);
@@ -598,19 +614,34 @@ export default function AdminQuickPanel() {
     );
   }
 
-  // Unreviewed vehicle photos
-  if (unreviewedPhotos?.length) {
+  // Recent vehicle photos. There is no review workflow on vehicle_media --
+  // no `reviewed` column exists on it or on any other table -- so this
+  // surfaces the newest uploads rather than a review queue.
+  if (recentVehiclePhotos?.length) {
     cards.push(
       <div key="photos" className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
         <div className="mb-2 flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-[color:var(--theme-text-secondary)]">Unreviewed Vehicle Photos</h3>
-          <Link href="/parts" className="text-xs text-orange-400 underline">
-            Gallery
-          </Link>
+          <h3 className="text-sm font-semibold text-[color:var(--theme-text-secondary)]">Recent Vehicle Photos</h3>
         </div>
-        <div className="text-sm text-[color:var(--theme-text-secondary)]">
-          {unreviewedPhotos.length} photo{unreviewedPhotos.length === 1 ? "" : "s"} need review
-        </div>
+        <ul className="space-y-2 text-sm">
+          {recentVehiclePhotos.map((photo) => (
+            <li key={photo.id} className="flex items-center justify-between gap-2">
+              <span className="text-[color:var(--theme-text-primary)]">
+                {photo.created_at ? format(new Date(photo.created_at), "MMM d, h:mm a") : "Unknown time"}
+              </span>
+              {photo.vehicle_id ? (
+                <Link
+                  href={`/vehicles/${photo.vehicle_id}`}
+                  className="text-xs text-orange-400 underline"
+                >
+                  View vehicle
+                </Link>
+              ) : (
+                <span className="text-xs text-[color:var(--theme-text-secondary)]">No vehicle</span>
+              )}
+            </li>
+          ))}
+        </ul>
       </div>
     );
   }

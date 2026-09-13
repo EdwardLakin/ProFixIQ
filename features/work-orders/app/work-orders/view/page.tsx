@@ -33,6 +33,7 @@ import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticate
 import { canMutateWorkOrders } from "@/features/shared/lib/rbac";
 import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
+import { signVehiclePhotoPaths } from "@/features/shared/lib/storage/vehiclePhotoBuckets";
 
 import { WorkOrderAssignedSummary } from "@/features/work-orders/components/WorkOrderAssignedSummary";
 import {
@@ -341,6 +342,10 @@ export default function WorkOrdersView(): JSX.Element {
    * vehicle_media, but nothing read them back. Two bounded queries per load:
    * the newest photo for each visible vehicle, then a single batch of signed
    * URLs. Any failure leaves the list rendering its text vehicle label.
+   *
+   * Not every path was written by the primary bucket -- the customer detail
+   * page's uploader falls back to a legacy bucket, and vehicle_media never
+   * records which one a path landed in -- so signing probes both.
    */
   const loadVehiclePhotos = useCallback(
     async (visible: Row[]) => {
@@ -383,19 +388,14 @@ export default function WorkOrdersView(): JSX.Element {
       }
 
       const paths = Array.from(newestPathByVehicle.values());
-      const { data: signed, error: signError } = await supabase.storage
-        .from("vehicle-photos")
-        .createSignedUrls(paths, VEHICLE_PHOTO_URL_TTL_SECONDS);
-      if (signError || !signed) {
+      const signedByPath = await signVehiclePhotoPaths(
+        supabase,
+        paths,
+        VEHICLE_PHOTO_URL_TTL_SECONDS,
+      );
+      if (!signedByPath.size) {
         setVehiclePhotoByVehicle({});
         return;
-      }
-
-      const signedByPath = new Map<string, string>();
-      for (const entry of signed) {
-        if (entry.path && entry.signedUrl) {
-          signedByPath.set(entry.path, entry.signedUrl);
-        }
       }
 
       const next: Record<string, string> = {};
