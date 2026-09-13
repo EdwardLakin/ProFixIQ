@@ -1,6 +1,7 @@
 import "server-only";
 
 import { estimateCopilotTurnCostUsd } from "@/features/shared/lib/server/ai-ops-guard";
+import { resolveShopAIFairUseBudgetUsd } from "@/features/shared/lib/server/ai-fair-use";
 import type { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 // Every value here must also be present in the receipts table CHECK and in
@@ -18,7 +19,6 @@ type DurablePolicy = {
   actorMax: number;
   shopMax: number;
   windowSeconds: number;
-  hardBudgetUsd: number;
   reservationCostUsd: number;
 };
 
@@ -47,10 +47,6 @@ function copilotPolicy(): DurablePolicy {
     actorMax,
     shopMax,
     windowSeconds: Math.max(1, Math.ceil(windowMs / 1000)),
-    hardBudgetUsd: Math.max(
-      0.01,
-      envNum("AI_BUDGET_HARD_USD_COPILOT_TEXT", 600),
-    ),
     reservationCostUsd: Math.max(0, estimateCopilotTurnCostUsd()),
   };
 }
@@ -62,7 +58,6 @@ function durablePolicy(feature: DurableAIFeature): DurablePolicy {
       actorMax: 20,
       shopMax: 80,
       windowSeconds: 5 * 60,
-      hardBudgetUsd: 75,
       reservationCostUsd: 0.1,
     };
   }
@@ -70,7 +65,6 @@ function durablePolicy(feature: DurableAIFeature): DurablePolicy {
     actorMax: 60,
     shopMax: 240,
     windowSeconds: 5 * 60,
-    hardBudgetUsd: 50,
     reservationCostUsd: 0.03,
   };
 }
@@ -127,11 +121,22 @@ export async function claimDurableAIRouteQuota(input: {
   actorId: string;
 }): Promise<DurableAIClaim> {
   const policy = durablePolicy(input.feature);
+  // One revenue-linked fair-use ceiling is shared by all durable AI features.
+  // The database sums receipts across features, so a shop cannot bypass the
+  // economic guard simply by shifting usage from CoPilot to DTC or inspection.
+  const hardBudgetUsd = await resolveShopAIFairUseBudgetUsd(
+    input.admin,
+    input.shopId,
+  );
+  if (hardBudgetUsd <= 0) {
+    throw new DurableAIQuotaUnavailableError("invalid_fair_use_budget", true);
+  }
+
   const { data, error } = await input.admin.rpc("consume_ai_route_quota", {
     p_actor_id: input.actorId,
     p_actor_max: policy.actorMax,
     p_feature: input.feature,
-    p_hard_budget_usd: policy.hardBudgetUsd,
+    p_hard_budget_usd: hardBudgetUsd,
     p_reservation_cost_usd: policy.reservationCostUsd,
     p_shop_id: input.shopId,
     p_shop_max: policy.shopMax,
