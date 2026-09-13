@@ -15,7 +15,8 @@ import { runTechnicianCopilotTurn } from "./chat";
 import { sendCopilotServerCommand } from "./transport";
 
 const QUOTA_ERROR_MESSAGES = {
-  hard_budget_exceeded: "This shop has reached its monthly CoPilot budget.",
+  hard_budget_exceeded:
+    "This shop has reached its monthly AI fair-use limit. Core shop workflows remain available.",
   rate_limited: "CoPilot is temporarily rate limited. Retry shortly.",
   governance_unavailable:
     "CoPilot spend controls are unavailable. Retry shortly.",
@@ -91,10 +92,6 @@ function recordDurableDenial(input: {
   reason: TechnicianCopilotQuotaCode;
   retryAfterSeconds: number;
 }) {
-  // Durable quota decisions happen in Postgres, while ai-ops-guard's anomaly
-  // buckets are intentionally per-instance. Emit the same structured alert
-  // envelope here so an actual durable denial is never invisible merely
-  // because the in-memory guard was not the enforcing layer.
   console.warn(
     JSON.stringify({
       type: "ai_anomaly_alert",
@@ -215,39 +212,30 @@ export async function runGovernedTechnicianCopilotTurn(input: {
   } catch (error) {
     if (error instanceof TechnicianCopilotQuotaError) throw error;
 
-    // A deterministic rejection means the claim will never be accepted as
-    // constructed — typically the app deployed ahead of the migration that
-    // whitelists this feature. Failing open there is not a blip: it silently
-    // disables the spend ceiling for every turn, for the whole rollout window,
-    // which is exactly when it matters. Refuse instead, retryably, so the turn
-    // is not served ungoverned and the technician's intent survives.
-    if (error instanceof DurableAIQuotaUnavailableError && error.deterministic) {
-      console.error("technician_copilot_quota_misconfigured", {
-        shopId: turn.identity.shopId,
-        turnId: turn.turnId,
-        code: error.code,
-      });
-      recordDurableDenial({
-        endpoint: input.endpoint,
-        shopId: turn.identity.shopId,
-        actorId: turn.identity.profileId,
-        turnId: turn.turnId,
-        reason: "governance_unavailable",
-        retryAfterSeconds: GOVERNANCE_UNAVAILABLE_RETRY_SECONDS,
-      });
-      throw new TechnicianCopilotQuotaError(
-        "governance_unavailable",
-        GOVERNANCE_UNAVAILABLE_RETRY_SECONDS,
-      );
-    }
-
-    // Anything else is a transient fault — a timeout, a dropped connection, a
-    // momentary outage. Accounting must not take the CoPilot down for those.
+    // Fair-use accounting is a financial safety boundary. If that boundary is
+    // unavailable, do not send an unmetered provider request. The AI surface
+    // fails retryably while the technician's non-AI workflow remains usable.
     console.error("technician_copilot_quota_unavailable", {
       shopId: turn.identity.shopId,
       turnId: turn.turnId,
+      code:
+        error instanceof DurableAIQuotaUnavailableError
+          ? error.code
+          : "fair_use_governance_error",
       error: error instanceof Error ? error.message.slice(0, 200) : "unknown_error",
     });
+    recordDurableDenial({
+      endpoint: input.endpoint,
+      shopId: turn.identity.shopId,
+      actorId: turn.identity.profileId,
+      turnId: turn.turnId,
+      reason: "governance_unavailable",
+      retryAfterSeconds: GOVERNANCE_UNAVAILABLE_RETRY_SECONDS,
+    });
+    throw new TechnicianCopilotQuotaError(
+      "governance_unavailable",
+      GOVERNANCE_UNAVAILABLE_RETRY_SECONDS,
+    );
   }
 
   try {
@@ -260,12 +248,6 @@ export async function runGovernedTechnicianCopilotTurn(input: {
       () => runTechnicianCopilotTurn(turn),
     );
 
-    // A turn that short-circuited on persisted replay state reached no
-    // provider, so it must not consume the reservation's proxy cost: a client
-    // retrying one turnId would otherwise inflate the shop's monthly budget
-    // without any spend behind it. Any turn that did call a provider still
-    // settles the full conservative proxy, so this can only ever bill less
-    // than the work performed, never more.
     const settledCostUsd = result.modelCalls > 0 ? turnCostUsd : 0;
 
     if (receiptId) {
@@ -294,10 +276,6 @@ export async function runGovernedTechnicianCopilotTurn(input: {
     return result;
   } catch (error) {
     if (receiptId) {
-      // Keep the reservation's conservative per-turn proxy in the monthly
-      // budget on failure. OpenAI may already have returned billable tokens
-      // before JSON parsing/validation failed, and settling at $0 would let
-      // repeated malformed responses bypass the hard spend ceiling.
       await completeDurableAIRouteQuota({
         admin,
         feature: "technician_copilot_text",
