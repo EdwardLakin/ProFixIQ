@@ -39,8 +39,10 @@ describe("vehicle photo on the work order detail page", () => {
   it("renders larger than the board and list thumbnails, with a text fallback", () => {
     // The board/list surfaces intentionally stay compact (h-10/h-11) to keep
     // many cards on screen for triage. This page shows exactly one vehicle
-    // with room to spare, so its thumbnail is deliberately larger.
-    expect(source).toContain("h-14 w-14 shrink-0 rounded-lg");
+    // with room to spare, so its thumbnail is deliberately larger -- bumped
+    // again after the first size (h-14) still read as small against the
+    // header's whitespace.
+    expect(source).toContain("h-24 w-24 shrink-0 rounded-xl");
     expect(source).not.toContain("h-10 w-10 shrink-0 rounded-lg");
     expect(source).not.toContain("h-11 w-11 shrink-0 rounded-lg");
     // No photo resolved (or none exists) must never block the header from
