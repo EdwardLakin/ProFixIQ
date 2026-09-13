@@ -67,7 +67,7 @@ import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 import { isCustomerMessagingRole } from "@/features/ai/lib/chat/authorization";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
-import { signVehiclePhotoPaths } from "@/features/shared/lib/storage/vehiclePhotoBuckets";
+import { useVehiclePhotoUrl } from "@/features/shared/hooks/useVehiclePhotoUrl";
 import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
 import {
@@ -253,10 +253,13 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [customer, setCustomer] = useTabState<Customer | null>("wo:id:cust", null);
   const [shopLaborRate, setShopLaborRate] = useState<number | null>(null);
   // Not persisted via useTabState like the record state above: the signed URL
-  // expires in an hour, and a cached copy surviving a tab switch or reload
-  // would eventually serve a broken image with nothing to refresh it. Plain
-  // state re-signs on every mount instead.
-  const [vehiclePhotoUrl, setVehiclePhotoUrl] = useState<string | null>(null);
+  // expires and renews itself, and a copy cached to localStorage across a
+  // tab switch or reload would fight that renewal with a stale value.
+  const vehiclePhotoUrl = useVehiclePhotoUrl(
+    supabase,
+    vehicle?.id,
+    VEHICLE_PHOTO_URL_TTL_SECONDS,
+  );
 
   const [allocsByLine, setAllocsByLine] = useState<Record<string, AllocationRow[]>>({});
   const [stagedPartsByLine, setStagedPartsByLine] = useState<Record<string, WorkOrderPartRow[]>>({});
@@ -382,48 +385,6 @@ export default function WorkOrderIdClient(): JSX.Element {
     [initialWorkspaceResource, loadedWorkspaceResource],
   );
   usePublishWorkspaceResourceContext(workspaceResource);
-
-  // Newest vehicle_media photo for the linked vehicle, signed for display.
-  // Mirrors the lookup used on the work-orders list and board: one bounded
-  // query, then a signed URL through the shared probe (which also covers
-  // the legacy bucket some uploads land in). Any failure just leaves the
-  // header without a photo.
-  useEffect(() => {
-    let cancelled = false;
-    const vehicleId = vehicle?.id ?? null;
-    if (!vehicleId) {
-      setVehiclePhotoUrl(null);
-      return;
-    }
-
-    (async () => {
-      const { data: media, error: mediaError } = await supabase
-        .from("vehicle_media")
-        .select("storage_path,created_at")
-        .eq("vehicle_id", vehicleId)
-        .eq("type", "photo")
-        .order("created_at", { ascending: false })
-        .limit(1);
-      if (cancelled) return;
-      const path = media?.[0]?.storage_path;
-      if (mediaError || !path) {
-        setVehiclePhotoUrl(null);
-        return;
-      }
-
-      const signedByPath = await signVehiclePhotoPaths(
-        supabase,
-        [path],
-        VEHICLE_PHOTO_URL_TTL_SECONDS,
-      );
-      if (cancelled) return;
-      setVehiclePhotoUrl(signedByPath.get(path) ?? null);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [vehicle?.id]);
 
   useEffect(() => {
     if (!wo?.id || !shouldUseReadOnlyWorkOrderView(wo.payment_status)) return;
