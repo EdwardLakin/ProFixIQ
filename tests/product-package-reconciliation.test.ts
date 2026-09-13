@@ -61,7 +61,7 @@ function subscription(
 function supabaseFixture(input: {
   packageKey: ProductPackageKey;
   activeUsers: number;
-  fleetPortalUsers?: number;
+  nonStaffRoles?: string[];
   activeServiceTrucks: number;
   fleetAssetCounts: number[];
 }) {
@@ -70,15 +70,14 @@ function supabaseFixture(input: {
   const fleetVehicles = input.fleetAssetCounts.flatMap((count, index) =>
     Array.from({ length: count }, () => ({ fleet_id: fleetIds[index] })),
   );
-  // Staff rows carry a real workforce role. Fleet-portal invitees live in
-  // the same `profiles` table with role "fleet_manager" and must never be
-  // billed as a staff seat.
+  // Staff rows carry a real workforce role. Fleet-portal invitees and
+  // shop-provisioned dispatcher/driver accounts live in the same `profiles`
+  // table under a non-workforce role and must never be billed as a seat.
   const shopProfiles = [
     ...Array.from({ length: input.activeUsers }, () => ({ role: "owner" })),
-    ...Array.from({ length: input.fleetPortalUsers ?? 0 }, () => ({
-      role: "fleet_manager",
-    })),
+    ...(input.nonStaffRoles ?? []).map((role) => ({ role })),
   ];
+  let generation = 0;
 
   const from = vi.fn((table: string) => {
     let updatePayload: unknown;
@@ -126,8 +125,15 @@ function supabaseFixture(input: {
     };
     return query;
   });
+  const rpc = vi.fn(async (name: string) => {
+    if (name !== "advance_billing_reconciliation_generation") {
+      throw new Error(`Unexpected rpc call: ${name}`);
+    }
+    generation += 1;
+    return { data: generation, error: null };
+  });
 
-  return { client: { from } as never, updates };
+  return { client: { from, rpc } as never, updates };
 }
 
 describe("product package subscription reconciliation", () => {
@@ -244,7 +250,7 @@ describe("product package subscription reconciliation", () => {
     const supabase = supabaseFixture({
       packageKey: "shop_operations",
       activeUsers: 10,
-      fleetPortalUsers: 5,
+      nonStaffRoles: Array.from({ length: 5 }, () => "fleet_manager"),
       activeServiceTrucks: 0,
       fleetAssetCounts: [],
     });
@@ -278,6 +284,166 @@ describe("product package subscription reconciliation", () => {
       estimated_monthly_price: 299,
     });
     expect(update).not.toHaveBeenCalled();
+  });
+
+  it("never bills dispatcher or driver profiles provisioned by create-user as Shop staff seats", async () => {
+    // app/api/admin/create-user/route.ts provisions "dispatcher" and
+    // "driver" as accepted roles for a Shop/Complete tenant; neither is a
+    // workforce staff role and neither may count toward the ten included
+    // seats.
+    const supabase = supabaseFixture({
+      packageKey: "shop_operations",
+      activeUsers: 10,
+      nonStaffRoles: ["dispatcher", "driver"],
+      activeServiceTrucks: 0,
+      fleetAssetCounts: [],
+    });
+    const current = subscription("shop_operations", [
+      item({
+        id: "si_base",
+        priceId: "price_usd_shop",
+        lookupKey: "profixiq_shop_operations_monthly_usd_v2",
+      }),
+    ]);
+    const update = vi.fn().mockResolvedValue(current);
+
+    const result = await reconcileProductPackageSubscription({
+      stripe: {
+        subscriptions: {
+          retrieve: vi.fn().mockResolvedValue(current),
+          update,
+        },
+      } as never,
+      supabase: supabase.client,
+      shopId: SHOP_ID,
+      priceContract,
+    });
+
+    expect(result).toMatchObject({
+      state: "already_synced",
+      active_users: 10,
+      additional_user_quantity: 0,
+    });
+    expect(update).not.toHaveBeenCalled();
+  });
+
+  it("gives a Shop staff count that cycles back within one period a fresh idempotency key", async () => {
+    // 11 -> 10 -> 11 active staff must not reproduce the first call's Stripe
+    // idempotency key, or Stripe replays the first call's cached response
+    // instead of executing the third transition.
+    const noSeatItem = subscription("shop_operations", [
+      item({
+        id: "si_base",
+        priceId: "price_usd_shop",
+        lookupKey: "profixiq_shop_operations_monthly_usd_v2",
+      }),
+    ]);
+    const withSeatItem = subscription("shop_operations", [
+      noSeatItem.items.data[0]!,
+      item({
+        id: "si_user",
+        priceId: "price_usd_user",
+        lookupKey: "profixiq_additional_user_monthly_usd_v2",
+        quantity: 1,
+      }),
+    ]);
+
+    function fixtureFor(activeUsers: number, rpc: ReturnType<typeof vi.fn>) {
+      const shopProfiles = Array.from({ length: activeUsers }, () => ({
+        role: "owner",
+      }));
+      const from = vi.fn((table: string) => {
+        const result = () => {
+          if (table === "profiles") return { data: shopProfiles, error: null };
+          if (table === "service_vehicles")
+            return { count: 0, data: null, error: null };
+          if (table === "fleets") return { data: [], error: null };
+          if (table === "fleet_vehicles") return { data: [], error: null };
+          return { data: null, error: null };
+        };
+        const query = {
+          select: () => query,
+          eq: () => query,
+          in: () => query,
+          update: () => query,
+          maybeSingle: async () => ({
+            data: {
+              id: SHOP_ID,
+              stripe_subscription_id: "sub_shop_operations",
+              stripe_subscription_status: "active",
+              stripe_pricing_model: "product_packages_v1",
+              subscription_package: "shop_operations",
+            },
+            error: null,
+          }),
+          then: (
+            resolve: (value: ReturnType<typeof result>) => unknown,
+            reject: (reason: unknown) => unknown,
+          ) => Promise.resolve(result()).then(resolve, reject),
+        };
+        return query;
+      });
+      return { from, rpc } as never;
+    }
+
+    // A single durable per-shop generation, mirroring
+    // advance_billing_reconciliation_generation: bump only when the target
+    // billing signature actually changes from the last persisted one.
+    let signature: string | null = null;
+    let generation = 0;
+    const rpc = vi.fn(
+      async (_name: string, args: { p_signature: string }) => {
+        if (signature !== args.p_signature) {
+          generation += 1;
+          signature = args.p_signature;
+        }
+        return { data: generation, error: null };
+      },
+    );
+
+    const firstUpdate = vi.fn().mockResolvedValue(withSeatItem);
+    await reconcileProductPackageSubscription({
+      stripe: {
+        subscriptions: {
+          retrieve: vi.fn().mockResolvedValue(noSeatItem),
+          update: firstUpdate,
+        },
+      } as never,
+      supabase: fixtureFor(11, rpc),
+      shopId: SHOP_ID,
+      priceContract,
+    });
+    const firstKey = firstUpdate.mock.calls[0]![2].idempotencyKey as string;
+
+    const secondUpdate = vi.fn().mockResolvedValue(noSeatItem);
+    await reconcileProductPackageSubscription({
+      stripe: {
+        subscriptions: {
+          retrieve: vi.fn().mockResolvedValue(withSeatItem),
+          update: secondUpdate,
+        },
+      } as never,
+      supabase: fixtureFor(10, rpc),
+      shopId: SHOP_ID,
+      priceContract,
+    });
+
+    const thirdUpdate = vi.fn().mockResolvedValue(withSeatItem);
+    const third = await reconcileProductPackageSubscription({
+      stripe: {
+        subscriptions: {
+          retrieve: vi.fn().mockResolvedValue(noSeatItem),
+          update: thirdUpdate,
+        },
+      } as never,
+      supabase: fixtureFor(11, rpc),
+      shopId: SHOP_ID,
+      priceContract,
+    });
+    const thirdKey = thirdUpdate.mock.calls[0]![2].idempotencyKey as string;
+
+    expect(third.state).toBe("updated");
+    expect(thirdKey).not.toBe(firstKey);
   });
 
   it("preserves an existing CAD package instead of silently converting currency", async () => {

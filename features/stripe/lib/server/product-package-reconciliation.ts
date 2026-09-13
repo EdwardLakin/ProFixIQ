@@ -2,11 +2,11 @@ import type Stripe from "stripe";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@shared/types/types/supabase";
+import { isDefaultWorkforceRole } from "@/features/workforce/lib/roster";
 import {
   ADDITIONAL_FLEET_ASSET_LOOKUP_KEY,
   ADDITIONAL_SERVICE_TRUCK_LOOKUP_KEY,
   ADDITIONAL_USER_LOOKUP_KEY,
-  FLEET_PORTAL_PROFILE_ROLES,
   LEGACY_ADDITIONAL_FLEET_ASSET_LOOKUP_KEY,
   LEGACY_ADDITIONAL_SERVICE_TRUCK_LOOKUP_KEY,
   LEGACY_PRODUCT_PACKAGE_LOOKUP_KEYS,
@@ -91,13 +91,36 @@ function totalQuantity(items: Stripe.SubscriptionItem[]): number {
   );
 }
 
-const NON_STAFF_PROFILE_ROLES = new Set(
-  FLEET_PORTAL_PROFILE_ROLES.map(normalize),
-);
-
 function countStaffProfiles(rows: Array<{ role: string | null }>): number {
-  return rows.filter((row) => !NON_STAFF_PROFILE_ROLES.has(normalize(row.role)))
-    .length;
+  return rows.filter((row) => isDefaultWorkforceRole(row.role)).length;
+}
+
+// The target seat/truck/asset quantities for a shop can legitimately revisit
+// a value already reconciled earlier in the same billing period (11 -> 10 ->
+// 11 active staff). Embedding those raw quantities directly in the Stripe
+// idempotency key would then reproduce an earlier call's key, and Stripe
+// would replay that earlier cached response instead of executing the new
+// update, silently leaving the live subscription out of sync. A durable
+// per-shop generation that only advances when the target signature actually
+// changes gives each distinct transition its own key, while still reusing
+// the same key (and therefore safe replay) for retries of one transition
+// that has not finished yet.
+async function advanceBillingReconciliationGeneration(
+  supabase: SupabaseClient<DB>,
+  shopId: string,
+  signature: string,
+): Promise<number> {
+  const { data, error } = await supabase.rpc(
+    "advance_billing_reconciliation_generation",
+    { p_shop_id: shopId, p_signature: signature },
+  );
+  if (error) throw new Error(error.message);
+  if (typeof data !== "number") {
+    throw new Error(
+      `advance_billing_reconciliation_generation returned no generation for shop ${shopId}`,
+    );
+  }
+  return data;
 }
 
 async function countPackageCapacity(
@@ -524,6 +547,13 @@ export async function reconcileProductPackageSubscription(params: {
       additionalFleetAssetQuantity,
     );
 
+    const billingSignature = `${packageKey}:${legacyCad ? "cad" : "usd"}:${additionalUserQuantity}:${additionalTruckQuantity}:${additionalFleetAssetQuantity}`;
+    const billingGeneration = await advanceBillingReconciliationGeneration(
+      supabase,
+      shopId,
+      billingSignature,
+    );
+
     const updated = await stripe.subscriptions.update(
       subscription.id,
       {
@@ -551,7 +581,7 @@ export async function reconcileProductPackageSubscription(params: {
         },
       },
       {
-        idempotencyKey: `profixiq:package-sync:${shopId}:${subscription.current_period_start}:${packageKey}:${legacyCad ? "cad-v1" : "usd-v2"}:${capacity.activeUsers}:${capacity.activeServiceTrucks}:${capacity.activeFleetAssets}`,
+        idempotencyKey: `profixiq:package-sync:${shopId}:${subscription.current_period_start}:${packageKey}:${legacyCad ? "cad-v1" : "usd-v2"}:gen-${billingGeneration}`,
       },
     );
 
