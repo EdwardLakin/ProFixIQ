@@ -27263,6 +27263,7 @@ export type Database = {
           unit_label: string | null
           vehicle_id: string | null
           vehicle_label: string | null
+          vehicle_photo_path: string | null
           work_order_id: string | null
         }
         Relationships: [
@@ -27404,6 +27405,7 @@ export type Database = {
           unit_label: string | null
           vehicle_id: string | null
           vehicle_label: string | null
+          vehicle_photo_path: string | null
           work_order_id: string | null
         }
         Relationships: [

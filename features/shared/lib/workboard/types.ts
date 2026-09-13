@@ -16,6 +16,13 @@ export type WorkOrderBoardRow = {
   display_name: string | null;
   unit_label: string | null;
   vehicle_label: string | null;
+  /** Storage path of the newest photo for this work order's vehicle. */
+  vehicle_photo_path?: string | null;
+  /**
+   * Short-lived signed URL for `vehicle_photo_path`. The bucket is private, so
+   * the board mints these client-side after loading rows; it is never stored.
+   */
+  vehicle_photo_url?: string | null;
 
   jobs_total: number;
   jobs_completed: number;
