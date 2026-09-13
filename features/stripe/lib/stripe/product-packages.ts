@@ -1,4 +1,7 @@
 export const PRODUCT_PACKAGE_BILLING_MODEL = "product_packages_v1" as const;
+export const PRODUCT_PACKAGE_CURRENCY = "usd" as const;
+export const PRODUCT_PACKAGE_INCLUDED_USERS = 10;
+export const PRODUCT_PACKAGE_ADDITIONAL_USER_CENTS = 5_000;
 
 export const PRODUCT_PACKAGE_KEYS = [
   "shop_operations",
@@ -23,7 +26,21 @@ export const PRODUCT_PACKAGE_ACQUISITION_SURFACE: Record<
   complete_operations: "shop",
 };
 
+// The active acquisition catalog is versioned separately from the entitlement
+// model. New checkouts use these USD prices. Existing subscriptions on the
+// original CAD catalog remain recognizable so billing reconciliation never
+// performs a surprise currency conversion.
 export const PRODUCT_PACKAGE_LOOKUP_KEYS: Record<ProductPackageKey, string> = {
+  shop_operations: "profixiq_shop_operations_monthly_usd_v2",
+  field_service: "profixiq_field_service_monthly_usd_v2",
+  fleet_maintenance: "profixiq_fleet_maintenance_monthly_usd_v2",
+  complete_operations: "profixiq_complete_operations_monthly_usd_v2",
+};
+
+export const LEGACY_PRODUCT_PACKAGE_LOOKUP_KEYS: Record<
+  ProductPackageKey,
+  string
+> = {
   shop_operations: "profixiq_shop_operations_monthly_v1",
   field_service: "profixiq_field_service_monthly_v1",
   fleet_maintenance: "profixiq_fleet_maintenance_monthly_v1",
@@ -31,31 +48,43 @@ export const PRODUCT_PACKAGE_LOOKUP_KEYS: Record<ProductPackageKey, string> = {
 };
 
 export const ADDITIONAL_SERVICE_TRUCK_LOOKUP_KEY =
-  "profixiq_additional_service_truck_monthly_v1";
+  "profixiq_additional_service_truck_monthly_usd_v2";
 export const ADDITIONAL_FLEET_ASSET_LOOKUP_KEY =
+  "profixiq_additional_fleet_asset_monthly_usd_v2";
+export const ADDITIONAL_USER_LOOKUP_KEY =
+  "profixiq_additional_user_monthly_usd_v2";
+
+export const LEGACY_ADDITIONAL_SERVICE_TRUCK_LOOKUP_KEY =
+  "profixiq_additional_service_truck_monthly_v1";
+export const LEGACY_ADDITIONAL_FLEET_ASSET_LOOKUP_KEY =
   "profixiq_additional_fleet_asset_monthly_v1";
 
 export const PRODUCT_PACKAGE_PRICING = {
   shop_operations: {
     monthlyCents: 29_900,
+    includedUsers: PRODUCT_PACKAGE_INCLUDED_USERS,
     includedServiceTrucks: 0,
     includedFleetAssets: 0,
   },
   field_service: {
     monthlyCents: 19_900,
+    includedUsers: null,
     includedServiceTrucks: 1,
     includedFleetAssets: 0,
   },
   fleet_maintenance: {
     monthlyCents: 14_900,
+    includedUsers: null,
     includedServiceTrucks: 0,
     includedFleetAssets: 10,
   },
   complete_operations: {
-    monthlyCents: 44_900,
+    monthlyCents: 49_900,
+    includedUsers: PRODUCT_PACKAGE_INCLUDED_USERS,
     includedServiceTrucks: 2,
     includedFleetAssets: 10,
   },
+  additionalUserCents: PRODUCT_PACKAGE_ADDITIONAL_USER_CENTS,
   additionalServiceTruckCents: 4_900,
   additionalFleetAssetCents: 250,
 } as const;
