@@ -20,6 +20,10 @@ import {
 import VinCaptureModal from "app/vehicle/VinCaptureModal";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 import { useCustomerVehicleDraft } from "app/work-orders/state/useCustomerVehicleDraft";
+import RegistrationScanModal, {
+  type RegistrationScanApplyResult,
+} from "@/features/vehicles/components/RegistrationScanModal";
+import { uploadVehicleMediaFile } from "@/features/vehicles/lib/vehicleMediaUpload";
 
 import CreateFlowMaintenanceSelector from "@/features/maintenance/components/CreateFlowMaintenanceSelector";
 // UI
@@ -656,6 +660,12 @@ export default function CreateWorkOrderPage() {
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(
     null,
   );
+  // Registration photo captured via "Scan Registration"; saved to the
+  // vehicle's document record as soon as the vehicle is resolved (on
+  // "Save & add work" / "Create work order"), independent of the generic
+  // attachments picker.
+  const [pendingRegistrationFile, setPendingRegistrationFile] =
+    useState<File | null>(null);
 
   // UI state
   const [loading, setLoading] = useTabState("loading", false);
@@ -1548,6 +1558,26 @@ export default function CreateWorkOrderPage() {
       const persistedCustomer = hydrateCustomerFromRow(cust);
       const persistedVehicle = hydrateVehicleFromRow(veh);
 
+      if (pendingRegistrationFile) {
+        const registrationFile = pendingRegistrationFile;
+        const uploadResult = await uploadVehicleMediaFile({
+          supabase,
+          vehicleId: veh.id,
+          shopId,
+          uploadedBy: user.id,
+          bucket: "vehicle-docs",
+          type: "document",
+          file: registrationFile,
+          filename: `Registration - ${registrationFile.name}`,
+        });
+        if (uploadResult.ok) {
+          setPendingRegistrationFile(null);
+          toast.success("Registration image saved to the vehicle profile.");
+        } else {
+          toast.error(`Registration image not saved: ${uploadResult.error}`);
+        }
+      }
+
       assertWritePersisted(
         "customer",
         hadExplicitCustomerId
@@ -1841,6 +1871,7 @@ export default function CreateWorkOrderPage() {
     setPhotoFiles([]);
     setDocFiles([]);
     setUploadSummary(null);
+    setPendingRegistrationFile(null);
     setError("");
     setInviteNotice("");
     setSendInvite(true);
@@ -1879,31 +1910,18 @@ export default function CreateWorkOrderPage() {
       f: File,
       mediaType: "photo" | "document",
     ) => {
-      // ✅ IMPORTANT: match Customer Profile page storage_path convention: `${vehicleId}/...`
-      const safeName = f.name.replaceAll("/", "_");
-      const key = `${vId}/${Date.now()}_${safeName}`;
-
-      const up = await supabase.storage.from(bucket).upload(key, f, {
-        upsert: false,
-        contentType: f.type || undefined,
-      });
-
-      if (up.error) {
-        failed += 1;
-        return;
-      }
-
-      const { error: rowErr } = await supabase.from("vehicle_media").insert({
-        vehicle_id: vId,
+      const result = await uploadVehicleMediaFile({
+        supabase,
+        vehicleId: vId,
+        shopId: currentShopIdForMedia,
+        uploadedBy: uploader,
+        bucket,
         type: mediaType,
-        storage_path: key,
-        filename: f.name,
-        uploaded_by: uploader,
-        shop_id: currentShopIdForMedia,
+        file: f,
       });
 
-      if (rowErr) failed += 1;
-      else uploaded += 1;
+      if (result.ok) uploaded += 1;
+      else failed += 1;
     };
 
     for (const f of photoFiles) await upOne("vehicle-photos", f, "photo");
@@ -2690,6 +2708,37 @@ export default function CreateWorkOrderPage() {
                     Scan VIN
                   </span>
                 </VinCaptureModal>
+
+                <RegistrationScanModal
+                  currentCustomer={customer}
+                  currentVehicle={vehicle}
+                  customerId={customerId}
+                  vehicleId={vehicleIdProp}
+                  onApply={(result: RegistrationScanApplyResult) => {
+                    if (Object.keys(result.customer).length) {
+                      setCustomer((prev) => ({ ...prev, ...result.customer }));
+                      cvDraft.bulkSet({ customer: result.customer });
+                    }
+                    if (Object.keys(result.vehicle).length) {
+                      const decodedVehicle = result.vehicle as Partial<VehicleWithExtra>;
+                      setVehicle((prev) => ({ ...prev, ...decodedVehicle }));
+                      cvDraft.bulkSet({ vehicle: decodedVehicle });
+                    }
+                    setPendingRegistrationFile(result.file);
+                    toast.success(
+                      "Registration scanned. Review the fields, then Save & add work to store it on the vehicle profile.",
+                    );
+                  }}
+                >
+                  <span
+                    className={cx(
+                      "cursor-pointer px-4 py-2 text-sm font-semibold hover:border-[color:var(--brand-primary)]/55 hover:text-[color:var(--theme-accent-text)]",
+                      softButton,
+                    )}
+                  >
+                    Scan Registration
+                  </span>
+                </RegistrationScanModal>
               </div>
 
               <label className="mt-3 flex items-center gap-2 text-xs text-[color:var(--theme-text-secondary)]">

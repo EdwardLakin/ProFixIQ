@@ -1,5 +1,12 @@
 import { NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
+import {
+  requirePortalCustomerActor,
+} from "@/features/portal/server/requirePortalActor";
+import { PortalAccessError } from "@/features/portal/server/portalAuth";
 import type { Database } from "@shared/types/types/supabase";
 
 import { IntakeV1Schema } from "@/features/work-orders/intake/schema.zod";
@@ -11,6 +18,147 @@ import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActor
 type DB = Database;
 type MenuItemRow = DB["public"]["Tables"]["menu_items"]["Row"];
 type WorkOrderLineInsert = DB["public"]["Tables"]["work_order_lines"]["Insert"];
+
+type IntakeWorkOrderScope = Pick<
+  DB["public"]["Tables"]["work_orders"]["Row"],
+  "id" | "shop_id" | "customer_id" | "vehicle_id"
+>;
+
+/**
+ * Authorizes a request against a specific work order for the given intake
+ * mode. Every method (GET/PUT/POST) must call this before reading or
+ * writing intake data — mode alone (e.g. `?mode=app`) is caller-supplied
+ * and must never be trusted as proof of access.
+ */
+export async function authorizeIntakeAccess(params: {
+  mode: IntakeMode;
+  workOrder: IntakeWorkOrderScope;
+  fallbackSupabase: SupabaseClient<DB>;
+}): Promise<
+  | { ok: true; supabase: SupabaseClient<DB> }
+  | { ok: false; response: NextResponse }
+> {
+  const { mode, workOrder, fallbackSupabase } = params;
+
+  if (mode === "app") {
+    const access = await requireShopScopedApiAccess({
+      allowRoles: ROLE_GROUPS.workOrderManagers,
+    });
+    if (!access.ok) return { ok: false, response: access.response };
+    if (access.profile.shop_id !== workOrder.shop_id) {
+      return {
+        ok: false,
+        response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+      };
+    }
+    return { ok: true, supabase: access.supabase };
+  }
+
+  if (mode === "portal") {
+    try {
+      const actor = await requirePortalCustomerActor(fallbackSupabase);
+      if (
+        !workOrder.customer_id ||
+        actor.customer.id !== workOrder.customer_id
+      ) {
+        return {
+          ok: false,
+          response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+        };
+      }
+      return { ok: true, supabase: fallbackSupabase };
+    } catch (error) {
+      if (error instanceof PortalAccessError) {
+        return {
+          ok: false,
+          response: NextResponse.json(
+            { error: error.message },
+            { status: error.status },
+          ),
+        };
+      }
+      return {
+        ok: false,
+        response: NextResponse.json(
+          { error: "Portal authorization failed." },
+          { status: 401 },
+        ),
+      };
+    }
+  }
+
+  // fleet
+  const {
+    data: { user },
+    error: authErr,
+  } = await fallbackSupabase.auth.getUser();
+  if (authErr || !user) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Not authenticated." }, { status: 401 }),
+    };
+  }
+
+  const canAccess = await requireFleetIntakeAccess({
+    supabase: fallbackSupabase,
+    userId: user.id,
+    workOrder,
+  });
+  if (!canAccess) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Forbidden." }, { status: 403 }),
+    };
+  }
+  return { ok: true, supabase: fallbackSupabase };
+}
+
+/**
+ * Rejects an intake payload that tries to move a work order to a different
+ * customer, or attach a vehicle that doesn't belong to that customer.
+ * Scanning/OCR and client-side dropdowns are untrusted input; the server
+ * is the only place this is safe to enforce.
+ */
+export async function verifyIntakeSubjectScope(params: {
+  supabase: SupabaseClient<DB>;
+  workOrder: IntakeWorkOrderScope;
+  intake: IntakeV1;
+}): Promise<NextResponse | null> {
+  const { supabase, workOrder, intake } = params;
+  const subjectCustomerId = intake.subject.customer_id || null;
+  const subjectVehicleId = intake.subject.vehicle_id || null;
+
+  if (
+    workOrder.customer_id &&
+    subjectCustomerId &&
+    subjectCustomerId !== workOrder.customer_id
+  ) {
+    return NextResponse.json(
+      { error: "Intake cannot change the customer linked to this work order." },
+      { status: 403 },
+    );
+  }
+
+  if (subjectVehicleId && workOrder.customer_id) {
+    const { data: vehicle, error: vehicleErr } = await supabase
+      .from("vehicles")
+      .select("id, customer_id")
+      .eq("id", subjectVehicleId)
+      .maybeSingle();
+
+    if (vehicleErr) {
+      return NextResponse.json({ error: vehicleErr.message }, { status: 500 });
+    }
+    if (!vehicle || vehicle.customer_id !== workOrder.customer_id) {
+      return NextResponse.json(
+        { error: "The selected vehicle does not belong to this work order's customer." },
+        { status: 403 },
+      );
+    }
+  }
+
+  return null;
+}
 
 function json(data: unknown, status = 200) {
   return NextResponse.json(data, { status });
@@ -82,9 +230,6 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
 
   const supabase = createServerSupabaseRoute();
 
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user) return text("Not authenticated.", 401);
-
   const { data: wo, error: woErr } = await supabase
     .from("work_orders")
     .select("id, shop_id, customer_id, vehicle_id, intake_json")
@@ -95,18 +240,17 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
   if (!wo) return text("Work order not found.", 404);
   if (!wo.shop_id) return text("Work order missing shop_id.", 400);
 
-  if (mode === "fleet") {
-    const canAccess = await requireFleetIntakeAccess({
-      supabase,
-      userId: auth.user.id,
-      workOrder: {
-        id: wo.id,
-        shop_id: wo.shop_id,
-        vehicle_id: wo.vehicle_id,
-      },
-    });
-    if (!canAccess) return text("Forbidden.", 403);
-  }
+  const access = await authorizeIntakeAccess({
+    mode,
+    workOrder: {
+      id: wo.id,
+      shop_id: wo.shop_id,
+      customer_id: wo.customer_id,
+      vehicle_id: wo.vehicle_id,
+    },
+    fallbackSupabase: supabase,
+  });
+  if (!access.ok) return access.response;
 
   let displayName: string | null = null;
   if (wo.customer_id) {
@@ -205,28 +349,31 @@ export async function PUT(req: Request, ctx: { params: Promise<{ id: string }> }
 
   if (!body?.intake) return text("Missing intake.");
   const parsed = IntakeV1Schema.parse(body.intake);
+  const mode: IntakeMode = body.mode ?? "portal";
 
-  if (body.mode === "fleet") {
-    const { data: auth } = await supabase.auth.getUser();
-    if (!auth.user) return text("Not authenticated.", 401);
+  const { data: workOrder, error: workOrderErr } = await supabase
+    .from("work_orders")
+    .select("id, shop_id, customer_id, vehicle_id")
+    .eq("id", id)
+    .maybeSingle();
 
-    const { data: workOrder, error: workOrderErr } = await supabase
-      .from("work_orders")
-      .select("id, shop_id, vehicle_id")
-      .eq("id", id)
-      .maybeSingle();
+  if (workOrderErr) return text(workOrderErr.message, 500);
+  if (!workOrder) return text("Work order not found.", 404);
+  if (!workOrder.shop_id) return text("Work order missing shop_id.", 400);
 
-    if (workOrderErr) return text(workOrderErr.message, 500);
-    if (!workOrder) return text("Work order not found.", 404);
-    if (!workOrder.shop_id) return text("Work order missing shop_id.", 400);
+  const access = await authorizeIntakeAccess({
+    mode,
+    workOrder,
+    fallbackSupabase: supabase,
+  });
+  if (!access.ok) return access.response;
 
-    const canAccess = await requireFleetIntakeAccess({
-      supabase,
-      userId: auth.user.id,
-      workOrder,
-    });
-    if (!canAccess) return text("Forbidden.", 403);
-  }
+  const scopeError = await verifyIntakeSubjectScope({
+    supabase: access.supabase,
+    workOrder,
+    intake: parsed,
+  });
+  if (scopeError) return scopeError;
 
   const { error } = await supabase
     .from("work_orders")
@@ -255,7 +402,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
 
   if (!body?.intake) return text("Missing intake.");
   const parsed = IntakeV1Schema.parse(body.intake);
-  const mode = body.mode ?? "portal";
+  const mode: IntakeMode = body.mode ?? "portal";
 
   const { data: auth, error: authErr } = await supabase.auth.getUser();
   if (authErr) return text(authErr.message, 401);
@@ -271,14 +418,19 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   if (!workOrder) return text("Work order not found.", 404);
   if (!workOrder.shop_id) return text("Work order missing shop_id.", 400);
 
-  if (mode === "fleet") {
-    const canAccess = await requireFleetIntakeAccess({
-      supabase,
-      userId: auth.user.id,
-      workOrder,
-    });
-    if (!canAccess) return text("Forbidden.", 403);
-  }
+  const access = await authorizeIntakeAccess({
+    mode,
+    workOrder,
+    fallbackSupabase: supabase,
+  });
+  if (!access.ok) return access.response;
+
+  const scopeError = await verifyIntakeSubjectScope({
+    supabase: access.supabase,
+    workOrder,
+    intake: parsed,
+  });
+  if (scopeError) return scopeError;
 
   const { error: ctxErr } = await supabase.rpc("set_current_shop_id", {
     p_shop_id: workOrder.shop_id,
@@ -357,6 +509,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ id: string }> 
   return json({
     ok: true,
     inserted: linesToInsert.length,
+    // Alias of `inserted`: the desktop create-work-order quick-intake
+    // caller (features/work-orders/app/work-orders/create/page.tsx) reads
+    // `createdLines` — keep both names so neither caller silently reports
+    // zero lines created.
+    createdLines: linesToInsert.length,
     suggestions: suggestedLines,
   });
 }

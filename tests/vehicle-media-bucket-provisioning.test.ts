@@ -17,7 +17,12 @@ describe("vehicle media bucket provisioning", () => {
       "features/work-orders/app/work-orders/create/page.tsx",
     );
     expect(createPage).toContain('"vehicle-photos" | "vehicle-docs"');
-    expect(createPage).toContain('.from("vehicle_media")');
+
+    // The actual vehicle_media insert lives in the shared upload helper the
+    // create page (and the registration-scan flow) both delegate to.
+    const mediaUpload = read("features/vehicles/lib/vehicleMediaUpload.ts");
+    expect(createPage).toContain("uploadVehicleMediaFile");
+    expect(mediaUpload).toContain('.from("vehicle_media")');
 
     expect(migration).toContain("insert into storage.buckets");
     expect(migration).toContain("'vehicle-photos'");
