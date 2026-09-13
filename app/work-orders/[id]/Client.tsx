@@ -67,6 +67,7 @@ import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 import { isCustomerMessagingRole } from "@/features/ai/lib/chat/authorization";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
+import { useVehiclePhotoUrl } from "@/features/shared/hooks/useVehiclePhotoUrl";
 import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
 import {
@@ -108,6 +109,9 @@ type WorkOrderQuoteLineWithLineId = WorkOrderQuoteLine & {
 type Vehicle = DB["public"]["Tables"]["vehicles"]["Row"];
 type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
+
+/** A tab can stay open well past ten minutes; an hour covers a working session. */
+const VEHICLE_PHOTO_URL_TTL_SECONDS = 3600;
 
 type WorkOrderLineWithInspectionMeta = WorkOrderLine & {
   // real DB column
@@ -248,6 +252,14 @@ export default function WorkOrderIdClient(): JSX.Element {
   const [vehicle, setVehicle] = useTabState<Vehicle | null>("wo:id:veh", null);
   const [customer, setCustomer] = useTabState<Customer | null>("wo:id:cust", null);
   const [shopLaborRate, setShopLaborRate] = useState<number | null>(null);
+  // Not persisted via useTabState like the record state above: the signed URL
+  // expires and renews itself, and a copy cached to localStorage across a
+  // tab switch or reload would fight that renewal with a stale value.
+  const vehiclePhotoUrl = useVehiclePhotoUrl(
+    supabase,
+    vehicle?.id,
+    VEHICLE_PHOTO_URL_TTL_SECONDS,
+  );
 
   const [allocsByLine, setAllocsByLine] = useState<Record<string, AllocationRow[]>>({});
   const [stagedPartsByLine, setStagedPartsByLine] = useState<Record<string, WorkOrderPartRow[]>>({});
@@ -1836,29 +1848,43 @@ export default function WorkOrderIdClient(): JSX.Element {
               module="statusCommand"
               className="overflow-hidden rounded-[20px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)] sm:px-4"
             >
-              <div className="flex flex-wrap items-center gap-2">
-                <PreviousPageButton />
-                <div className="text-sm font-semibold text-foreground">
-                  {wo.custom_id ?? `WO-${wo.id.slice(0, 8)}`}
+              <div className="flex items-start gap-3">
+                {vehiclePhotoUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={vehiclePhotoUrl}
+                    alt=""
+                    loading="lazy"
+                    decoding="async"
+                    className="h-14 w-14 shrink-0 rounded-lg border border-[color:var(--theme-border-soft)] object-cover"
+                  />
+                ) : null}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <PreviousPageButton />
+                    <div className="text-sm font-semibold text-foreground">
+                      {wo.custom_id ?? `WO-${wo.id.slice(0, 8)}`}
+                    </div>
+                    <StatusBadge variant={workOrderStatusView.variant} size="sm">
+                      {workOrderStatusView.label}
+                    </StatusBadge>
+                    {isWaiter ? (
+                      <StatusBadge variant="danger" size="sm">
+                        Waiter
+                      </StatusBadge>
+                    ) : null}
+                    {hasAnyApprovalItems ? (
+                      <StatusBadge variant="warning" size="sm">
+                        {approvalPending.length + approvalPendingQuotes.length} awaiting approval
+                      </StatusBadge>
+                    ) : null}
+                  </div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    {isPropertySourcedWorkOrder
+                      ? "Property-linked work order"
+                      : `${customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "Customer" : "No customer linked"} • ${vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "Vehicle linked" : "No vehicle linked"}`}
+                  </div>
                 </div>
-                <StatusBadge variant={workOrderStatusView.variant} size="sm">
-                  {workOrderStatusView.label}
-                </StatusBadge>
-                {isWaiter ? (
-                  <StatusBadge variant="danger" size="sm">
-                    Waiter
-                  </StatusBadge>
-                ) : null}
-                {hasAnyApprovalItems ? (
-                  <StatusBadge variant="warning" size="sm">
-                    {approvalPending.length + approvalPendingQuotes.length} awaiting approval
-                  </StatusBadge>
-                ) : null}
-              </div>
-              <div className="mt-1 text-xs text-muted-foreground">
-                {isPropertySourcedWorkOrder
-                  ? "Property-linked work order"
-                  : `${customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "Customer" : "No customer linked"} • ${vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "Vehicle linked" : "No vehicle linked"}`}
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
                 <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">State: {workOrderStatusView.label}</span>
