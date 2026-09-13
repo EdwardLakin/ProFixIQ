@@ -5,6 +5,16 @@ import { useVehiclePhotoUrl } from "./useVehiclePhotoUrl";
 
 type MediaRow = { storage_path: string | null; created_at: string };
 type MediaResult = { data: MediaRow[] | null; error: { message: string } | null };
+// An explicit type breaks the self-reference: each method returns the
+// builder itself (to chain), but without an annotation TS has to infer the
+// builder's type from an initializer that mentions the builder before it
+// exists yet.
+type MediaBuilder = {
+  select: (...args: unknown[]) => MediaBuilder;
+  eq: (...args: unknown[]) => MediaBuilder;
+  order: (...args: unknown[]) => MediaBuilder;
+  limit: (...args: unknown[]) => Promise<MediaResult>;
+};
 
 function buildSupabase(mediaRows: () => MediaResult) {
   const createSignedUrls = vi.fn((paths: string[]) =>
@@ -18,7 +28,7 @@ function buildSupabase(mediaRows: () => MediaResult) {
     }),
   );
 
-  const mediaBuilder = {
+  const mediaBuilder: MediaBuilder = {
     select: vi.fn(() => mediaBuilder),
     eq: vi.fn(() => mediaBuilder),
     order: vi.fn(() => mediaBuilder),
@@ -154,7 +164,7 @@ describe("useVehiclePhotoUrl", () => {
     const first = new Promise<MediaResult>((resolve) => {
       resolveFirst = resolve;
     });
-    const mediaBuilder = {
+    const mediaBuilder: MediaBuilder = {
       select: vi.fn(() => mediaBuilder),
       eq: vi.fn(() => mediaBuilder),
       order: vi.fn(() => mediaBuilder),
