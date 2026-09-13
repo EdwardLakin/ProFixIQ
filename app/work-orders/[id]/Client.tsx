@@ -1848,7 +1848,7 @@ export default function WorkOrderIdClient(): JSX.Element {
               module="statusCommand"
               className="overflow-hidden rounded-[20px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 shadow-[0_14px_36px_rgba(15,23,42,0.08)] sm:px-4"
             >
-              <div className="flex items-start gap-3">
+              <div className="flex items-stretch gap-3.5">
                 {vehiclePhotoUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
@@ -1859,7 +1859,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                     className="h-24 w-24 shrink-0 rounded-xl border border-[color:var(--theme-border-soft)] object-cover"
                   />
                 ) : null}
-                <div className="min-w-0 flex-1">
+                <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
                   <div className="flex flex-wrap items-center gap-2">
                     <PreviousPageButton />
                     <div className="text-sm font-semibold text-foreground">
@@ -1879,21 +1879,32 @@ export default function WorkOrderIdClient(): JSX.Element {
                       </StatusBadge>
                     ) : null}
                   </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
+                  <div className="text-sm font-medium text-muted-foreground">
                     {isPropertySourcedWorkOrder
                       ? "Property-linked work order"
                       : `${customer ? [customer.first_name ?? "", customer.last_name ?? ""].filter(Boolean).join(" ") || "Customer" : "No customer linked"} • ${vehicle ? `${vehicle.year ?? ""} ${vehicle.make ?? ""} ${vehicle.model ?? ""}`.trim() || "Vehicle linked" : "No vehicle linked"}`}
                   </div>
+                  <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
+                    <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">State: {workOrderStatusView.label}</span>
+                    <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">Active jobs: {activeJobCount}</span>
+                    <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">In progress: {inProgressCount}</span>
+                    <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">Blocked: {blockedCount}</span>
+                    {hasAnyApprovalItems ? (
+                      <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-sky-200">Approval queue: {approvalPending.length + approvalPendingQuotes.length}</span>
+                    ) : null}
+                  </div>
                 </div>
-              </div>
-              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11px]">
-                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">State: {workOrderStatusView.label}</span>
-                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">Active jobs: {activeJobCount}</span>
-                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">In progress: {inProgressCount}</span>
-                <span className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-0.5 text-muted-foreground">Blocked: {blockedCount}</span>
-                {hasAnyApprovalItems ? (
-                  <span className="rounded-full border border-sky-400/30 bg-sky-500/10 px-2 py-0.5 text-sky-200">Approval queue: {approvalPending.length + approvalPendingQuotes.length}</span>
-                ) : null}
+                <div className="hidden shrink-0 items-center sm:flex">
+                  <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 text-right">
+                    <div className="text-lg font-bold text-[color:var(--brand-primary)]">
+                      {formatCurrency(workOrderTotal)}
+                    </div>
+                    <div className="mt-1 flex items-center justify-end gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      <ListChecks className="h-3.5 w-3.5" />
+                      {sortedLines.length} jobs
+                    </div>
+                  </div>
+                </div>
               </div>
               <WorkOrderWorkspaceCommandBar
                 className="mt-3 gap-1 border-t border-[color:var(--theme-border-soft)] pt-2"
@@ -1961,7 +1972,10 @@ export default function WorkOrderIdClient(): JSX.Element {
                     Message
                   </Link>
                 ) : null}
-                <span className="ml-auto inline-flex items-center gap-2 font-mono text-[11px] font-semibold text-[color:var(--theme-text-primary)]">
+                {/* The stat tile beside the photo is sm:flex-and-up only; below
+                    that breakpoint this is the sole place the jobs/total count
+                    still renders, so it must not be removed. */}
+                <span className="ml-auto inline-flex items-center gap-2 font-mono text-[11px] font-semibold text-[color:var(--theme-text-primary)] sm:hidden">
                   <ListChecks className="h-3.5 w-3.5 text-[color:var(--theme-text-secondary)]" />
                   {sortedLines.length} jobs · {formatCurrency(workOrderTotal)}
                 </span>
