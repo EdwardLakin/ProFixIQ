@@ -6,6 +6,7 @@ import {
   ADDITIONAL_FLEET_ASSET_LOOKUP_KEY,
   ADDITIONAL_SERVICE_TRUCK_LOOKUP_KEY,
   ADDITIONAL_USER_LOOKUP_KEY,
+  FLEET_PORTAL_PROFILE_ROLES,
   LEGACY_ADDITIONAL_FLEET_ASSET_LOOKUP_KEY,
   LEGACY_ADDITIONAL_SERVICE_TRUCK_LOOKUP_KEY,
   LEGACY_PRODUCT_PACKAGE_LOOKUP_KEYS,
@@ -90,6 +91,15 @@ function totalQuantity(items: Stripe.SubscriptionItem[]): number {
   );
 }
 
+const NON_STAFF_PROFILE_ROLES = new Set(
+  FLEET_PORTAL_PROFILE_ROLES.map(normalize),
+);
+
+function countStaffProfiles(rows: Array<{ role: string | null }>): number {
+  return rows.filter((row) => !NON_STAFF_PROFILE_ROLES.has(normalize(row.role)))
+    .length;
+}
+
 async function countPackageCapacity(
   supabase: SupabaseClient<DB>,
   shopId: string,
@@ -100,14 +110,11 @@ async function countPackageCapacity(
   oversizedCompleteFleets: number;
 }> {
   const [
-    { count: activeUsers, error: usersError },
+    { data: shopProfiles, error: usersError },
     { count: activeServiceTrucks, error: truckError },
     fleetsResult,
   ] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("id", { count: "exact", head: true })
-      .eq("shop_id", shopId),
+    supabase.from("profiles").select("role").eq("shop_id", shopId),
     supabase
       .from("service_vehicles")
       .select("id", { count: "exact", head: true })
@@ -123,10 +130,16 @@ async function countPackageCapacity(
   if (truckError) throw new Error(truckError.message);
   if (fleetsResult.error) throw new Error(fleetsResult.error.message);
 
+  // Fleet-portal identities (external fleet clients invited into the Fleet
+  // portal) get a `profiles` row scoped to this shop so RLS resolves, but
+  // they are not paid staff seats. Customers never get a `profiles` row at
+  // all, so no separate exclusion is needed for them.
+  const activeUsers = countStaffProfiles(shopProfiles ?? []);
+
   const fleetIds = (fleetsResult.data ?? []).map((fleet) => fleet.id);
   if (fleetIds.length === 0) {
     return {
-      activeUsers: activeUsers ?? 0,
+      activeUsers,
       activeServiceTrucks: activeServiceTrucks ?? 0,
       activeFleetAssets: 0,
       oversizedCompleteFleets: 0,
@@ -146,7 +159,7 @@ async function countPackageCapacity(
   }
 
   return {
-    activeUsers: activeUsers ?? 0,
+    activeUsers,
     activeServiceTrucks: activeServiceTrucks ?? 0,
     activeFleetAssets: fleetVehicles?.length ?? 0,
     oversizedCompleteFleets: [...fleetCounts.values()].filter(

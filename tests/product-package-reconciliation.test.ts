@@ -61,6 +61,7 @@ function subscription(
 function supabaseFixture(input: {
   packageKey: ProductPackageKey;
   activeUsers: number;
+  fleetPortalUsers?: number;
   activeServiceTrucks: number;
   fleetAssetCounts: number[];
 }) {
@@ -69,6 +70,15 @@ function supabaseFixture(input: {
   const fleetVehicles = input.fleetAssetCounts.flatMap((count, index) =>
     Array.from({ length: count }, () => ({ fleet_id: fleetIds[index] })),
   );
+  // Staff rows carry a real workforce role. Fleet-portal invitees live in
+  // the same `profiles` table with role "fleet_manager" and must never be
+  // billed as a staff seat.
+  const shopProfiles = [
+    ...Array.from({ length: input.activeUsers }, () => ({ role: "owner" })),
+    ...Array.from({ length: input.fleetPortalUsers ?? 0 }, () => ({
+      role: "fleet_manager",
+    })),
+  ];
 
   const from = vi.fn((table: string) => {
     let updatePayload: unknown;
@@ -78,7 +88,7 @@ function supabaseFixture(input: {
         return { data: null, error: null };
       }
       if (table === "profiles") {
-        return { count: input.activeUsers, data: null, error: null };
+        return { data: shopProfiles, error: null };
       }
       if (table === "service_vehicles") {
         return { count: input.activeServiceTrucks, data: null, error: null };
@@ -228,6 +238,46 @@ describe("product package subscription reconciliation", () => {
       }),
       expect.any(Object),
     );
+  });
+
+  it("never bills Fleet-portal invitees as Shop staff seats", async () => {
+    const supabase = supabaseFixture({
+      packageKey: "shop_operations",
+      activeUsers: 10,
+      fleetPortalUsers: 5,
+      activeServiceTrucks: 0,
+      fleetAssetCounts: [],
+    });
+    const current = subscription("shop_operations", [
+      item({
+        id: "si_base",
+        priceId: "price_usd_shop",
+        lookupKey: "profixiq_shop_operations_monthly_usd_v2",
+      }),
+    ]);
+    const update = vi.fn().mockResolvedValue(current);
+
+    const result = await reconcileProductPackageSubscription({
+      stripe: {
+        subscriptions: {
+          retrieve: vi.fn().mockResolvedValue(current),
+          update,
+        },
+      } as never,
+      supabase: supabase.client,
+      shopId: SHOP_ID,
+      priceContract,
+    });
+
+    // 10 real staff + 5 Fleet-portal invitees on the same shop must still
+    // reconcile as exactly 10 included staff, not 15.
+    expect(result).toMatchObject({
+      state: "already_synced",
+      active_users: 10,
+      additional_user_quantity: 0,
+      estimated_monthly_price: 299,
+    });
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("preserves an existing CAD package instead of silently converting currency", async () => {

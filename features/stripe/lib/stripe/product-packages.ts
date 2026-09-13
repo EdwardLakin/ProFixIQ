@@ -3,6 +3,14 @@ export const PRODUCT_PACKAGE_CURRENCY = "usd" as const;
 export const PRODUCT_PACKAGE_INCLUDED_USERS = 10;
 export const PRODUCT_PACKAGE_ADDITIONAL_USER_CENTS = 5_000;
 
+// `accept_fleet_portal_invite_atomic` (see
+// supabase/migrations/20260716130000_auth_invite_and_enrollment_hardening.sql)
+// gives an external fleet client a `profiles` row scoped to the inviting
+// shop so RLS resolves correctly, but that row is a Fleet-portal identity,
+// not a paid shop staff seat. Every staff-seat count for Shop/Complete must
+// exclude these roles.
+export const FLEET_PORTAL_PROFILE_ROLES: readonly string[] = ["fleet_manager"];
+
 export const PRODUCT_PACKAGE_KEYS = [
   "shop_operations",
   "field_service",
