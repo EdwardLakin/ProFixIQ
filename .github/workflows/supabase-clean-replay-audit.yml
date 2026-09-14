@@ -508,6 +508,20 @@ jobs:
             -f tests/security/financial-read-rls.runtime.sql \
             2>&1 | tee financial-read-rls-runtime.log
 
+      - name: Execute existing-baseline financial RLS integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/existing-baseline-financial-rls.runtime.sql \
+            2>&1 | tee existing-baseline-financial-rls-runtime.log
+
       - name: Execute customer portal work-order parts policy integration
         shell: bash
         env:
@@ -707,6 +721,7 @@ jobs:
             p1-012-stripe-webhook-concurrency.log
             invoice-write-rls-runtime.log
             financial-read-rls-runtime.log
+            existing-baseline-financial-rls-runtime.log
             work-order-parts-portal-policy-runtime.log
             payroll-period-pipeline-runtime.log
             agent-human-approval-proof-runtime.log
