@@ -21,6 +21,19 @@
 -- "existing" install that truly lacks any policy on these tables, that needs
 -- its own reviewed migration informed by that install's actual access model,
 -- not a copy of the greenfield bootstrap policy.
+--
+-- Compatibility note (recorded for review per AGENTS.md's shared-contract
+-- approval gate): enabling RLS on these two tables was explicitly requested
+-- and approved by the repo owner as the compliant replacement for #1652
+-- (reverted for editing an applied migration). Verified directly against a
+-- clone of production that RLS is already enabled on both tables today, so
+-- this migration is a no-op there; it only changes behavior for some other
+-- "existing" install that predates RLS being turned on for these tables.
+begin;
+
+set local lock_timeout = '5s';
+set local statement_timeout = '5min';
+
 alter table public.invoices enable row level security;
 alter table public.payments enable row level security;
 
@@ -50,3 +63,5 @@ begin
   end if;
 end
 $$;
+
+commit;

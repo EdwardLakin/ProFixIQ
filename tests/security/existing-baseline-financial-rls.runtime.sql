@@ -11,8 +11,15 @@
 -- test manufactures that shape directly and proves the migration is safe
 -- against it, then proves the same file still (re)creates the bootstrap-era
 -- index when invoice_id is present.
-
-begin;
+--
+-- No outer transaction here: the migration under test wraps itself in its
+-- own begin/commit (per the P2 lock-timeout finding on this PR), and nesting
+-- a rollback-wrapped test transaction around a file that commits internally
+-- would end the outer transaction early. Instead, this test's own steps
+-- restore the pre-test shape by construction: it starts from the post-bootstrap
+-- state (invoice_id present), drifts it, proves the drifted behavior, then
+-- restores invoice_id and proves the original behavior -- leaving the
+-- database exactly as it found it for whatever runtime test runs next.
 
 -- --- Simulate a pre-hardening, post-alias-retirement install --------------
 -- Dropping invoice_id also drops payments_shop_invoice_idx (it depends on
@@ -69,7 +76,9 @@ begin
 end
 $assert_drifted$;
 
--- --- Same file, greenfield shape: the index must still get (re)created ----
+-- --- Restore the greenfield shape: the index must be (re)created ----------
+-- This also returns the database to the same state a normal clean replay
+-- left it in, so later runtime tests in this job are unaffected.
 alter table public.payments add column invoice_id uuid;
 
 \i supabase/migrations/20260914013000_harden_existing_baseline_financial_rls.sql
@@ -85,5 +94,3 @@ begin
   end if;
 end
 $assert_greenfield$;
-
-rollback;
