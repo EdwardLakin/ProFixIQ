@@ -99,13 +99,25 @@ export async function buildPartsReadinessForMenuRepairItems(input: {
     };
   }
 
-  const partsByNormalizedNumber = new Map<string, Part>();
+  // A normalized part number/SKU is not guaranteed unique in the catalog
+  // (duplicate part numbers, or a SKU that happens to collide with another
+  // part's part number once punctuation/case is stripped). Silently keeping
+  // whichever candidate was seen first would let an ambiguous identity pass
+  // as an "exact" match. Track ambiguity explicitly instead, so an
+  // ambiguous key resolves to no match rather than an arbitrary one.
+  const AMBIGUOUS = Symbol("ambiguous");
+  const partsByNormalizedNumber = new Map<string, Part | typeof AMBIGUOUS>();
   for (const part of candidateParts) {
     for (const raw of [part.part_number, part.sku]) {
       const normalizedKey = normalizePartNumber(raw);
-      if (normalizedKey && !partsByNormalizedNumber.has(normalizedKey)) {
-        partsByNormalizedNumber.set(normalizedKey, part);
+      if (!normalizedKey) continue;
+      const existing = partsByNormalizedNumber.get(normalizedKey);
+      if (existing === AMBIGUOUS) continue;
+      if (existing && existing.id !== part.id) {
+        partsByNormalizedNumber.set(normalizedKey, AMBIGUOUS);
+        continue;
       }
+      if (!existing) partsByNormalizedNumber.set(normalizedKey, part);
     }
   }
 
@@ -142,9 +154,10 @@ export async function buildPartsReadinessForMenuRepairItems(input: {
   const linesByMenuRepairItemId = new Map<string, PartReadinessLine[]>();
   for (const row of requiredParts) {
     const normalizedKey = normalizePartNumber(row.part_number);
-    const matchedPart = normalizedKey
+    const matchedEntry = normalizedKey
       ? partsByNormalizedNumber.get(normalizedKey)
       : undefined;
+    const matchedPart = matchedEntry === AMBIGUOUS ? undefined : matchedEntry;
     const qtyAvailable = matchedPart
       ? availableByPartId.get(matchedPart.id) ?? 0
       : null;

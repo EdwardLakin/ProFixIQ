@@ -210,6 +210,84 @@ describe("buildPartsReadinessForMenuRepairItems", () => {
     ).toBe(0);
   });
 
+  it("treats an ambiguous normalized part-number match as unmatched instead of picking the first candidate", async () => {
+    const { buildPartsReadinessForMenuRepairItems } = await import(
+      "@/features/operations/server/appointmentPreparation/buildPartsReadiness"
+    );
+    const supabase = createSupabase({
+      menu_repair_item_parts: [
+        {
+          id: "mip-1",
+          menu_repair_item_id: "mri-1",
+          part_name: "Oil Filter",
+          part_number: "OF-2200",
+          qty: 1,
+          is_required: true,
+          shop_id: "shop-1",
+        },
+      ],
+      // Two distinct catalog parts collide on the same normalized part
+      // number - a real, if unusual, data-quality state the shop's catalog
+      // permits. Neither should be silently treated as "the" exact match.
+      parts: [
+        { id: "part-1", shop_id: "shop-1", part_number: "OF-2200", sku: null, name: "Oil Filter A" },
+        { id: "part-2", shop_id: "shop-1", part_number: "OF2200", sku: null, name: "Oil Filter B" },
+      ],
+      part_stock: [
+        { id: "stock-1", part_id: "part-1", location_id: "loc-1", qty_on_hand: 10, qty_reserved: 0 },
+        { id: "stock-2", part_id: "part-2", location_id: "loc-1", qty_on_hand: 10, qty_reserved: 0 },
+      ],
+    });
+
+    const result = await buildPartsReadinessForMenuRepairItems({
+      admin: supabase as never,
+      shopId: "shop-1",
+      menuRepairItemIds: ["mri-1"],
+    });
+
+    expect(result.readinessByMenuRepairItemId.get("mri-1")?.[0]).toMatchObject({
+      matchedPartId: null,
+      qtyAvailable: null,
+      status: "unmatched",
+    });
+  });
+
+  it("does not flag ambiguity when the same part is reachable via both its part_number and sku", async () => {
+    const { buildPartsReadinessForMenuRepairItems } = await import(
+      "@/features/operations/server/appointmentPreparation/buildPartsReadiness"
+    );
+    const supabase = createSupabase({
+      menu_repair_item_parts: [
+        {
+          id: "mip-1",
+          menu_repair_item_id: "mri-1",
+          part_name: "Brake Pads",
+          part_number: "BP-100",
+          qty: 1,
+          is_required: true,
+          shop_id: "shop-1",
+        },
+      ],
+      parts: [
+        { id: "part-1", shop_id: "shop-1", part_number: "BP-100", sku: "BP-100", name: "Brake Pads" },
+      ],
+      part_stock: [
+        { id: "stock-1", part_id: "part-1", location_id: "loc-1", qty_on_hand: 5, qty_reserved: 0 },
+      ],
+    });
+
+    const result = await buildPartsReadinessForMenuRepairItems({
+      admin: supabase as never,
+      shopId: "shop-1",
+      menuRepairItemIds: ["mri-1"],
+    });
+
+    expect(result.readinessByMenuRepairItemId.get("mri-1")?.[0]).toMatchObject({
+      matchedPartId: "part-1",
+      status: "ready",
+    });
+  });
+
   it("propagates a parts-catalog query failure instead of treating it as an empty catalog", async () => {
     const { buildPartsReadinessForMenuRepairItems } = await import(
       "@/features/operations/server/appointmentPreparation/buildPartsReadiness"

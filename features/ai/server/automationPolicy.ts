@@ -27,6 +27,7 @@ export const AI_AUTOMATION_EXECUTION_AVAILABLE: Record<
   advisor_follow_up: false,
   invoice_preparation: false,
   payment_collection: false,
+  appointment_parts_preparation: false,
 };
 
 export const AI_AUTOMATION_READINESS_REQUIREMENTS: Record<
@@ -43,6 +44,7 @@ export const AI_AUTOMATION_READINESS_REQUIREMENTS: Record<
   advisor_follow_up: { minimumObservations: 100, minimumComparisons: 50 },
   invoice_preparation: { minimumObservations: 100, minimumComparisons: 50 },
   payment_collection: { minimumObservations: 100, minimumComparisons: 50 },
+  appointment_parts_preparation: { minimumObservations: 75, minimumComparisons: 40 },
 };
 
 const MINIMUM_AGREEMENT_RATE = 0.95;
