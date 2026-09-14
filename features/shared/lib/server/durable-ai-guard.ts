@@ -132,7 +132,11 @@ export async function claimDurableAIRouteQuota(input: {
     throw new DurableAIQuotaUnavailableError("invalid_fair_use_budget", true);
   }
 
-  const { data, error } = await input.admin.rpc("consume_ai_route_quota", {
+  // v2: the shared, revenue-linked shop-wide budget. Never call the original
+  // consume_ai_route_quota — its p_hard_budget_usd still means a per-feature
+  // ceiling, and a rolling deploy must not let old and new callers agree on
+  // one function whose parameter means two different things.
+  const { data, error } = await input.admin.rpc("consume_ai_route_quota_v2", {
     p_actor_id: input.actorId,
     p_actor_max: policy.actorMax,
     p_feature: input.feature,

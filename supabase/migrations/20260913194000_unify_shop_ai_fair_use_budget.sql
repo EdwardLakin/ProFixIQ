@@ -10,11 +10,22 @@ set local statement_timeout = '120s';
 -- across every durable AI feature while short-window rate limits remain
 -- feature-specific.
 --
--- Keep the existing RPC signature intact. Application code supplies the same
--- revenue-linked monthly ceiling for every feature. This forward migration
--- changes only monthly budget aggregation and locking; actor/shop rate limits,
--- authorization, receipt shape, ownership, and grants remain unchanged.
-create or replace function public.consume_ai_route_quota(
+-- This is a NEW function (consume_ai_route_quota_v2), not a `create or
+-- replace` of the existing consume_ai_route_quota. The p_hard_budget_usd
+-- parameter's meaning changes from a feature-local ceiling to a shared one;
+-- reusing the old name under the old signature would mean whichever of the
+-- app or this migration deploys first mixes old-shaped calls with new-shaped
+-- enforcement (or vice versa) for as long as a rolling deploy takes, and a
+-- CoPilot call's old $600 feature-local figure would then read as a $600
+-- shop-wide ceiling. Versioning the function makes that impossible: an
+-- old app instance keeps calling the untouched original with its original
+-- semantics, and a new app instance calling this one before the migration
+-- lands gets Postgres's "function does not exist" (42883 / PGRST202), which
+-- claimDurableAIRouteQuota (features/shared/lib/server/durable-ai-guard.ts)
+-- already treats as a deterministic, fail-closed error rather than silently
+-- misapplying either budget model. Retire consume_ai_route_quota once every
+-- caller is confirmed on _v2.
+create or replace function public.consume_ai_route_quota_v2(
   p_shop_id uuid,
   p_actor_id uuid,
   p_feature text,
@@ -135,6 +146,11 @@ begin
     return;
   end if;
 
+  -- Shop-wide: every durable feature's spend counts against the one ceiling.
+  -- No `and receipt.feature = p_feature` here — that is the entire point of
+  -- this migration. See the new (shop_id, created_at) indexes below: this
+  -- scan can no longer use the feature-prefixed indexes the rate-limit
+  -- queries above still do.
   select coalesce(
     sum(
       case
@@ -184,16 +200,29 @@ begin
 end
 $function$;
 
-alter function public.consume_ai_route_quota(
+alter function public.consume_ai_route_quota_v2(
   uuid, uuid, text, integer, integer, integer, numeric, numeric
 ) owner to postgres;
 
-revoke all privileges on function public.consume_ai_route_quota(
+revoke all privileges on function public.consume_ai_route_quota_v2(
   uuid, uuid, text, integer, integer, integer, numeric, numeric
 ) from public, anon, authenticated, service_role;
 
-grant execute on function public.consume_ai_route_quota(
+grant execute on function public.consume_ai_route_quota_v2(
   uuid, uuid, text, integer, integer, integer, numeric, numeric
 ) to service_role;
+
+-- The shared monthly scan above reads (shop_id, created_at) with feature
+-- unconstrained. The existing indexes are all (shop_id, feature, created_at),
+-- so that scan could only use the shop_id prefix and would walk every
+-- receipt the shop has ever had, growing slower over time while holding the
+-- shop-wide advisory lock. Add the matching shapes, including the reserved
+-- partial form the stale-reservation cleanup and this scan both want.
+create index if not exists ai_route_usage_receipts_shop_month_idx
+  on private.ai_route_usage_receipts (shop_id, created_at);
+
+create index if not exists ai_route_usage_receipts_shop_reserved_idx
+  on private.ai_route_usage_receipts (shop_id, created_at)
+  where status = 'reserved';
 
 commit;

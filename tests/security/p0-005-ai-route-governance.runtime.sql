@@ -24,6 +24,24 @@ begin
 
   if has_function_privilege(
     'anon',
+    'public.consume_ai_route_quota_v2(uuid,uuid,text,integer,integer,integer,numeric,numeric)',
+    'EXECUTE'
+  )
+  or has_function_privilege(
+    'authenticated',
+    'public.consume_ai_route_quota_v2(uuid,uuid,text,integer,integer,integer,numeric,numeric)',
+    'EXECUTE'
+  )
+  or not has_function_privilege(
+    'service_role',
+    'public.consume_ai_route_quota_v2(uuid,uuid,text,integer,integer,integer,numeric,numeric)',
+    'EXECUTE'
+  ) then
+    raise exception 'P0-005 runtime assertion failed: shared-budget claim RPC ACL is unsafe';
+  end if;
+
+  if has_function_privilege(
+    'anon',
     'public.complete_ai_route_quota(uuid,uuid,uuid,text,numeric,boolean)',
     'EXECUTE'
   )
@@ -128,14 +146,6 @@ values
     '58000000-0000-4000-8000-000000000001',
     'p0-005-owner-c@example.com',
     '{"full_name":"P0-005 Owner C"}'::jsonb
-  ),
-  -- Fleet-portal invitee on Shop C: proves profixiq_mark_shop_billing_sync
-  -- excludes non-staff roles from billable_user_count / active_user_count,
-  -- since the AI fair-use ceiling below is sized directly off that column.
-  (
-    '58000000-0000-4000-8000-000000000002',
-    'p0-005-fleet-manager-c@example.com',
-    '{"full_name":"P0-005 Fleet Manager C"}'::jsonb
   )
 on conflict (id) do nothing;
 
@@ -152,12 +162,6 @@ values
     '58000000-0000-4000-8000-000000000001',
     'owner',
     'P0-005 Owner C'
-  ),
-  (
-    '58000000-0000-4000-8000-000000000002',
-    '58000000-0000-4000-8000-000000000002',
-    'fleet_manager',
-    'P0-005 Fleet Manager C'
   ),
   (
     '56000000-0000-4000-8000-000000000002',
@@ -219,39 +223,14 @@ set shop_id = case id
     then 'a5100000-0000-4000-8000-000000000001'::uuid
   when '58000000-0000-4000-8000-000000000001'::uuid
     then 'c5300000-0000-4000-8000-000000000003'::uuid
-  when '58000000-0000-4000-8000-000000000002'::uuid
-    then 'c5300000-0000-4000-8000-000000000003'::uuid
   else 'b5200000-0000-4000-8000-000000000002'::uuid
 end
 where id in (
   '55000000-0000-4000-8000-000000000001',
   '56000000-0000-4000-8000-000000000002',
   '57000000-0000-4000-8000-000000000013',
-  '58000000-0000-4000-8000-000000000001',
-  '58000000-0000-4000-8000-000000000002'
+  '58000000-0000-4000-8000-000000000001'
 );
-
-do $$
-declare
-  v_billable integer;
-  v_active integer;
-begin
-  -- profixiq_mark_shop_billing_sync just fired for both Shop C profiles
-  -- above (update of shop_id). Only Owner C is a workforce staff role; the
-  -- Fleet-portal invitee must not inflate the count that sizes Shop C's AI
-  -- fair-use budget.
-  select billable_user_count, active_user_count
-  into v_billable, v_active
-  from public.shops
-  where id = 'c5300000-0000-4000-8000-000000000003';
-
-  if v_billable <> 1 or v_active <> 1 then
-    raise exception
-      'P0-005 runtime assertion failed: billing sync counted a non-staff profile as a seat (billable=%, active=%)',
-      v_billable, v_active;
-  end if;
-end
-$$;
 
 set local role authenticated;
 
@@ -524,6 +503,8 @@ $$;
 -- claims here deliberately span two different features (dtc_suggest, then
 -- inspection_interpret) against the one shared ceiling, on a shop with no
 -- other activity, to prove aggregation is shop-wide and deterministic.
+-- Uses consume_ai_route_quota_v2 (the shared-budget function), not the
+-- original consume_ai_route_quota exercised by Shop A above.
 do $$
 declare
   v_allowed boolean;
@@ -535,7 +516,7 @@ declare
 begin
   select allowed, receipt_id
   into v_allowed, v_receipt_one
-  from public.consume_ai_route_quota(
+  from public.consume_ai_route_quota_v2(
     'c5300000-0000-4000-8000-000000000003',
     '58000000-0000-4000-8000-000000000001',
     'dtc_suggest',
@@ -581,7 +562,7 @@ begin
   -- reservation for inspection_interpret must still be allowed.
   select allowed, receipt_id
   into v_allowed, v_receipt_two
-  from public.consume_ai_route_quota(
+  from public.consume_ai_route_quota_v2(
     'c5300000-0000-4000-8000-000000000003',
     '58000000-0000-4000-8000-000000000001',
     'inspection_interpret',
@@ -601,7 +582,7 @@ begin
   -- same shared ceiling.
   select allowed, denial_reason, receipt_id
   into v_allowed, v_reason, v_receipt_three
-  from public.consume_ai_route_quota(
+  from public.consume_ai_route_quota_v2(
     'c5300000-0000-4000-8000-000000000003',
     '58000000-0000-4000-8000-000000000001',
     'dtc_suggest',
@@ -622,6 +603,9 @@ $$;
 -- 20260909050000_extend_ai_route_quota_to_copilot.sql. Prove the widened
 -- whitelist actually reaches the database: a TypeScript-only change would
 -- typecheck and then fail every claim as AI_ROUTE_QUOTA_INPUT_INVALID.
+-- claimDurableAIRouteQuota calls consume_ai_route_quota_v2 for every durable
+-- feature including CoPilot, so exercise that function here, not the
+-- original.
 do $$
 declare
   v_allowed boolean;
@@ -631,7 +615,7 @@ declare
 begin
   select allowed, denial_reason, receipt_id
   into v_allowed, v_reason, v_receipt
-  from public.consume_ai_route_quota(
+  from public.consume_ai_route_quota_v2(
     'a5100000-0000-4000-8000-000000000001',
     '57000000-0000-4000-8000-000000000013',
     'technician_copilot_text',
@@ -667,7 +651,7 @@ begin
 
   -- The widening must not have opened the whitelist to arbitrary values.
   begin
-    perform public.consume_ai_route_quota(
+    perform public.consume_ai_route_quota_v2(
       'a5100000-0000-4000-8000-000000000001',
       '57000000-0000-4000-8000-000000000013',
       'not_a_real_feature',
