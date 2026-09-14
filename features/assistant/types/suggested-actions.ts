@@ -39,5 +39,6 @@ export type SuggestedActionItem = {
 
 export type SuggestedActionsResponse = {
   role: string;
+  summaryText: string;
   items: SuggestedActionItem[];
 };

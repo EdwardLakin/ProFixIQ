@@ -28,9 +28,10 @@ export type AssistantInboxThreadItem = {
 };
 
 const RECENT_THREADS_LIMIT = 8;
+const REFRESH_INTERVAL_MS = 45_000;
 
 function threadHref(
-  thread: Pick<ShopAssistantThread, "title" | "context">,
+  thread: Pick<ShopAssistantThread, "id" | "title" | "context">,
   mobile: boolean,
 ): string {
   const built = buildAssistantHref({
@@ -41,7 +42,16 @@ function threadHref(
     invoiceId: thread.context.activeInvoiceId,
     pageTitle: thread.title || undefined,
   });
-  return mobile ? (resolveMobileHref(built) ?? "/mobile/assistant") : built;
+  // The activity list always resolves to the newest thread on its own, so a
+  // link must carry the exact thread id to land back on this thread instead
+  // of whatever else has since become the most recently active one.
+  const [path, query = ""] = built.split("?");
+  const params = new URLSearchParams(query);
+  params.set("threadId", thread.id);
+  const withThread = `${path}?${params.toString()}`;
+  return mobile
+    ? (resolveMobileHref(withThread) ?? "/mobile/assistant")
+    : withThread;
 }
 
 export function useAssistantInboxActivity(refreshToken?: string | number) {
@@ -58,7 +68,6 @@ export function useAssistantInboxActivity(refreshToken?: string | number) {
   >([]);
 
   const load = useCallback(async () => {
-    setLoading(true);
     setError(null);
 
     try {
@@ -131,7 +140,26 @@ export function useAssistantInboxActivity(refreshToken?: string | number) {
   }, [mobile]);
 
   useEffect(() => {
+    setLoading(true);
     void load();
+
+    // A pending confirmation can expire (15-minute default), or be
+    // confirmed/cancelled from another tab or device, so this list needs to
+    // stay current on its own rather than only reacting to activity in this
+    // tab's conversation.
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void load();
+    }, REFRESH_INTERVAL_MS);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void load();
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [load, refreshToken]);
 
   return { loading, error, pendingActions, recentThreads, reload: load };

@@ -32,6 +32,30 @@ const recentList = readFileSync(
 );
 const desktopPage = readFileSync("app/assistant/page.tsx", "utf8");
 const mobilePage = readFileSync("app/mobile/assistant/page.tsx", "utf8");
+const useShopAssistantHook = readFileSync(
+  "features/shop-assistant/hooks/useShopAssistant.ts",
+  "utf8",
+);
+const notificationSync = readFileSync(
+  "features/agent/server/syncAssistantNotifications.ts",
+  "utf8",
+);
+const suggestedActionsTypes = readFileSync(
+  "features/assistant/types/suggested-actions.ts",
+  "utf8",
+);
+const getSuggestedActions = readFileSync(
+  "features/assistant/server/getSuggestedActions.ts",
+  "utf8",
+);
+const suggestedActionsPanel = readFileSync(
+  "features/assistant/components/SuggestedActionsPanel.tsx",
+  "utf8",
+);
+const useSuggestedActionsHook = readFileSync(
+  "features/assistant/hooks/useSuggestedActions.ts",
+  "utf8",
+);
 
 describe("Phase 2 — unified assistant inbox", () => {
   it("scopes pending confirmations to the requesting actor and excludes expired/non-pending actions", () => {
@@ -88,5 +112,65 @@ describe("Phase 2 — unified assistant inbox", () => {
     expect(desktopPage).toContain("context={context}");
     expect(mobilePage).toContain("<ShopAssistantDashboard");
     expect(mobilePage).toContain("context={context}");
+  });
+
+  it("restores the exact thread an activity link points at, not just the newest one", () => {
+    expect(activityHook).toContain('params.set("threadId", thread.id)');
+    expect(useShopAssistantHook).toContain("initialThreadId");
+    expect(useShopAssistantHook).toContain(
+      "if (initialThreadId?.trim())",
+    );
+    expect(desktopPage).toContain(
+      'optionalParam(new URLSearchParams(searchKey), "threadId")',
+    );
+    expect(desktopPage).toContain(
+      "useShopAssistant(contextKey, true, threadId)",
+    );
+    expect(mobilePage).toContain(
+      "useShopAssistant(contextKey, true, threadId)",
+    );
+  });
+
+  it("does not merge a newly selected thread's messages into the previous thread's", () => {
+    expect(useShopAssistantHook).toContain("loadedThreadIdRef");
+    expect(useShopAssistantHook).toContain(
+      "if (loadedThreadIdRef.current !== threadId)",
+    );
+  });
+
+  it("surfaces activity loading failures with a retry instead of an empty-state lie", () => {
+    expect(dashboard).toContain("activityError");
+    expect(dashboard).toContain("reloadActivity");
+  });
+
+  it("refreshes pending confirmations on its own instead of only on shop-state refresh", () => {
+    expect(activityHook).toContain("REFRESH_INTERVAL_MS");
+    expect(activityHook).toContain("document.visibilityState");
+  });
+
+  it("coalesces concurrent notification syncs instead of running the shop-wide scan twice", () => {
+    expect(notificationSync).toContain("inFlightNotificationSyncs");
+    expect(notificationSync).toContain(
+      "async function performSyncAssistantNotifications",
+    );
+  });
+
+  it("returns and renders the role-aware daily summary text", () => {
+    expect(suggestedActionsTypes).toContain("summaryText: string");
+    expect(getSuggestedActions).toContain("summaryText: summary.summaryText");
+    expect(suggestedActionsPanel).toContain("data.summaryText");
+  });
+
+  it("omits a daily-summary link already covered by a notification card", () => {
+    expect(getSuggestedActions).toContain("hrefsFromNotifications");
+    expect(getSuggestedActions).toContain(
+      "if (hrefsFromNotifications.has(link.href)) continue;",
+    );
+  });
+
+  it("refreshes suggested actions in step with the rest of the dashboard", () => {
+    expect(useSuggestedActionsHook).toContain("refreshToken");
+    expect(suggestedActionsPanel).toContain("refreshToken");
+    expect(dashboard).toContain("refreshToken={refreshToken}");
   });
 });

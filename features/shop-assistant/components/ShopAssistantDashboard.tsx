@@ -29,6 +29,8 @@ export default function ShopAssistantDashboard({
     pendingActions,
     recentThreads,
     loading: activityLoading,
+    error: activityError,
+    reload: reloadActivity,
   } = useAssistantInboxActivity(refreshToken);
 
   if (loading && !state) {
@@ -98,7 +100,24 @@ export default function ShopAssistantDashboard({
         embedded
         collapsible
         maxItems={4}
+        refreshToken={refreshToken}
       />
+
+      {activityError ? (
+        <div className="rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-xs text-[color:var(--theme-text-primary)]">
+          <span>
+            Couldn&apos;t refresh pending confirmations or recent activity:{" "}
+            {activityError}
+          </span>
+          <button
+            type="button"
+            className="ml-2 rounded-full border border-current/30 px-2 py-0.5 font-semibold"
+            onClick={() => void reloadActivity()}
+          >
+            Try again
+          </button>
+        </div>
+      ) : null}
 
       <div className="grid gap-4 xl:grid-cols-2">
         <div>

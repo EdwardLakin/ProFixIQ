@@ -548,7 +548,49 @@ async function getDurablePartsPickNotifications(params: {
   return notifications;
 }
 
-export async function syncAssistantNotifications(params: {
+// Two independent surfaces on the same page (the live shop-state widget and
+// the suggested-actions/daily-summary panel) can each ask to sync
+// notifications for the same actor within the same request wave. Coalesce
+// concurrent calls for the same shop/scope into a single computation +
+// upsert instead of running the underlying shop-wide scan twice and racing
+// two upserts of the same rows.
+const inFlightNotificationSyncs = new Map<
+  string,
+  Promise<PersistedAssistantNotification[]>
+>();
+
+export function syncAssistantNotifications(params: {
+  shopId: string;
+  userId?: string | null;
+  assignmentUserIds?: string[];
+  role?: string | null;
+}): Promise<PersistedAssistantNotification[]> {
+  const {
+    shopId,
+    userId = null,
+    assignmentUserIds = userId ? [userId] : [],
+    role = null,
+  } = params;
+  const userScoped = !!userId && isUserScopedRole(role);
+  const scopeKey = userScoped ? `user:${userId}` : "shop";
+  const cacheKey = [
+    shopId,
+    scopeKey,
+    canonicalizeRole(role),
+    [...assignmentUserIds].sort().join(","),
+  ].join("|");
+
+  const inFlight = inFlightNotificationSyncs.get(cacheKey);
+  if (inFlight) return inFlight;
+
+  const promise = performSyncAssistantNotifications(params).finally(() => {
+    inFlightNotificationSyncs.delete(cacheKey);
+  });
+  inFlightNotificationSyncs.set(cacheKey, promise);
+  return promise;
+}
+
+async function performSyncAssistantNotifications(params: {
   shopId: string;
   userId?: string | null;
   assignmentUserIds?: string[];

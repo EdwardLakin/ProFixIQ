@@ -59,7 +59,11 @@ async function readJson<T>(response: Response): Promise<T> {
   return (await response.json().catch(() => ({}))) as T;
 }
 
-export function useShopAssistant(resetKey?: string, enabled = true) {
+export function useShopAssistant(
+  resetKey?: string,
+  enabled = true,
+  initialThreadId?: string,
+) {
   const [thread, setThread] = useState<ShopAssistantThread | null>(null);
   const [messages, setMessages] = useState<ShopAssistantMessage[]>([]);
   const [role, setRole] = useState<CanonicalRole | null>(null);
@@ -71,8 +75,18 @@ export function useShopAssistant(resetKey?: string, enabled = true) {
   const abortRef = useRef<AbortController | null>(null);
   const actionAbortRef = useRef<AbortController | null>(null);
   const sendingRef = useRef(false);
+  const loadedThreadIdRef = useRef<string | null>(null);
 
   const loadMessages = useCallback(async (threadId: string) => {
+    if (loadedThreadIdRef.current !== threadId) {
+      // Switching to a different thread than whatever is currently in
+      // state (e.g. clicking between two pending confirmations without
+      // this page remounting) - start from a clean slate instead of
+      // merging in the previous thread's messages.
+      loadedThreadIdRef.current = threadId;
+      setMessages([]);
+    }
+
     const response = await fetch(
       `/api/shop-assistant/threads/${encodeURIComponent(threadId)}/messages`,
       { cache: "no-store" },
@@ -92,6 +106,11 @@ export function useShopAssistant(resetKey?: string, enabled = true) {
     setLoading(true);
     setError(null);
     try {
+      if (initialThreadId?.trim()) {
+        await loadMessages(initialThreadId.trim());
+        return;
+      }
+
       const response = await fetch("/api/shop-assistant/threads", {
         cache: "no-store",
       });
@@ -111,6 +130,7 @@ export function useShopAssistant(resetKey?: string, enabled = true) {
         setThread(active);
         await loadMessages(active.id);
       } else {
+        loadedThreadIdRef.current = null;
         setThread(null);
         setMessages([]);
       }
@@ -123,7 +143,7 @@ export function useShopAssistant(resetKey?: string, enabled = true) {
     } finally {
       setLoading(false);
     }
-  }, [loadMessages]);
+  }, [loadMessages, initialThreadId]);
 
   useEffect(() => {
     if (!enabled) {
@@ -136,7 +156,7 @@ export function useShopAssistant(resetKey?: string, enabled = true) {
       abortRef.current?.abort();
       actionAbortRef.current?.abort();
     };
-  }, [enabled, resetKey, restore]);
+  }, [enabled, resetKey, initialThreadId, restore]);
 
   const createConversation = useCallback(
     async (context?: ShopAssistantContext) => {

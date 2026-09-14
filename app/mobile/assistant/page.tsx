@@ -50,6 +50,8 @@ export default function MobileAssistantPage() {
     };
   }, [searchKey]);
 
+  const threadId = optionalParam(new URLSearchParams(searchKey), "threadId");
+
   const contextKey = useMemo(
     () =>
       [
@@ -59,10 +61,11 @@ export default function MobileAssistantPage() {
         context.customerId,
         context.bookingId,
         context.invoiceId,
+        threadId,
       ]
         .filter(Boolean)
         .join(":"),
-    [context],
+    [context, threadId],
   );
 
   const {
@@ -77,7 +80,7 @@ export default function MobileAssistantPage() {
     confirmAction,
     cancelAction,
     clearConversation,
-  } = useShopAssistant(contextKey);
+  } = useShopAssistant(contextKey, true, threadId);
 
   const submit = async () => {
     const value = question.trim();
