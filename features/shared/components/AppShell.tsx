@@ -133,7 +133,12 @@ export default function AppShell({
     !initialOutsideDesktopShell && !isOutsideDesktopAppShell(pathname);
 
   const canSeeAgentConsole = isDefaultOpsOperatorEmail(userEmail);
-  const canUseShopAssistant = Boolean(userId && canAccessShopAssistant(role));
+  const canonicalRole = canonicalizeRole(role);
+  const canUseOperationsAssistant = Boolean(
+    userId &&
+      canAccessShopAssistant(role) &&
+      canonicalRole !== "mechanic",
+  );
   const isMobileWorkOrderDetail = /^\/mobile\/work-orders\/[^/]+$/i.test(
     pathname,
   );
@@ -612,14 +617,14 @@ export default function AppShell({
               {userId ? (
                 <ActionButton
                   onClick={() => setAgentDialogOpen(true)}
-                  title="Submit a request to ProFixIQ Agent"
+                  title="Report an issue or suggest an improvement"
                 >
-                  <span>Agent Request</span>
+                  <span>Product Feedback</span>
                 </ActionButton>
               ) : null}
 
-              {canUseShopAssistant ? (
-                <AskAssistantEntry placement="header" />
+              {canUseOperationsAssistant ? (
+                <AskAssistantEntry placement="header" role={role} />
               ) : null}
 
               {userId && canSeeAgentConsole ? (
@@ -721,14 +726,14 @@ export default function AppShell({
         />
       ) : null}
 
-      {canUseShopAssistant && !isMobileWorkOrderDetail ? (
+      {canUseOperationsAssistant && !isMobileWorkOrderDetail ? (
         <div className="md:hidden">
-          <AskAssistantEntry mobile />
+          <AskAssistantEntry mobile role={role} />
         </div>
       ) : null}
 
       <TechnicianCopilotShell
-        shouldCheck={canonicalizeRole(role) === "mechanic"}
+        shouldCheck={canonicalRole === "mechanic"}
         surface="desktop"
       />
     </>

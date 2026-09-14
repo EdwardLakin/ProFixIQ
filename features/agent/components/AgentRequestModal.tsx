@@ -166,7 +166,7 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
         return;
       }
 
-      toast.success("Request submitted to ProFixIQ-Agent");
+      toast.success("Feedback submitted to ProFixIQ");
 
       // reset
       setDescription("");
@@ -193,11 +193,11 @@ export default function AgentRequestModal({ open, onOpenChange }: Props) {
       <DialogContent className="bg-[color:var(--theme-surface-overlay)] border border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-primary)] backdrop-blur-xl">
         <DialogHeader>
           <DialogTitle className="font-blackops tracking-[0.15em] text-[color:var(--theme-text-primary)] uppercase">
-            Submit a Request
+            Report an Issue or Idea
           </DialogTitle>
           <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-            Use this for QA or feature ideas. Be specific so the agent and
-            developers know exactly where to look.
+            Send product feedback to the ProFixIQ engineering team. Use this
+            for bugs, QA findings, or feature ideas—not shop operations.
           </p>
         </DialogHeader>
 

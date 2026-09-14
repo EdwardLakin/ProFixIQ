@@ -19,10 +19,16 @@ import {
 import { buildAssistantHref } from "../lib/buildAssistantHref";
 import { buildPlannerHref } from "../lib/buildPlannerHref";
 import { deriveAssistantContext } from "../lib/deriveAssistantContext";
+import {
+  getProFixOperationsIdentity,
+  resolveProFixOperationsExperience,
+  withProFixOperationsExperience,
+} from "../lib/proFixOperationsIdentity";
 
 type Props = {
   mobile?: boolean;
   placement?: "floating" | "header" | "dock";
+  role?: string | null;
 };
 
 function getAssistantLabel(context: ShopAssistantContext): string {
@@ -36,7 +42,7 @@ function getAssistantLabel(context: ShopAssistantContext): string {
     case "booking":
       return "Ask about this booking";
     default:
-      return "Ask Assistant";
+      return "ProFix Operations";
   }
 }
 
@@ -86,6 +92,7 @@ function getDefaultPrompt(context: ShopAssistantContext): string {
 export default function AskAssistantEntry({
   mobile = false,
   placement = "floating",
+  role = null,
 }: Props) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -95,13 +102,18 @@ export default function AskAssistantEntry({
     [pathname, searchKey],
   );
   const mobileSurface = mobile || pathname.startsWith("/mobile");
+  const experience = resolveProFixOperationsExperience(role);
+  const identity = getProFixOperationsIdentity(experience);
 
   const assistantHref = useMemo(() => {
-    const built = buildAssistantHref(context);
+    const built = withProFixOperationsExperience(
+      buildAssistantHref(context),
+      experience,
+    );
     return mobileSurface
       ? (resolveMobileHref(built) ?? "/mobile/assistant")
       : built;
-  }, [context, mobileSurface]);
+  }, [context, experience, mobileSurface]);
   const plannerHref = useMemo(() => {
     const built = buildPlannerHref({
       planner: "ops",
@@ -164,7 +176,7 @@ export default function AskAssistantEntry({
           onClick={() => setOpen(true)}
           className="inline-flex h-8 items-center justify-center rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2.5 text-xs font-medium text-[color:var(--theme-text-primary)] shadow-sm backdrop-blur-md transition hover:border-[color:var(--accent-copper-soft,#fdba74)]/60 hover:bg-[color:var(--theme-surface-panel)]"
         >
-          Assistant
+          {identity.name}
         </button>
 
         <Dialog open={open} onOpenChange={setOpen}>
@@ -176,11 +188,10 @@ export default function AskAssistantEntry({
                   fontFamily: "Black Ops One, var(--font-blackops), system-ui",
                 }}
               >
-                AI Assistant
+                {identity.name}
               </DialogTitle>
               <DialogDescription>
-                Ask or act across the shop with the data and permissions
-                available to your role. Changes require confirmation.
+                {identity.description} Changes require confirmation.
               </DialogDescription>
             </DialogHeader>
 
@@ -257,7 +268,7 @@ export default function AskAssistantEntry({
                   onClick={() => setOpen(false)}
                   className="text-xs font-semibold text-[color:var(--accent-copper,#c1663b)] hover:underline"
                 >
-                  Open full assistant workspace
+                  Open {identity.name}
                 </Link>
               </div>
             </div>

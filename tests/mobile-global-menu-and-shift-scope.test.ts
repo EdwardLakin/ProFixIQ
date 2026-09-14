@@ -13,7 +13,7 @@ describe("mobile global navigation", () => {
     expect(shell).not.toContain("sticky bottom-0");
 
     expect(menu).toContain("getMobileTilesForRole(role, [\"all\"])");
-    expect(menu).toContain("Ask Assistant");
+    expect(menu).toContain("ProFix Operations");
     expect(menu).toContain("Operations planner");
     expect(menu).toContain("Install ProFixIQ");
     expect(menu).toContain("MobileShiftTracker");

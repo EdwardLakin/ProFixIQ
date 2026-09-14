@@ -92,10 +92,10 @@ describe("guided onboarding v2 foundation", () => {
 
     expect(appShellSource).toContain("Shift");
     expect(appShellSource).toContain("Inbox");
-    expect(appShellSource).toContain("Agent Request");
+    expect(appShellSource).toContain("Product Feedback");
     expect(appShellSource).toContain("Ops Console");
     expect(appShellSource).toContain("Sign out");
-    expect(assistantEntrySource).toContain("Assistant");
+    expect(assistantEntrySource).toContain("ProFix Operations");
     expect(assistantEntrySource).not.toContain("<span>Planner</span>");
     expect(appShellSource).not.toContain("Open Planner");
   });

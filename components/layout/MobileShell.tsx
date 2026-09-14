@@ -58,7 +58,7 @@ function getTitleFromPath(pathname: string): string {
     return "Service requests";
   if (pathname.startsWith("/mobile/fleet/pretrip")) return "Pre-trip";
   if (pathname.startsWith("/mobile/fleet")) return "Fleet";
-  if (pathname.startsWith("/mobile/assistant")) return "Assistant";
+  if (pathname.startsWith("/mobile/assistant")) return "ProFix Operations";
   if (pathname.startsWith("/mobile/planner")) return "Operations planner";
   if (pathname.startsWith("/mobile/offline")) return "Device & sync";
   if (pathname.startsWith("/mobile/settings")) return "Settings";

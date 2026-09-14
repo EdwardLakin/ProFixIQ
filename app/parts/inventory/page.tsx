@@ -1052,8 +1052,8 @@ export default function InventoryPage(): JSX.Element {
             </div>
 
             <div className="flex flex-wrap items-center gap-2">
-              <Link href="/assistant?pageType=parts_inventory&pageTitle=Parts%20Inventory" className={btnBlue}>
-                Ask Assistant
+              <Link href="/assistant?pageType=parts_inventory&pageTitle=Parts%20Inventory&experience=operations" className={btnBlue}>
+                ProFix Operations
               </Link>
 
               <input

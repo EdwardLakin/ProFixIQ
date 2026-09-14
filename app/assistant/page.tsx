@@ -12,12 +12,23 @@ import ShopAssistantDashboard from "@/features/shop-assistant/components/ShopAss
 import { useShopAssistant } from "@/features/shop-assistant/hooks/useShopAssistant";
 import type { ShopAssistantContext } from "@/features/shop-assistant/types";
 import { Button } from "@shared/components/ui/Button";
+import {
+  getProFixOperationsIdentity,
+  parseProFixOperationsExperience,
+} from "@/features/assistant/lib/proFixOperationsIdentity";
 
-const EXAMPLE_PROMPTS = [
+const OPERATIONS_PROMPTS = [
   "Which work orders are waiting on approvals right now?",
   "Summarize the jobs delayed by parts.",
   "What changed today across bookings, invoices, and technician activity?",
   "Which queued jobs should be assigned next?",
+];
+
+const MANAGEMENT_PROMPTS = [
+  "Which work orders are stalled or waiting too long?",
+  "Which work orders are waiting on approvals right now?",
+  "Which queued jobs should be assigned next?",
+  "Which completed jobs are ready to invoice?",
 ];
 
 function optionalParam(
@@ -32,6 +43,16 @@ export default function AssistantPage() {
   const [query, setQuery] = useState("");
   const searchParams = useSearchParams();
   const searchKey = searchParams.toString();
+  const experience = useMemo(
+    () =>
+      parseProFixOperationsExperience(
+        new URLSearchParams(searchKey).get("experience"),
+      ),
+    [searchKey],
+  );
+  const identity = getProFixOperationsIdentity(experience);
+  const examplePrompts =
+    experience === "management" ? MANAGEMENT_PROMPTS : OPERATIONS_PROMPTS;
 
   const context = useMemo<ShopAssistantContext>(() => {
     const params = new URLSearchParams(searchKey);
@@ -42,7 +63,7 @@ export default function AssistantPage() {
       bookingId: optionalParam(params, "bookingId"),
       invoiceId: optionalParam(params, "invoiceId"),
       pageType: optionalParam(params, "pageType") ?? "desktop",
-      pageTitle: optionalParam(params, "pageTitle") ?? "Shop Assistant",
+      pageTitle: optionalParam(params, "pageTitle") ?? "ProFix Operations",
     };
   }, [searchKey]);
 
@@ -90,16 +111,19 @@ export default function AssistantPage() {
 
   return (
     <PageShell
-      title="Shop Assistant"
-      description="Live shop intelligence, proactive alerts, and a durable operations conversation."
+      title={identity.name}
+      description={identity.description}
     >
       <div className="space-y-4">
         <div className={`${ui.panel} ${ui.panelPadding} space-y-4`}>
           <div className="desktop-panel-soft p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-              Shop conversation
+              {identity.eyebrow}
             </div>
-            <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">
+            <p className="mt-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+              {identity.headline}
+            </p>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
               Ask questions or request operational actions across the shop.
               Diagnostic guidance remains inside each work order&apos;s
               Technician AI.
@@ -128,7 +152,7 @@ export default function AssistantPage() {
           />
 
           <div className="flex flex-wrap gap-2">
-            {EXAMPLE_PROMPTS.map((example) => (
+            {examplePrompts.map((example) => (
               <button
                 key={example}
                 type="button"

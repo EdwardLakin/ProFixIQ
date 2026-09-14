@@ -100,7 +100,9 @@ vi.mock("@/features/auth/components/ForcePasswordChangeModal", () => ({
 }));
 
 vi.mock("@/features/assistant/components/AskAssistantEntry", () => ({
-  default: () => null,
+  default: ({ role }: { role?: string | null }) => (
+    <div data-testid="operations-assistant-entry" data-role={role ?? ""} />
+  ),
 }));
 
 vi.mock("@/features/branding/hooks/useActiveBrand", () => ({
@@ -113,7 +115,14 @@ vi.mock("@/features/shared/components/OpsNotificationsBell", () => ({
 
 vi.mock(
   "@/features/copilot/technician/components/TechnicianCopilotShell",
-  () => ({ TechnicianCopilotShell: () => null }),
+  () => ({
+    TechnicianCopilotShell: ({ shouldCheck }: { shouldCheck: boolean }) => (
+      <div
+        data-testid="technician-copilot-shell"
+        data-enabled={shouldCheck ? "true" : "false"}
+      />
+    ),
+  }),
 );
 
 type InitialIdentity = NonNullable<
@@ -291,5 +300,42 @@ describe("AppShell canonical identity handoff", () => {
       "owner",
     );
     expect(mocks.resolveCanonicalStaffProfile).not.toHaveBeenCalled();
+  });
+
+  it("shows ProFix Operations to front-end roles on the existing assistant boundary", async () => {
+    mocks.getSession.mockResolvedValue({ data: { session: null } });
+
+    render(
+      <AppShell initialIdentity={identity("manager")}>
+        <div>Protected route</div>
+      </AppShell>,
+    );
+
+    expect(screen.getAllByTestId("operations-assistant-entry")[0]).toHaveAttribute(
+      "data-role",
+      "manager",
+    );
+    expect(screen.getByTestId("technician-copilot-shell")).toHaveAttribute(
+      "data-enabled",
+      "false",
+    );
+  });
+
+  it("keeps pure mechanics on Technician Copilot instead of the operations surface", async () => {
+    mocks.getSession.mockResolvedValue({ data: { session: null } });
+
+    render(
+      <AppShell initialIdentity={identity("mechanic")}>
+        <div>Protected route</div>
+      </AppShell>,
+    );
+
+    expect(
+      screen.queryByTestId("operations-assistant-entry"),
+    ).not.toBeInTheDocument();
+    expect(screen.getByTestId("technician-copilot-shell")).toHaveAttribute(
+      "data-enabled",
+      "true",
+    );
   });
 });

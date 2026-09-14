@@ -1133,10 +1133,10 @@ export default function WorkOrdersView(): JSX.Element {
 
           <div className="flex flex-wrap items-center gap-2">
             <Link
-              href="/assistant?pageType=work_orders&pageTitle=Work%20Orders"
+              href="/assistant?pageType=work_orders&pageTitle=Work%20Orders&experience=operations"
               className="inline-flex h-11 items-center justify-center rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 text-sm font-semibold text-[color:var(--brand-primary,#1747FF)] transition hover:border-[color:var(--brand-primary,#1747FF)]/60"
             >
-              Ask Assistant
+              ProFix Operations
             </Link>
             <Link
               href="/work-orders/create"

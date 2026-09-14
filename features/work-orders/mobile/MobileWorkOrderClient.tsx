@@ -27,6 +27,7 @@ import { useTabState } from "@/features/shared/hooks/useTabState";
 import { JobCard } from "@/features/work-orders/components/JobCard";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 import { registerMobileWorkflowDock } from "@/features/copilot/technician/client/mobileWorkflowDock";
+import { openTechnicianCopilot } from "@/features/copilot/technician/components/TechnicianCopilotShell";
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
 import {
   runJobPunchTransition,
@@ -77,7 +78,10 @@ import {
   type RouteLoadFailure,
 } from "@/features/shared/lib/route-load";
 import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import {
+  canonicalizeRole,
+  getActorCapabilities,
+} from "@/features/shared/lib/rbac";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -1083,6 +1087,7 @@ export default function MobileWorkOrderClient({
 
   const canAssign = false; // assignments handled in focused view / desktop
   const currentActor = getActorCapabilities({ role: currentUserRole });
+  const isTechnician = canonicalizeRole(currentUserRole) === "mechanic";
   const canApprove = currentActor.canAuthorizeQuotes;
   const canSendToParts = currentActor.canManageWorkOrders;
 
@@ -2427,7 +2432,21 @@ export default function MobileWorkOrderClient({
                 Supporting utilities
               </summary>
               <div className="mt-2">
-                <AskAssistantEntry mobile placement="dock" />
+                {isTechnician ? (
+                  <button
+                    type="button"
+                    className="mobile-tech-btn-utility inline-flex items-center rounded-full px-3 py-2 text-[0.72rem] leading-none"
+                    onClick={openTechnicianCopilot}
+                  >
+                    Open Tech Copilot
+                  </button>
+                ) : (
+                  <AskAssistantEntry
+                    mobile
+                    placement="dock"
+                    role={currentUserRole}
+                  />
+                )}
               </div>
             </details>
           </section>

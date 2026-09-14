@@ -62,13 +62,15 @@ describe("global shop assistant entry and prefilled prompts", () => {
     render(<AskAssistantEntry placement="header" />);
 
     expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    await user.click(screen.getByRole("button", { name: "Assistant" }));
+    await user.click(
+      screen.getByRole("button", { name: "ProFix Operations" }),
+    );
 
     expect(
-      screen.getByRole("dialog", { name: "AI Assistant" }),
+      screen.getByRole("dialog", { name: "ProFix Operations" }),
     ).toBeVisible();
     expect(
-      screen.getByText(/Ask or act across the shop with the data and permissions/),
+      screen.getByText(/Coordinate work orders, parts, approvals, scheduling/),
     ).toBeVisible();
   });
 
@@ -76,7 +78,9 @@ describe("global shop assistant entry and prefilled prompts", () => {
     const user = userEvent.setup();
     render(<AskAssistantEntry placement="header" />);
 
-    await user.click(screen.getByRole("button", { name: "Assistant" }));
+    await user.click(
+      screen.getByRole("button", { name: "ProFix Operations" }),
+    );
     await user.type(
       screen.getByPlaceholderText("Ask anything about your shop..."),
       "Show delayed parts",
@@ -96,9 +100,11 @@ describe("global shop assistant entry and prefilled prompts", () => {
     const user = userEvent.setup();
     const view = render(<AskAssistantEntry placement="header" />);
 
-    await user.click(screen.getByRole("button", { name: "Assistant" }));
+    await user.click(
+      screen.getByRole("button", { name: "ProFix Operations" }),
+    );
     expect(
-      screen.getByRole("dialog", { name: "AI Assistant" }),
+      screen.getByRole("dialog", { name: "ProFix Operations" }),
     ).toBeVisible();
 
     pathname = "/work-orders/quote-review";
@@ -108,6 +114,22 @@ describe("global shop assistant entry and prefilled prompts", () => {
     await waitFor(() => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     });
+  });
+
+  it("opens the management experience on the same assistant route", async () => {
+    const user = userEvent.setup();
+    render(<AskAssistantEntry placement="header" role="manager" />);
+
+    await user.click(
+      screen.getByRole("button", { name: "ProFix Operations" }),
+    );
+
+    expect(
+      screen.getByText(/Review blockers, capacity, approvals, and shop performance/),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("link", { name: "Open ProFix Operations" }),
+    ).toHaveAttribute("href", expect.stringContaining("experience=management"));
   });
 
   it("runs a prefilled question immediately instead of only filling the textarea", async () => {

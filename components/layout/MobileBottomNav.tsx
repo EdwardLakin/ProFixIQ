@@ -35,6 +35,10 @@ import {
   type MobileRole,
 } from "@/features/mobile/config/mobile-tiles";
 import { requireMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
+import {
+  resolveProFixOperationsExperience,
+  withProFixOperationsExperience,
+} from "@/features/assistant/lib/proFixOperationsIdentity";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
 import {
   canonicalizeRole,
@@ -375,7 +379,14 @@ export function MobileBottomNav({ open, onClose }: Props) {
     if (role === "mechanic") return [];
 
     return [
-      { href: "/mobile/assistant", label: "Ask Assistant", icon: Bot },
+      {
+        href: withProFixOperationsExperience(
+          "/mobile/assistant",
+          resolveProFixOperationsExperience(role),
+        ),
+        label: "ProFix Operations",
+        icon: Bot,
+      },
       { href: "/mobile/planner", label: "Operations planner", icon: Route },
     ];
   }, [role]);

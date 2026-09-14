@@ -9,6 +9,10 @@ import ShopAssistantDashboard from "@/features/shop-assistant/components/ShopAss
 import { useShopAssistant } from "@/features/shop-assistant/hooks/useShopAssistant";
 import type { ShopAssistantContext } from "@/features/shop-assistant/types";
 import { Button } from "@shared/components/ui/Button";
+import {
+  getProFixOperationsIdentity,
+  parseProFixOperationsExperience,
+} from "@/features/assistant/lib/proFixOperationsIdentity";
 
 function optionalParam(
   params: URLSearchParams,
@@ -22,6 +26,14 @@ export default function MobileAssistantPage() {
   const searchParams = useSearchParams();
   const searchKey = searchParams.toString();
   const [question, setQuestion] = useState("");
+  const experience = useMemo(
+    () =>
+      parseProFixOperationsExperience(
+        new URLSearchParams(searchKey).get("experience"),
+      ),
+    [searchKey],
+  );
+  const identity = getProFixOperationsIdentity(experience);
 
   const context = useMemo<ShopAssistantContext>(() => {
     const params = new URLSearchParams(searchKey);
@@ -88,14 +100,16 @@ export default function MobileAssistantPage() {
             <Bot aria-hidden className="h-5 w-5" />
           </span>
           <div className="min-w-0 flex-1">
-            <div className="mobile-dashboard-hero__eyebrow">Shop assistant</div>
+            <div className="mobile-dashboard-hero__eyebrow">
+              {identity.eyebrow}
+            </div>
             <h1 className="mobile-dashboard-hero__title">
-              Ask with shop context
+              {identity.name}
             </h1>
             <p className="mobile-dashboard-hero__subtitle">
               {hasRecordContext
                 ? "The current record context is included with this conversation."
-                : "Ask a deliberate operational question using the shop data available to your role."}
+                : identity.description}
             </p>
           </div>
           <Sparkles className="mt-1 h-5 w-5 shrink-0 text-[#8ed4ff]" />

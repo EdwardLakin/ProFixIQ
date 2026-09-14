@@ -7,6 +7,11 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
+import { canonicalizeRole } from "@/features/shared/lib/rbac";
+import {
+  resolveProFixOperationsExperience,
+  withProFixOperationsExperience,
+} from "@/features/assistant/lib/proFixOperationsIdentity";
 import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
 import {
   isOpenTechnicianJob,
@@ -172,6 +177,7 @@ export default function TechQueuePage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState<RollupStatus | null>(null);
+  const [currentUserRole, setCurrentUserRole] = useState<string | null>(null);
 
   // load prefs once + subscribe to changes (when settings page updates localStorage)
   useEffect(() => {
@@ -202,6 +208,7 @@ export default function TechQueuePage() {
       } = await supabase.auth.getUser();
 
       if (userErr || !user) {
+        setCurrentUserRole(null);
         setErr("You must be signed in.");
         setLoading(false);
         return;
@@ -212,15 +219,18 @@ export default function TechQueuePage() {
         await resolveCanonicalStaffProfile(supabase, user.id);
 
       if (profErr) {
+        setCurrentUserRole(null);
         setErr(profErr);
         setLoading(false);
         return;
       }
       if (!prof?.shop_id) {
+        setCurrentUserRole(prof?.role ?? null);
         setErr("No shop linked to your profile yet.");
         setLoading(false);
         return;
       }
+      setCurrentUserRole(prof.role ?? null);
 
       // 3) fetch the server-owned operational projection. Financial columns
       // are redacted before this queue payload reaches the browser.
@@ -416,6 +426,13 @@ export default function TechQueuePage() {
   if (err) return <div className="p-6 text-red-200">{err}</div>;
 
   const compact = prefs.compactCards;
+  const isTechnician = canonicalizeRole(currentUserRole) === "mechanic";
+  const assistantHref = isTechnician
+    ? "/copilot/technician"
+    : withProFixOperationsExperience(
+        "/assistant?pageType=tech_queue&pageTitle=Tech%20Queue",
+        resolveProFixOperationsExperience(currentUserRole),
+      );
 
   return (
     <div className="p-6 text-[color:var(--theme-text-primary)]">
@@ -426,10 +443,10 @@ export default function TechQueuePage() {
 
         <div className="flex flex-wrap items-center gap-2 text-[11px] text-[color:var(--theme-text-secondary)]">
           <Link
-            href="/assistant?pageType=tech_queue&pageTitle=Tech%20Queue"
+            href={assistantHref}
             className="rounded-full border border-orange-400/40 bg-orange-500/10 px-3 py-1 text-xs font-semibold text-orange-200 hover:bg-orange-500/15"
           >
-            Ask Assistant
+            {isTechnician ? "Tech Copilot" : "ProFix Operations"}
           </Link>
 
           {prefs.autoRefresh ? (

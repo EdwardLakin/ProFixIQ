@@ -114,7 +114,8 @@ describe("mobile route continuity", () => {
   it("keeps authentication and mobile utilities inside mobile routes", () => {
     const menu = read("components/layout/MobileBottomNav.tsx");
     const signIn = read("app/mobile/sign-in/page.tsx");
-    expect(menu).toContain('href: "/mobile/assistant"');
+    expect(menu).toContain('"/mobile/assistant"');
+    expect(menu).toContain("withProFixOperationsExperience");
     expect(menu).toContain('href: "/mobile/planner"');
     expect(menu).toContain('href="/mobile/offline"');
     expect(menu).toContain('router.replace("/mobile/sign-in")');
