@@ -11,6 +11,7 @@ const PROFILE_ID = "44444444-4444-4444-8444-444444444444";
 const mocks = vi.hoisted(() => ({
   requireShopScopedApiAccess: vi.fn(),
   requirePortalCustomerActor: vi.fn(),
+  createAdminSupabase: vi.fn(),
 }));
 
 vi.mock("@/features/shared/lib/server/admin-access", () => ({
@@ -21,10 +22,14 @@ vi.mock("@/features/portal/server/requirePortalActor", () => ({
   requirePortalCustomerActor: mocks.requirePortalCustomerActor,
 }));
 
+vi.mock("@/features/shared/lib/supabase/server", () => ({
+  createAdminSupabase: mocks.createAdminSupabase,
+}));
+
 import {
   authorizeIntakeAccess,
   verifyIntakeSubjectScope,
-} from "../app/api/work-orders/[id]/intake/route";
+} from "../features/work-orders/intake/server/intakeAccess";
 import { PortalAccessError } from "../features/portal/server/portalAuth";
 import { makeIntakeDefaults } from "../features/work-orders/intake/defaults";
 import { readFileSync } from "node:fs";
@@ -53,7 +58,19 @@ function fakeSupabase(vehicleLookup: unknown = null) {
         })),
       })),
     })),
-  } as unknown as Parameters<typeof verifyIntakeSubjectScope>[0]["supabase"];
+  } as unknown as Parameters<typeof authorizeIntakeAccess>[0]["fallbackSupabase"];
+}
+
+function mockAdminVehicleLookup(vehicleLookup: unknown) {
+  mocks.createAdminSupabase.mockReturnValue({
+    from: vi.fn(() => ({
+      select: vi.fn(() => ({
+        eq: vi.fn(() => ({
+          maybeSingle: vi.fn(async () => ({ data: vehicleLookup, error: null })),
+        })),
+      })),
+    })),
+  });
 }
 
 beforeEach(() => {
@@ -159,6 +176,23 @@ describe("authorizeIntakeAccess", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.response.status).toBe(401);
   });
+
+  it("reports an unexpected portal-auth failure as unavailable, not unauthenticated", async () => {
+    mocks.requirePortalCustomerActor.mockRejectedValueOnce(
+      new Error("connection to customers table timed out"),
+    );
+
+    const result = await authorizeIntakeAccess({
+      mode: "portal",
+      workOrder: workOrder(),
+      fallbackSupabase: fakeSupabase(),
+    });
+
+    expect(result.ok).toBe(false);
+    // Not 401: an operational failure isn't proof the session is invalid,
+    // and a client that treats 401 as "log back in" would mask an outage.
+    if (!result.ok) expect(result.response.status).toBe(503);
+  });
 });
 
 describe("verifyIntakeSubjectScope", () => {
@@ -170,16 +204,23 @@ describe("verifyIntakeSubjectScope", () => {
     intake.concern.primary_text = "Brake noise";
 
     const response = await verifyIntakeSubjectScope({
-      supabase: fakeSupabase(),
       workOrder: workOrder(),
       intake,
     });
 
     expect(response).not.toBeNull();
     expect(response?.status).toBe(403);
+    // Must not depend on the caller's own RLS-scoped client to prove this:
+    // a portal customer's own client cannot read `vehicles` at all.
+    expect(mocks.createAdminSupabase).not.toHaveBeenCalled();
   });
 
   it("rejects a vehicle that does not belong to the work order's customer", async () => {
+    mockAdminVehicleLookup({
+      id: VEHICLE_ID,
+      customer_id: OTHER_CUSTOMER_ID,
+      shop_id: SHOP_ID,
+    });
     const intake = makeIntakeDefaults({
       customer_id: CUSTOMER_ID,
       vehicle_id: VEHICLE_ID,
@@ -187,7 +228,6 @@ describe("verifyIntakeSubjectScope", () => {
     intake.concern.primary_text = "Brake noise";
 
     const response = await verifyIntakeSubjectScope({
-      supabase: fakeSupabase({ id: VEHICLE_ID, customer_id: OTHER_CUSTOMER_ID }),
       workOrder: workOrder(),
       intake,
     });
@@ -196,7 +236,12 @@ describe("verifyIntakeSubjectScope", () => {
     expect(response?.status).toBe(403);
   });
 
-  it("allows an intake whose customer and vehicle both match the work order", async () => {
+  it("looks the vehicle up on an admin client so a portal customer's own RLS never blocks a legitimate match", async () => {
+    mockAdminVehicleLookup({
+      id: VEHICLE_ID,
+      customer_id: CUSTOMER_ID,
+      shop_id: SHOP_ID,
+    });
     const intake = makeIntakeDefaults({
       customer_id: CUSTOMER_ID,
       vehicle_id: VEHICLE_ID,
@@ -204,12 +249,12 @@ describe("verifyIntakeSubjectScope", () => {
     intake.concern.primary_text = "Brake noise";
 
     const response = await verifyIntakeSubjectScope({
-      supabase: fakeSupabase({ id: VEHICLE_ID, customer_id: CUSTOMER_ID }),
       workOrder: workOrder(),
       intake,
     });
 
     expect(response).toBeNull();
+    expect(mocks.createAdminSupabase).toHaveBeenCalled();
   });
 });
 

@@ -46,7 +46,57 @@ describe("create work order registration scan", () => {
       createPage.indexOf("const handleClearForm = useCallback"),
       createPage.indexOf("}, [", createPage.indexOf("const handleClearForm = useCallback")),
     );
-    expect(clearFn).toContain("setPendingRegistrationFile(null)");
+    expect(clearFn).toContain("clearPendingRegistrationScan()");
+  });
+
+  it("only binds the scanned photo to a vehicle when a vehicle field was actually accepted", () => {
+    const onApplyStart = createPage.indexOf(
+      "onApply={(result: RegistrationScanApplyResult) => {",
+    );
+    const onApplyBody = createPage.slice(
+      onApplyStart,
+      createPage.indexOf("</RegistrationScanModal>", onApplyStart),
+    );
+    expect(onApplyBody).toContain("hasVehicleFields");
+    expect(onApplyBody).toContain("if (hasVehicleFields) {");
+    expect(onApplyBody).toContain("setPendingRegistrationFile(result.file)");
+    expect(onApplyBody).toContain("setPendingRegistrationContext({");
+  });
+
+  it("clears the pending scan when a different existing customer or vehicle is manually selected", () => {
+    expect(createPage).toContain("onCustomerSelected: (id: string) => {");
+    expect(createPage).toContain("onVehicleSelected: (id: string) => {");
+    expect(createPage).toContain(
+      "pendingRegistrationContext.customerId !== id",
+    );
+    expect(createPage).toContain(
+      "pendingRegistrationContext.vehicleId !== id",
+    );
+    // Both handlers must route through the same clear helper as the form
+    // reset, not a bespoke setPendingRegistrationFile(null) each.
+    expect(createPage).toContain("clearPendingRegistrationScan();");
+  });
+
+  it("re-verifies the captured customer/vehicle identity right before uploading", () => {
+    const uploadBlock = createPage.slice(
+      createPage.indexOf("if (pendingRegistrationFile) {"),
+    );
+    expect(uploadBlock).toContain("contextStillMatches");
+    expect(uploadBlock).toContain("pendingRegistrationContext.customerId === cust.id");
+    expect(uploadBlock).toContain("pendingRegistrationContext.vehicleId === veh.id");
+  });
+
+  it("uploads under the resolved staff profile id, not the raw auth user id", () => {
+    const start = createPage.indexOf("if (pendingRegistrationFile) {");
+    const uploadBlock = createPage.slice(
+      start,
+      createPage.indexOf("assertWritePersisted(", start),
+    );
+    expect(uploadBlock).toContain(
+      "currentProfileId ?? (await getCurrentProfileId(user.id))",
+    );
+    expect(uploadBlock).toContain("uploadedBy: uploaderProfileId");
+    expect(uploadBlock).not.toContain("uploadedBy: user.id");
   });
 
   it("never silently overwrites a field that already differs in the form", () => {
@@ -69,5 +119,17 @@ describe("create work order registration scan", () => {
   it("normalizes and flags an invalid VIN instead of silently dropping it", () => {
     expect(scanClient).toContain("normalizeVinInput(raw.vin)");
     expect(scanClient).toContain("didn't pass validation");
+  });
+
+  it("locks the identifying fields instead of overwriting a different selected vehicle's identity", () => {
+    expect(modal).toContain("identityFieldsLocked");
+    expect(modal).toContain('matchPreview?.kind === "same_customer" && vehicleId');
+    expect(modal).toContain('"vehicle.vin": false, "vehicle.plate": false');
+    expect(modal).toContain("disabledKeys");
+  });
+
+  it("doesn't overpromise a save-time confirmation the save path doesn't actually enforce for plate-only matches", () => {
+    expect(modal).not.toContain("you'll be asked to confirm at");
+    expect(modal).not.toContain("you’ll be asked to confirm at");
   });
 });

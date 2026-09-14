@@ -6,7 +6,7 @@ import type { IntakeCaptureVehicleFields } from "./types";
 
 export type CaptureMatchPreview =
   | { kind: "none" }
-  | { kind: "same_customer"; label: string }
+  | { kind: "same_customer"; label: string; vehicleId: string }
   | { kind: "different_customer"; label: string };
 
 function describeMatch(match: {
@@ -56,7 +56,11 @@ export async function previewVehicleCaptureMatch(params: {
 
     const sameCustomer = result.matches.find((m) => m.same_customer === true);
     if (sameCustomer) {
-      return { kind: "same_customer", label: describeMatch(sameCustomer) };
+      return {
+        kind: "same_customer",
+        label: describeMatch(sameCustomer),
+        vehicleId: sameCustomer.id,
+      };
     }
 
     return { kind: "none" };

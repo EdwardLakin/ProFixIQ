@@ -23,12 +23,10 @@ describe("create work order fast-intake redesign", () => {
     expect(createPage).toContain("<CustomerVehicleForm");
     expect(createPage).toContain("<VinCaptureModal");
     expect(createPage).toContain("Scan VIN");
-    expect(createPage).toContain(
-      "onCustomerSelected: (id: string) => setCustomerId(id)",
-    );
-    expect(createPage).toContain(
-      "onVehicleSelected: (id: string) => setVehicleId(id)",
-    );
+    expect(createPage).toContain("onCustomerSelected: (id: string) => {");
+    expect(createPage).toContain("onVehicleSelected: (id: string) => {");
+    expect(createPage).toContain("setCustomerId(id);");
+    expect(createPage).toContain("setVehicleId(id);");
   });
 
   it("uses existing defaults and hides non-blocking visit fields by default", () => {

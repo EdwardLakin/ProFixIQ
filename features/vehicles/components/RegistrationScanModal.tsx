@@ -234,6 +234,25 @@ export default function RegistrationScanModal({
     setAccepted((prev) => ({ ...prev, [key]: !prev[key] }));
   }, []);
 
+  // A different vehicle is already selected (vehicleId is set) and the
+  // duplicate check found a *different* vehicle record — owned by the same
+  // customer — matching this VIN/plate. Applying vin/plate here would
+  // silently rewrite the selected vehicle's identity with the matched
+  // vehicle's, rather than switching to it. Lock those two fields off
+  // instead: the advisor must pick the matched vehicle via the vehicle
+  // search first if that's the one this scan actually belongs to.
+  const identityFieldsLocked = Boolean(
+    matchPreview?.kind === "same_customer" && vehicleId,
+  );
+
+  useEffect(() => {
+    if (!identityFieldsLocked) return;
+    setAccepted((prev) => {
+      if (!prev["vehicle.vin"] && !prev["vehicle.plate"]) return prev;
+      return { ...prev, "vehicle.vin": false, "vehicle.plate": false };
+    });
+  }, [identityFieldsLocked]);
+
   const handleApply = useCallback(() => {
     if (!file || !rows) return;
 
@@ -356,14 +375,17 @@ export default function RegistrationScanModal({
               {matchPreview && matchPreview.kind === "different_customer" ? (
                 <div className="rounded-lg border border-amber-500/35 bg-amber-950/25 px-3 py-2 text-xs text-amber-100">
                   This VIN/plate is already on file for {matchPreview.label}.
-                  Saving will not move it — you&apos;ll be asked to confirm at
-                  save time.
+                  Double-check before saving — a VIN already assigned
+                  elsewhere blocks saving, but a matching plate alone may
+                  not.
                 </div>
               ) : matchPreview && matchPreview.kind === "same_customer" ? (
                 <div className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
                   This looks like an existing vehicle on file:{" "}
-                  {matchPreview.label}. Applying will update that record
-                  instead of creating a new one.
+                  {matchPreview.label}.{" "}
+                  {identityFieldsLocked
+                    ? "A different vehicle is currently selected, so the VIN/plate from this scan won't be applied — select that vehicle first if this scan belongs to it."
+                    : "Applying will update that record instead of creating a new one."}
                 </div>
               ) : null}
 
@@ -374,12 +396,22 @@ export default function RegistrationScanModal({
                     rows={rows.filter((r) => r.group === "customer")}
                     accepted={accepted}
                     onToggle={toggleField}
+                    disabledKeys={
+                      identityFieldsLocked
+                        ? new Set(["vehicle.vin", "vehicle.plate"])
+                        : undefined
+                    }
                   />
                   <FieldGroup
                     title="Vehicle"
                     rows={rows.filter((r) => r.group === "vehicle")}
                     accepted={accepted}
                     onToggle={toggleField}
+                    disabledKeys={
+                      identityFieldsLocked
+                        ? new Set(["vehicle.vin", "vehicle.plate"])
+                        : undefined
+                    }
                   />
                 </div>
               ) : rows && rows.length === 0 && !busy ? (
@@ -401,11 +433,13 @@ function FieldGroup({
   rows,
   accepted,
   onToggle,
+  disabledKeys,
 }: {
   title: string;
   rows: FieldRow[];
   accepted: Record<string, boolean>;
   onToggle: (key: string) => void;
+  disabledKeys?: Set<string>;
 }) {
   if (!rows.length) return null;
 
@@ -415,26 +449,40 @@ function FieldGroup({
         {title}
       </div>
       <ul className="divide-y divide-[color:var(--theme-border-soft)]">
-        {rows.map((row) => (
-          <li key={row.key} className="flex items-start gap-3 px-3 py-2">
-            <input
-              type="checkbox"
-              checked={Boolean(accepted[row.key])}
-              onChange={() => onToggle(row.key)}
-              className="mt-0.5 h-4 w-4 rounded border-[color:var(--desktop-border)]"
-            />
-            <div className="min-w-0 flex-1 text-sm">
-              <div className="text-[color:var(--theme-text-primary)]">
-                {row.label}: <span className="font-semibold">{row.value}</span>
-              </div>
-              {row.currentValue && row.currentValue !== row.value ? (
-                <div className="text-xs text-amber-300">
-                  Current value: {row.currentValue}
+        {rows.map((row) => {
+          const isDisabled = disabledKeys?.has(row.key) ?? false;
+          return (
+            <li key={row.key} className="flex items-start gap-3 px-3 py-2">
+              <input
+                type="checkbox"
+                checked={Boolean(accepted[row.key])}
+                onChange={() => onToggle(row.key)}
+                disabled={isDisabled}
+                className="mt-0.5 h-4 w-4 rounded border-[color:var(--desktop-border)] disabled:opacity-40"
+              />
+              <div className="min-w-0 flex-1 text-sm">
+                <div
+                  className={
+                    isDisabled
+                      ? "text-[color:var(--theme-text-muted)]"
+                      : "text-[color:var(--theme-text-primary)]"
+                  }
+                >
+                  {row.label}: <span className="font-semibold">{row.value}</span>
                 </div>
-              ) : null}
-            </div>
-          </li>
-        ))}
+                {isDisabled ? (
+                  <div className="text-xs text-[color:var(--theme-text-muted)]">
+                    Matches a different existing vehicle — see note above.
+                  </div>
+                ) : row.currentValue && row.currentValue !== row.value ? (
+                  <div className="text-xs text-amber-300">
+                    Current value: {row.currentValue}
+                  </div>
+                ) : null}
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
