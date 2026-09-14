@@ -24,6 +24,24 @@ begin
 
   if has_function_privilege(
     'anon',
+    'public.consume_ai_route_quota_v2(uuid,uuid,text,integer,integer,integer,numeric,numeric)',
+    'EXECUTE'
+  )
+  or has_function_privilege(
+    'authenticated',
+    'public.consume_ai_route_quota_v2(uuid,uuid,text,integer,integer,integer,numeric,numeric)',
+    'EXECUTE'
+  )
+  or not has_function_privilege(
+    'service_role',
+    'public.consume_ai_route_quota_v2(uuid,uuid,text,integer,integer,integer,numeric,numeric)',
+    'EXECUTE'
+  ) then
+    raise exception 'P0-005 runtime assertion failed: shared-budget claim RPC ACL is unsafe';
+  end if;
+
+  if has_function_privilege(
+    'anon',
     'public.complete_ai_route_quota(uuid,uuid,uuid,text,numeric,boolean)',
     'EXECUTE'
   )
@@ -119,6 +137,15 @@ values
     '57000000-0000-4000-8000-000000000013',
     'p0-005-tech-a-canonical@example.com',
     '{"full_name":"P0-005 Tech A Canonical"}'::jsonb
+  ),
+  -- Dedicated shop-wide fair-use budget fixture: isolated from Shop A so the
+  -- shared-budget lifecycle test below has a deterministic starting balance,
+  -- unaffected by Shop A's unrelated rate-limit reservations earlier in this
+  -- file.
+  (
+    '58000000-0000-4000-8000-000000000001',
+    'p0-005-owner-c@example.com',
+    '{"full_name":"P0-005 Owner C"}'::jsonb
   )
 on conflict (id) do nothing;
 
@@ -129,6 +156,12 @@ values
     '55000000-0000-4000-8000-000000000001',
     'owner',
     'P0-005 Owner A'
+  ),
+  (
+    '58000000-0000-4000-8000-000000000001',
+    '58000000-0000-4000-8000-000000000001',
+    'owner',
+    'P0-005 Owner C'
   ),
   (
     '56000000-0000-4000-8000-000000000002',
@@ -172,6 +205,13 @@ values
     'P0-005 Shop B',
     'P0-005 Shop B',
     3
+  ),
+  (
+    'c5300000-0000-4000-8000-000000000003',
+    '58000000-0000-4000-8000-000000000001',
+    'P0-005 Shop C',
+    'P0-005 Shop C',
+    3
   )
 on conflict (id) do nothing;
 
@@ -181,12 +221,15 @@ set shop_id = case id
     then 'a5100000-0000-4000-8000-000000000001'::uuid
   when '57000000-0000-4000-8000-000000000013'::uuid
     then 'a5100000-0000-4000-8000-000000000001'::uuid
+  when '58000000-0000-4000-8000-000000000001'::uuid
+    then 'c5300000-0000-4000-8000-000000000003'::uuid
   else 'b5200000-0000-4000-8000-000000000002'::uuid
 end
 where id in (
   '55000000-0000-4000-8000-000000000001',
   '56000000-0000-4000-8000-000000000002',
-  '57000000-0000-4000-8000-000000000013'
+  '57000000-0000-4000-8000-000000000013',
+  '58000000-0000-4000-8000-000000000001'
 );
 
 set local role authenticated;
@@ -452,20 +495,31 @@ begin
 end
 $$;
 
+-- Runs on dedicated Shop C, not Shop A: the migration this file guards
+-- (20260913194000_unify_shop_ai_fair_use_budget.sql) made the monthly budget
+-- shop-wide instead of per-feature, so Shop A's unrelated dtc_suggest
+-- reservations above would otherwise eat into this budget too. That cross-
+-- feature bleed-through is exactly the behavior being verified below, so the
+-- claims here deliberately span two different features (dtc_suggest, then
+-- inspection_interpret) against the one shared ceiling, on a shop with no
+-- other activity, to prove aggregation is shop-wide and deterministic.
+-- Uses consume_ai_route_quota_v2 (the shared-budget function), not the
+-- original consume_ai_route_quota exercised by Shop A above.
 do $$
 declare
   v_allowed boolean;
   v_reason text;
   v_receipt_one uuid;
   v_receipt_two uuid;
+  v_receipt_three uuid;
   v_completed boolean;
 begin
   select allowed, receipt_id
   into v_allowed, v_receipt_one
-  from public.consume_ai_route_quota(
-    'a5100000-0000-4000-8000-000000000001',
-    '55000000-0000-4000-8000-000000000001',
-    'inspection_interpret',
+  from public.consume_ai_route_quota_v2(
+    'c5300000-0000-4000-8000-000000000003',
+    '58000000-0000-4000-8000-000000000001',
+    'dtc_suggest',
     10,
     20,
     300,
@@ -479,9 +533,9 @@ begin
 
   select public.complete_ai_route_quota(
     v_receipt_one,
-    'a5100000-0000-4000-8000-000000000001',
-    '55000000-0000-4000-8000-000000000001',
-    'inspection_interpret',
+    'c5300000-0000-4000-8000-000000000003',
+    '58000000-0000-4000-8000-000000000001',
+    'dtc_suggest',
     0.01,
     true
   ) into v_completed;
@@ -492,9 +546,9 @@ begin
 
   select public.complete_ai_route_quota(
     v_receipt_one,
-    'a5100000-0000-4000-8000-000000000001',
-    '55000000-0000-4000-8000-000000000001',
-    'inspection_interpret',
+    'c5300000-0000-4000-8000-000000000003',
+    '58000000-0000-4000-8000-000000000001',
+    'dtc_suggest',
     0.01,
     true
   ) into v_completed;
@@ -503,11 +557,14 @@ begin
     raise exception 'P0-005 runtime assertion failed: receipt completion was replayable';
   end if;
 
+  -- A different feature now spends against the same shop's ceiling. Only
+  -- $0.01 of the $0.05 budget was actually spent above, so this $0.04
+  -- reservation for inspection_interpret must still be allowed.
   select allowed, receipt_id
   into v_allowed, v_receipt_two
-  from public.consume_ai_route_quota(
-    'a5100000-0000-4000-8000-000000000001',
-    '55000000-0000-4000-8000-000000000001',
+  from public.consume_ai_route_quota_v2(
+    'c5300000-0000-4000-8000-000000000003',
+    '58000000-0000-4000-8000-000000000001',
     'inspection_interpret',
     10,
     20,
@@ -517,15 +574,18 @@ begin
   );
 
   if not v_allowed or v_receipt_two is null then
-    raise exception 'P0-005 runtime assertion failed: reconciled budget was not reusable';
+    raise exception 'P0-005 runtime assertion failed: cross-feature budget was not shared';
   end if;
 
-  select allowed, denial_reason
-  into v_allowed, v_reason
-  from public.consume_ai_route_quota(
-    'a5100000-0000-4000-8000-000000000001',
-    '55000000-0000-4000-8000-000000000001',
-    'inspection_interpret',
+  -- $0.01 (settled dtc_suggest) + $0.04 (reserved inspection_interpret) is
+  -- already $0.05. A third claim on either feature must now be denied by the
+  -- same shared ceiling.
+  select allowed, denial_reason, receipt_id
+  into v_allowed, v_reason, v_receipt_three
+  from public.consume_ai_route_quota_v2(
+    'c5300000-0000-4000-8000-000000000003',
+    '58000000-0000-4000-8000-000000000001',
+    'dtc_suggest',
     10,
     20,
     300,
@@ -533,7 +593,7 @@ begin
     0.04
   );
 
-  if v_allowed or v_reason <> 'hard_budget_exceeded' then
+  if v_allowed or v_reason <> 'hard_budget_exceeded' or v_receipt_three is not null then
     raise exception 'P0-005 runtime assertion failed: hard budget was bypassed';
   end if;
 end
@@ -543,6 +603,9 @@ $$;
 -- 20260909050000_extend_ai_route_quota_to_copilot.sql. Prove the widened
 -- whitelist actually reaches the database: a TypeScript-only change would
 -- typecheck and then fail every claim as AI_ROUTE_QUOTA_INPUT_INVALID.
+-- claimDurableAIRouteQuota calls consume_ai_route_quota_v2 for every durable
+-- feature including CoPilot, so exercise that function here, not the
+-- original.
 do $$
 declare
   v_allowed boolean;
@@ -552,7 +615,7 @@ declare
 begin
   select allowed, denial_reason, receipt_id
   into v_allowed, v_reason, v_receipt
-  from public.consume_ai_route_quota(
+  from public.consume_ai_route_quota_v2(
     'a5100000-0000-4000-8000-000000000001',
     '57000000-0000-4000-8000-000000000013',
     'technician_copilot_text',
@@ -588,7 +651,7 @@ begin
 
   -- The widening must not have opened the whitelist to arbitrary values.
   begin
-    perform public.consume_ai_route_quota(
+    perform public.consume_ai_route_quota_v2(
       'a5100000-0000-4000-8000-000000000001',
       '57000000-0000-4000-8000-000000000013',
       'not_a_real_feature',

@@ -7,9 +7,17 @@ function source(relativePath: string): string {
 }
 
 describe("durable Technician CoPilot budget", () => {
-  it("uses the advertised environment-backed durable limits", () => {
+  it("sizes the hard budget from shop revenue instead of a static env var", () => {
+    // 20260913194000_unify_shop_ai_fair_use_budget.sql / ai-fair-use.ts made
+    // the monthly hard budget a shared, revenue-linked ceiling (20% of MRR,
+    // clamped to 25%) instead of a per-feature env-configured dollar amount.
+    // AI_BUDGET_HARD_USD_COPILOT_TEXT must actually be gone, not just
+    // supplemented, or a stale env var would silently keep the old ceiling.
     const guard = source("features/shared/lib/server/durable-ai-guard.ts");
-    expect(guard).toContain('AI_BUDGET_HARD_USD_COPILOT_TEXT');
+    expect(guard).not.toContain('AI_BUDGET_HARD_USD_COPILOT_TEXT');
+    expect(guard).toContain('resolveShopAIFairUseBudgetUsd');
+    // Rate limits (distinct from the monthly spend ceiling) remain
+    // env-configured and feature-scoped.
     expect(guard).toContain('AI_RATE_LIMIT_COPILOT_TEXT_MAX');
     expect(guard).toContain('AI_RATE_LIMIT_COPILOT_TEXT_WINDOW_MS');
     expect(guard).toContain('AI_RATE_LIMIT_COPILOT_TEXT_SHOP_MAX');

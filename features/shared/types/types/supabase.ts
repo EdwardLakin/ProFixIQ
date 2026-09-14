@@ -21095,6 +21095,7 @@ export type Database = {
           auto_generate_pdf: boolean | null
           auto_send_quote_email: boolean | null
           billable_user_count: number
+          billing_catalog_currency: string
           billing_entitlement_override: string | null
           billing_entitlement_updated_at: string
           billing_grace_until: string | null
@@ -21179,6 +21180,7 @@ export type Database = {
           auto_generate_pdf?: boolean | null
           auto_send_quote_email?: boolean | null
           billable_user_count?: number
+          billing_catalog_currency?: string
           billing_entitlement_override?: string | null
           billing_entitlement_updated_at?: string
           billing_grace_until?: string | null
@@ -21263,6 +21265,7 @@ export type Database = {
           auto_generate_pdf?: boolean | null
           auto_send_quote_email?: boolean | null
           billable_user_count?: number
+          billing_catalog_currency?: string
           billing_entitlement_override?: string | null
           billing_entitlement_updated_at?: string
           billing_grace_until?: string | null
@@ -28328,6 +28331,24 @@ export type Database = {
         Returns: boolean
       }
       consume_ai_route_quota: {
+        Args: {
+          p_actor_id: string
+          p_actor_max: number
+          p_feature: string
+          p_hard_budget_usd: number
+          p_reservation_cost_usd: number
+          p_shop_id: string
+          p_shop_max: number
+          p_window_seconds: number
+        }
+        Returns: {
+          allowed: boolean
+          denial_reason: string
+          receipt_id: string
+          retry_after_seconds: number
+        }[]
+      }
+      consume_ai_route_quota_v2: {
         Args: {
           p_actor_id: string
           p_actor_max: number

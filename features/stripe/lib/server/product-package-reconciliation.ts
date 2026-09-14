@@ -482,6 +482,7 @@ export async function reconcileProductPackageSubscription(params: {
           .update({
             billable_user_count: capacity.activeUsers,
             active_user_count: capacity.activeUsers,
+            billing_catalog_currency: legacyCad ? "cad" : "usd",
             stripe_billing_sync_required: false,
             stripe_billing_sync_error: null,
             stripe_billing_synced_at: new Date().toISOString(),
@@ -591,6 +592,7 @@ export async function reconcileProductPackageSubscription(params: {
         stripe_subscription_id: updated.id,
         billable_user_count: capacity.activeUsers,
         active_user_count: capacity.activeUsers,
+        billing_catalog_currency: legacyCad ? "cad" : "usd",
         stripe_billing_sync_required: false,
         stripe_billing_sync_error: null,
         stripe_billing_synced_at: new Date().toISOString(),

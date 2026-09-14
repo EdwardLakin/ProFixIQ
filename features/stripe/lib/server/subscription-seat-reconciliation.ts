@@ -14,6 +14,7 @@ import {
   resolveStripePriceContract,
   type StripePriceContract,
 } from "@/features/stripe/lib/server/stripe-price-contract";
+import { isDefaultWorkforceRole } from "@/features/workforce/lib/roster";
 
 type DB = Database;
 
@@ -92,12 +93,18 @@ async function countBillableUsers(
   supabase: SupabaseClient<DB>,
   shopId: string,
 ): Promise<number> {
-  const { count, error } = await supabase
+  // Fleet-portal invitees (role "fleet_manager", see
+  // accept_fleet_portal_invite_atomic) and shop-provisioned dispatcher/driver
+  // profiles are not paid staff seats — see the equivalent fix in
+  // product-package-reconciliation.ts. A raw count here would charge Stripe
+  // for those identities and, downstream, inflate the AI fair-use ceiling
+  // that reads this reconciler's billable_user_count write.
+  const { data, error } = await supabase
     .from("profiles")
-    .select("id", { count: "exact", head: true })
+    .select("role")
     .eq("shop_id", shopId);
   if (error) throw new Error(error.message);
-  return typeof count === "number" ? count : 0;
+  return (data ?? []).filter((row) => isDefaultWorkforceRole(row.role)).length;
 }
 
 async function persistSyncFailure(
