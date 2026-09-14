@@ -21142,6 +21142,8 @@ export type Database = {
           slug: string | null
           street: string | null
           stripe_account_id: string | null
+          stripe_billing_reconciliation_generation: number
+          stripe_billing_reconciliation_signature: string | null
           stripe_billing_sync_error: string | null
           stripe_billing_sync_required: boolean
           stripe_billing_synced_at: string | null
@@ -21224,6 +21226,8 @@ export type Database = {
           slug?: string | null
           street?: string | null
           stripe_account_id?: string | null
+          stripe_billing_reconciliation_generation?: number
+          stripe_billing_reconciliation_signature?: string | null
           stripe_billing_sync_error?: string | null
           stripe_billing_sync_required?: boolean
           stripe_billing_synced_at?: string | null
@@ -21306,6 +21310,8 @@ export type Database = {
           slug?: string | null
           street?: string | null
           stripe_account_id?: string | null
+          stripe_billing_reconciliation_generation?: number
+          stripe_billing_reconciliation_signature?: string | null
           stripe_billing_sync_error?: string | null
           stripe_billing_sync_required?: boolean
           stripe_billing_synced_at?: string | null
@@ -27524,6 +27530,10 @@ export type Database = {
           p_work_order_id: string
         }
         Returns: Json
+      }
+      advance_billing_reconciliation_generation: {
+        Args: { p_shop_id: string; p_signature: string }
+        Returns: number
       }
       agent_approve_action: {
         Args: { p_action_id: string; p_approved_by?: string }

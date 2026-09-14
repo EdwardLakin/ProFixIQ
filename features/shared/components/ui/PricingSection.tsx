@@ -39,10 +39,10 @@ const plans: Array<{
     key: "shop_operations",
     name: "Shop Operations",
     price: `$${PRODUCT_PACKAGE_PRICING.shop_operations.monthlyCents / 100}`,
-    unit: "/ month / location",
+    unit: "USD / month / location",
     summary: "The operating system for repair shops working in the bay.",
     boundary:
-      "Unlimited internal users. Field Service and Fleet Maintenance are separate.",
+      "10 active staff users included, then $50 USD per additional active user.",
     features: [
       "Work orders, inspections, quotes, and invoicing",
       "Parts, purchasing, inventory, and workforce",
@@ -53,9 +53,9 @@ const plans: Array<{
     key: "field_service",
     name: "Field Service",
     price: `$${PRODUCT_PACKAGE_PRICING.field_service.monthlyCents / 100}`,
-    unit: "/ month",
+    unit: "USD / month",
     summary: "A focused service-truck operation for fleets and independents.",
-    boundary: "1 active service truck included, then $49 per additional truck.",
+    boundary: "1 active service truck included, then $49 USD per additional truck.",
     features: [
       "Dispatch and mobile service visits",
       "Explicit field-operator assignment",
@@ -66,11 +66,11 @@ const plans: Array<{
     key: "fleet_maintenance",
     name: "Fleet Maintenance",
     price: `$${PRODUCT_PACKAGE_PRICING.fleet_maintenance.monthlyCents / 100}`,
-    unit: "/ month",
+    unit: "USD / month",
     summary:
       "A fleet-owned workspace for maintenance, compliance, and repair history.",
     boundary:
-      "10 fleet-owned assets included, then $2.50 per additional asset.",
+      "10 fleet-owned assets included, then $2.50 USD per additional asset.",
     features: [
       "PM programs, inspections, defects, and approvals",
       "Drivers, dispatch, documents, and asset history",
@@ -81,11 +81,11 @@ const plans: Array<{
     key: "complete_operations",
     name: "Complete Operations",
     price: `$${PRODUCT_PACKAGE_PRICING.complete_operations.monthlyCents / 100}`,
-    unit: "/ month / location",
+    unit: "USD / month / location",
     summary:
       "Shop, Field Service, and Fleet Maintenance with owner-controlled toggles.",
     boundary:
-      "2 service trucks included. Larger participating fleets own their subscription.",
+      "10 active staff users included, then $50 USD per additional active user. 2 service trucks included.",
     features: [
       "Everything in Shop Operations",
       "Field Service for assigned operators",
@@ -226,12 +226,10 @@ export default function PricingSection({
         className={`${styles.notice} mx-auto mt-6 flex max-w-[88rem] flex-col gap-2 rounded-2xl border px-5 py-4 text-xs leading-5 md:flex-row md:items-center md:justify-between`}
       >
         <span>
-          No per-user charge. Customer, driver, and fleet portal identities are
-          included.
+          Customer, driver, and fleet portal identities are not counted as paid staff seats.
         </span>
         <span>
-          Shops are never billed for unlinked customer vehicles or fleets they
-          only service.
+          AI assistance is included subject to fair-use safeguards; core shop workflows remain available.
         </span>
       </div>
     </section>
