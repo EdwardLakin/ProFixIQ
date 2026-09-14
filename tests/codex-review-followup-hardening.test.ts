@@ -108,7 +108,7 @@ describe("Codex review follow-up hardening", () => {
     expect(createPage).toContain("workOrderId={hasValidatedWorkOrder");
     expect(createPage).toContain("disabled={!hasValidatedWorkOrder}");
     expect(createPage).toContain("CREATE_WORK_ORDER_STALE_EVENT");
-    expect(createPage).toContain("requireMutableWorkOrder");
+    expect(createPage).toContain("requireResumableCreateWorkOrder");
     expect(createPage.indexOf("const [error, setError]")).toBeLessThan(
       createPage.indexOf("const handleStaleDraft"),
     );

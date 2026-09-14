@@ -52,10 +52,10 @@ describe("maintenance suggestion quote contract", () => {
     );
     expect(maintenanceWriter).toContain('.from("menu_items")');
     expect(maintenanceWriter).toContain(
-      '.select("id, price, inspection_template_id, service_key")',
+      '.select("id, total_price, base_price, inspection_template_id, service_key")',
     );
     expect(maintenanceWriter).toContain(
-      "finiteNonNegative(menuItem?.price ?? null)",
+      "finiteNonNegative(menuItem?.total_price ?? null)",
     );
   });
 

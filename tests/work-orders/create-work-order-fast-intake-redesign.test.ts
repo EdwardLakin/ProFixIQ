@@ -9,6 +9,10 @@ const customerVehicleForm = readFileSync(
   "features/inspections/components/inspection/CustomerVehicleForm.tsx",
   "utf8",
 );
+const resumeValidator = readFileSync(
+  "features/work-orders/lib/client/validateMutableWorkOrder.ts",
+  "utf8",
+);
 
 describe("create work order fast-intake redesign", () => {
   it("keeps the existing direct submit contract without wizard gates", () => {
@@ -55,9 +59,10 @@ describe("create work order fast-intake redesign", () => {
 
   it("revalidates tab-persisted work orders before exposing line mutations", () => {
     expect(createPage).toContain("validatedWorkOrderId === wo.id");
-    expect(createPage).toContain('.from("work_orders")');
-    expect(createPage).toContain('.eq("id", workOrderId)');
-    expect(createPage).toContain('.eq("shop_id", shopId)');
+    expect(createPage).toContain("requireResumableCreateWorkOrder({");
+    expect(resumeValidator).toContain('.from("work_orders")');
+    expect(resumeValidator).toContain('.eq("id", input.workOrderId)');
+    expect(resumeValidator).toContain('.eq("shop_id", input.shopId)');
     expect(createPage).toContain("setWo(null)");
     expect(createPage).toContain("setLines([])");
     expect(createPage).toContain(

@@ -68,7 +68,8 @@ function finiteNonNegative(value: number | null): number | null {
 
 type ResolvedMenuItem = {
   id: string;
-  price: number | null;
+  total_price: number | null;
+  base_price: number | null;
   inspection_template_id: string | null;
   service_key: string | null;
 };
@@ -79,7 +80,8 @@ function quoteItemFor(
   menuItem: ResolvedMenuItem | null,
 ): CanonicalQuoteItem {
   const effectivePrice =
-    finiteNonNegative(menuItem?.price ?? null) ??
+    finiteNonNegative(menuItem?.total_price ?? null) ??
+    finiteNonNegative(menuItem?.base_price ?? null) ??
     finiteNonNegative(suggestion.effectivePrice);
 
   return {
@@ -204,7 +206,7 @@ export async function addMaintenanceSuggestionsToWorkOrder(
   if (menuItemIds.length > 0) {
     const { data, error } = await supabase
       .from("menu_items")
-      .select("id, price, inspection_template_id, service_key")
+      .select("id, total_price, base_price, inspection_template_id, service_key")
       .in("id", menuItemIds)
       .or(`shop_id.eq.${workOrder.shop_id},shop_id.is.null`);
     if (error) throw error;
