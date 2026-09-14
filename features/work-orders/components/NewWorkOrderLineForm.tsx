@@ -8,6 +8,7 @@ import type { Database } from "@shared/types/types/supabase";
 import {
   isMissingWorkOrderWriteError,
   requireMutableWorkOrder,
+  requireResumableCreateWorkOrder,
   signalStaleCreateWorkOrder,
   STALE_CREATE_WORK_ORDER_MESSAGE,
 } from "@/features/work-orders/lib/client/validateMutableWorkOrder";
@@ -74,8 +75,16 @@ export function NewWorkOrderLineForm(props: {
   defaultJobType: WOJobType | null;
   shopId?: string | null; // REQUIRED for your shop-based models
   onCreated?: () => void;
+  enforceCreateResumability?: boolean;
 }) {
-  const { workOrderId, vehicleId, defaultJobType, shopId, onCreated } = props;
+  const {
+    workOrderId,
+    vehicleId,
+    defaultJobType,
+    shopId,
+    onCreated,
+    enforceCreateResumability = false,
+  } = props;
 
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
@@ -262,7 +271,15 @@ export function NewWorkOrderLineForm(props: {
     setErr(null);
 
     try {
-      await requireMutableWorkOrder({ supabase, workOrderId, shopId });
+      if (enforceCreateResumability) {
+        await requireResumableCreateWorkOrder({
+          supabase,
+          workOrderId,
+          shopId,
+        });
+      } else {
+        await requireMutableWorkOrder({ supabase, workOrderId, shopId });
+      }
 
       // Prefer exact vehicle-specific repair if available (job lines only)
       if (lineType === "job" && smartMatch?.menuRepairItemId) {

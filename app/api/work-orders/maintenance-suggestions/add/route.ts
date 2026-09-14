@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { addMaintenanceSuggestionToWorkOrder } from "@/features/maintenance/server/addMaintenanceSuggestionToWorkOrder";
-
+import {
+  addMaintenanceSuggestionToWorkOrder,
+  getMaintenanceSuggestionErrorMessage,
+} from "@/features/maintenance/server/addMaintenanceSuggestionToWorkOrder";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { StaleCreateWorkOrderError } from "@/features/work-orders/lib/client/validateMutableWorkOrder";
 
 type RequestBody = {
   workOrderId?: string;
@@ -9,19 +12,12 @@ type RequestBody = {
 };
 
 export async function POST(req: NextRequest) {
-  const supabase = createServerSupabaseRoute();
-
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
-
-  if (userError || !user) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+  const access = await requireShopScopedApiAccess({
+    requiredCapability: "canManageWorkOrders",
+  });
+  if (!access.ok) return access.response;
 
   const body = (await req.json().catch(() => null)) as RequestBody | null;
-
   const workOrderId = body?.workOrderId?.trim();
   const serviceCode = body?.serviceCode?.trim();
 
@@ -32,22 +28,36 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const { data: workOrder, error: workOrderError } = await access.supabase
+    .from("work_orders")
+    .select("id")
+    .eq("id", workOrderId)
+    .eq("shop_id", access.profile.shop_id)
+    .maybeSingle();
+  if (workOrderError) {
+    return NextResponse.json({ error: workOrderError.message }, { status: 500 });
+  }
+  if (!workOrder) {
+    return NextResponse.json(
+      { error: "This saved work order no longer exists. Return to a clean create flow." },
+      { status: 409 },
+    );
+  }
+
   try {
     const result = await addMaintenanceSuggestionToWorkOrder({
-      supabase,
+      supabase: access.supabase,
       workOrderId,
       serviceCode,
-      userId: user.id,
+      userId: access.authUserId,
     });
-
     return NextResponse.json(result);
   } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to add maintenance suggestion";
-
     return NextResponse.json(
-      { error: message },
-      { status: 500 },
+      {
+        error: getMaintenanceSuggestionErrorMessage(error),
+      },
+      { status: error instanceof StaleCreateWorkOrderError ? 409 : 500 },
     );
   }
 }

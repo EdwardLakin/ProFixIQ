@@ -82,7 +82,7 @@ export type CreateCanonicalQuoteLinesResult = {
   partRequestIds: string[];
   createdPartRequestItemCount: number;
   skippedPartRequestItemCount: number;
-} | { ok: false; error: string };
+} | { ok: false; error: string; errorCode?: string };
 
 export function safeTrim(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
@@ -401,7 +401,9 @@ export async function createCanonicalQuoteLines(
       .insert(rows)
       .select("id");
 
-    if (error) return { ok: false, error: error.message };
+    if (error) {
+      return { ok: false, error: error.message, errorCode: error.code };
+    }
 
     (data ?? []).forEach((row, index) => {
       const source = pendingSources.find((item) => safeTrim(item.id) === row.id) ?? pendingSources[index];

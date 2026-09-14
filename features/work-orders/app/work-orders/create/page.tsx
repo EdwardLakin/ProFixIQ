@@ -25,6 +25,7 @@ import RegistrationScanModal, {
 } from "@/features/vehicles/components/RegistrationScanModal";
 import { uploadVehicleMediaFile } from "@/features/vehicles/lib/vehicleMediaUpload";
 
+
 import CreateFlowMaintenanceSelector from "@/features/maintenance/components/CreateFlowMaintenanceSelector";
 // UI
 import CustomerVehicleForm from "@/features/inspections/components/inspection/CustomerVehicleForm";
@@ -44,7 +45,7 @@ import { requestVehicleRecallEnrichment } from "@/features/vehicles/lib/requestR
 import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 import {
   CREATE_WORK_ORDER_STALE_EVENT,
-  requireMutableWorkOrder,
+  requireResumableCreateWorkOrder,
   STALE_CREATE_WORK_ORDER_MESSAGE,
 } from "@/features/work-orders/lib/client/validateMutableWorkOrder";
 import { createCustomerAccount } from "@/features/customers/lib/customerAccountCommands";
@@ -369,6 +370,29 @@ function buildBookingNotesBlock(booking: BookingConversionRow): string {
   return lines.join("\n");
 }
 
+function hydrateCustomerFromRow(
+  row: CustomerRowWithBusiness,
+): CustomerWithBusiness {
+  return normalizeCustomerForIntake({
+    business_name: row.business_name ?? null,
+    name: getStrField(row, "name"),
+    display_name: getStrField(row, "display_name"),
+    full_name: getStrField(row, "full_name"),
+    first_name: getStrField(row, "first_name"),
+    last_name: getStrField(row, "last_name"),
+    contact_first_name: getStrField(row, "contact_first_name"),
+    contact_last_name: getStrField(row, "contact_last_name"),
+    phone: getStrField(row, "phone"),
+    phone_number: getStrField(row, "phone_number"),
+    email: getStrField(row, "email"),
+    address: getStrField(row, "address"),
+    street: getStrField(row, "street"),
+    city: getStrField(row, "city"),
+    province: getStrField(row, "province"),
+    postal_code: getStrField(row, "postal_code"),
+  });
+}
+
 function hydrateVehicleFromRow(row: VehicleRow): VehicleWithExtra {
   return {
     vin: row.vin ?? null,
@@ -422,6 +446,8 @@ export default function CreateWorkOrderPage() {
     searchParams.get("vehicle")?.trim() ||
     null;
   const bookingId = searchParams.get("bookingId")?.trim() || null;
+  const resumeWorkOrderId =
+    searchParams.get("resumeWorkOrderId")?.trim() || null;
   const returnTo = searchParams.get("returnTo")?.trim() || null;
 
   useEffect(() => {
@@ -687,6 +713,8 @@ export default function CreateWorkOrderPage() {
     "inviteNotice",
     "",
   );
+  const [resumeNotice, setResumeNotice] = useState<string | null>(null);
+  const [resumeBlocked, setResumeBlocked] = useState(false);
   const [bookingPrefill, setBookingPrefill] =
     useState<BookingConversionRow | null>(null);
   const [sendInvite, setSendInvite] = useTabState<boolean>("sendInvite", true);
@@ -696,13 +724,18 @@ export default function CreateWorkOrderPage() {
 
   useEffect(() => {
     const handleStaleDraft = (event: Event) => {
-      const detail = (event as CustomEvent<{ workOrderId?: string }>).detail;
+      const detail = (
+        event as CustomEvent<{ workOrderId?: string; message?: string }>
+      ).detail;
       if (!detail?.workOrderId || detail.workOrderId !== wo?.id) return;
+      const message = detail.message ?? STALE_CREATE_WORK_ORDER_MESSAGE;
       setWo(null);
       setLines([]);
       setValidatedWorkOrderId(null);
-      setError(STALE_CREATE_WORK_ORDER_MESSAGE);
-      toast.error(STALE_CREATE_WORK_ORDER_MESSAGE);
+      setResumeNotice(null);
+      setResumeBlocked(Boolean(resumeWorkOrderId));
+      setError(message);
+      toast.error(message);
     };
     window.addEventListener(CREATE_WORK_ORDER_STALE_EVENT, handleStaleDraft);
     return () =>
@@ -710,7 +743,7 @@ export default function CreateWorkOrderPage() {
         CREATE_WORK_ORDER_STALE_EVENT,
         handleStaleDraft,
       );
-  }, [setError, setLines, setWo, wo?.id]);
+  }, [resumeWorkOrderId, setError, setLines, setWo, wo?.id]);
 
   // Current user id (for VIN modal)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -906,13 +939,15 @@ export default function CreateWorkOrderPage() {
     [supabase],
   );
 
-  // A create-tab draft can outlive the underlying work order (for example,
-  // after an empty shell is deleted elsewhere). Never expose line mutations
-  // until the persisted id has been revalidated inside the current shop.
+  // A saved create shell can be resumed from another device or browser. Before
+  // exposing line mutations, revalidate its shop scope and prove that no
+  // inspection, assignment, punch, or operational work has started.
   useEffect(() => {
-    const workOrderId = wo?.id ?? null;
+    const workOrderId = resumeWorkOrderId ?? wo?.id ?? null;
+    setValidatedWorkOrderId(null);
+    setResumeNotice(null);
     if (!workOrderId) {
-      setValidatedWorkOrderId(null);
+      setResumeBlocked(false);
       return;
     }
 
@@ -929,39 +964,105 @@ export default function CreateWorkOrderPage() {
         if (!shopId)
           throw new Error("Your profile isn’t linked to a shop yet.");
 
-        const { data: persisted, error: validationError } = await supabase
-          .from("work_orders")
-          .select("*")
-          .eq("id", workOrderId)
-          .eq("shop_id", shopId)
-          .maybeSingle<WorkOrderRow>();
+        const { workOrder: persisted, lines: candidateLines } =
+          await requireResumableCreateWorkOrder({
+            supabase,
+            workOrderId,
+            shopId,
+          });
 
-        if (validationError) throw validationError;
-        if (cancelled) return;
-
-        if (!persisted) {
-          setWo(null);
-          setLines([]);
-          setValidatedWorkOrderId(null);
-          setError("");
-          return;
+        if (!persisted.customer_id || !persisted.vehicle_id) {
+          throw new Error(
+            "This saved work order is missing its customer or vehicle.",
+          );
         }
 
-        setWo(persisted);
-        setValidatedWorkOrderId(persisted.id);
-      } catch {
+        const [customerResult, vehicleResult] = await Promise.all([
+          supabase
+            .from("customers")
+            .select("*")
+            .eq("id", persisted.customer_id)
+            .eq("shop_id", shopId)
+            .maybeSingle(),
+          supabase
+            .from("vehicles")
+            .select("*")
+            .eq("id", persisted.vehicle_id)
+            .eq("shop_id", shopId)
+            .eq("customer_id", persisted.customer_id)
+            .maybeSingle(),
+        ]);
+        if (customerResult.error) throw customerResult.error;
+        if (vehicleResult.error) throw vehicleResult.error;
+        if (!customerResult.data || !vehicleResult.data) {
+          throw new Error(
+            "The saved work order’s customer or vehicle could not be restored.",
+          );
+        }
         if (cancelled) return;
-        setValidatedWorkOrderId(null);
-        setError(
-          "Unable to restore the saved work order. Refresh and try again.",
+
+        const hydratedCustomer = hydrateCustomerFromRow(
+          customerResult.data as CustomerRowWithBusiness,
         );
+        const hydratedVehicle = hydrateVehicleFromRow(
+          vehicleResult.data as VehicleRow,
+        );
+
+        setCustomer(hydratedCustomer);
+        setVehicle(hydratedVehicle);
+        setCustomerId(persisted.customer_id);
+        setVehicleId(persisted.vehicle_id);
+        setPrefillCustomerId(persisted.customer_id);
+        setPrefillVehicleId(persisted.vehicle_id);
+        setWo(persisted as WorkOrderRow);
+        setLines(candidateLines as LineRow[]);
+        setNotes(persisted.notes ?? "");
+        setPriority(
+          typeof persisted.priority === "number" ? persisted.priority : 3,
+        );
+        setError("");
+        setResumeBlocked(false);
+        setValidatedWorkOrderId(persisted.id);
+        setResumeNotice(
+          resumeWorkOrderId
+            ? `Continuing saved work order ${persisted.custom_id ?? persisted.id}.`
+            : null,
+        );
+      } catch (resumeError) {
+        if (cancelled) return;
+        const message =
+          resumeError instanceof Error && resumeError.message
+            ? resumeError.message
+            : "Unable to restore the saved work order. Refresh and try again.";
+        setWo(null);
+        setLines([]);
+        setValidatedWorkOrderId(null);
+        setResumeNotice(null);
+        setResumeBlocked(Boolean(resumeWorkOrderId));
+        setError(message);
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [getOrLinkShopId, setError, setLines, setWo, supabase, wo?.id]);
+  }, [
+    getOrLinkShopId,
+    resumeWorkOrderId,
+    setCustomer,
+    setCustomerId,
+    setError,
+    setLines,
+    setNotes,
+    setPrefillCustomerId,
+    setPrefillVehicleId,
+    setPriority,
+    setVehicle,
+    setVehicleId,
+    setWo,
+    supabase,
+    wo?.id,
+  ]);
 
   // ✅ advisor ownership helper
 
@@ -1053,29 +1154,6 @@ export default function CreateWorkOrderPage() {
           (value !== null && value !== undefined && value !== ""),
       ),
     ) as Partial<VehicleRow>;
-
-  const hydrateCustomerFromRow = useCallback(
-    (row: CustomerRowWithBusiness): CustomerWithBusiness =>
-      normalizeCustomerForIntake({
-        business_name: row.business_name ?? null,
-        name: getStrField(row, "name"),
-        display_name: getStrField(row, "display_name"),
-        full_name: getStrField(row, "full_name"),
-        first_name: getStrField(row, "first_name"),
-        last_name: getStrField(row, "last_name"),
-        contact_first_name: getStrField(row, "contact_first_name"),
-        contact_last_name: getStrField(row, "contact_last_name"),
-        phone: getStrField(row, "phone"),
-        phone_number: getStrField(row, "phone_number"),
-        email: getStrField(row, "email"),
-        address: getStrField(row, "address"),
-        street: getStrField(row, "street"),
-        city: getStrField(row, "city"),
-        province: getStrField(row, "province"),
-        postal_code: getStrField(row, "postal_code"),
-      }),
-    [],
-  );
 
   // Read canonical query params, with legacy aliases for existing handoff links.
   useEffect(() => {
@@ -1292,7 +1370,6 @@ export default function CreateWorkOrderPage() {
     setVehicle,
     setCustomerId,
     setVehicleId,
-    hydrateCustomerFromRow,
     getOrLinkShopId,
   ]);
 
@@ -1526,6 +1603,7 @@ export default function CreateWorkOrderPage() {
       .from("work_order_lines")
       .select("*")
       .eq("work_order_id", wo.id)
+      .is("voided_at", null)
       .order("created_at", { ascending: true });
 
     setLines(data ?? []);
@@ -1536,6 +1614,10 @@ export default function CreateWorkOrderPage() {
     if (savingCv) return wo?.id ?? "";
     if (isPersistedWorkOrderPending) {
       setError("Checking the saved work order. Please try again in a moment.");
+      return "";
+    }
+    if (resumeBlocked) {
+      setError("Return to a clean create flow before creating another work order.");
       return "";
     }
     setSavingCv(true);
@@ -1562,6 +1644,14 @@ export default function CreateWorkOrderPage() {
 
       const shopId = await getOrLinkShopId(user.id);
       if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
+
+      if (wo?.id) {
+        await requireResumableCreateWorkOrder({
+          supabase,
+          workOrderId: wo.id,
+          shopId,
+        });
+      }
 
       const hadExplicitCustomerId = Boolean(customerId);
       const hadExplicitVehicleId = Boolean(vehicleId);
@@ -1655,27 +1745,25 @@ export default function CreateWorkOrderPage() {
       });
 
       if (wo?.id) {
-        if (wo.customer_id !== cust.id || wo.vehicle_id !== veh.id) {
-          const waiter = (wo as WorkOrderWaiterRow).is_waiter;
+        const { data: updated, error: updErr } = await supabase
+          .from("work_orders")
+          .update({
+            customer_id: cust.id,
+            vehicle_id: veh.id,
+            notes: strOrNull(notes) ?? "",
+            priority,
+            expected_completion_at: fromDatetimeLocalInput(
+              expectedCompletionInput,
+            ),
+            is_waiter: isWaiter,
+          })
+          .eq("id", wo.id)
+          .eq("shop_id", shopId)
+          .select("*")
+          .single();
 
-          const { data: updated, error: updErr } = await supabase
-            .from("work_orders")
-            .update({
-              customer_id: cust.id,
-              vehicle_id: veh.id,
-              expected_completion_at: fromDatetimeLocalInput(
-                expectedCompletionInput,
-              ),
-              ...(waiter !== undefined ? { is_waiter: waiter } : {}),
-            })
-            .eq("id", wo.id)
-            .select("*")
-            .single();
-
-          if (updErr) throw updErr;
-          setWo(updated);
-        }
-
+        if (updErr) throw updErr;
+        setWo(updated);
         await fetchLines();
         return wo.id;
       }
@@ -1969,7 +2057,7 @@ export default function CreateWorkOrderPage() {
       if (!wo?.id) return;
 
       try {
-        await requireMutableWorkOrder({
+        await requireResumableCreateWorkOrder({
           supabase,
           workOrderId: wo.id,
           shopId: wo.shop_id,
@@ -2025,7 +2113,7 @@ export default function CreateWorkOrderPage() {
       if (!ln?.id || !wo?.id) return;
 
       try {
-        await requireMutableWorkOrder({
+        await requireResumableCreateWorkOrder({
           supabase,
           workOrderId: wo.id,
           shopId: wo.shop_id,
@@ -2412,6 +2500,41 @@ export default function CreateWorkOrderPage() {
             </div>
           )}
 
+          {resumeNotice && (
+            <div
+              className={cx(
+                "mb-4 px-4 py-3 text-sm text-[color:var(--theme-text-primary)]",
+                subtlePanel,
+              )}
+            >
+              {resumeNotice}
+            </div>
+          )}
+
+          {resumeBlocked && (
+            <div
+              className={cx(
+                "mb-4 px-4 py-3 text-sm text-[color:var(--theme-text-primary)]",
+                subtlePanel,
+              )}
+            >
+              <div>
+                This work order cannot be continued in creation mode.
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  handleClearForm();
+                  setResumeBlocked(false);
+                  router.replace("/work-orders/create");
+                }}
+                className="mt-2 rounded-lg border border-[color:var(--desktop-border)] px-3 py-1.5 text-xs font-semibold"
+              >
+                Start a clean work order
+              </button>
+            </div>
+          )}
+
           {uploadSummary && (
             <div
               className={cx(
@@ -2656,7 +2779,7 @@ export default function CreateWorkOrderPage() {
                     const id = await handleSaveCustomerVehicle();
                     if (id) await maybeOpenIntakeAfterSave(id);
                   }}
-                  disabled={savingCv || loading || isPersistedWorkOrderPending}
+                  disabled={savingCv || loading || isPersistedWorkOrderPending || resumeBlocked}
                   className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[color:var(--brand-primary)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(23,71,255,0.2)] transition hover:brightness-110 disabled:opacity-60"
                 >
                   {savingCv
@@ -2953,6 +3076,7 @@ export default function CreateWorkOrderPage() {
                 </div>
                 <NewWorkOrderLineForm
                   workOrderId={wo.id}
+                  enforceCreateResumability
                   vehicleId={vehicleIdProp}
                   defaultJobType={type}
                   shopId={wo.shop_id ?? null}
@@ -3128,7 +3252,7 @@ export default function CreateWorkOrderPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={loading || isPersistedWorkOrderPending}
+                  disabled={loading || isPersistedWorkOrderPending || resumeBlocked}
                   className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[color:var(--brand-primary)] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(23,71,255,0.28)] transition hover:brightness-110 disabled:opacity-60 sm:w-auto"
                 >
                   <Check className="h-4 w-4" aria-hidden="true" />
