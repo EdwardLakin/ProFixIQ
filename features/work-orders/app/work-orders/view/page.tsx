@@ -304,6 +304,11 @@ export default function WorkOrdersView(): JSX.Element {
   >({});
   const [assignedByWo, setAssignedByWo] = useState<Record<string, boolean>>({});
   const [hasLinesByWo, setHasLinesByWo] = useState<Record<string, boolean>>({});
+  const [hasInspectionByWo, setHasInspectionByWo] = useState<
+    Record<string, boolean>
+  >({});
+  const [resumeInspectionLookupReady, setResumeInspectionLookupReady] =
+    useState(false);
 
   const [operationalStageByWo, setOperationalStageByWo] = useState<
     Record<string, WorkOrderOperationalStage>
@@ -411,6 +416,7 @@ export default function WorkOrdersView(): JSX.Element {
   const load = useCallback(async () => {
     setLoading(true);
     setErr(null);
+    setResumeInspectionLookupReady(false);
 
     let query = supabase
       .from("work_orders")
@@ -593,6 +599,8 @@ export default function WorkOrdersView(): JSX.Element {
       setAssignedByWo({});
       setHasLinesByWo({});
       setOperationalStageByWo({});
+      setHasInspectionByWo({});
+      setResumeInspectionLookupReady(true);
       setLoading(false);
       return;
     }
@@ -601,7 +609,8 @@ export default function WorkOrdersView(): JSX.Element {
       supabase
         .from("work_order_lines")
         .select("id,work_order_id,status,assigned_tech_id")
-        .in("work_order_id", ids),
+        .in("work_order_id", ids)
+        .is("voided_at", null),
       supabase
         .from("v_work_order_board_cards_shop")
         .select("work_order_id,overall_stage")
@@ -640,6 +649,41 @@ export default function WorkOrdersView(): JSX.Element {
       Pick<Line, "id" | "work_order_id" | "status" | "assigned_tech_id">
     >;
     const lineIds = lineRows.map((line) => line.id).filter(Boolean);
+    const lineWorkOrderById = new Map(
+      lineRows.map((line) => [line.id, line.work_order_id]),
+    );
+    let inspectionQuery = supabase
+      .from("inspections")
+      .select("work_order_id,work_order_line_id");
+    inspectionQuery =
+      lineIds.length > 0
+        ? inspectionQuery.or(
+            `work_order_id.in.(${ids.join(",")}),work_order_line_id.in.(${lineIds.join(",")})`,
+          )
+        : inspectionQuery.in("work_order_id", ids);
+    const { data: inspectionRows, error: inspectionErr } =
+      await inspectionQuery;
+    if (inspectionErr) {
+      console.warn(
+        "[WorkOrdersView] failed to validate resumable inspections:",
+        inspectionErr.message,
+      );
+      setHasInspectionByWo({});
+      setResumeInspectionLookupReady(false);
+    } else {
+      const inspectionMap: Record<string, boolean> = {};
+      for (const inspection of inspectionRows ?? []) {
+        const workOrderId =
+          inspection.work_order_id ??
+          (inspection.work_order_line_id
+            ? lineWorkOrderById.get(inspection.work_order_line_id)
+            : null);
+        if (workOrderId) inspectionMap[workOrderId] = true;
+      }
+      setHasInspectionByWo(inspectionMap);
+      setResumeInspectionLookupReady(true);
+    }
+
     const { data: bridgeAssignments, error: bridgeAssignErr } = lineIds.length
       ? await supabase
           .from("work_order_line_technicians")
@@ -1318,9 +1362,11 @@ export default function WorkOrdersView(): JSX.Element {
                 const hasWorkLines = Boolean(hasLinesByWo[row.id]);
                 const canContinueSetup =
                   canArchive &&
+                  resumeInspectionLookupReady &&
                   !row.archived_at &&
-                  ["awaiting", "new"].includes(canonicalStatus) &&
+                  ["awaiting", "new", "draft"].includes(canonicalStatus) &&
                   !row.inspection_id &&
+                  !hasInspectionByWo[row.id] &&
                   !hasAssignedTech &&
                   (operationalStage === "intake" ||
                     operationalStage === "estimate");

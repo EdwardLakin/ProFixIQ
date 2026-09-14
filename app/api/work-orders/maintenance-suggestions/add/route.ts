@@ -4,6 +4,7 @@ import {
   getMaintenanceSuggestionErrorMessage,
 } from "@/features/maintenance/server/addMaintenanceSuggestionToWorkOrder";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { StaleCreateWorkOrderError } from "@/features/work-orders/lib/client/validateMutableWorkOrder";
 
 type RequestBody = {
   workOrderId?: string;
@@ -48,7 +49,7 @@ export async function POST(req: NextRequest) {
       supabase: access.supabase,
       workOrderId,
       serviceCode,
-      userId: access.profile.id,
+      userId: access.authUserId,
     });
     return NextResponse.json(result);
   } catch (error) {
@@ -56,7 +57,7 @@ export async function POST(req: NextRequest) {
       {
         error: getMaintenanceSuggestionErrorMessage(error),
       },
-      { status: 500 },
+      { status: error instanceof StaleCreateWorkOrderError ? 409 : 500 },
     );
   }
 }

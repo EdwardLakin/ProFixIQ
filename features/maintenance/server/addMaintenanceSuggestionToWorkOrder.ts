@@ -7,6 +7,7 @@ import type {
 import {
   createCanonicalQuoteLines,
 } from "@/features/work-orders/lib/work-orders/canonicalQuoteLines";
+import { requireResumableCreateWorkOrder } from "@/features/work-orders/lib/client/validateMutableWorkOrder";
 import type { DB, MaintenanceSuggestionItem } from "./types";
 
 type AddMaintenanceSuggestionOpts = {
@@ -65,11 +66,21 @@ function finiteNonNegative(value: number | null): number | null {
     : null;
 }
 
+type ResolvedMenuItem = {
+  id: string;
+  price: number | null;
+  inspection_template_id: string | null;
+  service_key: string | null;
+};
+
 function quoteItemFor(
   suggestion: MaintenanceSuggestionItem,
   serviceCode: string,
+  menuItem: ResolvedMenuItem | null,
 ): CanonicalQuoteItem {
-  const effectivePrice = finiteNonNegative(suggestion.effectivePrice);
+  const effectivePrice =
+    finiteNonNegative(menuItem?.price ?? null) ??
+    finiteNonNegative(suggestion.effectivePrice);
 
   return {
     description: suggestion.label.trim(),
@@ -84,8 +95,11 @@ function quoteItemFor(
       : { subtotal: effectivePrice, grandTotal: effectivePrice }),
     metadata: {
       maintenance_service_code: serviceCode,
-      maintenance_menu_item_id: suggestion.menuItemId,
+      maintenance_menu_item_id: menuItem?.id ?? suggestion.menuItemId,
       maintenance_menu_repair_item_id: suggestion.menuRepairItemId,
+      maintenance_inspection_template_id:
+        menuItem?.inspection_template_id ?? null,
+      maintenance_menu_service_key: menuItem?.service_key ?? null,
       maintenance_mapping_source: suggestion.mappingSource,
       maintenance_why_due: suggestion.whyDue,
       maintenance_effective_price: effectivePrice,
@@ -161,14 +175,10 @@ export async function addMaintenanceSuggestionsToWorkOrder(
     new Set(opts.serviceCodes.map(normalizeServiceCode).filter(Boolean)),
   );
 
-  const { data: workOrder, error: workOrderError } = await supabase
-    .from("work_orders")
-    .select("id, shop_id, vehicle_id")
-    .eq("id", workOrderId)
-    .maybeSingle();
-
-  if (workOrderError) throw workOrderError;
-  if (!workOrder) throw new Error("Work order not found");
+  const { workOrder } = await requireResumableCreateWorkOrder({
+    supabase,
+    workOrderId,
+  });
   if (!workOrder.shop_id) throw new Error("Work order is missing shop_id");
 
   const suggestions = await loadSuggestionCache(
@@ -182,6 +192,25 @@ export async function addMaintenanceSuggestionsToWorkOrder(
       suggestion,
     ]),
   );
+
+  const menuItemIds = Array.from(
+    new Set(
+      suggestions
+        .map((suggestion) => suggestion.menuItemId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  let menuItems: ResolvedMenuItem[] = [];
+  if (menuItemIds.length > 0) {
+    const { data, error } = await supabase
+      .from("menu_items")
+      .select("id, price, inspection_template_id, service_key")
+      .in("id", menuItemIds)
+      .or(`shop_id.eq.${workOrder.shop_id},shop_id.is.null`);
+    if (error) throw error;
+    menuItems = (data ?? []) as ResolvedMenuItem[];
+  }
+  const menuItemsById = new Map(menuItems.map((item) => [item.id, item]));
 
   const skipped: Array<{ serviceCode: string; error: string }> = [];
   const candidates: Array<{
@@ -210,22 +239,33 @@ export async function addMaintenanceSuggestionsToWorkOrder(
     candidates.push({
       serviceCode,
       suggestion,
-      item: quoteItemFor(suggestion, serviceCode),
+      item: quoteItemFor(
+        suggestion,
+        serviceCode,
+        suggestion.menuItemId
+          ? (menuItemsById.get(suggestion.menuItemId) ?? null)
+          : null,
+      ),
     });
   }
 
   if (candidates.length === 0) return { ok: true, added: [], skipped };
 
-  const quoteResult = await createCanonicalQuoteLines({
-    supabase,
-    shopId: workOrder.shop_id,
-    workOrderId,
-    vehicleId: workOrder.vehicle_id,
-    suggestedBy: userId,
-    items: candidates.map((candidate) => candidate.item),
-  });
-
-  if (!quoteResult.ok) throw new Error(quoteResult.error);
+  let quoteResult: Awaited<ReturnType<typeof createCanonicalQuoteLines>>;
+  for (let attempt = 0; ; attempt += 1) {
+    quoteResult = await createCanonicalQuoteLines({
+      supabase,
+      shopId: workOrder.shop_id,
+      workOrderId,
+      vehicleId: workOrder.vehicle_id,
+      suggestedBy: userId,
+      items: candidates.map((candidate) => candidate.item),
+    });
+    if (quoteResult.ok) break;
+    if (quoteResult.errorCode !== "23505" || attempt >= 1) {
+      throw new Error(quoteResult.error);
+    }
+  }
 
   const resultsByIdentity = new Map(
     quoteResult.items.map((item) => [item.findingIdentity, item]),

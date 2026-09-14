@@ -4,6 +4,7 @@ import {
   getMaintenanceSuggestionErrorMessage,
 } from "@/features/maintenance/server/addMaintenanceSuggestionToWorkOrder";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { StaleCreateWorkOrderError } from "@/features/work-orders/lib/client/validateMutableWorkOrder";
 
 type RequestBody = {
   workOrderId?: string;
@@ -50,7 +51,7 @@ export async function POST(req: NextRequest) {
       supabase: access.supabase,
       workOrderId,
       serviceCodes,
-      userId: access.profile.id,
+      userId: access.authUserId,
     });
 
     if (result.added.length === 0) {
@@ -76,7 +77,7 @@ export async function POST(req: NextRequest) {
           "Failed to add maintenance items to the quote.",
         ),
       },
-      { status: 500 },
+      { status: error instanceof StaleCreateWorkOrderError ? 409 : 500 },
     );
   }
 }

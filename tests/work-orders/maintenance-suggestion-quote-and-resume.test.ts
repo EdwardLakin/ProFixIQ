@@ -17,6 +17,22 @@ const createPage = readFileSync(
   "features/work-orders/app/work-orders/create/page.tsx",
   "utf8",
 );
+const resumeValidator = readFileSync(
+  "features/work-orders/lib/client/validateMutableWorkOrder.ts",
+  "utf8",
+);
+const canonicalQuoteWriter = readFileSync(
+  "features/work-orders/lib/work-orders/canonicalQuoteLines.ts",
+  "utf8",
+);
+const maintenanceIdentityMigration = readFileSync(
+  "supabase/migrations/20260914184500_harden_maintenance_quote_identity.sql",
+  "utf8",
+);
+const singleRoute = readFileSync(
+  "app/api/work-orders/maintenance-suggestions/add/route.ts",
+  "utf8",
+);
 const workOrderList = readFileSync(
   "features/work-orders/app/work-orders/view/page.tsx",
   "utf8",
@@ -31,9 +47,15 @@ describe("maintenance suggestion quote contract", () => {
     expect(maintenanceWriter).toContain(
       "findingIdentity: `maintenance_suggestion:${serviceCode}`",
     );
-    expect(maintenanceWriter).not.toContain('.from("work_order_lines")');
     expect(maintenanceWriter).not.toContain(
       "add_repair_line_from_vehicle_service",
+    );
+    expect(maintenanceWriter).toContain('.from("menu_items")');
+    expect(maintenanceWriter).toContain(
+      '.select("id, price, inspection_template_id, service_key")',
+    );
+    expect(maintenanceWriter).toContain(
+      "finiteNonNegative(menuItem?.price ?? null)",
     );
   });
 
@@ -43,6 +65,25 @@ describe("maintenance suggestion quote contract", () => {
     expect(bundleRoute).toContain("getMaintenanceSuggestionErrorMessage(");
     expect(maintenanceWriter).toContain("candidate.details");
     expect(maintenanceWriter).toContain("candidate.hint");
+    expect(bundleRoute).toContain("userId: access.authUserId");
+    expect(singleRoute).toContain("userId: access.authUserId");
+  });
+
+  it("enforces atomic maintenance identity and restores menu identity on approval", () => {
+    expect(canonicalQuoteWriter).toContain("errorCode: error.code");
+    expect(maintenanceWriter).toContain('quoteResult.errorCode !== "23505"');
+    expect(maintenanceIdentityMigration).toContain(
+      "uq_work_order_quote_lines_maintenance_service",
+    );
+    expect(maintenanceIdentityMigration).toContain(
+      "trg_materialize_maintenance_quote_line_identity",
+    );
+    expect(maintenanceIdentityMigration).toContain(
+      "new.menu_item_id := coalesce",
+    );
+    expect(maintenanceIdentityMigration).toContain(
+      "new.inspection_template_id := coalesce",
+    );
   });
 });
 
@@ -67,6 +108,13 @@ describe("abandoned work-order creation recovery", () => {
     {
       label: "inspection started",
       input: { workOrder: { status: "awaiting", inspection_id: "inspection-1" } },
+    },
+    {
+      label: "draft inspection row",
+      input: {
+        workOrder: { status: "awaiting" },
+        hasInspection: true,
+      },
     },
     {
       label: "assigned",
@@ -104,19 +152,44 @@ describe("abandoned work-order creation recovery", () => {
     expect(getCreateResumeBlocker(input)).not.toBeNull();
   });
 
-  it("loads a shop-scoped shell and checks canonical technician assignments", () => {
+  it("loads and hydrates a shop-scoped shell before enabling mutations", () => {
     expect(createPage).toContain('searchParams.get("resumeWorkOrderId")');
-    expect(createPage).toContain('.eq("shop_id", shopId)');
-    expect(createPage).toContain('.from("work_order_line_technicians")');
-    expect(createPage).toContain("getCreateResumeBlocker({");
-    expect(createPage).toContain("setLines(candidateLines)");
-    expect(createPage).toContain("setPrefillCustomerId(persisted.customer_id");
-    expect(createPage).toContain("setPrefillVehicleId(persisted.vehicle_id");
+    expect(createPage).toContain("requireResumableCreateWorkOrder({");
+    expect(resumeValidator).toContain('.eq("shop_id", input.shopId)');
+    expect(resumeValidator).toContain('.from("work_order_line_technicians")');
+    expect(resumeValidator).toContain('.from("inspections")');
+    expect(resumeValidator).toContain('.is("voided_at", null)');
+    expect(createPage).toContain("setCustomer(hydratedCustomer)");
+    expect(createPage).toContain("setVehicle(hydratedVehicle)");
+    expect(createPage.indexOf("setCustomer(hydratedCustomer)")).toBeLessThan(
+      createPage.indexOf("setValidatedWorkOrderId(persisted.id)"),
+    );
+    expect(createPage).toContain("notes: strOrNull(notes)");
+    expect(createPage).toContain("priority,");
+    expect(createPage).toContain("Start a clean work order");
+  });
+
+  it("ignores voided lines when deciding whether setup can resume", () => {
+    expect(
+      canResumeWorkOrderCreation({
+        workOrder: { status: "awaiting" },
+        lines: [
+          {
+            status: "in_progress",
+            line_status: "in_progress",
+            assigned_tech_id: "old-tech",
+            voided_at: "2026-09-14T10:00:00Z",
+          },
+        ],
+      }),
+    ).toBe(true);
   });
 
   it("offers continuation from the work-order list with the server-side guard authoritative", () => {
     expect(workOrderList).toContain("const canContinueSetup =");
     expect(workOrderList).toContain("!row.inspection_id");
+    expect(workOrderList).toContain("!hasInspectionByWo[row.id]");
+    expect(workOrderList).toContain("resumeInspectionLookupReady");
     expect(workOrderList).toContain("!hasAssignedTech");
     expect(workOrderList).toContain("Continue setup");
     expect(workOrderList).toContain(

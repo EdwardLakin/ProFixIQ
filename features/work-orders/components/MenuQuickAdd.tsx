@@ -11,6 +11,7 @@ import { calculateTax, type ProvinceCode } from "@/features/integrations/tax";
 import {
   isMissingWorkOrderWriteError,
   requireMutableWorkOrder,
+  requireResumableCreateWorkOrder,
   signalStaleCreateWorkOrder,
   STALE_CREATE_WORK_ORDER_MESSAGE,
 } from "@/features/work-orders/lib/client/validateMutableWorkOrder";
@@ -486,6 +487,11 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
     try {
       await ensureShopContext(shopId);
+      await requireResumableCreateWorkOrder({
+        supabase,
+        workOrderId,
+        shopId,
+      });
 
       if (params.kind === "template") {
         const line: WorkOrderLineInsert & { inspection_template_id?: string | null } = {
