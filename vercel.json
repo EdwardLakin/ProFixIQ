@@ -17,6 +17,10 @@
       "schedule": "52 * * * *"
     },
     {
+      "path": "/api/internal/appointment-parts-preparation",
+      "schedule": "22 * * * *"
+    },
+    {
       "path": "/api/internal/import-jobs/tick",
       "schedule": "* * * * *"
     },
