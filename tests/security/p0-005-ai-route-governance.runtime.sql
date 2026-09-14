@@ -119,6 +119,23 @@ values
     '57000000-0000-4000-8000-000000000013',
     'p0-005-tech-a-canonical@example.com',
     '{"full_name":"P0-005 Tech A Canonical"}'::jsonb
+  ),
+  -- Dedicated shop-wide fair-use budget fixture: isolated from Shop A so the
+  -- shared-budget lifecycle test below has a deterministic starting balance,
+  -- unaffected by Shop A's unrelated rate-limit reservations earlier in this
+  -- file.
+  (
+    '58000000-0000-4000-8000-000000000001',
+    'p0-005-owner-c@example.com',
+    '{"full_name":"P0-005 Owner C"}'::jsonb
+  ),
+  -- Fleet-portal invitee on Shop C: proves profixiq_mark_shop_billing_sync
+  -- excludes non-staff roles from billable_user_count / active_user_count,
+  -- since the AI fair-use ceiling below is sized directly off that column.
+  (
+    '58000000-0000-4000-8000-000000000002',
+    'p0-005-fleet-manager-c@example.com',
+    '{"full_name":"P0-005 Fleet Manager C"}'::jsonb
   )
 on conflict (id) do nothing;
 
@@ -129,6 +146,18 @@ values
     '55000000-0000-4000-8000-000000000001',
     'owner',
     'P0-005 Owner A'
+  ),
+  (
+    '58000000-0000-4000-8000-000000000001',
+    '58000000-0000-4000-8000-000000000001',
+    'owner',
+    'P0-005 Owner C'
+  ),
+  (
+    '58000000-0000-4000-8000-000000000002',
+    '58000000-0000-4000-8000-000000000002',
+    'fleet_manager',
+    'P0-005 Fleet Manager C'
   ),
   (
     '56000000-0000-4000-8000-000000000002',
@@ -172,6 +201,13 @@ values
     'P0-005 Shop B',
     'P0-005 Shop B',
     3
+  ),
+  (
+    'c5300000-0000-4000-8000-000000000003',
+    '58000000-0000-4000-8000-000000000001',
+    'P0-005 Shop C',
+    'P0-005 Shop C',
+    3
   )
 on conflict (id) do nothing;
 
@@ -181,13 +217,41 @@ set shop_id = case id
     then 'a5100000-0000-4000-8000-000000000001'::uuid
   when '57000000-0000-4000-8000-000000000013'::uuid
     then 'a5100000-0000-4000-8000-000000000001'::uuid
+  when '58000000-0000-4000-8000-000000000001'::uuid
+    then 'c5300000-0000-4000-8000-000000000003'::uuid
+  when '58000000-0000-4000-8000-000000000002'::uuid
+    then 'c5300000-0000-4000-8000-000000000003'::uuid
   else 'b5200000-0000-4000-8000-000000000002'::uuid
 end
 where id in (
   '55000000-0000-4000-8000-000000000001',
   '56000000-0000-4000-8000-000000000002',
-  '57000000-0000-4000-8000-000000000013'
+  '57000000-0000-4000-8000-000000000013',
+  '58000000-0000-4000-8000-000000000001',
+  '58000000-0000-4000-8000-000000000002'
 );
+
+do $$
+declare
+  v_billable integer;
+  v_active integer;
+begin
+  -- profixiq_mark_shop_billing_sync just fired for both Shop C profiles
+  -- above (update of shop_id). Only Owner C is a workforce staff role; the
+  -- Fleet-portal invitee must not inflate the count that sizes Shop C's AI
+  -- fair-use budget.
+  select billable_user_count, active_user_count
+  into v_billable, v_active
+  from public.shops
+  where id = 'c5300000-0000-4000-8000-000000000003';
+
+  if v_billable <> 1 or v_active <> 1 then
+    raise exception
+      'P0-005 runtime assertion failed: billing sync counted a non-staff profile as a seat (billable=%, active=%)',
+      v_billable, v_active;
+  end if;
+end
+$$;
 
 set local role authenticated;
 
@@ -452,20 +516,29 @@ begin
 end
 $$;
 
+-- Runs on dedicated Shop C, not Shop A: the migration this file guards
+-- (20260913194000_unify_shop_ai_fair_use_budget.sql) made the monthly budget
+-- shop-wide instead of per-feature, so Shop A's unrelated dtc_suggest
+-- reservations above would otherwise eat into this budget too. That cross-
+-- feature bleed-through is exactly the behavior being verified below, so the
+-- claims here deliberately span two different features (dtc_suggest, then
+-- inspection_interpret) against the one shared ceiling, on a shop with no
+-- other activity, to prove aggregation is shop-wide and deterministic.
 do $$
 declare
   v_allowed boolean;
   v_reason text;
   v_receipt_one uuid;
   v_receipt_two uuid;
+  v_receipt_three uuid;
   v_completed boolean;
 begin
   select allowed, receipt_id
   into v_allowed, v_receipt_one
   from public.consume_ai_route_quota(
-    'a5100000-0000-4000-8000-000000000001',
-    '55000000-0000-4000-8000-000000000001',
-    'inspection_interpret',
+    'c5300000-0000-4000-8000-000000000003',
+    '58000000-0000-4000-8000-000000000001',
+    'dtc_suggest',
     10,
     20,
     300,
@@ -479,9 +552,9 @@ begin
 
   select public.complete_ai_route_quota(
     v_receipt_one,
-    'a5100000-0000-4000-8000-000000000001',
-    '55000000-0000-4000-8000-000000000001',
-    'inspection_interpret',
+    'c5300000-0000-4000-8000-000000000003',
+    '58000000-0000-4000-8000-000000000001',
+    'dtc_suggest',
     0.01,
     true
   ) into v_completed;
@@ -492,9 +565,9 @@ begin
 
   select public.complete_ai_route_quota(
     v_receipt_one,
-    'a5100000-0000-4000-8000-000000000001',
-    '55000000-0000-4000-8000-000000000001',
-    'inspection_interpret',
+    'c5300000-0000-4000-8000-000000000003',
+    '58000000-0000-4000-8000-000000000001',
+    'dtc_suggest',
     0.01,
     true
   ) into v_completed;
@@ -503,11 +576,14 @@ begin
     raise exception 'P0-005 runtime assertion failed: receipt completion was replayable';
   end if;
 
+  -- A different feature now spends against the same shop's ceiling. Only
+  -- $0.01 of the $0.05 budget was actually spent above, so this $0.04
+  -- reservation for inspection_interpret must still be allowed.
   select allowed, receipt_id
   into v_allowed, v_receipt_two
   from public.consume_ai_route_quota(
-    'a5100000-0000-4000-8000-000000000001',
-    '55000000-0000-4000-8000-000000000001',
+    'c5300000-0000-4000-8000-000000000003',
+    '58000000-0000-4000-8000-000000000001',
     'inspection_interpret',
     10,
     20,
@@ -517,15 +593,18 @@ begin
   );
 
   if not v_allowed or v_receipt_two is null then
-    raise exception 'P0-005 runtime assertion failed: reconciled budget was not reusable';
+    raise exception 'P0-005 runtime assertion failed: cross-feature budget was not shared';
   end if;
 
-  select allowed, denial_reason
-  into v_allowed, v_reason
+  -- $0.01 (settled dtc_suggest) + $0.04 (reserved inspection_interpret) is
+  -- already $0.05. A third claim on either feature must now be denied by the
+  -- same shared ceiling.
+  select allowed, denial_reason, receipt_id
+  into v_allowed, v_reason, v_receipt_three
   from public.consume_ai_route_quota(
-    'a5100000-0000-4000-8000-000000000001',
-    '55000000-0000-4000-8000-000000000001',
-    'inspection_interpret',
+    'c5300000-0000-4000-8000-000000000003',
+    '58000000-0000-4000-8000-000000000001',
+    'dtc_suggest',
     10,
     20,
     300,
@@ -533,7 +612,7 @@ begin
     0.04
   );
 
-  if v_allowed or v_reason <> 'hard_budget_exceeded' then
+  if v_allowed or v_reason <> 'hard_budget_exceeded' or v_receipt_three is not null then
     raise exception 'P0-005 runtime assertion failed: hard budget was bypassed';
   end if;
 end
