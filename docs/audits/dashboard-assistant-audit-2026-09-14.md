@@ -1,194 +1,266 @@
-# Dashboard Assistant Audit — where ProFixIQ's AI actually stands
+# Dashboard Assistant Audit — Current State and Proactive Operations Plan
 
 Date: 2026-09-14
-Scope: every AI/assistant surface reachable from the dashboard app shell, and the
-server-side systems that back them. Written against the "Tech Copilot / Operations
-Agent / Manager Agent" split under discussion.
+Scope: AI and assistant surfaces reachable from the dashboard shell, their
+server-side capabilities, and the implementation path toward the proposed Tech
+Copilot / Operations Agent / Manager Agent product split.
 
 ## 0. Headline finding
 
-**The role split the vision describes is already largely built, not proposed.**
-There are three distinct AI identities live in the app today, and the tool/domain
-architecture underneath them is close to a 1:1 match with the "GREEN/YELLOW/RED"
-autonomy model and most of the "high-value automation" list. What is missing is
-narrower than it looks from the outside:
+ProFixIQ is not starting from a generic chatbot. The current Shop Assistant
+already has durable conversations, contextual state, capability-aware tool
+selection, confirmed actions, audit records, and broad read/write coverage of
+shop workflows. Technician Copilot is already a separate, mature surface.
 
-1. **No action in the system is ever fully autonomous today.** Every write path is
-   gated behind an explicit human confirmation click, including ones that meet the
-   vision's own definition of GREEN (predictable, reversible, already implied by an
-   approved workflow). The GREEN class exists in the type system but nothing has
-   been switched into it.
-2. **Nothing runs proactively on a clock.** Every "operations" signal (blockers,
-   overloaded techs, aging work orders, parts delays) is computed on demand when a
-   person opens a panel or asks a question — never pushed ahead of an appointment,
-   a shift, or a morning.
-3. **Two overlapping agent stacks exist side by side** (`features/agent` and
-   `features/shop-assistant`), exposed as two separate header buttons ("Agent
-   Request" and "Assistant"). They duplicate several tools. This is technical debt
-   worth resolving before adding the Operations Agent on top.
+The proposed role split is **not yet fully implemented as a product experience**:
 
-Everything below is sourced from the current `claude/dashboard-assistant-audit-tlv9m4`
-checkout, not from documentation or memory.
+1. **Technician Copilot exists** and is the correct foundation for technician
+   work.
+2. **Shop Assistant exists** and is the correct foundation for front-end
+   Operations and Manager experiences.
+3. **Manager Agent does not exist as a named or proactive surface.** Role-aware
+   summaries and operational signals provide useful building blocks.
+4. **No Shop Assistant write is autonomous.** All 27 registered writes require
+   explicit confirmation.
+5. **Operational awareness is request-time or browser-poll driven.** There is no
+   durable scheduled/event-driven observer that prepares tomorrow's work or
+   pushes an exception into a conversation before a user asks.
 
-## 1. What actually lives in the navbar today
+The safest implementation is therefore to evolve the existing Shop Assistant,
+not build another agent system and not broadly loosen confirmation policy on its
+generic tools.
 
-`components/Navbar.tsx` is retired (`return null` — the top navbar was replaced by
-the sidebar + header in `features/shared/components/AppShell.tsx`). The header
-(`AppShell.tsx`) is the real "navbar" now, and it wires up four separate AI/assistant
-entry points depending on role:
+## 1. What actually lives in the dashboard header
 
-| Header control | Feature module | What it is |
+`components/Navbar.tsx` is retired (`return null`). The active header and shell
+are in `features/shared/components/AppShell.tsx`.
+
+| Header/shell surface | Feature module | Actual purpose |
 |---|---|---|
-| **Assistant** button | `features/assistant` → `features/shop-assistant` | Conversational "Ask Assistant" — the closest thing to the proposed Operations Agent |
-| **Agent Request** button | `features/agent` | A separate, older goal/planner system (`agent_runs` table, 4 planner backends) |
-| **Ops Console** button (internal ops emails only) | `features/agent` server + `/ops` | Internal ProFixIQ-team console, not shop-facing |
-| `TechnicianCopilotShell` (auto-mounted for `mechanic` role, no header button) | `features/copilot/technician` | The Tech Copilot from the vision — inspect/document/punch/explain |
+| **Assistant** / Ask Assistant | `features/assistant` → `features/shop-assistant` | Customer-facing conversational shop assistant and the natural base for Operations/Manager experiences |
+| **Agent Request** | `features/agent/components/AgentRequestModal.tsx` | QA, bug, feature, catalog-add, and refactor intake sent to the ProFixIQ engineering agent; it is not a competing shop operations assistant |
+| **Ops Console** | `/ops` plus `features/agent` server modules | Internal ProFixIQ-team tooling, restricted to internal operations users |
+| `TechnicianCopilotShell` | `features/copilot/technician` | Technician-specific chat, voice, day agenda, documentation, and governed technician actions |
 
-So the three-identity split (Tech / Operations / Manager) is **conceptually already
-present**, just not named that way and not evenly built out:
+This means the dashboard currently has **two operational AI product surfaces**:
+Technician Copilot and Shop Assistant. “Agent Request” should be labelled clearly
+as product feedback/engineering intake so it is not mistaken for a shop agent.
 
-- **Tech Copilot → `features/copilot/technician`.** Well-developed: chat, day
-  agenda, shift punch, documentation drafting, voice, mobile dock, a governed-turn
-  layer with spend/quota guards (`governedTurn.ts`) and a typed action contract
-  (`actionContract.ts`). This is the most mature of the three and matches the
-  vision's "task-focused" description closely.
-- **Operations Agent → `features/shop-assistant`.** A real conversational agent with
-  36 tools across 10 domains (work orders, scheduling, inventory, invoices,
-  customers, fleet, inspections, workforce, communications, reporting). This is
-  the natural home for the "Operations Agent" the vision describes — see §3.
-- **Manager Agent → does not exist as a named surface**, but its raw material
-  exists: `features/agent/server/getRoleDailySummary.ts` already produces a
-  role-differentiated exception digest (owner/manager/advisor/tech/fleet each get a
-  different summary built from the same notification set). It's just not exposed
-  as its own identity or pushed anywhere — see §4.
+### Intended identity split
 
-## 2. The autonomy model: infrastructure exists, nothing is turned on
+- **Tech Copilot** — “What do I need to know or document to perform this work?”
+- **ProFix Operations** — “What can be prepared or moved safely to keep the shop
+  moving?”
+- **Manager view** — “What requires management attention, and why?” This should
+  initially be a role-specific experience on the same Shop Assistant engine, not
+  a separate agent stack.
 
-`features/ai/server/automationPolicy.ts` implements almost exactly the readiness
-model the vision proposes — evidence-based promotion, not a manual toggle:
+## 2. Current Shop Assistant capability surface
 
-- 10 named automation capabilities (`appointment_intake`, `customer_status_updates`,
-  `work_order_line_creation`, `quote_preparation`, `approval_request_delivery`,
-  `parts_ordering`, `appointment_reminders`, `advisor_follow_up`,
-  `invoice_preparation`, `payment_collection`).
-- Each requires ≥100 observations (75/40 for parts), ≥95% agreement rate, ≤2%
-  exception rate, zero critical failures, over a rolling 180-day window before it's
-  considered `"ready"`.
-- **`AI_AUTOMATION_EXECUTION_AVAILABLE` hardcodes every single capability to
-  `false`.** Even a capability that scored 100% readiness could not execute
-  automatically today — the execution wiring itself hasn't been built for any of
-  the ten. This is an explicit, intentional gate, not a bug — but it means the
-  "evidence and promotion" system is currently pure telemetry.
+The registry under `features/shop-assistant/server/tools` currently contains
+**57 tools across 12 domain modules**:
 
-Separately, the **shop-assistant tool registry** (`features/shop-assistant/server/tools/registry.ts`)
-already has the GREEN/YELLOW distinction the vision proposes, expressed as a
-`confirmation` field on every tool: `"never"`, `"required"`, or `"owner_pin"`.
-Sampling all ~90 tool definitions across the domain files:
+- 30 read tools with `confirmation: "never"`
+- 27 write tools with `confirmation: "required"`
+- 0 tools with `confirmation: "owner_pin"`
+- 0 write tools with `confirmation: "never"`
 
-- Every tool with `confirmation: "never"` is a **read-only** tool (fetch data,
-  search, list). There is no write tool anywhere in the registry with
-  `confirmation: "never"`.
-- Every write tool — `create_part_request`, `receive_part_request_item`,
-  `send_conversation_message`, `create_booking`, `reschedule_booking`,
-  `add_work_order_line`, `record_approval_decision`, `assign_work_order`, invoice
-  and payment actions, everything — is `"required"` (a few finance actions are
-  `"owner_pin"`). All of them route through `previewShopAssistantWriteTool` →
-  `createPendingAction`, which always produces a `confirmation_required` result
-  that a human must click to execute (`orchestrateShopAssistantTurn.ts:250-300`).
+The type system supports `"never"`, `"required"`, and `"owner_pin"`, but the
+registered production tool definitions currently use only the first two. Every
+registered write is staged through the shared confirmation/action path.
 
-**In the vision's own terms: today's Operations Agent has a fully-populated YELLOW
-class and a RED boundary, but an empty GREEN class.** Nothing is "mechanically
-implied by an already-approved workflow and executed without a click" yet — even
-things that clearly qualify under the vision's own rule (e.g. turning a
-technician-submitted parts requirement into a parts request; sending "your vehicle
-is ready" once state says so).
+Durable assistant actions are stored in `shop_assistant_actions`, with
+authorization, risk, status, idempotency, actor, shop, and related-resource
+metadata. Threads and messages are also persisted. Conversation context retains
+the active work order, vehicle, customer, booking, invoice, and recent domain or
+intent; it is useful operational context, but not a general semantic long-term
+memory system.
 
-## 3. Mapping the vision's automation targets to what exists
+The domain coverage is already broad enough to support an Operations experience:
+work orders, records, inventory/parts, customers, fleet, communications,
+invoices, scheduling, workforce, inspections, technician context, and reporting.
 
-| Vision target | Current state | Detail |
+## 3. Autonomy and proactive execution today
+
+`features/ai/server/automationPolicy.ts` defines ten automation-readiness
+capabilities with observation, agreement, exception, critical-failure, and
+time-window thresholds. However,
+`AI_AUTOMATION_EXECUTION_AVAILABLE` explicitly sets all ten capabilities to
+`false`. The readiness layer is telemetry/promotion infrastructure, not active
+automation execution.
+
+The dashboard also builds useful live operational state—alerts, metrics, and
+suggestions—but it is evaluated when requested and refreshed in a visible browser
+session. The role-aware daily summary is similarly generated on demand. Neither
+is a durable proactive worker.
+
+As a result, ProFixIQ can currently answer many operational questions and propose
+many actions, but it does not yet:
+
+- prepare tomorrow's appointments on a schedule;
+- sweep the whole shop for new blockers outside an active browser session;
+- deliver morning or event-driven exception summaries into an assistant inbox;
+- execute a narrowly defined, deterministic GREEN write automatically.
+
+## 4. Mapping the proposed automations to current state
+
+| Proposed capability | Current state | Implementation gap |
 |---|---|---|
-| **Work-order readiness / blocker detection** | **Built, but pull-based** | `features/ai/server/domains/workOrders/workOrderRecommendationRules.ts` + `partsDelayRules.ts` + `technicianDispatchRules.ts` + `closeoutRiskRules.ts` generate exactly the blocker types described in the vision: aging WO with no next action, waiting-on-approval, waiting-on-parts, inspection incomplete, ready-for-closeout, technician blocked/stale, priority escalation. Every recommendation is explicitly tagged `side_effects: ["no_mutation"]` and `requires_approval: false` at the recommendation layer (it only *proposes*). It only runs when a specific work order's `/api/work-orders/[id]/ai/recommendations` route is hit — there is no shop-wide sweep and no cron trigger. |
-| **Exception summary ("3 things blocking the shop")** | **Built and role-aware, but on-demand and not pushed** | `getRoleDailySummary.ts` + `getOpsNotifications.ts` already compute owner/advisor/manager/tech/fleet-specific digests from the same signal set (`approval_waiting`, `work_order_on_hold_too_long`, `parts_waiting_too_long`, `tech_overloaded`, `shop_overloaded`, `tech_underutilized_capacity`, `active_job_running_too_long`, `shop_throughput_below_capacity`). This is the closest thing to a Manager Agent that exists. Gap: it's computed only when a user requests it (`/api/planner/daily-summary` or the assistant), never proactively scheduled, and there's no push/SMS/email delivery. |
-| **Appointment preparation (night-before staging)** | **Not built** | `listBookingsTool`/`createBookingTool`/`rescheduleBookingTool` exist for on-demand scheduling queries, but there is no job that walks tomorrow's appointments and stages parts, flags missing VIN/unit data, or surfaces deferred work ahead of arrival. |
-| **Deferred/carried-forward work surfaced at intake** | **Exists as a manual UI panel, not an AI capability** | `PreviousDeferredWorkPanel.tsx` fetches `/api/work-orders/deferred-history` when a human opens it during WO creation. It is not agent-driven, not proactive, and not wired into the shop-assistant tool registry — the Operations Agent can't currently say "this vehicle has 3 carried-forward items" unasked. |
-| **Parts automation (tech→advisor→parts→advisor→tech)** | **Tool surface exists; every step is human-confirmed** | `inventory.ts` (1,649 lines) has `create_part_request`, `receive_part_request_item`, `create_purchase_order`, `place_purchase_order`, `receive_purchase_order_line`, `list_parts_blockers`, `list_low_stock_parts`. All writes require confirmation; no auto-notify-tech-on-receipt, no auto-clear-waiting-for-parts, no duplicate-request detection surfaced through the agent. |
-| **Customer communication (state-derived, factual)** | **One generic tool, gated** | `send_conversation_message` in `communications.ts` is `confirmation: "required"` and free-text, not a set of vetted state-triggered templates ("vehicle arrived", "estimate ready", "ready for pickup"). Nothing sends automatically on a state transition. |
-| **Fleet monitoring** | **Real domain, on-demand only** | `fleet.ts` has `list_fleet_units`, `list_fleet_service_requests`, `create_fleet_service_request`, `convert_fleet_service_request`. Same shape as the rest: solid read/propose surface, nothing proactive, no PM-interval or overdue-inspection sweep exposed to the agent. |
-| **Administrative cleanup (stale drafts, orphans, duplicates)** | **A different, adjacent system exists (ShopBoost), same posture** | `features/agent/server/opsRecommendations.ts` (`evaluateSmartMatchReadiness`, `buildMenuItemEfficiencyRecommendations`, `buildInspectionTemplateEfficiencyRecommendations`) does deterministic pattern-mining over completed work with an explicit "recommendation only, nothing is auto-created" stance — architecturally the right instinct, but it targets menu/inspection-template efficiency, not stale WOs/orphaned parts requests/duplicate customers as such. |
-| **Scheduling optimization (capacity, conflicts, reassignment suggestions)** | **Partial** | `workforce.ts` has `list_technician_assignments`, `list_technician_load`, `recommend_work_assignments`, `assign_work_order` — genuinely close to the vision's "suggest technician assignments" item. No capacity-conflict detection across bookings, no "what can we pull ahead" query yet. |
+| **WO blocker detection** | Per-WO recommendation rules and shop-state alerts exist | Add a shop-wide, idempotent observer and durable findings; begin in shadow mode |
+| **Role-aware exception summary** | `getRoleDailySummary` and operational notification logic exist | Persist/deliver scheduled summaries and connect them to the assistant experience |
+| **Appointment preparation** | Booking, vehicle, history, deferred-work, and parts primitives exist separately | Build a read-only appointment-preparation projection before any automatic write |
+| **Deferred work at intake** | Available through a manual UI flow | Include prior deferred/declined context in appointment preparation without making it approved or punchable |
+| **Parts workflow** | Strong read/write tool surface; writes require confirmation | Add a dedicated deterministic preparation command with exact eligibility and duplicate protection |
+| **Customer communication** | Generic confirmed messaging exists | Add vetted state-derived templates later; do not allow free-text autonomous messages |
+| **Fleet monitoring** | Fleet data and service-request tools exist | Add role-scoped exception rules and scheduled observation |
+| **Scheduling/capacity** | Assignments, load, and recommendations exist | Add booking conflict/capacity observation before any automatic assignment |
+| **Administrative cleanup** | Some recommendation-only pattern analysis exists | Add explicit stale/orphan rules; keep destructive or ambiguous repair human-controlled |
 
-## 4. The duplicate-agent problem
+## 5. `features/agent` is a mixed namespace, not a live duplicate product
 
-`features/agent` (older) and `features/shop-assistant` (newer) both exist in
-production and overlap:
+The `features/agent` directory contains several different concerns:
 
-- Both have a `getStalledWorkOrders`/`list_stalled_work_orders` equivalent.
-- Both have booking/reschedule tools.
-- Both have approval-related tools (`recordWorkOrderApproval` vs
-  `record_approval_decision`).
-- `features/agent` uses a goal + planner (`simple`/`openai`/`fleet`/`approvals`)
-  model against an `agent_runs` event log; `features/shop-assistant` uses a
-  threaded conversation model against `pending_actions` with per-tool
-  confirmation policy and RBAC capability gating
-  (`ActorCapabilityKey`/`allowedRoles` on every tool).
-- The shop-assistant design is materially more mature: typed input/output schemas
-  per tool, per-tool risk tier, per-tool role/capability authorization, a single
-  confirmation path, idempotency keys per turn. `features/agent`'s planners don't
-  have that same uniform authorization/confirmation layer.
-- Both are exposed simultaneously in the header today ("Agent Request" and
-  "Assistant" buttons), which is confusing for exactly the reason the vision's
-  three-identity framing is trying to avoid — two things claiming to be "the shop
-  AI" from the same toolbar.
+- the live Agent Request engineering-intake flow;
+- internal Ops Console support;
+- role-aware summaries/notifications;
+- older goal/planner code and an `agent_runs` model.
 
-**Recommendation:** before building the Operations Agent's proactive layer on top
-of `features/shop-assistant` (the right base — it already has the domain/tool
-architecture the vision wants), retire or fold `features/agent`'s overlapping
-tools into it, and collapse "Agent Request" + "Assistant" into one entry point.
-`getRoleDailySummary`/`getOpsNotifications` (currently under `features/agent/server`)
-are worth keeping and moving alongside the shop-assistant surface as the seed of
-the Manager Agent, since they're the one piece of `features/agent` with no
-shop-assistant equivalent yet.
+The older `startAgent()` planner entry point has no repository caller beyond its
+definition. Its existence does not establish that a second shop agent is live or
+that the “Agent Request” header button exposes it.
 
-## 5. What "Proactive Operations V1" needs that doesn't exist yet
+Therefore, removing or folding `features/agent` is **not a prerequisite** for
+Proactive Operations V1. Before retiring any code, perform a separate consumer and
+production-usage audit. Preserve useful summaries and internal engineering intake,
+and move modules only when there is a clear ownership benefit. This follows the
+repository's additive-first compatibility posture and avoids an unrelated broad
+rewrite.
 
-Given the state above, the four things called out as the first build
-(appointment prep, WO blocker detection, deterministic parts routing, actionable
-summaries) break down as:
+The immediate UI correction is simply to make “Agent Request” unmistakably a
+feedback/engineering action rather than another shop-assistant identity.
 
-- **WO blocker detection**: rules engine exists (§3) — needs (a) a shop-wide sweep
-  instead of per-WO on request, (b) a scheduler/event trigger instead of
-  route-hit-only, (c) promotion of a defined subset from `requires_approval: false`
-  *recommendation* to true GREEN *action* (e.g. auto-clearing "waiting for parts"
-  when all blocking parts are marked received is exactly the kind of deterministic,
-  reversible move the vision calls GREEN, and the underlying data already exists
-  in `listPartsBlockersTool`/`receivePartRequestItemTool`).
-- **Actionable summaries**: exists (`getRoleDailySummary`) — needs a schedule
-  (cron already exists for six other jobs in `vercel.json`; this would be a
-  seventh) and a delivery channel (push/email/in-app banner) instead of
-  request-time computation only.
-- **Appointment preparation**: does not exist — net-new. The building blocks
-  (booking tools, deferred-history endpoint, parts blockers, VIN/vehicle lookups)
-  are all present as manual/on-demand primitives; nothing walks tomorrow's
-  schedule and calls them proactively.
-- **Deterministic parts routing**: does not exist — net-new. The write tools exist;
-  the "mechanically imply a parts request from a submitted technician parts
-  requirement, without a click" GREEN path does not, because no write tool in the
-  registry is currently allowed to skip confirmation.
+## 6. Autonomy policy for this implementation
 
-## 6. Bottom line
+The AI can remove clicks; it cannot remove accountability.
 
-This is meaningfully further along than a "we're starting from a chatbot"
-assessment would suggest. The domain/tool separation, RBAC-scoped capabilities,
-per-action risk tiers, and an evidence-based automation-readiness framework are
-already in the codebase and reasonably well-designed. The gap between here and the
-vision is specifically:
+### GREEN — narrowly automatic
 
-1. Turn on a real GREEN class (some write tools with `confirmation: "never"` under
-   tight, explicit preconditions) instead of confirmation on every write.
-2. Add a scheduler/event layer so blocker detection and summaries run ahead of
-   need instead of only when asked.
-3. Build the net-new appointment-prep and parts-routing automations on the
-   existing tool primitives.
-4. Resolve the `features/agent` vs `features/shop-assistant` duplication before
-   layering more on top, and formally name/expose the Manager Agent using
-   `getRoleDailySummary` as its seed.
+Only dedicated commands with deterministic inputs, explicit shop enablement,
+idempotency, audit records, and a kill switch qualify. Initial examples:
+
+- create/update a read-only appointment-preparation projection;
+- prefill internal staging data from authoritative records;
+- create an internal parts request for an explicitly booked service only when an
+  active, vehicle-compatible menu repair provides an exact parts mapping and no
+  equivalent request already exists;
+- emit an internal operational notification from a verified state transition.
+
+GREEN does **not** mean changing a generic write tool such as
+`create_part_request` to `confirmation: "never"`. It means introducing a narrower
+command such as `prepare_appointment_parts_request` whose contract makes unsafe
+inputs impossible.
+
+### YELLOW — prepare, then confirm
+
+- technician assignment or reassignment;
+- booking/rescheduling;
+- customer estimate or approval request;
+- selecting a supplier or quote;
+- placing a purchase order;
+- changing a promised time;
+- free-text customer communication;
+- changing a work-order status or hold where physical readiness is not proven.
+
+### RED — prohibited
+
+- inventing or overriding a technician diagnosis/finding;
+- assuming that parts are required;
+- customer approval or safety acceptance;
+- bypassing capabilities, signatures, evidence, or tenant boundaries;
+- autonomous discounts, refunds, payments, or financial closeout;
+- representing a part as correct, received, or fitted without authoritative
+  workflow evidence.
+
+Automatically clearing **waiting for parts** is not an initial GREEN action.
+“Received” may still mean partial quantity, incorrect part, unverified fitment, or
+another unresolved blocker. The existing status-based hold behavior remains the
+source of truth unless a later, separately proven rule can establish all required
+conditions safely.
+
+## 7. Implementation plan
+
+### Phase 1 — Product identity and role boundary
+
+- Keep Technician Copilot as the technician identity.
+- Present the existing Shop Assistant as **ProFix Operations** for owner, admin,
+  manager, advisor, and parts roles.
+- Give managers a role-specific summary/exception view on the same engine rather
+  than creating another backend agent.
+- Rename/clarify **Agent Request** as product feedback or issue reporting.
+- Preserve current routes, APIs, authorization, and compatibility paths; make no
+  schema or workflow changes in this phase.
+- Add focused tests for role visibility, labels, route targets, and mobile/header
+  behavior.
+
+### Phase 2 — Unified assistant inbox
+
+- Bring role-aware daily summary, live alerts, pending confirmations, and recent
+  assistant activity into one front-end experience.
+- Link each exception to the existing authoritative workspace rather than building
+  duplicate management screens.
+
+### Phase 3 — Proactive observation in shadow mode
+
+- Add an idempotent shop-wide observer triggered on a schedule and, where useful,
+  existing domain events.
+- Persist detected blockers, deduplicate them, record why they fired, and measure
+  false positives.
+- Do not mutate shop workflow state.
+
+### Phase 4 — Appointment preparation projection
+
+- Inspect upcoming appointments, booked services, vehicle data, deferred history,
+  known menu repairs, parts readiness, and missing information.
+- Produce a reviewable preparation record and morning summary.
+- Do not create repair findings, approvals, orders, or punchable work.
+
+### Phase 5 — First deterministic GREEN command
+
+- Implement a dedicated `prepare_appointment_parts_request` command.
+- Require an explicit booked service, exact active menu-repair mapping,
+  vehicle compatibility, shop opt-in, and duplicate/idempotency protection.
+- Create only the internal request needed to start the existing Parts workflow.
+- Never choose a supplier or place a purchase order.
+- Roll out behind telemetry, a kill switch, and per-shop enablement after shadow
+  evidence meets the approved threshold.
+
+### Phase 6 — Day-of deterministic orchestration
+
+- Add internal notifications and other narrowly proven transitions one at a time.
+- Keep technician findings, customer approvals, assignments, ordering, holds,
+  safety decisions, and financial actions under existing human authority.
+
+### Phase 7 — Proactive conversation delivery
+
+- Deliver morning summaries and event-driven exceptions into durable assistant
+  threads/activity.
+- Record what the system observed, what it staged, what it executed, whose
+  authority applied, and what still requires human action.
+
+## 8. Recommended first release boundary
+
+The first meaningful release should contain:
+
+1. Role-correct product identity and a unified Operations/Manager inbox.
+2. A shadow-mode shop-wide blocker evaluator.
+3. Read-only appointment preparation.
+4. At most one narrowly scoped automatic internal parts-request command after its
+   shadow evidence is acceptable.
+5. Complete auditability, idempotency, owner enablement, and a kill switch.
+
+It should not include autonomous diagnosis, customer approval, parts ordering,
+technician assignment, work-order hold/status clearing, or financial execution.
+
+That path builds on the strongest existing ProFixIQ foundations while preserving
+the core operating rule: **the technician remains the source of truth, and AI
+interprets or moves authoritative information without inventing it.**
