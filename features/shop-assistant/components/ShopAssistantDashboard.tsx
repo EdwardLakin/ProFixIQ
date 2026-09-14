@@ -1,12 +1,27 @@
 "use client";
 
 import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
+import AppointmentPreparationList from "@/features/shop-assistant/components/AppointmentPreparationList";
 import PendingConfirmationsList from "@/features/shop-assistant/components/PendingConfirmationsList";
 import RecentAssistantActivityList from "@/features/shop-assistant/components/RecentAssistantActivityList";
 import ShopStateMetricGrid from "@/features/shop-assistant/components/ShopStateMetricGrid";
+import { useAppointmentPreparations } from "@/features/shop-assistant/hooks/useAppointmentPreparations";
 import { useAssistantInboxActivity } from "@/features/shop-assistant/hooks/useAssistantInboxActivity";
 import { useShopAssistantState } from "@/features/shop-assistant/hooks/useShopAssistantState";
 import type { ShopAssistantContext } from "@/features/shop-assistant/types";
+
+// Appointment preparation is only meaningful for the roles that also see
+// deferred-work/pricing history elsewhere (advisor/service/ops), not for
+// mechanic (Copilot is their surface) or the fleet/dispatcher portals.
+const APPOINTMENT_PREP_ROLES = new Set([
+  "owner",
+  "admin",
+  "manager",
+  "advisor",
+  "service",
+  "lead_hand",
+  "foreman",
+]);
 
 type Props = {
   refreshToken?: string | number;
@@ -32,6 +47,14 @@ export default function ShopAssistantDashboard({
     error: activityError,
     reload: reloadActivity,
   } = useAssistantInboxActivity(refreshToken);
+  const {
+    items: appointmentPreparations,
+    canViewPricing: canViewAppointmentPricing,
+    loading: appointmentPrepLoading,
+    error: appointmentPrepError,
+    reload: reloadAppointmentPrep,
+  } = useAppointmentPreparations(refreshToken);
+  const showAppointmentPrep = APPOINTMENT_PREP_ROLES.has(state?.role ?? "");
 
   if (loading && !state) {
     return (
@@ -145,6 +168,38 @@ export default function ShopAssistantDashboard({
           )}
         </div>
       </div>
+
+      {showAppointmentPrep ? (
+        <div>
+          <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+            Upcoming appointment preparation
+          </h2>
+          {appointmentPrepLoading ? (
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
+              Loading…
+            </div>
+          ) : appointmentPrepError ? (
+            <div className="rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-xs text-[color:var(--theme-text-primary)]">
+              <span>
+                Couldn&apos;t load upcoming appointment preparation:{" "}
+                {appointmentPrepError}
+              </span>
+              <button
+                type="button"
+                className="ml-2 rounded-full border border-current/30 px-2 py-0.5 font-semibold"
+                onClick={() => void reloadAppointmentPrep()}
+              >
+                Try again
+              </button>
+            </div>
+          ) : (
+            <AppointmentPreparationList
+              items={appointmentPreparations}
+              canViewPricing={canViewAppointmentPricing}
+            />
+          )}
+        </div>
+      ) : null}
 
       {error ? (
         <div className="text-xs text-amber-300">

@@ -1454,6 +1454,99 @@ export type Database = {
         }
         Relationships: []
       }
+      appointment_preparations: {
+        Row: {
+          booking_id: string
+          created_at: string
+          customer_id: string | null
+          customer_snapshot: Json
+          deferred_items: Json
+          generated_at: string
+          id: string
+          matched_menu_items: Json
+          missing_info: Json
+          resolved_at: string | null
+          shop_id: string
+          starts_at: string
+          status: string
+          updated_at: string
+          vehicle_id: string | null
+          vehicle_snapshot: Json
+        }
+        Insert: {
+          booking_id: string
+          created_at?: string
+          customer_id?: string | null
+          customer_snapshot?: Json
+          deferred_items?: Json
+          generated_at?: string
+          id?: string
+          matched_menu_items?: Json
+          missing_info?: Json
+          resolved_at?: string | null
+          shop_id: string
+          starts_at: string
+          status?: string
+          updated_at?: string
+          vehicle_id?: string | null
+          vehicle_snapshot?: Json
+        }
+        Update: {
+          booking_id?: string
+          created_at?: string
+          customer_id?: string | null
+          customer_snapshot?: Json
+          deferred_items?: Json
+          generated_at?: string
+          id?: string
+          matched_menu_items?: Json
+          missing_info?: Json
+          resolved_at?: string | null
+          shop_id?: string
+          starts_at?: string
+          status?: string
+          updated_at?: string
+          vehicle_id?: string | null
+          vehicle_snapshot?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointment_preparations_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: true
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_preparations_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_preparations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_preparations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_preparations_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       apps: {
         Row: {
           default_route: string
