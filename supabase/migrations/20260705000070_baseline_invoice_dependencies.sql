@@ -27,18 +27,9 @@ begin
     raise exception using errcode = 'P0001',
       message = 'PROFIXIQ_BASELINE_MODE_INVALID: ' || coalesce(v_mode, '<null>');
   end if;
+end
+$$;
 
-  -- Only a true bootstrap (no pre-existing invoices/payments) gets the
-  -- greenfield shape below. An "existing" database was already validated
-  -- above and must be left byte-for-byte unchanged: production's real
-  -- payments table predates this migration and was never guaranteed to
-  -- carry this generic invoice_id/payment_method/processor shape (it may
-  -- already be Stripe-first, for example), so running this DDL against it
-  -- unconditionally can fail on columns that were never there. See
-  -- 20260806181508_retire_legacy_bootstrap_schema_aliases.sql, which later
-  -- retires exactly these bootstrap-only aliases once they exist.
-
-  execute $ddl_0001$
 create table if not exists public.invoices (
   id uuid primary key default gen_random_uuid(),
   shop_id uuid not null references public.shops(id) on delete cascade,
@@ -57,10 +48,8 @@ create table if not exists public.invoices (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (shop_id, invoice_number)
-)
-$ddl_0001$;
+);
 
-  execute $ddl_0002$
 create table if not exists public.payments (
   id uuid primary key default gen_random_uuid(),
   shop_id uuid not null references public.shops(id) on delete cascade,
@@ -77,47 +66,24 @@ create table if not exists public.payments (
   created_by uuid references auth.users(id) on delete set null,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
-)
-$ddl_0002$;
+);
 
-  execute $ddl_0003$
 create index if not exists invoices_shop_work_order_idx
-  on public.invoices(shop_id, work_order_id, created_at desc)
-$ddl_0003$;
-
-  execute $ddl_0004$
+  on public.invoices(shop_id, work_order_id, created_at desc);
 create index if not exists payments_shop_invoice_idx
-  on public.payments(shop_id, invoice_id, created_at desc)
-$ddl_0004$;
+  on public.payments(shop_id, invoice_id, created_at desc);
 
-  execute $ddl_0005$
-alter table public.invoices enable row level security
-$ddl_0005$;
+alter table public.invoices enable row level security;
+alter table public.payments enable row level security;
 
-  execute $ddl_0006$
-alter table public.payments enable row level security
-$ddl_0006$;
-
-  execute $ddl_0007$
-drop policy if exists invoices_shop_crud on public.invoices
-$ddl_0007$;
-
-  execute $ddl_0008$
+drop policy if exists invoices_shop_crud on public.invoices;
 create policy invoices_shop_crud on public.invoices
   for all to authenticated
   using (shop_id = public.current_shop_id())
-  with check (shop_id = public.current_shop_id())
-$ddl_0008$;
+  with check (shop_id = public.current_shop_id());
 
-  execute $ddl_0009$
-drop policy if exists payments_shop_crud on public.payments
-$ddl_0009$;
-
-  execute $ddl_0010$
+drop policy if exists payments_shop_crud on public.payments;
 create policy payments_shop_crud on public.payments
   for all to authenticated
   using (shop_id = public.current_shop_id())
-  with check (shop_id = public.current_shop_id())
-$ddl_0010$;
-end
-$$;
+  with check (shop_id = public.current_shop_id());
