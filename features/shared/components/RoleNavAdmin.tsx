@@ -38,10 +38,10 @@ export default function RoleNavAdmin() {
           Admin tools
         </p>
         <Link
-          href="/assistant"
+          href="/assistant?experience=management"
           className="block text-sm text-[color:var(--theme-text-primary)] hover:text-[color:var(--theme-text-primary)]"
         >
-          AI Assistant
+          ProFix Operations
         </Link>
       </div>
 

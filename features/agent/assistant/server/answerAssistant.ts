@@ -1449,11 +1449,11 @@ async function answerAssistantInternal({
     return buildAnswer({
       intent: "unknown",
       summary:
-        "Open the Shop Assistant to query or act on the fleet records assigned to your account.",
+        "Open ProFix Operations to query or act on the fleet records assigned to your account.",
       bullets: [
         "Fleet unit and service-request results are restricted to your entitled fleet memberships.",
       ],
-      links: [{ label: "Open Shop Assistant", href: "/assistant" }],
+      links: [{ label: "Open ProFix Operations", href: "/assistant" }],
       resolvedContext: {},
     });
   }

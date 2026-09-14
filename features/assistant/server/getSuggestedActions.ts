@@ -167,7 +167,8 @@ function buildContextItems(
       id: `context:customer:${context.customerId}:history`,
       level: "info",
       title: "Review this customer's history",
-      description: "Ask Assistant for prior visits, approvals, and recent work.",
+      description:
+        "Ask ProFix Operations for prior visits, approvals, and recent work.",
       href: `/assistant?customerId=${encodeURIComponent(context.customerId)}&pageType=customer&pageTitle=Customer`,
       plannerHref: buildPlannerHref({
         planner: "ops",

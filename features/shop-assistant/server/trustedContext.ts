@@ -15,7 +15,7 @@ import type {
 } from "@/features/shop-assistant/types";
 
 const PAGE_TITLES: Record<string, string> = {
-  assistant: "Shop Assistant",
+  assistant: "ProFix Operations",
   dashboard: "Dashboard",
   work_order: "Work Order",
   work_orders: "Work Orders",

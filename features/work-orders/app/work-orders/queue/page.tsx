@@ -394,10 +394,10 @@ export default function QueuePage() {
 
           <div className="ml-auto flex items-center gap-2">
             <Link
-              href="/assistant?pageType=work_order_queue&pageTitle=Work%20Order%20Queue"
+              href="/assistant?pageType=work_order_queue&pageTitle=Work%20Order%20Queue&experience=operations"
               className={ui.buttonPrimary}
             >
-              Ask Assistant
+              ProFix Operations
             </Link>
 
             <button

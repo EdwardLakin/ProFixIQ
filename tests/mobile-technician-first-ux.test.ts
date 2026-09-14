@@ -26,6 +26,10 @@ const mobileMenu = readFileSync(
   "components/layout/MobileBottomNav.tsx",
   "utf8",
 );
+const mobileWorkOrder = readFileSync(
+  "features/work-orders/mobile/MobileWorkOrderClient.tsx",
+  "utf8",
+);
 const photoModal = readFileSync(
   "features/work-orders/components/workorders/extras/PhotoCaptureModal.tsx",
   "utf8",
@@ -161,9 +165,10 @@ describe("technician-first mobile UX", () => {
 
   it("keeps the assistant contextual, question-driven, and non-automatic", () => {
     expect(mobileMenu).toContain('if (role === "mechanic") return [];');
-    expect(mobileMenu).toContain(
-      '{ href: "/mobile/assistant", label: "Ask Assistant", icon: Bot }',
-    );
+    expect(mobileMenu).toContain('label: "ProFix Operations"');
+    expect(mobileMenu).toContain("resolveProFixOperationsExperience(role)");
+    expect(mobileWorkOrder).toContain("Open Tech Copilot");
+    expect(mobileWorkOrder).toContain("openTechnicianCopilot");
     expect(assistantModal).toContain("Ask ProFixIQ");
     expect(assistantModal).toContain("Nothing is changed automatically.");
     expect(assistantModal).toContain("<MobileTechnicianAssistant");

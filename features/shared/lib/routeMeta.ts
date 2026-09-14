@@ -586,7 +586,7 @@ export const ROUTE_META: Record<string, RouteMeta> = {
   // AI & Tech
   // ----------------------------------------------------------------
   "/ai/assistant": {
-    title: () => "AI Assistant",
+    title: () => "ProFix Operations",
     icon: "🤖",
     roles: [
       "owner",

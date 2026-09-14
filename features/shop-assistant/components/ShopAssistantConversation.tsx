@@ -37,7 +37,7 @@ function messageLabel(message: ShopAssistantMessage): string {
   if (message.kind === "action_result") return "Action result";
   if (message.kind === "error") return "Assistant error";
   if (message.role === "user") return "You";
-  return "Shop Assistant";
+  return "ProFix Operations";
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

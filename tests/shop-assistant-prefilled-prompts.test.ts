@@ -17,6 +17,8 @@ const availableToolNames = new Set([
   "list_technician_assignments",
   "list_technician_load",
   "find_customers",
+  "list_stalled_work_orders",
+  "list_ready_invoices",
 ]);
 
 function plan(question: string) {
@@ -44,6 +46,11 @@ describe("shop assistant prefilled prompts", () => {
       "Which queued jobs should be assigned next?",
       "recommend_work_assignments",
     ],
+    [
+      "Which work orders are stalled or waiting too long?",
+      "list_stalled_work_orders",
+    ],
+    ["Which completed jobs are ready to invoice?", "list_ready_invoices"],
   ])("routes %s to %s", (question, expectedTool) => {
     const result = plan(question);
     expect(result.kind).toBe("tools");

@@ -323,10 +323,10 @@ export function ScanToReceivePanel(): JSX.Element {
 
         <div className="flex flex-wrap items-center gap-2">
           <Link
-            href="/assistant?pageType=scan_receive&pageTitle=Scan%20to%20Receive"
+            href="/assistant?pageType=scan_receive&pageTitle=Scan%20to%20Receive&experience=operations"
             className="rounded border border-sky-500/35 bg-sky-950/20 px-3 py-2 text-sm text-sky-200 hover:bg-sky-900/25"
           >
-            Ask Assistant
+            ProFix Operations
           </Link>
         </div>
       </div>
