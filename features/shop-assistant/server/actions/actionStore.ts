@@ -276,6 +276,38 @@ export async function createPendingAction(params: {
   return { row: existingRow, created: false };
 }
 
+export async function listPendingActionsForActor(
+  actor: ShopAssistantActor,
+  limit = 10,
+): Promise<
+  Array<{
+    id: string;
+    threadId: string;
+    createdAt: string;
+    preview: ShopAssistantActionPreview;
+  }>
+> {
+  const nowIso = new Date().toISOString();
+  const { data, error } = await dbFor(actor)
+    .from("shop_assistant_actions")
+    .select(ACTION_SELECT)
+    .eq("shop_id", actor.shopId)
+    .eq("requested_by", actor.userId)
+    .eq("status", "pending_confirmation")
+    .gt("expires_at", nowIso)
+    .order("created_at", { ascending: false })
+    .limit(Math.min(Math.max(limit, 1), 25));
+
+  if (error) throw new Error(error.message);
+
+  return ((data ?? []) as ShopAssistantActionRow[]).map((row) => ({
+    id: row.id,
+    threadId: row.thread_id,
+    createdAt: row.created_at,
+    preview: mapActionPreview(row),
+  }));
+}
+
 export async function loadAction(
   actor: ShopAssistantActor,
   actionId: string,

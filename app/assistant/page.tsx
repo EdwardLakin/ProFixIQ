@@ -194,7 +194,7 @@ export default function AssistantPage() {
             Live shop overview
           </summary>
           <ShopAssistantDashboard
-            onPrompt={(prompt) => void sendPrompt(prompt)}
+            context={context}
             refreshToken={messages.at(-1)?.id}
           />
         </details>

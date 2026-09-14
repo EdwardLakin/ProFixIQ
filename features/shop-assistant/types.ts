@@ -142,6 +142,23 @@ export type ShopAssistantThreadListResponse =
       error: string;
     };
 
+export type ShopAssistantPendingAction = {
+  id: string;
+  threadId: string;
+  createdAt: string;
+  preview: ShopAssistantActionPreview;
+};
+
+export type ShopAssistantPendingActionsResponse =
+  | {
+      ok: true;
+      actions: ShopAssistantPendingAction[];
+    }
+  | {
+      ok: false;
+      error: string;
+    };
+
 export type ShopAssistantMessagesResponse =
   | {
       ok: true;

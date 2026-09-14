@@ -194,10 +194,7 @@ export default function MobileAssistantPage() {
           Live operational overview
         </summary>
         <ShopAssistantDashboard
-          onPrompt={(prompt) => {
-            setQuestion("");
-            void send(prompt, context);
-          }}
+          context={context}
           refreshToken={messages.at(-1)?.id}
         />
       </details>
