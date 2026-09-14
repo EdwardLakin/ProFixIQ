@@ -483,16 +483,6 @@
       "expiresOn": "2026-10-07"
     },
     {
-      "fingerprint": "1d0c9cf74643d40ee0c5",
-      "rule": "missing-column",
-      "severity": "error",
-      "domain": "work-orders",
-      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
-      "subject": "maintenance_suggestions.id",
-      "message": "select references missing column maintenance_suggestions.id",
-      "expiresOn": "2026-10-07"
-    },
-    {
       "fingerprint": "8b74aac993e4731db406",
       "rule": "missing-column",
       "severity": "error",
@@ -740,116 +730,6 @@
       "file": "features/integrations/imports/runFullImport.ts",
       "subject": "staff_invite_suggestions.username",
       "message": "insert payload contains missing column staff_invite_suggestions.username",
-      "expiresOn": "2026-10-07"
-    },
-    {
-      "fingerprint": "e0cba95af0bd7b776fd0",
-      "rule": "missing-mutation-column",
-      "severity": "error",
-      "domain": "work-orders",
-      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
-      "subject": "work_order_lines.created_by",
-      "message": "update payload contains missing column work_order_lines.created_by",
-      "expiresOn": "2026-10-07"
-    },
-    {
-      "fingerprint": "5da04febee92c790b698",
-      "rule": "missing-mutation-column",
-      "severity": "error",
-      "domain": "work-orders",
-      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
-      "subject": "work_order_lines.created_by",
-      "message": "insert payload contains missing column work_order_lines.created_by",
-      "expiresOn": "2026-10-07"
-    },
-    {
-      "fingerprint": "a3da949e9ed2ca1776c9",
-      "rule": "missing-mutation-column",
-      "severity": "error",
-      "domain": "work-orders",
-      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
-      "subject": "work_order_lines.customer_id",
-      "message": "insert payload contains missing column work_order_lines.customer_id",
-      "expiresOn": "2026-10-07"
-    },
-    {
-      "fingerprint": "546190b17513aae6ce06",
-      "rule": "missing-mutation-column",
-      "severity": "error",
-      "domain": "work-orders",
-      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
-      "subject": "work_order_lines.estimated_hours",
-      "message": "update payload contains missing column work_order_lines.estimated_hours",
-      "expiresOn": "2026-10-07"
-    },
-    {
-      "fingerprint": "ab3bcd8ceb2fb91f2f46",
-      "rule": "missing-mutation-column",
-      "severity": "error",
-      "domain": "work-orders",
-      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
-      "subject": "work_order_lines.estimated_hours",
-      "message": "insert payload contains missing column work_order_lines.estimated_hours",
-      "expiresOn": "2026-10-07"
-    },
-    {
-      "fingerprint": "e1ac4b329ab8e8605c44",
-      "rule": "missing-mutation-column",
-      "severity": "error",
-      "domain": "work-orders",
-      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
-      "subject": "work_order_lines.note",
-      "message": "update payload contains missing column work_order_lines.note",
-      "expiresOn": "2026-10-07"
-    },
-    {
-      "fingerprint": "61abe9deff13d48dec47",
-      "rule": "missing-mutation-column",
-      "severity": "error",
-      "domain": "work-orders",
-      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
-      "subject": "work_order_lines.note",
-      "message": "insert payload contains missing column work_order_lines.note",
-      "expiresOn": "2026-10-07"
-    },
-    {
-      "fingerprint": "e092e1212cba2344aa23",
-      "rule": "missing-mutation-column",
-      "severity": "error",
-      "domain": "work-orders",
-      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
-      "subject": "work_order_lines.quoted_hours",
-      "message": "update payload contains missing column work_order_lines.quoted_hours",
-      "expiresOn": "2026-10-07"
-    },
-    {
-      "fingerprint": "d7635d2ac3c3434ec4be",
-      "rule": "missing-mutation-column",
-      "severity": "error",
-      "domain": "work-orders",
-      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
-      "subject": "work_order_lines.quoted_hours",
-      "message": "insert payload contains missing column work_order_lines.quoted_hours",
-      "expiresOn": "2026-10-07"
-    },
-    {
-      "fingerprint": "81643c7512e6d7a53979",
-      "rule": "missing-mutation-column",
-      "severity": "error",
-      "domain": "work-orders",
-      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
-      "subject": "work_order_lines.source",
-      "message": "update payload contains missing column work_order_lines.source",
-      "expiresOn": "2026-10-07"
-    },
-    {
-      "fingerprint": "ad56d57c5c277a9968a6",
-      "rule": "missing-mutation-column",
-      "severity": "error",
-      "domain": "work-orders",
-      "file": "features/maintenance/server/addMaintenanceSuggestionToWorkOrder.ts",
-      "subject": "work_order_lines.source",
-      "message": "insert payload contains missing column work_order_lines.source",
       "expiresOn": "2026-10-07"
     },
     {

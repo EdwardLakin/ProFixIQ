@@ -1316,6 +1316,14 @@ export default function WorkOrdersView(): JSX.Element {
                 const canonicalStatus = normalizeWorkOrderStatus(row.status);
                 const hasAssignedTech = Boolean(assignedByWo[row.id]);
                 const hasWorkLines = Boolean(hasLinesByWo[row.id]);
+                const canContinueSetup =
+                  canArchive &&
+                  !row.archived_at &&
+                  ["awaiting", "new"].includes(canonicalStatus) &&
+                  !row.inspection_id &&
+                  !hasAssignedTech &&
+                  (operationalStage === "intake" ||
+                    operationalStage === "estimate");
                 const shouldShowInspectionPending =
                   !row.inspection_id &&
                   !hasWorkLines &&
@@ -1510,6 +1518,15 @@ export default function WorkOrdersView(): JSX.Element {
                       >
                         Open
                       </Link>
+
+                      {canContinueSetup ? (
+                        <Link
+                          href={`/work-orders/create?resumeWorkOrderId=${encodeURIComponent(row.id)}`}
+                          className="rounded-lg border border-sky-500/45 bg-sky-500/10 px-3 py-1.5 text-xs font-semibold text-sky-700 transition hover:bg-sky-500/15 dark:text-sky-100"
+                        >
+                          Continue setup
+                        </Link>
+                      ) : null}
 
                       {isInvoiceStage ? (
                         <button

@@ -24,6 +24,7 @@ import RegistrationScanModal, {
   type RegistrationScanApplyResult,
 } from "@/features/vehicles/components/RegistrationScanModal";
 import { uploadVehicleMediaFile } from "@/features/vehicles/lib/vehicleMediaUpload";
+import { getCreateResumeBlocker } from "@/features/work-orders/lib/resumableCreateWorkOrder";
 
 import CreateFlowMaintenanceSelector from "@/features/maintenance/components/CreateFlowMaintenanceSelector";
 // UI
@@ -422,6 +423,8 @@ export default function CreateWorkOrderPage() {
     searchParams.get("vehicle")?.trim() ||
     null;
   const bookingId = searchParams.get("bookingId")?.trim() || null;
+  const resumeWorkOrderId =
+    searchParams.get("resumeWorkOrderId")?.trim() || null;
   const returnTo = searchParams.get("returnTo")?.trim() || null;
 
   useEffect(() => {
@@ -687,6 +690,7 @@ export default function CreateWorkOrderPage() {
     "inviteNotice",
     "",
   );
+  const [resumeNotice, setResumeNotice] = useState<string | null>(null);
   const [bookingPrefill, setBookingPrefill] =
     useState<BookingConversionRow | null>(null);
   const [sendInvite, setSendInvite] = useTabState<boolean>("sendInvite", true);
@@ -906,13 +910,14 @@ export default function CreateWorkOrderPage() {
     [supabase],
   );
 
-  // A create-tab draft can outlive the underlying work order (for example,
-  // after an empty shell is deleted elsewhere). Never expose line mutations
-  // until the persisted id has been revalidated inside the current shop.
+  // A saved create shell can be resumed from another device or browser. Before
+  // exposing line mutations, revalidate its shop scope and prove that no
+  // inspection, assignment, punch, or operational work has started.
   useEffect(() => {
-    const workOrderId = wo?.id ?? null;
+    const workOrderId = resumeWorkOrderId ?? wo?.id ?? null;
     if (!workOrderId) {
       setValidatedWorkOrderId(null);
+      setResumeNotice(null);
       return;
     }
 
@@ -943,17 +948,74 @@ export default function CreateWorkOrderPage() {
           setWo(null);
           setLines([]);
           setValidatedWorkOrderId(null);
-          setError("");
+          setResumeNotice(null);
+          setError(
+            resumeWorkOrderId
+              ? "That saved work order could not be found in your shop."
+              : "",
+          );
+          return;
+        }
+
+        const { data: persistedLines, error: linesError } = await supabase
+          .from("work_order_lines")
+          .select("*")
+          .eq("work_order_id", workOrderId)
+          .eq("shop_id", shopId);
+        if (linesError) throw linesError;
+
+        const candidateLines = (persistedLines ?? []) as LineRow[];
+        let hasBridgeAssignment = false;
+        if (candidateLines.length > 0) {
+          const { data: assignments, error: assignmentError } = await supabase
+            .from("work_order_line_technicians")
+            .select("work_order_line_id")
+            .in(
+              "work_order_line_id",
+              candidateLines.map((line) => line.id),
+            )
+            .limit(1);
+          if (assignmentError) throw assignmentError;
+          hasBridgeAssignment = Boolean(assignments?.length);
+        }
+
+        const blocker = getCreateResumeBlocker({
+          workOrder: persisted,
+          lines: candidateLines,
+          hasBridgeAssignment,
+        });
+        if (blocker) {
+          setWo(null);
+          setLines([]);
+          setValidatedWorkOrderId(null);
+          setResumeNotice(null);
+          setError(`This work order can’t be continued here: ${blocker}`);
           return;
         }
 
         setWo(persisted);
+        setLines(candidateLines);
+        setPrefillCustomerId(persisted.customer_id ?? null);
+        setPrefillVehicleId(persisted.vehicle_id ?? null);
+        setNotes(persisted.notes ?? "");
+        setPriority(
+          typeof persisted.priority === "number" ? persisted.priority : 3,
+        );
         setValidatedWorkOrderId(persisted.id);
-      } catch {
+        setError("");
+        setResumeNotice(
+          resumeWorkOrderId
+            ? `Continuing saved work order ${persisted.custom_id ?? persisted.id}.`
+            : null,
+        );
+      } catch (resumeError) {
         if (cancelled) return;
         setValidatedWorkOrderId(null);
+        setResumeNotice(null);
         setError(
-          "Unable to restore the saved work order. Refresh and try again.",
+          resumeError instanceof Error && resumeError.message
+            ? resumeError.message
+            : "Unable to restore the saved work order. Refresh and try again.",
         );
       }
     })();
@@ -961,7 +1023,19 @@ export default function CreateWorkOrderPage() {
     return () => {
       cancelled = true;
     };
-  }, [getOrLinkShopId, setError, setLines, setWo, supabase, wo?.id]);
+  }, [
+    getOrLinkShopId,
+    resumeWorkOrderId,
+    setError,
+    setLines,
+    setNotes,
+    setPrefillCustomerId,
+    setPrefillVehicleId,
+    setPriority,
+    setWo,
+    supabase,
+    wo?.id,
+  ]);
 
   // ✅ advisor ownership helper
 
@@ -2409,6 +2483,17 @@ export default function CreateWorkOrderPage() {
           {error && (
             <div className="mb-4 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
               {error}
+            </div>
+          )}
+
+          {resumeNotice && (
+            <div
+              className={cx(
+                "mb-4 px-4 py-3 text-sm text-[color:var(--theme-text-primary)]",
+                subtlePanel,
+              )}
+            >
+              {resumeNotice}
             </div>
           )}
 

@@ -1,5 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { addMaintenanceSuggestionToWorkOrder } from "@/features/maintenance/server/addMaintenanceSuggestionToWorkOrder";
+import {
+  addMaintenanceSuggestionsToWorkOrder,
+  getMaintenanceSuggestionErrorMessage,
+} from "@/features/maintenance/server/addMaintenanceSuggestionToWorkOrder";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type RequestBody = {
@@ -42,33 +45,38 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const added: Array<{
-    serviceCode: string;
-    addedLineId: string;
-    addPath: "menu_item" | "generic";
-  }> = [];
-  const skipped: Array<{ serviceCode: string; error: string }> = [];
+  try {
+    const result = await addMaintenanceSuggestionsToWorkOrder({
+      supabase: access.supabase,
+      workOrderId,
+      serviceCodes,
+      userId: access.profile.id,
+    });
 
-  for (const serviceCode of serviceCodes) {
-    try {
-      const result = await addMaintenanceSuggestionToWorkOrder({
-        supabase: access.supabase,
-        workOrderId,
-        serviceCode,
-        userId: access.profile.id,
-      });
-      added.push({
-        serviceCode: result.serviceCode,
-        addedLineId: result.addedLineId,
-        addPath: result.addPath,
-      });
-    } catch (error) {
-      skipped.push({
-        serviceCode,
-        error: error instanceof Error ? error.message : "Failed to add bundle item",
-      });
+    if (result.added.length === 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error:
+            result.skipped.map((item) => item.error).filter(Boolean).join("; ") ||
+            "No maintenance items were added.",
+          added: result.added,
+          skipped: result.skipped,
+        },
+        { status: 409 },
+      );
     }
-  }
 
-  return NextResponse.json({ ok: true, added, skipped });
+    return NextResponse.json(result);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: getMaintenanceSuggestionErrorMessage(
+          error,
+          "Failed to add maintenance items to the quote.",
+        ),
+      },
+      { status: 500 },
+    );
+  }
 }
