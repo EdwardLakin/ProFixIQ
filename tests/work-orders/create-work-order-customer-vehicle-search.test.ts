@@ -44,7 +44,9 @@ describe("create work order customer and vehicle lookup", () => {
     expect(createPage).toContain('searchParams.get("vehicleId")');
     expect(createPage).toContain("selectedCustomerId={customerId}");
     expect(createPage).toContain("selectedVehicleId={vehicleIdProp}");
-    expect(createPage).toContain("onCustomerSelected: (id: string) => setCustomerId(id)");
-    expect(createPage).toContain("onVehicleSelected: (id: string) => setVehicleId(id)");
+    expect(createPage).toContain("onCustomerSelected: (id: string) => {");
+    expect(createPage).toContain("onVehicleSelected: (id: string) => {");
+    expect(createPage).toContain("setCustomerId(id);");
+    expect(createPage).toContain("setVehicleId(id);");
   });
 });

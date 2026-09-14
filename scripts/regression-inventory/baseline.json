@@ -2743,11 +2743,11 @@
       "expiresOn": "2026-10-07"
     },
     {
-      "fingerprint": "50d6077594ed08cdbcae",
+      "fingerprint": "fb42fab6fb3bb9266961",
       "rule": "dynamic-storage-bucket",
       "severity": "warning",
-      "domain": "work-orders",
-      "file": "features/work-orders/app/work-orders/create/page.tsx",
+      "domain": "core",
+      "file": "features/vehicles/lib/vehicleMediaUpload.ts",
       "subject": "dynamic storage bucket",
       "message": "Dynamic storage bucket cannot be inventoried statically",
       "expiresOn": "2026-10-07"

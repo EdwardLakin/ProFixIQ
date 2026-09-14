@@ -20,6 +20,10 @@ import {
 import VinCaptureModal from "app/vehicle/VinCaptureModal";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 import { useCustomerVehicleDraft } from "app/work-orders/state/useCustomerVehicleDraft";
+import RegistrationScanModal, {
+  type RegistrationScanApplyResult,
+} from "@/features/vehicles/components/RegistrationScanModal";
+import { uploadVehicleMediaFile } from "@/features/vehicles/lib/vehicleMediaUpload";
 
 import CreateFlowMaintenanceSelector from "@/features/maintenance/components/CreateFlowMaintenanceSelector";
 // UI
@@ -656,6 +660,25 @@ export default function CreateWorkOrderPage() {
   const [uploadSummary, setUploadSummary] = useState<UploadSummary | null>(
     null,
   );
+  // Registration photo captured via "Scan Registration"; saved to the
+  // vehicle's document record as soon as the vehicle is resolved (on
+  // "Save & add work" / "Create work order"), independent of the generic
+  // attachments picker.
+  const [pendingRegistrationFile, setPendingRegistrationFile] =
+    useState<File | null>(null);
+  // The customer/vehicle selection that was active when the scan was
+  // applied. If the advisor picks a *different* existing customer or
+  // vehicle afterward, the photo no longer matches what's being saved and
+  // must not be filed against it silently.
+  const [pendingRegistrationContext, setPendingRegistrationContext] =
+    useState<{ customerId: string | null; vehicleId: string | null } | null>(
+      null,
+    );
+
+  const clearPendingRegistrationScan = useCallback(() => {
+    setPendingRegistrationFile(null);
+    setPendingRegistrationContext(null);
+  }, []);
 
   // UI state
   const [loading, setLoading] = useTabState("loading", false);
@@ -1548,6 +1571,46 @@ export default function CreateWorkOrderPage() {
       const persistedCustomer = hydrateCustomerFromRow(cust);
       const persistedVehicle = hydrateVehicleFromRow(veh);
 
+      if (pendingRegistrationFile) {
+        // The advisor may have switched to a different existing customer or
+        // vehicle after scanning (via the customer/vehicle search) without
+        // us seeing it as a plain field edit. Never file the photo against
+        // a vehicle it wasn't reviewed against.
+        const contextStillMatches =
+          !pendingRegistrationContext ||
+          ((pendingRegistrationContext.customerId === null ||
+            pendingRegistrationContext.customerId === cust.id) &&
+            (pendingRegistrationContext.vehicleId === null ||
+              pendingRegistrationContext.vehicleId === veh.id));
+
+        if (!contextStillMatches) {
+          clearPendingRegistrationScan();
+          toast.error(
+            "Registration photo not saved: the customer/vehicle changed since it was scanned. Rescan if it still applies.",
+          );
+        } else {
+          const registrationFile = pendingRegistrationFile;
+          const uploaderProfileId =
+            currentProfileId ?? (await getCurrentProfileId(user.id));
+          const uploadResult = await uploadVehicleMediaFile({
+            supabase,
+            vehicleId: veh.id,
+            shopId,
+            uploadedBy: uploaderProfileId,
+            bucket: "vehicle-docs",
+            type: "document",
+            file: registrationFile,
+            filename: `Registration - ${registrationFile.name}`,
+          });
+          if (uploadResult.ok) {
+            clearPendingRegistrationScan();
+            toast.success("Registration image saved to the vehicle profile.");
+          } else {
+            toast.error(`Registration image not saved: ${uploadResult.error}`);
+          }
+        }
+      }
+
       assertWritePersisted(
         "customer",
         hadExplicitCustomerId
@@ -1841,6 +1904,7 @@ export default function CreateWorkOrderPage() {
     setPhotoFiles([]);
     setDocFiles([]);
     setUploadSummary(null);
+    clearPendingRegistrationScan();
     setError("");
     setInviteNotice("");
     setSendInvite(true);
@@ -1861,6 +1925,7 @@ export default function CreateWorkOrderPage() {
     setSendInvite,
     setIsWaiter,
     cvDraft,
+    clearPendingRegistrationScan,
   ]);
 
   async function uploadVehicleFiles(vId: string): Promise<UploadSummary> {
@@ -1879,31 +1944,18 @@ export default function CreateWorkOrderPage() {
       f: File,
       mediaType: "photo" | "document",
     ) => {
-      // ✅ IMPORTANT: match Customer Profile page storage_path convention: `${vehicleId}/...`
-      const safeName = f.name.replaceAll("/", "_");
-      const key = `${vId}/${Date.now()}_${safeName}`;
-
-      const up = await supabase.storage.from(bucket).upload(key, f, {
-        upsert: false,
-        contentType: f.type || undefined,
-      });
-
-      if (up.error) {
-        failed += 1;
-        return;
-      }
-
-      const { error: rowErr } = await supabase.from("vehicle_media").insert({
-        vehicle_id: vId,
+      const result = await uploadVehicleMediaFile({
+        supabase,
+        vehicleId: vId,
+        shopId: currentShopIdForMedia,
+        uploadedBy: uploader,
+        bucket,
         type: mediaType,
-        storage_path: key,
-        filename: f.name,
-        uploaded_by: uploader,
-        shop_id: currentShopIdForMedia,
+        file: f,
       });
 
-      if (rowErr) failed += 1;
-      else uploaded += 1;
+      if (result.ok) uploaded += 1;
+      else failed += 1;
     };
 
     for (const f of photoFiles) await upOne("vehicle-photos", f, "photo");
@@ -2572,8 +2624,28 @@ export default function CreateWorkOrderPage() {
                     field: keyof SessionVehicle,
                     value: string | null,
                   ) => void,
-                  onCustomerSelected: (id: string) => setCustomerId(id),
-                  onVehicleSelected: (id: string) => setVehicleId(id),
+                  onCustomerSelected: (id: string) => {
+                    if (
+                      pendingRegistrationContext &&
+                      pendingRegistrationContext.customerId !== null &&
+                      pendingRegistrationContext.customerId !== id
+                    ) {
+                      clearPendingRegistrationScan();
+                      toast("Registration photo cleared — a different customer was selected.");
+                    }
+                    setCustomerId(id);
+                  },
+                  onVehicleSelected: (id: string) => {
+                    if (
+                      pendingRegistrationContext &&
+                      pendingRegistrationContext.vehicleId !== null &&
+                      pendingRegistrationContext.vehicleId !== id
+                    ) {
+                      clearPendingRegistrationScan();
+                      toast("Registration photo cleared — a different vehicle was selected.");
+                    }
+                    setVehicleId(id);
+                  },
                 }}
               />
 
@@ -2690,6 +2762,55 @@ export default function CreateWorkOrderPage() {
                     Scan VIN
                   </span>
                 </VinCaptureModal>
+
+                <RegistrationScanModal
+                  currentCustomer={customer}
+                  currentVehicle={vehicle}
+                  customerId={customerId}
+                  vehicleId={vehicleIdProp}
+                  onApply={(result: RegistrationScanApplyResult) => {
+                    if (Object.keys(result.customer).length) {
+                      setCustomer((prev) => ({ ...prev, ...result.customer }));
+                      cvDraft.bulkSet({ customer: result.customer });
+                    }
+
+                    const hasVehicleFields = Object.keys(result.vehicle).length > 0;
+                    if (hasVehicleFields) {
+                      const decodedVehicle = result.vehicle as Partial<VehicleWithExtra>;
+                      setVehicle((prev) => ({ ...prev, ...decodedVehicle }));
+                      cvDraft.bulkSet({ vehicle: decodedVehicle });
+                    }
+
+                    // Only bind the photo to "the vehicle" when the advisor
+                    // actually confirmed vehicle-identifying fields from it —
+                    // otherwise there's no reviewed link between this photo
+                    // and whichever vehicle ends up saved. Capture which
+                    // customer/vehicle was selected right now so a later
+                    // switch (via the customer/vehicle search) can be
+                    // detected before the photo is ever uploaded.
+                    if (hasVehicleFields) {
+                      setPendingRegistrationFile(result.file);
+                      setPendingRegistrationContext({
+                        customerId: customerId,
+                        vehicleId: vehicleIdProp,
+                      });
+                      toast.success(
+                        "Registration scanned. Review the fields, then Save & add work to store it on the vehicle profile.",
+                      );
+                    } else {
+                      toast.success("Registration scanned. Review the fields below.");
+                    }
+                  }}
+                >
+                  <span
+                    className={cx(
+                      "cursor-pointer px-4 py-2 text-sm font-semibold hover:border-[color:var(--brand-primary)]/55 hover:text-[color:var(--theme-accent-text)]",
+                      softButton,
+                    )}
+                  >
+                    Scan Registration
+                  </span>
+                </RegistrationScanModal>
               </div>
 
               <label className="mt-3 flex items-center gap-2 text-xs text-[color:var(--theme-text-secondary)]">
