@@ -9,6 +9,10 @@
       "schedule": "7 * * * *"
     },
     {
+      "path": "/api/internal/observability/shop-blockers",
+      "schedule": "37 * * * *"
+    },
+    {
       "path": "/api/internal/import-jobs/tick",
       "schedule": "* * * * *"
     },

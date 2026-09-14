@@ -249,7 +249,7 @@ export async function readAssistantNotificationPage(params: {
   };
 }
 
-function buildFingerprint(
+export function buildFingerprint(
   item: {
     code: string;
     entityType?: string;

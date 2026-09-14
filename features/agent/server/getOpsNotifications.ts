@@ -129,8 +129,12 @@ function toOptimizationCode(
 
 export async function getOpsNotifications(
   shopId: string,
+  supabaseClient?: ReturnType<typeof getServerSupabase>,
 ): Promise<OpsNotification[]> {
-  const supabase = getServerSupabase();
+  // Defaults to the request-scoped client for existing on-demand callers.
+  // A scheduled/service-context caller (no signed-in user, no cookies) must
+  // inject an admin client instead.
+  const supabase = supabaseClient ?? getServerSupabase();
 
   const notifications: OpsNotification[] = [];
 
