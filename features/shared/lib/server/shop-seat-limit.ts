@@ -10,6 +10,7 @@ import {
   normalizeCanonicalPlan,
   type CanonicalPlan,
 } from "@/features/stripe/lib/stripe/plan-normalization";
+import { isDefaultWorkforceRole } from "@/features/workforce/lib/roster";
 
 type SeatPlanSource = "shop.plan" | "trial-default" | "safe-default";
 
@@ -68,15 +69,20 @@ export async function getShopSeatLimitSnapshot(
     typeof shop?.billable_user_count === "number" ? shop.billable_user_count : null;
 
   if (activeUsers === null) {
-    const { count, error: countErr } = await admin
+    // Fleet-portal invitees and shop-provisioned dispatcher/driver profiles
+    // are not paid staff seats — see the equivalent fix in
+    // product-package-reconciliation.ts and subscription-seat-reconciliation.ts.
+    const { data, error: countErr } = await admin
       .from("profiles")
-      .select("id", { count: "exact", head: true })
+      .select("role")
       .eq("shop_id", shopId);
 
     if (countErr) {
       throw new Error(`Failed to count shop users: ${countErr.message}`);
     }
-    activeUsers = typeof count === "number" ? count : 0;
+    activeUsers = (data ?? []).filter((row) =>
+      isDefaultWorkforceRole(row.role),
+    ).length;
   }
 
   const usesUnlimitedPrice =
