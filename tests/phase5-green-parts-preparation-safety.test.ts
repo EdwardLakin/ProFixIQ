@@ -13,31 +13,44 @@ const cronRoute = readFileSync(
   "app/api/internal/appointment-parts-preparation/route.ts",
   "utf8",
 );
+const automationTypes = readFileSync("features/ai/automation/types.ts", "utf8");
 const automationPolicy = readFileSync("features/ai/server/automationPolicy.ts", "utf8");
 const vercelConfig = readFileSync("vercel.json", "utf8");
 const migrationFiles = readdirSync("supabase/migrations");
 
 describe("Phase 5 — first deterministic GREEN command (prepare_appointment_parts_request)", () => {
-  it("requires an explicit, already-mapped menu repair item rather than guessing one", () => {
-    expect(commandModule).toContain("line.menu_item_id");
-    expect(commandModule).toContain(
-      '"Line has no explicit menu-repair-item mapping."',
-    );
+  it("uses a durable menu-repair identity lookup, not the unrelated menu_items domain", () => {
+    expect(commandModule).toContain("findMenuRepairItemForWorkOrderLine(");
+    expect(commandModule).not.toContain("line.menu_item_id");
   });
 
   it("requires the mapped menu repair item to be active", () => {
     expect(commandModule).toContain("menuRepairItem.is_active");
   });
 
-  it("requires vehicle compatibility before proceeding", () => {
-    expect(commandModule).toContain("isVehicleCompatibleWithMenuRepairItem(");
+  it("requires completed-work provenance, matching the manual reuse flow's own bar", () => {
+    expect(commandModule).toContain("menuRepairItem.source_work_order_line_id");
+    expect(commandModule).toContain("COMPLETED_REPAIR_SOURCE");
+    expect(commandModule).toContain("COMPLETED_REPAIR_STATUSES");
+  });
+
+  it("requires vehicle compatibility via the canonical exact-YMM matcher, not a looser bespoke check", () => {
+    expect(commandModule).toContain("matchesCompletedRepairVehicle(");
   });
 
   it("requires an exact parts mapping — fails closed on any unmatched required part", () => {
     expect(commandModule).toContain('readinessLine.status === "unmatched"');
     expect(commandModule).toContain(
-      "A required part could not be matched to the shop's parts catalog.",
+      "A required part could not be matched unambiguously to the shop's parts catalog.",
     );
+  });
+
+  it("treats an ambiguous normalized part-number/SKU match as unmatched rather than picking one arbitrarily", () => {
+    const readinessModule = readFileSync(
+      "features/operations/server/appointmentPreparation/buildPartsReadiness.ts",
+      "utf8",
+    );
+    expect(readinessModule).toContain("AMBIGUOUS");
   });
 
   it("requires the work order to trace back to an explicit, active booking", () => {
@@ -45,9 +58,9 @@ describe("Phase 5 — first deterministic GREEN command (prepare_appointment_par
     expect(commandModule).toContain('.is("cancelled_at", null)');
   });
 
-  it("has duplicate/idempotency protection: never requests parts twice for the same line", () => {
-    expect(commandModule).toContain('.from("part_request_items")');
-    expect(commandModule).toContain("A parts request already exists for this line.");
+  it("has duplicate/idempotency protection, including a re-check immediately before the mutating call", () => {
+    const partRequestChecks = commandModule.match(/\.from\("part_request_items"\)/g) ?? [];
+    expect(partRequestChecks.length).toBeGreaterThanOrEqual(2);
   });
 
   it("creates only the internal request needed to start the existing Parts workflow", () => {
@@ -68,10 +81,17 @@ describe("Phase 5 — first deterministic GREEN command (prepare_appointment_par
     }
   });
 
-  it("always records shadow evidence via the shared AI automation telemetry, using the 'parts_ordering' capability", () => {
+  it("uses a capability distinct from parts_ordering, so it cannot silently redefine that capability's meaning", () => {
+    expect(commandModule).toContain(
+      'export const AUTOMATION_CAPABILITY = "appointment_parts_preparation" as const;',
+    );
+    expect(automationTypes).toContain('"appointment_parts_preparation"');
+    expect(automationTypes).toContain("appointment_parts_preparation:");
+  });
+
+  it("always records shadow evidence via the shared AI automation telemetry", () => {
     expect(commandModule).toContain("recordAutomationEvidence(");
-    expect(commandModule).toContain('capability: AUTOMATION_CAPABILITY');
-    expect(commandModule).toContain('"parts_ordering"');
+    expect(commandModule).toContain("capability: AUTOMATION_CAPABILITY");
     expect(commandModule).toContain('outcome: "observed"');
   });
 
@@ -80,24 +100,43 @@ describe("Phase 5 — first deterministic GREEN command (prepare_appointment_par
   });
 
   it("keeps the global kill switch off for this capability in this change — nothing can execute automatically yet, anywhere", () => {
-    // AI_AUTOMATION_EXECUTION_AVAILABLE is the master switch every shop's
-    // effective-enabled computation depends on (features/ai/server/
-    // automationPolicy.ts). Phase 5 ships the real command wired into the
-    // evidence/readiness framework, but leaves this false so no shop can go
-    // live from this change alone - flipping it is a deliberate, separate,
-    // future step once real shadow evidence has been reviewed.
     const block = automationPolicy.match(
       /AI_AUTOMATION_EXECUTION_AVAILABLE[\s\S]*?=\s*{[\s\S]*?};/,
     )?.[0];
     expect(block).toBeTruthy();
-    expect(block).toMatch(/parts_ordering:\s*false/);
+    expect(block).toMatch(/appointment_parts_preparation:\s*false/);
   });
 
-  it("does not add or alter any ai_automation_* migration — it only reuses the existing 'parts_ordering' capability value", () => {
+  it("widens the ai_automation_* capability CHECK constraints additively (no existing value removed or renamed)", () => {
     const automationMigrations = migrationFiles.filter((name) =>
       name.toLowerCase().includes("ai_automation"),
     );
-    expect(automationMigrations).toEqual(["20260715090000_premier_ai_automation_readiness.sql"]);
+    expect(automationMigrations).toEqual(
+      [
+        "20260715090000_premier_ai_automation_readiness.sql",
+        "20260914210000_ai_automation_appointment_parts_preparation_capability.sql",
+      ].sort(),
+    );
+    const migration = readFileSync(
+      `supabase/migrations/${automationMigrations.find((name) => name !== "20260715090000_premier_ai_automation_readiness.sql")}`,
+      "utf8",
+    );
+    for (const existingCapability of [
+      "appointment_intake",
+      "customer_status_updates",
+      "work_order_line_creation",
+      "quote_preparation",
+      "approval_request_delivery",
+      "parts_ordering",
+      "appointment_reminders",
+      "advisor_follow_up",
+      "invoice_preparation",
+      "payment_collection",
+    ]) {
+      expect(migration).toContain(`'${existingCapability}'`);
+    }
+    expect(migration).toContain("'appointment_parts_preparation'");
+    expect(migration).not.toMatch(/drop\s+column|drop\s+table/i);
   });
 
   it("is authenticated as an internal cron route, not a user-facing one", () => {
@@ -112,8 +151,23 @@ describe("Phase 5 — first deterministic GREEN command (prepare_appointment_par
     );
   });
 
-  it("bounds its sweep to recent booking-linked work orders instead of scanning the whole historical table", () => {
+  it("bounds its sweep to a near-term active booking window, not an unbounded or open-ended scan", () => {
     expect(syncModule).toContain("BOOKING_LOOKBACK_MS");
-    expect(syncModule).toContain(".not(\"work_order_id\", \"is\", null)");
+    expect(syncModule).toContain("BOOKING_LOOKAHEAD_MS");
+    expect(syncModule).toContain("EXCLUDED_BOOKING_STATUSES");
+  });
+
+  it("resolves parts readiness once per sweep across every candidate, not once per line", () => {
+    expect(syncModule).toContain("buildPartsReadinessForMenuRepairItems(");
+    // The single-line convenience wrapper (prepareAppointmentPartsRequest)
+    // still calls it directly for tests/non-batched callers, but the sweep
+    // itself must call it exactly once, outside any per-line loop.
+    expect(syncModule).not.toMatch(/for \([\s\S]{0,200}buildPartsReadinessForMenuRepairItems/);
+  });
+
+  it("surfaces a dependency query failure as a sweep error rather than silent ineligibility", () => {
+    expect(commandModule).toMatch(/throw new Error\(`Could not load work order line/);
+    expect(commandModule).toMatch(/throw new Error\(`Could not load work order:/);
+    expect(commandModule).toMatch(/throw new Error\(`Could not load booking:/);
   });
 });

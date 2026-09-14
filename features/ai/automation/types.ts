@@ -9,6 +9,7 @@ export const AI_AUTOMATION_CAPABILITIES = [
   "advisor_follow_up",
   "invoice_preparation",
   "payment_collection",
+  "appointment_parts_preparation",
 ] as const;
 
 export type AiAutomationCapability =
@@ -97,6 +98,11 @@ export const AI_AUTOMATION_CAPABILITY_DETAILS: Record<
   payment_collection: {
     label: "Payment collection",
     description: "Open secure portal or pickup payment sessions for finalized invoices.",
+  },
+  appointment_parts_preparation: {
+    label: "Appointment parts preparation",
+    description:
+      "Create an internal parts request for a booked service when it exactly matches an active, vehicle-compatible learned repair — never a supplier choice or a purchase order.",
   },
 };
 
