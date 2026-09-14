@@ -12,7 +12,9 @@ import { Button } from "@shared/components/ui/Button";
 import {
   getProFixOperationsIdentity,
   parseProFixOperationsExperience,
+  resolveProFixOperationsExperience,
 } from "@/features/assistant/lib/proFixOperationsIdentity";
+import { useUserRole } from "@/features/shared/hooks/useUserRole";
 
 function optionalParam(
   params: URLSearchParams,
@@ -26,13 +28,13 @@ export default function MobileAssistantPage() {
   const searchParams = useSearchParams();
   const searchKey = searchParams.toString();
   const [question, setQuestion] = useState("");
-  const experience = useMemo(
-    () =>
-      parseProFixOperationsExperience(
-        new URLSearchParams(searchKey).get("experience"),
-      ),
-    [searchKey],
-  );
+  const { role } = useUserRole();
+  const experience = useMemo(() => {
+    const explicit = new URLSearchParams(searchKey).get("experience");
+    return explicit
+      ? parseProFixOperationsExperience(explicit)
+      : resolveProFixOperationsExperience(role);
+  }, [searchKey, role]);
   const identity = getProFixOperationsIdentity(experience);
 
   const context = useMemo<ShopAssistantContext>(() => {

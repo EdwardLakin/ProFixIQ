@@ -15,7 +15,9 @@ import { Button } from "@shared/components/ui/Button";
 import {
   getProFixOperationsIdentity,
   parseProFixOperationsExperience,
+  resolveProFixOperationsExperience,
 } from "@/features/assistant/lib/proFixOperationsIdentity";
+import { useUserRole } from "@/features/shared/hooks/useUserRole";
 
 const OPERATIONS_PROMPTS = [
   "Which work orders are waiting on approvals right now?",
@@ -43,13 +45,13 @@ export default function AssistantPage() {
   const [query, setQuery] = useState("");
   const searchParams = useSearchParams();
   const searchKey = searchParams.toString();
-  const experience = useMemo(
-    () =>
-      parseProFixOperationsExperience(
-        new URLSearchParams(searchKey).get("experience"),
-      ),
-    [searchKey],
-  );
+  const { role } = useUserRole();
+  const experience = useMemo(() => {
+    const explicit = new URLSearchParams(searchKey).get("experience");
+    return explicit
+      ? parseProFixOperationsExperience(explicit)
+      : resolveProFixOperationsExperience(role);
+  }, [searchKey, role]);
   const identity = getProFixOperationsIdentity(experience);
   const examplePrompts =
     experience === "management" ? MANAGEMENT_PROMPTS : OPERATIONS_PROMPTS;

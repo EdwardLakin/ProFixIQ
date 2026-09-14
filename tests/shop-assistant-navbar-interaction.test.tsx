@@ -42,6 +42,10 @@ vi.mock(
   }),
 );
 
+vi.mock("@/features/shared/hooks/useUserRole", () => ({
+  useUserRole: () => ({ role: null, loading: false }),
+}));
+
 import AssistantPage from "../app/assistant/page";
 import AskAssistantEntry from "@/features/assistant/components/AskAssistantEntry";
 
