@@ -17695,6 +17695,97 @@ export type Database = {
         }
         Relationships: []
       }
+      shop_blocker_observations: {
+        Row: {
+          code: string
+          created_at: string
+          entity_id: string | null
+          entity_type: string | null
+          fingerprint: string
+          first_seen_at: string
+          href: string | null
+          id: string
+          is_false_positive: boolean | null
+          last_seen_at: string
+          level: string
+          message: string
+          reason: Json
+          resolved_at: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          shop_id: string
+          status: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          fingerprint: string
+          first_seen_at?: string
+          href?: string | null
+          id?: string
+          is_false_positive?: boolean | null
+          last_seen_at?: string
+          level: string
+          message: string
+          reason?: Json
+          resolved_at?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          shop_id: string
+          status?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_type?: string | null
+          fingerprint?: string
+          first_seen_at?: string
+          href?: string | null
+          id?: string
+          is_false_positive?: boolean | null
+          last_seen_at?: string
+          level?: string
+          message?: string
+          reason?: Json
+          resolved_at?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          shop_id?: string
+          status?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "shop_blocker_observations_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_blocker_observations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "shop_blocker_observations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       shop_boost_import_provenance: {
         Row: {
           created_at: string

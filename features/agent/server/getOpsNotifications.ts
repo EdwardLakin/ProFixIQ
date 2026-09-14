@@ -33,6 +33,10 @@ export type OpsNotification = {
   entityType?: string;
   entityId?: string;
   createdAt?: string;
+  // The specific rule inputs (thresholds, current values) this notification
+  // fired on, independent of the presentation message. Optional so this is
+  // purely additive for existing callers.
+  evidence?: Record<string, unknown>;
 };
 
 type WorkOrderRow = {
@@ -129,8 +133,12 @@ function toOptimizationCode(
 
 export async function getOpsNotifications(
   shopId: string,
+  supabaseClient?: ReturnType<typeof getServerSupabase>,
 ): Promise<OpsNotification[]> {
-  const supabase = getServerSupabase();
+  // Defaults to the request-scoped client for existing on-demand callers.
+  // A scheduled/service-context caller (no signed-in user, no cookies) must
+  // inject an admin client instead.
+  const supabase = supabaseClient ?? getServerSupabase();
 
   const notifications: OpsNotification[] = [];
 
@@ -220,6 +228,11 @@ export async function getOpsNotifications(
         href: `/quote-review/${row.work_order_id}`,
         entityType: "work_order",
         entityId: row.work_order_id,
+        evidence: {
+          source: "board",
+          hoursWaiting: hours,
+          thresholdHours: FLOW_HEALTH_THRESHOLDS.approvalWaitHours,
+        },
       });
       continue;
     }
@@ -237,6 +250,11 @@ export async function getOpsNotifications(
         href: `/work-orders/${row.work_order_id}`,
         entityType: "work_order",
         entityId: row.work_order_id,
+        evidence: {
+          source: "board",
+          hoursWaiting: hours,
+          thresholdHours: FLOW_HEALTH_THRESHOLDS.partsWaitHours,
+        },
       });
     }
   }
@@ -259,6 +277,12 @@ export async function getOpsNotifications(
         entityType: "work_order",
         entityId: row.id,
         createdAt: row.updated_at ?? undefined,
+        evidence: {
+          source: "work_order",
+          hoursWaiting: hours,
+          thresholdHours: FLOW_HEALTH_THRESHOLDS.approvalWaitHours,
+          status: row.status,
+        },
       });
       continue;
     }
@@ -273,6 +297,11 @@ export async function getOpsNotifications(
         entityType: "work_order",
         entityId: row.id,
         createdAt: row.updated_at ?? undefined,
+        evidence: {
+          hoursQueued: hours,
+          thresholdHours: FLOW_HEALTH_THRESHOLDS.queuedWaitHours,
+          status: row.status,
+        },
       });
       continue;
     }
@@ -287,6 +316,11 @@ export async function getOpsNotifications(
         entityType: "work_order",
         entityId: row.id,
         createdAt: row.updated_at ?? undefined,
+        evidence: {
+          source: "work_order",
+          hoursOnHold: hours,
+          thresholdHours: FLOW_HEALTH_THRESHOLDS.onHoldWaitHours,
+        },
       });
     }
     if (
@@ -302,6 +336,10 @@ export async function getOpsNotifications(
         entityType: "work_order",
         entityId: row.id,
         createdAt: row.updated_at ?? undefined,
+        evidence: {
+          hoursActive: hours,
+          thresholdHours: FLOW_HEALTH_THRESHOLDS.unusuallyLongActiveJobHours,
+        },
       });
     }
   }
@@ -330,6 +368,11 @@ export async function getOpsNotifications(
       entityType: "work_order_line",
       entityId: line.id,
       createdAt: since ?? undefined,
+      evidence: {
+        hoursOnHold: hours,
+        thresholdHours: FLOW_HEALTH_THRESHOLDS.onHoldWaitHours,
+        holdReason: line.hold_reason ?? null,
+      },
     });
   }
 
@@ -351,6 +394,11 @@ export async function getOpsNotifications(
       entityType: "invoice",
       entityId: invoice.work_order_id ?? undefined,
       createdAt: since ?? undefined,
+      evidence: {
+        hoursUnsent: hours,
+        thresholdHours: FLOW_HEALTH_THRESHOLDS.unsentInvoiceHours,
+        status: invoice.status,
+      },
     });
   }
 
@@ -371,6 +419,13 @@ export async function getOpsNotifications(
       href: "/dashboard",
       entityType: "profile",
       entityId: row.techId,
+      evidence: {
+        techId: row.techId,
+        utilizationPct: row.utilizationPct,
+        activeJobs: row.currentActiveJobs,
+        thresholdUtilizationPct: TECH_OVERLOAD_UTILIZATION_PCT,
+        thresholdActiveJobs: TECH_OVERLOAD_ACTIVE_JOBS,
+      },
     });
   }
 
@@ -386,6 +441,12 @@ export async function getOpsNotifications(
       href: "/dashboard",
       entityType: "shop",
       entityId: shopId,
+      evidence: {
+        shopUtilizationPct: loadMetrics.summary.shopUtilizationPct,
+        totalActiveJobs: loadMetrics.summary.totalActiveJobs,
+        totalTechnicians: loadMetrics.summary.totalTechnicians,
+        thresholdUtilizationPct: SHOP_OVERLOAD_UTILIZATION_PCT,
+      },
     });
   }
 
@@ -404,6 +465,11 @@ export async function getOpsNotifications(
       href: "/dashboard",
       entityType: "shop",
       entityId: shopId,
+      evidence: {
+        underutilizedTechIds: underutilizedTechs.map((row) => row.techId),
+        shopUtilizationPct: loadMetrics.summary.shopUtilizationPct,
+        thresholdUtilizationPct: SHOP_UNDERUTILIZATION_PCT,
+      },
     });
   }
 
@@ -429,6 +495,13 @@ export async function getOpsNotifications(
       href: "/dashboard",
       entityType: "shop",
       entityId: shopId,
+      evidence: {
+        shiftedTechCount: shiftedTechs.length,
+        completedJobs,
+        completedPerShiftedTech,
+        elapsedHours,
+        shopUtilizationPct: loadMetrics.summary.shopUtilizationPct,
+      },
     });
   }
 
@@ -465,6 +538,12 @@ export async function getOpsNotifications(
         entityType: "optimization_opportunity",
         entityId: item.id,
         createdAt: optimization.generatedAt,
+        evidence: {
+          opportunityId: item.id,
+          opportunityType: item.type,
+          priorityBand: item.priorityBand,
+          confidence: item.confidence,
+        },
       });
     }
   } catch (error) {
@@ -494,6 +573,10 @@ export async function getOpsNotifications(
       href: "/menu_item_suggestions",
       entityType: "shop",
       entityId: shopId,
+      evidence: {
+        menuSuggestionCount: menuSuggestionCount ?? 0,
+        inspectionSuggestionCount: inspectionSuggestionCount ?? 0,
+      },
     });
   }
 
