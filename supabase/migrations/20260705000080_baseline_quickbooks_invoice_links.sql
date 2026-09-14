@@ -1,35 +1,15 @@
 -- Bootstrap the legacy QuickBooks invoice link table required by the
--- phase-one financial integration migrations. Existing complete databases are
--- left unchanged; clean databases receive the canonical shop-scoped table.
-
-do $$
-declare
-  v_mode text;
-begin
-  select mode
-    into v_mode
-  from public.profixiq_schema_baselines
-  where version = '20260705000000';
-
-  if v_mode is null then
-    raise exception using errcode = 'P0001',
-      message = 'PROFIXIQ_BASELINE_MISSING: 20260705000000 must run first.';
-  end if;
-
-  if v_mode = 'existing' then
-    if to_regclass('public.quickbooks_invoice_links') is null then
-      raise exception using errcode = 'P0001',
-        message = 'PARTIAL_PROFIXIQ_SCHEMA: required table public.quickbooks_invoice_links is missing.';
-    end if;
-    return;
-  end if;
-
-  if v_mode <> 'bootstrap' then
-    raise exception using errcode = 'P0001',
-      message = 'PROFIXIQ_BASELINE_MODE_INVALID: ' || coalesce(v_mode, '<null>');
-  end if;
-end
-$$;
+-- phase-one financial integration migrations.
+--
+-- Unlike the invoice/payment baseline (20260705000070), this table is a
+-- self-contained integration table introduced after some production shops
+-- were already on the "existing" baseline: it is not one of the core tables
+-- that decide bootstrap vs. existing, and its own shape has never diverged
+-- from the one below (later migrations only ever add columns to it, see
+-- 20260714013100 and 20260714013400). So it does not need, and must not
+-- enforce, an "existing databases must already have this" gate the way
+-- 20260705000070 does for payments/invoices: a database that predates this
+-- table simply gets it created here, on any baseline mode.
 
 create table if not exists public.quickbooks_invoice_links (
   id uuid primary key default gen_random_uuid(),
