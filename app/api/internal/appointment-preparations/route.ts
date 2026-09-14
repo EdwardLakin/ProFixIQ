@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { syncShopBlockerObservations } from "@/features/operations/server/syncShopBlockerObservations";
+import { syncAppointmentPreparations } from "@/features/operations/server/syncAppointmentPreparations";
 import { requireInternalApiSecret } from "@/features/shared/lib/server/api-route-guard";
 import { fetchAllShopIds } from "@/features/shared/lib/server/fetchAllShopIds";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
@@ -17,7 +17,7 @@ function authorizeInternalRequest(
     request,
     envSecretName: "INTERNAL_CRON_SECRET",
     headerName: "x-internal-cron-secret",
-    routeLabel: "internal/observability/shop-blockers",
+    routeLabel: "internal/appointment-preparations",
     bearerEnvSecretName: "CRON_SECRET",
   });
 }
@@ -42,16 +42,15 @@ export async function GET(request: Request) {
     );
   }
 
-  const summaries: Awaited<
-    ReturnType<typeof syncShopBlockerObservations>
-  >[] = [];
+  const summaries: Awaited<ReturnType<typeof syncAppointmentPreparations>>[] =
+    [];
   const warnings: Array<{ shopId: string; error: string }> = [];
 
   for (let index = 0; index < shopIds.length; index += CONCURRENCY) {
     const batch = shopIds.slice(index, index + CONCURRENCY);
     const results = await Promise.allSettled(
       batch.map((shopId) =>
-        syncShopBlockerObservations({ supabase, shopId, now }),
+        syncAppointmentPreparations({ supabase, shopId, now }),
       ),
     );
 
@@ -69,7 +68,7 @@ export async function GET(request: Request) {
         error:
           result.reason instanceof Error
             ? result.reason.message
-            : "Unknown shop blocker observation error",
+            : "Unknown appointment preparation sync error",
       });
     });
   }
@@ -77,9 +76,7 @@ export async function GET(request: Request) {
   return NextResponse.json({
     ok: warnings.length === 0,
     checkedShops: shopIds.length,
-    observed: summaries.reduce((sum, item) => sum + item.observed, 0),
-    opened: summaries.reduce((sum, item) => sum + item.opened, 0),
-    continuing: summaries.reduce((sum, item) => sum + item.continuing, 0),
+    upcoming: summaries.reduce((sum, item) => sum + item.upcoming, 0),
     resolved: summaries.reduce((sum, item) => sum + item.resolved, 0),
     warnings,
   });
