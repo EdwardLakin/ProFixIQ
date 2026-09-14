@@ -15,6 +15,7 @@ type ErrorState = {
 export function useSuggestedActions(
   enabled = true,
   context?: SuggestedActionContext,
+  refreshToken?: string | number,
 ) {
   const [loading, setLoading] = useState(enabled);
   const [data, setData] = useState<SuggestedActionsResponse | ErrorState | null>(
@@ -53,7 +54,7 @@ export function useSuggestedActions(
 
   useEffect(() => {
     void load();
-  }, [load]);
+  }, [load, refreshToken]);
 
   return {
     loading,

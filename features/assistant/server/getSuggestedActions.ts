@@ -366,8 +366,16 @@ export async function getSuggestedActions(
     });
   }
 
+  const hrefsFromNotifications = new Set(
+    items.map((item) => item.href).filter(Boolean),
+  );
+
   for (const link of summary.links.slice(0, 4)) {
     if (!canIncludeLink({ role, caps, href: link.href })) continue;
+    // getRoleDailySummary derives these links from the same notifications
+    // already added above; skip any that point at an href a notification
+    // card already covers so the same exception doesn't appear twice.
+    if (hrefsFromNotifications.has(link.href)) continue;
 
     items.push({
       id: `link:${link.href}`,
@@ -387,6 +395,7 @@ export async function getSuggestedActions(
 
   return {
     role,
+    summaryText: summary.summaryText,
     items: ranked.slice(0, 8),
   };
 }

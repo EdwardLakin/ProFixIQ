@@ -37,6 +37,7 @@ type Props = {
   collapsible?: boolean;
   hideDescription?: boolean;
   embedded?: boolean;
+  refreshToken?: string | number;
 };
 
 export default function SuggestedActionsPanel({
@@ -49,8 +50,13 @@ export default function SuggestedActionsPanel({
   collapsible = false,
   hideDescription = false,
   embedded = false,
+  refreshToken,
 }: Props) {
-  const { loading, data, reload } = useSuggestedActions(true, context);
+  const { loading, data, reload } = useSuggestedActions(
+    true,
+    context,
+    refreshToken,
+  );
   const [expanded, setExpanded] = useState(defaultExpanded);
 
   const items = useMemo(() => {
@@ -137,6 +143,18 @@ export default function SuggestedActionsPanel({
           </button>
         </div>
       </div>
+
+      {!loading && data && !("error" in data) && data.summaryText ? (
+        <div
+          className={compact ? "mt-3 text-xs" : "mt-4 text-sm"}
+          style={{
+            color: "var(--theme-text-primary,var(--theme-text-inverse))",
+            whiteSpace: "pre-line",
+          }}
+        >
+          {data.summaryText}
+        </div>
+      ) : null}
 
       {loading ? (
         <div

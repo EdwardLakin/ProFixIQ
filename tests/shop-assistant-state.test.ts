@@ -67,8 +67,9 @@ describe("shop assistant live state contracts", () => {
 
   it("loads the live dashboard before a prompt on desktop and mobile", () => {
     expect(dashboard).toContain("ShopStateMetricGrid");
-    expect(dashboard).toContain("ShopAlertList");
-    expect(dashboard).toContain("ShopSuggestionList");
+    expect(dashboard).toContain("SuggestedActionsPanel");
+    expect(dashboard).toContain("PendingConfirmationsList");
+    expect(dashboard).toContain("RecentAssistantActivityList");
     expect(desktopPage).toContain("<ShopAssistantDashboard");
     expect(mobilePage).toContain("<ShopAssistantDashboard");
   });

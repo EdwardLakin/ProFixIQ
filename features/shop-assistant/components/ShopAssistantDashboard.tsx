@@ -1,13 +1,16 @@
 "use client";
 
-import ShopAlertList from "@/features/shop-assistant/components/ShopAlertList";
+import SuggestedActionsPanel from "@/features/assistant/components/SuggestedActionsPanel";
+import PendingConfirmationsList from "@/features/shop-assistant/components/PendingConfirmationsList";
+import RecentAssistantActivityList from "@/features/shop-assistant/components/RecentAssistantActivityList";
 import ShopStateMetricGrid from "@/features/shop-assistant/components/ShopStateMetricGrid";
-import ShopSuggestionList from "@/features/shop-assistant/components/ShopSuggestionList";
+import { useAssistantInboxActivity } from "@/features/shop-assistant/hooks/useAssistantInboxActivity";
 import { useShopAssistantState } from "@/features/shop-assistant/hooks/useShopAssistantState";
+import type { ShopAssistantContext } from "@/features/shop-assistant/types";
 
 type Props = {
-  onPrompt: (prompt: string) => void;
   refreshToken?: string | number;
+  context?: ShopAssistantContext;
 };
 
 function roleLabel(role: string): string {
@@ -17,11 +20,18 @@ function roleLabel(role: string): string {
 }
 
 export default function ShopAssistantDashboard({
-  onPrompt,
   refreshToken,
+  context,
 }: Props) {
   const { state, loading, error, refresh } =
     useShopAssistantState(refreshToken);
+  const {
+    pendingActions,
+    recentThreads,
+    loading: activityLoading,
+    error: activityError,
+    reload: reloadActivity,
+  } = useAssistantInboxActivity(refreshToken);
 
   if (loading && !state) {
     return (
@@ -83,21 +93,56 @@ export default function ShopAssistantDashboard({
         />
       )}
 
+      <SuggestedActionsPanel
+        context={context}
+        title="Today"
+        description="Role-aware daily summary and the highest-value next moves"
+        embedded
+        collapsible
+        maxItems={4}
+        refreshToken={refreshToken}
+      />
+
+      {activityError ? (
+        <div className="rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-xs text-[color:var(--theme-text-primary)]">
+          <span>
+            Couldn&apos;t refresh pending confirmations or recent activity:{" "}
+            {activityError}
+          </span>
+          <button
+            type="button"
+            className="ml-2 rounded-full border border-current/30 px-2 py-0.5 font-semibold"
+            onClick={() => void reloadActivity()}
+          >
+            Try again
+          </button>
+        </div>
+      ) : null}
+
       <div className="grid gap-4 xl:grid-cols-2">
         <div>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-            Needs attention
+            Needs your confirmation
           </h2>
-          <ShopAlertList alerts={state.alerts} />
+          {activityLoading ? (
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
+              Loading…
+            </div>
+          ) : (
+            <PendingConfirmationsList items={pendingActions} />
+          )}
         </div>
         <div>
           <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-            Suggested next moves
+            Recent activity
           </h2>
-          <ShopSuggestionList
-            suggestions={state.suggestions}
-            onSelect={onPrompt}
-          />
+          {activityLoading ? (
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
+              Loading…
+            </div>
+          ) : (
+            <RecentAssistantActivityList items={recentThreads} />
+          )}
         </div>
       </div>
 

@@ -69,6 +69,8 @@ export default function AssistantPage() {
     };
   }, [searchKey]);
 
+  const threadId = optionalParam(new URLSearchParams(searchKey), "threadId");
+
   const contextKey = useMemo(
     () =>
       [
@@ -78,10 +80,11 @@ export default function AssistantPage() {
         context.customerId,
         context.bookingId,
         context.invoiceId,
+        threadId,
       ]
         .filter(Boolean)
         .join(":"),
-    [context],
+    [context, threadId],
   );
 
   const {
@@ -96,7 +99,7 @@ export default function AssistantPage() {
     confirmAction,
     cancelAction,
     clearConversation,
-  } = useShopAssistant(contextKey);
+  } = useShopAssistant(contextKey, true, threadId);
 
   const submit = async () => {
     const value = query.trim();
@@ -194,7 +197,7 @@ export default function AssistantPage() {
             Live shop overview
           </summary>
           <ShopAssistantDashboard
-            onPrompt={(prompt) => void sendPrompt(prompt)}
+            context={context}
             refreshToken={messages.at(-1)?.id}
           />
         </details>
