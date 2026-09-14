@@ -17,31 +17,53 @@ vi.mock("@/features/operations/server/syncShopBlockerObservations", () => ({
   syncShopBlockerObservations: syncShopBlockerObservationsMock,
 }));
 
-function createShopQuery(input?: {
-  data?: Array<{ id: string }>;
-  error?: { message: string } | null;
-}) {
-  const query = {
-    select: vi.fn(),
-    order: vi.fn(),
-    limit: vi.fn(),
-  };
-  query.select.mockReturnValue(query);
-  query.order.mockReturnValue(query);
-  query.limit.mockResolvedValue({
-    data: input?.data ?? [{ id: "shop_1" }, { id: "shop_2" }],
-    error: input?.error ?? null,
-  });
-  return query;
+type ShopRow = { id: string; created_at: string };
+type Page = { data?: ShopRow[]; error?: { message: string } | null };
+
+type QueryNode = {
+  select: (columns: string) => QueryNode;
+  order: (column: string, opts?: { ascending?: boolean }) => QueryNode;
+  limit: (count: number) => QueryNode;
+  gt: (column: string, value: string) => QueryNode;
+  then: (
+    resolve: (value: { data: ShopRow[] | undefined; error: unknown }) => unknown,
+  ) => unknown;
+};
+
+function createShopsQuery(pages: Page[]): QueryNode {
+  const gtCalls: Array<[string, string]> = [];
+
+  function makePage(index: number): QueryNode {
+    const page = pages[index] ?? { data: [], error: null };
+    const node: QueryNode = {
+      select: vi.fn(() => node),
+      order: vi.fn(() => node),
+      limit: vi.fn(() => node),
+      gt: vi.fn((col: string, value: string) => {
+        gtCalls.push([col, value]);
+        return makePage(index + 1);
+      }),
+      then: (resolve) =>
+        Promise.resolve({
+          data: page.data ?? [],
+          error: page.error ?? null,
+        }).then(resolve),
+    };
+    return node;
+  }
+
+  const root = makePage(0);
+  return Object.assign(root, { __gtCalls: gtCalls }) as QueryNode;
 }
 
-function createSupabase(input?: { shopsError?: { message: string } | null }) {
-  const shopQuery = createShopQuery({ error: input?.shopsError });
+function createSupabase(pages: Page[]) {
+  const shopsQuery = createShopsQuery(pages);
   return {
     from: vi.fn((table: string) => {
       if (table !== "shops") throw new Error(`Unexpected table: ${table}`);
-      return shopQuery;
+      return shopsQuery;
     }),
+    __shopsQuery: shopsQuery,
   };
 }
 
@@ -61,7 +83,9 @@ describe("GET /api/internal/observability/shop-blockers", () => {
   });
 
   it("uses the shared guard with Vercel cron bearer authorization enabled", async () => {
-    createAdminSupabaseMock.mockReturnValue(createSupabase());
+    createAdminSupabaseMock.mockReturnValue(
+      createSupabase([{ data: [{ id: "shop_1", created_at: "t1" }] }]),
+    );
 
     const { GET } = await import(
       "../app/api/internal/observability/shop-blockers/route"
@@ -87,7 +111,7 @@ describe("GET /api/internal/observability/shop-blockers", () => {
       ok: false,
       response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
     });
-    createAdminSupabaseMock.mockReturnValue(createSupabase());
+    createAdminSupabaseMock.mockReturnValue(createSupabase([{ data: [] }]));
 
     const { GET } = await import(
       "../app/api/internal/observability/shop-blockers/route"
@@ -103,7 +127,16 @@ describe("GET /api/internal/observability/shop-blockers", () => {
   });
 
   it("syncs every shop and aggregates the summary", async () => {
-    createAdminSupabaseMock.mockReturnValue(createSupabase());
+    createAdminSupabaseMock.mockReturnValue(
+      createSupabase([
+        {
+          data: [
+            { id: "shop_1", created_at: "t1" },
+            { id: "shop_2", created_at: "t2" },
+          ],
+        },
+      ]),
+    );
     syncShopBlockerObservationsMock
       .mockResolvedValueOnce({
         shopId: "shop_1",
@@ -152,7 +185,16 @@ describe("GET /api/internal/observability/shop-blockers", () => {
   });
 
   it("reports a per-shop failure as a warning instead of failing the whole run", async () => {
-    createAdminSupabaseMock.mockReturnValue(createSupabase());
+    createAdminSupabaseMock.mockReturnValue(
+      createSupabase([
+        {
+          data: [
+            { id: "shop_1", created_at: "t1" },
+            { id: "shop_2", created_at: "t2" },
+          ],
+        },
+      ]),
+    );
     syncShopBlockerObservationsMock
       .mockResolvedValueOnce({
         shopId: "shop_1",
@@ -181,7 +223,7 @@ describe("GET /api/internal/observability/shop-blockers", () => {
 
   it("returns 500 when the shop list cannot be loaded", async () => {
     createAdminSupabaseMock.mockReturnValue(
-      createSupabase({ shopsError: { message: "Database unavailable" } }),
+      createSupabase([{ error: { message: "Database unavailable" } }]),
     );
 
     const { GET } = await import(
@@ -197,5 +239,33 @@ describe("GET /api/internal/observability/shop-blockers", () => {
     expect(response.status).toBe(500);
     expect(body.error).toBe("Database unavailable");
     expect(syncShopBlockerObservationsMock).not.toHaveBeenCalled();
+  });
+
+  it("pages through the full shop table instead of a fixed 500-shop cap", async () => {
+    const fullPage: ShopRow[] = Array.from({ length: 500 }, (_, index) => ({
+      id: `shop_${index}`,
+      created_at: `2026-01-01T00:${String(index % 60).padStart(2, "0")}:00.000Z`,
+    }));
+    const tailPage: ShopRow[] = [{ id: "shop_500", created_at: "2026-02-01T00:00:00.000Z" }];
+
+    const supabase = createSupabase([{ data: fullPage }, { data: tailPage }]);
+    createAdminSupabaseMock.mockReturnValue(supabase);
+
+    const { GET } = await import(
+      "../app/api/internal/observability/shop-blockers/route"
+    );
+    const response = await GET(
+      new Request(
+        "https://example.test/api/internal/observability/shop-blockers",
+      ),
+    );
+    const body = (await response.json()) as Record<string, unknown>;
+
+    expect(response.status).toBe(200);
+    expect(body.checkedShops).toBe(501);
+    expect(syncShopBlockerObservationsMock).toHaveBeenCalledTimes(501);
+    expect(syncShopBlockerObservationsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ shopId: "shop_500" }),
+    );
   });
 });

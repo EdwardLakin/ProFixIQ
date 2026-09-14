@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
 
 import { syncShopBlockerObservations } from "@/features/operations/server/syncShopBlockerObservations";
 import { requireInternalApiSecret } from "@/features/shared/lib/server/api-route-guard";
@@ -7,7 +9,7 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const MAX_SHOPS_PER_RUN = 500;
+const SHOP_PAGE_SIZE = 500;
 const CONCURRENCY = 5;
 
 function authorizeInternalRequest(
@@ -22,6 +24,41 @@ function authorizeInternalRequest(
   });
 }
 
+// A single fixed-size, oldest-first page would permanently exclude every
+// shop past the page size once the shop count grows beyond it - the same
+// page would be selected on every run. Page through the full table by
+// created_at instead so a growing shop count degrades run time, not
+// coverage.
+async function fetchAllShopIds(
+  supabase: SupabaseClient<Database>,
+): Promise<string[]> {
+  const ids: string[] = [];
+  let cursor: string | null = null;
+
+  for (;;) {
+    let query = supabase
+      .from("shops")
+      .select("id, created_at")
+      .order("created_at", { ascending: true })
+      .limit(SHOP_PAGE_SIZE);
+
+    if (cursor) {
+      query = query.gt("created_at", cursor);
+    }
+
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+
+    const rows = data ?? [];
+    ids.push(...rows.map((row) => row.id));
+    if (rows.length < SHOP_PAGE_SIZE) break;
+    cursor = rows[rows.length - 1]?.created_at ?? null;
+    if (!cursor) break;
+  }
+
+  return ids;
+}
+
 export async function GET(request: Request) {
   const gate = authorizeInternalRequest(request);
   if (!gate.ok) return gate.response;
@@ -29,14 +66,17 @@ export async function GET(request: Request) {
   const supabase = createAdminSupabase();
   const now = new Date();
 
-  const { data: shops, error: shopsError } = await supabase
-    .from("shops")
-    .select("id")
-    .order("created_at", { ascending: true })
-    .limit(MAX_SHOPS_PER_RUN);
-
-  if (shopsError) {
-    return NextResponse.json({ error: shopsError.message }, { status: 500 });
+  let shopIds: string[];
+  try {
+    shopIds = await fetchAllShopIds(supabase);
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error ? error.message : "Failed to list shops",
+      },
+      { status: 500 },
+    );
   }
 
   const summaries: Awaited<
@@ -44,17 +84,16 @@ export async function GET(request: Request) {
   >[] = [];
   const warnings: Array<{ shopId: string; error: string }> = [];
 
-  const rows = shops ?? [];
-  for (let index = 0; index < rows.length; index += CONCURRENCY) {
-    const batch = rows.slice(index, index + CONCURRENCY);
+  for (let index = 0; index < shopIds.length; index += CONCURRENCY) {
+    const batch = shopIds.slice(index, index + CONCURRENCY);
     const results = await Promise.allSettled(
-      batch.map((row) =>
-        syncShopBlockerObservations({ supabase, shopId: row.id, now }),
+      batch.map((shopId) =>
+        syncShopBlockerObservations({ supabase, shopId, now }),
       ),
     );
 
     results.forEach((result, resultIndex) => {
-      const shopId = batch[resultIndex]?.id ?? "unknown";
+      const shopId = batch[resultIndex] ?? "unknown";
       if (result.status === "fulfilled") {
         summaries.push(result.value);
         if (result.value.errors.length > 0) {
@@ -74,7 +113,7 @@ export async function GET(request: Request) {
 
   return NextResponse.json({
     ok: warnings.length === 0,
-    checkedShops: rows.length,
+    checkedShops: shopIds.length,
     observed: summaries.reduce((sum, item) => sum + item.observed, 0),
     opened: summaries.reduce((sum, item) => sum + item.opened, 0),
     continuing: summaries.reduce((sum, item) => sum + item.continuing, 0),

@@ -89,7 +89,33 @@ describe("Phase 3 — shadow-mode shop blocker observer", () => {
 
   it("reuses the existing detection rules instead of inventing a parallel rule engine", () => {
     expect(syncModule).toContain("getOpsNotifications(");
-    expect(syncModule).toContain("buildFingerprint(");
+    expect(syncModule).toContain("buildBlockerFingerprint(");
+  });
+
+  it("identifies a blocker by stable domain keys, not its mutable presentation href", () => {
+    expect(syncModule).not.toMatch(/buildBlockerFingerprint[\s\S]{0,200}href/);
+  });
+
+  it("requires a full extra cron cycle of absence before resolving a finding", () => {
+    expect(syncModule).toContain("RESOLUTION_GRACE_MS");
+    expect(syncModule).toContain(
+      "now.getTime() - new Date(row.last_seen_at).getTime() >=",
+    );
+  });
+
+  it("conditions each resolve on the last-read last_seen_at so a stale run cannot clobber a fresher one", () => {
+    expect(syncModule).toContain('.eq("last_seen_at", row.last_seen_at)');
+  });
+
+  it("excludes the one rule whose false-positive rate depends on being queried only during business hours", () => {
+    expect(syncModule).toContain("EXCLUDED_SCHEDULED_CODES");
+    expect(syncModule).toContain("tech_underutilized_capacity");
+  });
+
+  it("records the rule inputs behind each finding, not just its presentation message", () => {
+    expect(getOpsNotifications).toContain("evidence?:");
+    expect(getOpsNotifications).toContain("evidence: {");
+    expect(syncModule).toContain("notification.evidence");
   });
 
   it("runs shop-wide detection with an injected admin client, not a request-scoped one", () => {
@@ -118,6 +144,11 @@ describe("Phase 3 — shadow-mode shop blocker observer", () => {
     expect(vercelConfig).toMatch(
       /"path":\s*"\/api\/internal\/observability\/shop-blockers",\s*\n\s*"schedule":\s*"37 \* \* \* \*"/,
     );
+  });
+
+  it("pages through every shop instead of applying a fixed, non-progressing cap", () => {
+    expect(route).toContain("fetchAllShopIds");
+    expect(route).toContain('.gt("created_at", cursor)');
   });
 
   it("is not read by any existing assistant or dashboard surface", () => {
