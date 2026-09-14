@@ -2,46 +2,41 @@
 
 -- Regression for 20260914013000_harden_existing_baseline_financial_rls.sql.
 --
--- A plain clean replay only ever exercises this file against a freshly
--- bootstrapped payments/invoices shape (invoice_id present, per
--- 20260705000070_baseline_invoice_dependencies.sql's bootstrap branch), so it
--- can never reproduce the reported defect on its own: a database whose
--- payments table already moved to the Stripe-first shape and had invoice_id
--- retired by 20260806181508_retire_legacy_bootstrap_schema_aliases.sql. This
--- test manufactures that shape directly and proves the migration is safe
--- against it, then proves the same file still (re)creates the bootstrap-era
--- index when invoice_id is present.
+-- By the time this step runs, the job has already replayed the full
+-- migration chain, including 20260806181508_retire_legacy_bootstrap_schema_
+-- aliases.sql -- so payments.invoice_id is already absent here, matching
+-- production's real, current shape. This test proves the migration under
+-- test is safe against that (the reported defect: it must not try to
+-- recreate payments_shop_invoice_idx against a missing column), then proves
+-- the same file still (re)creates that index when invoice_id is present, by
+-- adding it back temporarily.
 --
 -- No outer transaction here: the migration under test wraps itself in its
 -- own begin/commit (per the P2 lock-timeout finding on this PR), and nesting
 -- a rollback-wrapped test transaction around a file that commits internally
 -- would end the outer transaction early. Instead, this test's own steps
--- restore the pre-test shape by construction: it starts from the post-bootstrap
--- state (invoice_id present), drifts it, proves the drifted behavior, then
--- restores invoice_id and proves the original behavior -- leaving the
--- database exactly as it found it for whatever runtime test runs next.
+-- restore the pre-test shape by construction, ending with invoice_id
+-- dropped again -- exactly as it found it -- so later runtime tests in this
+-- job (e.g. p0-008-schema-reconciliation, which asserts the retired
+-- bootstrap aliases stay gone) are unaffected.
 
--- --- Simulate a pre-hardening, post-alias-retirement install --------------
--- Dropping invoice_id also drops payments_shop_invoice_idx (it depends on
--- the column), so this alone reproduces the "index missing, column missing"
--- state the migration must tolerate.
-alter table public.payments drop column if exists invoice_id;
-alter table public.invoices disable row level security;
-alter table public.payments disable row level security;
-
-do $existing_shape$
+-- --- Confirm the shape this step actually starts from ----------------------
+do $starting_shape$
 begin
   if exists (
     select 1 from information_schema.columns
     where table_schema = 'public' and table_name = 'payments'
       and column_name = 'invoice_id'
   ) then
-    raise exception 'Setup failed: payments.invoice_id still present.';
+    raise exception 'Setup assumption failed: payments.invoice_id was already present before this test ran.';
   end if;
 end
-$existing_shape$;
+$starting_shape$;
 
--- --- Re-run the migration under test against that shape --------------------
+alter table public.invoices disable row level security;
+alter table public.payments disable row level security;
+
+-- --- Re-run the migration under test against the drifted shape ------------
 \i supabase/migrations/20260914013000_harden_existing_baseline_financial_rls.sql
 
 do $assert_drifted$
@@ -76,9 +71,7 @@ begin
 end
 $assert_drifted$;
 
--- --- Restore the greenfield shape: the index must be (re)created ----------
--- This also returns the database to the same state a normal clean replay
--- left it in, so later runtime tests in this job are unaffected.
+-- --- Temporarily add invoice_id back: the index must be (re)created -------
 alter table public.payments add column invoice_id uuid;
 
 \i supabase/migrations/20260914013000_harden_existing_baseline_financial_rls.sql
@@ -94,3 +87,28 @@ begin
   end if;
 end
 $assert_greenfield$;
+
+-- --- Restore the shape this step started from ------------------------------
+-- Dropping invoice_id also drops the index that depends on it, returning the
+-- database to exactly the state later runtime tests in this job expect.
+alter table public.payments drop column invoice_id;
+
+do $restored$
+begin
+  if exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'payments'
+      and column_name = 'invoice_id'
+  ) then
+    raise exception 'Cleanup failed: payments.invoice_id was not dropped.';
+  end if;
+
+  if exists (
+    select 1 from pg_indexes
+    where schemaname = 'public' and tablename = 'payments'
+      and indexname = 'payments_shop_invoice_idx'
+  ) then
+    raise exception 'Cleanup failed: payments_shop_invoice_idx was not dropped.';
+  end if;
+end
+$restored$;
