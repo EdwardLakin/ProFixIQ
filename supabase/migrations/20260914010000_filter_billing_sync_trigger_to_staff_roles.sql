@@ -67,4 +67,32 @@ begin
 end;
 $$;
 
+-- profiles_refresh_shop_billable_user_count (see
+-- 20260802170000_stripe_billing_model_connect_correction.sql) is an older,
+-- fully-superseded duplicate: it recomputes the same two columns from the
+-- same unfiltered profiles count, on the same insert/delete/update-of-shop_id
+-- events. Postgres fires same-event triggers on one table in trigger-name
+-- alphabetical order, so "profiles_refresh_..." (r) ran after
+-- "profiles_mark_shop_billing_sync" (m) and silently overwrote the
+-- role-filtered count above with the old unfiltered one on every single
+-- profiles change — the fix above did nothing observable until this trigger
+-- is removed. profixiq_mark_shop_billing_sync already covers every case this
+-- one handled (insert, delete, and both the old and new shop_id sides of a
+-- shop-to-shop move) plus the sync bookkeeping columns this one does not.
+drop trigger if exists profiles_refresh_shop_billable_user_count on public.profiles;
+drop function if exists public.refresh_shop_billable_user_count();
+
+-- profiles_recalc_shop_user_count (see
+-- 20260804052000_narrow_profile_user_count_trigger.sql) is a second,
+-- conditionally-created duplicate that only materializes where a
+-- pre-migration "production drift" function
+-- (tg_profiles_recalc_shop_user_count) already exists — which a clean replay
+-- never has, so it did not reproduce the failure above locally, but it is
+-- the exact same clobbering risk (same columns, same events, alphabetically
+-- after "profiles_mark_shop_billing_sync") wherever that drift function is
+-- actually present. Retire both defensively; this migration is what that
+-- drift was always meant to be promoted into.
+drop trigger if exists profiles_recalc_shop_user_count on public.profiles;
+drop function if exists public.tg_profiles_recalc_shop_user_count();
+
 commit;
