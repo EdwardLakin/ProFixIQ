@@ -1,13 +1,15 @@
 import { NextResponse } from "next/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@shared/types/types/supabase";
 
 import { syncShopBlockerObservations } from "@/features/operations/server/syncShopBlockerObservations";
 import { requireInternalApiSecret } from "@/features/shared/lib/server/api-route-guard";
-import { fetchAllShopIds } from "@/features/shared/lib/server/fetchAllShopIds";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const SHOP_PAGE_SIZE = 500;
 const CONCURRENCY = 5;
 
 function authorizeInternalRequest(
@@ -20,6 +22,41 @@ function authorizeInternalRequest(
     routeLabel: "internal/observability/shop-blockers",
     bearerEnvSecretName: "CRON_SECRET",
   });
+}
+
+// A single fixed-size, oldest-first page would permanently exclude every
+// shop past the page size once the shop count grows beyond it - the same
+// page would be selected on every run. Page through the full table by
+// created_at instead so a growing shop count degrades run time, not
+// coverage.
+async function fetchAllShopIds(
+  supabase: SupabaseClient<Database>,
+): Promise<string[]> {
+  const ids: string[] = [];
+  let cursor: string | null = null;
+
+  for (;;) {
+    let query = supabase
+      .from("shops")
+      .select("id, created_at")
+      .order("created_at", { ascending: true })
+      .limit(SHOP_PAGE_SIZE);
+
+    if (cursor) {
+      query = query.gt("created_at", cursor);
+    }
+
+    const { data, error } = await query;
+    if (error) throw new Error(error.message);
+
+    const rows = data ?? [];
+    ids.push(...rows.map((row) => row.id));
+    if (rows.length < SHOP_PAGE_SIZE) break;
+    cursor = rows[rows.length - 1]?.created_at ?? null;
+    if (!cursor) break;
+  }
+
+  return ids;
 }
 
 export async function GET(request: Request) {

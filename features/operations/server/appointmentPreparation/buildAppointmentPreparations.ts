@@ -75,6 +75,18 @@ export type AppointmentPreparation = {
   missingInfo: MissingInfoFlag[];
 };
 
+export type BuildAppointmentPreparationsResult = {
+  preparations: AppointmentPreparation[];
+  /**
+   * Bookings whose data could not be fully assembled this run (a dependency
+   * query failed). The sync must not resolve or overwrite any existing
+   * preparation for these — better a stale-but-complete record than a fresh
+   * one silently missing outstanding history or readiness.
+   */
+  failedBookingIds: string[];
+  errors: string[];
+};
+
 function buildVehicleSnapshot(vehicle: Vehicle): VehicleSnapshot {
   return {
     year: vehicle.year,
@@ -140,9 +152,11 @@ export async function buildAppointmentPreparations(input: {
   shopId: string;
   bookings: Booking[];
   canViewPricing?: boolean;
-}): Promise<AppointmentPreparation[]> {
+}): Promise<BuildAppointmentPreparationsResult> {
   const { admin, shopId, bookings, canViewPricing = true } = input;
-  if (bookings.length === 0) return [];
+  if (bookings.length === 0) {
+    return { preparations: [], failedBookingIds: [], errors: [] };
+  }
 
   const vehicleIds = [
     ...new Set(bookings.map((b) => b.vehicle_id).filter((id): id is string => Boolean(id))),
@@ -168,6 +182,11 @@ export async function buildAppointmentPreparations(input: {
           admin
             .from("customers")
             .select("*")
+            // A booking's customer_id has no DB-enforced same-shop
+            // constraint, so an admin (RLS-bypassing) read must scope by
+            // shop_id itself or it could leak another tenant's customer
+            // record into this shop's snapshot.
+            .eq("shop_id", shopId)
             .in("id", ids)
             .order("id", { ascending: true })
             .range(from, to),
@@ -179,18 +198,27 @@ export async function buildAppointmentPreparations(input: {
   const customerById = new Map(customerRows.map((c) => [c.id, c]));
 
   // Deferred/declined history is keyed by vehicle, not by booking, so it is
-  // loaded once per distinct vehicle rather than once per booking.
+  // loaded once per distinct vehicle rather than once per booking. A
+  // per-vehicle failure only invalidates the bookings for that vehicle, not
+  // the whole run.
+  const errors: string[] = [];
+  const failedVehicleIds = new Set<string>();
   const deferredByVehicleId = new Map<
     string,
     Awaited<ReturnType<typeof loadDeferredWorkHistoryForVehicle>>["items"]
   >();
   for (const vehicleId of vehicleIds) {
-    const { items } = await loadDeferredWorkHistoryForVehicle({
+    const { items, error } = await loadDeferredWorkHistoryForVehicle({
       admin,
       shopId,
       vehicleId,
       canViewPricing,
     });
+    if (error) {
+      failedVehicleIds.add(vehicleId);
+      errors.push(`vehicle ${vehicleId}: ${error}`);
+      continue;
+    }
     deferredByVehicleId.set(vehicleId, items);
   }
 
@@ -214,7 +242,7 @@ export async function buildAppointmentPreparations(input: {
   }
 
   const matchedMenuRepairItemIds = [...new Set(menuRepairItemIdByRootLineId.values())];
-  const [menuRepairItemRows, partsReadinessByMenuRepairItemId] = await Promise.all([
+  const [menuRepairItemRows, partsReadinessResult] = await Promise.all([
     matchedMenuRepairItemIds.length
       ? loadRowsForIdChunks<MenuRepairItem>(matchedMenuRepairItemIds, (ids, from, to) =>
           admin
@@ -234,7 +262,29 @@ export async function buildAppointmentPreparations(input: {
   ]);
   const menuRepairItemById = new Map(menuRepairItemRows.map((r) => [r.id, r]));
 
-  return bookings.map((booking) => {
+  // Parts readiness is computed once for the whole shop batch, not per
+  // vehicle, so a failure there can't be pinned to specific vehicles the way
+  // a deferred-history failure can. Treat it as invalidating every booking
+  // that has a vehicle with matched history (the only bookings whose
+  // readiness data it would have supplied) rather than publishing readiness
+  // that silently defaulted to "unmatched".
+  if (partsReadinessResult.error) {
+    errors.push(`parts readiness: ${partsReadinessResult.error}`);
+    for (const vehicleId of deferredByVehicleId.keys()) {
+      failedVehicleIds.add(vehicleId);
+    }
+  }
+  const partsReadinessByMenuRepairItemId = partsReadinessResult.readinessByMenuRepairItemId;
+
+  const preparations: AppointmentPreparation[] = [];
+  const failedBookingIds: string[] = [];
+
+  for (const booking of bookings) {
+    if (booking.vehicle_id && failedVehicleIds.has(booking.vehicle_id)) {
+      failedBookingIds.push(booking.id);
+      continue;
+    }
+
     const vehicle = booking.vehicle_id ? vehicleById.get(booking.vehicle_id) ?? null : null;
     const customer = booking.customer_id ? customerById.get(booking.customer_id) ?? null : null;
     const deferredItems = booking.vehicle_id
@@ -258,7 +308,7 @@ export async function buildAppointmentPreparations(input: {
       });
     }
 
-    return {
+    preparations.push({
       bookingId: booking.id,
       shopId,
       startsAt: booking.starts_at,
@@ -269,6 +319,8 @@ export async function buildAppointmentPreparations(input: {
       deferredItems,
       matchedMenuItems,
       missingInfo: computeMissingInfo({ vehicle, customer }),
-    };
-  });
+    });
+  }
+
+  return { preparations, failedBookingIds, errors };
 }

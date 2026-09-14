@@ -51,6 +51,8 @@ export default function ShopAssistantDashboard({
     items: appointmentPreparations,
     canViewPricing: canViewAppointmentPricing,
     loading: appointmentPrepLoading,
+    error: appointmentPrepError,
+    reload: reloadAppointmentPrep,
   } = useAppointmentPreparations(refreshToken);
   const showAppointmentPrep = APPOINTMENT_PREP_ROLES.has(state?.role ?? "");
 
@@ -175,6 +177,20 @@ export default function ShopAssistantDashboard({
           {appointmentPrepLoading ? (
             <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-sm text-[color:var(--theme-text-secondary)]">
               Loading…
+            </div>
+          ) : appointmentPrepError ? (
+            <div className="rounded-2xl border border-red-400/30 bg-red-500/10 p-3 text-xs text-[color:var(--theme-text-primary)]">
+              <span>
+                Couldn&apos;t load upcoming appointment preparation:{" "}
+                {appointmentPrepError}
+              </span>
+              <button
+                type="button"
+                className="ml-2 rounded-full border border-current/30 px-2 py-0.5 font-semibold"
+                onClick={() => void reloadAppointmentPrep()}
+              >
+                Try again
+              </button>
             </div>
           ) : (
             <AppointmentPreparationList

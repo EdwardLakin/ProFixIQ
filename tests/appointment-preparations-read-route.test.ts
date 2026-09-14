@@ -3,10 +3,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   requireShopScopedApiAccess: vi.fn(),
   resolveWorkOrderFinancialAccess: vi.fn(),
+  createAdminSupabase: vi.fn(),
 }));
 
 vi.mock("@/features/shared/lib/server/admin-access", () => ({
   requireShopScopedApiAccess: mocks.requireShopScopedApiAccess,
+}));
+vi.mock("@/features/shared/lib/supabase/server", () => ({
+  createAdminSupabase: mocks.createAdminSupabase,
 }));
 vi.mock(
   "@/features/work-orders/workspace/server/workOrderFinancialAuthorization",
@@ -19,14 +23,18 @@ import { GET } from "../app/api/shop-assistant/appointment-preparations/route";
 
 type Row = Record<string, unknown>;
 
-function createSupabase(rows: Row[]) {
+function createAdminSupabase(rows: Row[]) {
+  const eqCalls: Array<[string, unknown]> = [];
   const api: Record<string, unknown> = {
     select: () => api,
-    eq: () => api,
+    eq: (col: string, value: unknown) => {
+      eqCalls.push([col, value]);
+      return api;
+    },
     order: () => api,
-    limit: () => Promise.resolve({ data: rows, error: null }),
+    range: () => Promise.resolve({ data: rows, error: null }),
   };
-  return { from: () => api };
+  return { from: () => api, __eqCalls: eqCalls };
 }
 
 function preparationRow(overrides: Row = {}): Row {
@@ -76,8 +84,9 @@ describe("GET /api/shop-assistant/appointment-preparations", () => {
     mocks.requireShopScopedApiAccess.mockResolvedValue({
       ok: true,
       profile: { id: "profile-1", shop_id: "shop-1" },
-      supabase: createSupabase([preparationRow()]),
+      supabase: {},
     });
+    mocks.createAdminSupabase.mockReturnValue(createAdminSupabase([preparationRow()]));
     mocks.resolveWorkOrderFinancialAccess.mockResolvedValue({
       error: null,
       access: { canViewSellPricing: true },
@@ -90,6 +99,20 @@ describe("GET /api/shop-assistant/appointment-preparations", () => {
 
     const response = await GET();
     expect(response.status).toBe(403);
+    expect(mocks.createAdminSupabase).not.toHaveBeenCalled();
+  });
+
+  it("reads with the service-role client scoped to the caller's own shop, not the RLS-scoped one", async () => {
+    const admin = createAdminSupabase([preparationRow()]);
+    mocks.createAdminSupabase.mockReturnValue(admin);
+
+    await GET();
+
+    expect(mocks.createAdminSupabase).toHaveBeenCalled();
+    expect((admin as unknown as { __eqCalls: Array<[string, unknown]> }).__eqCalls).toContainEqual([
+      "shop_id",
+      "shop-1",
+    ]);
   });
 
   it("returns pricing fields when the caller can view sell pricing", async () => {
@@ -134,5 +157,34 @@ describe("GET /api/shop-assistant/appointment-preparations", () => {
 
     const response = await GET();
     expect(response.status).toBe(500);
+  });
+
+  it("pages through more than one page of active preparations instead of truncating", async () => {
+    const firstPage = Array.from({ length: 500 }, (_, index) =>
+      preparationRow({ booking_id: `booking-${index}` }),
+    );
+    const secondPage = [preparationRow({ booking_id: "booking-500" })];
+    let call = 0;
+    const admin = {
+      from: () => {
+        const api: Record<string, unknown> = {
+          select: () => api,
+          eq: () => api,
+          order: () => api,
+          range: () => {
+            const page = call === 0 ? firstPage : secondPage;
+            call += 1;
+            return Promise.resolve({ data: page, error: null });
+          },
+        };
+        return api;
+      },
+    };
+    mocks.createAdminSupabase.mockReturnValue(admin);
+
+    const response = await GET();
+    const body = (await response.json()) as { ok: true; items: Row[] };
+
+    expect(body.items).toHaveLength(501);
   });
 });

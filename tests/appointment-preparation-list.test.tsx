@@ -97,4 +97,71 @@ describe("AppointmentPreparationList", () => {
     );
     expect(screen.getByText("Parts needed")).toBeVisible();
   });
+
+  it("does not flag parts needed when only an optional line is short", () => {
+    render(
+      <AppointmentPreparationList
+        items={[
+          item({
+            matchedMenuItems: [
+              {
+                menuRepairItemId: "mri-1",
+                name: "Alternator swap",
+                laborHours: 1,
+                priceEstimate: null,
+                isActive: true,
+                sourceRootLineId: "line-1",
+                partsReadiness: [
+                  { partName: "Required bolt", partNumber: "B-1", qtyRequired: 1, isRequired: true, matchedPartId: "part-1", qtyAvailable: 5, status: "ready" },
+                  { partName: "Optional trim clip", partNumber: "T-1", qtyRequired: 1, isRequired: false, matchedPartId: null, qtyAvailable: null, status: "unmatched" },
+                ],
+              },
+            ],
+          }),
+        ]}
+        canViewPricing
+      />,
+    );
+    expect(screen.getByText("Parts ready")).toBeVisible();
+  });
+
+  it("links a card to the create flow with the booking id, even for a booking with no vehicle", () => {
+    render(
+      <AppointmentPreparationList
+        items={[item({ vehicleId: null, vehicleSnapshot: null })]}
+        canViewPricing
+      />,
+    );
+    const link = screen.getByRole("link");
+    expect(link).toHaveAttribute("href", "/work-orders/create?bookingId=booking-1");
+  });
+
+  it("includes both bookingId and vehicleId in the link when a vehicle is on file", () => {
+    render(<AppointmentPreparationList items={[item()]} canViewPricing />);
+    const link = screen.getByRole("link");
+    const href = link.getAttribute("href") ?? "";
+    expect(href).toContain("bookingId=booking-1");
+    expect(href).toContain("vehicleId=vehicle-1");
+  });
+
+  it("shows the business name for a business-only customer instead of 'No customer on file'", () => {
+    render(
+      <AppointmentPreparationList
+        items={[
+          item({
+            customerSnapshot: {
+              name: null,
+              businessName: "Acme Fleet Services",
+              email: null,
+              phone: null,
+              isFleet: true,
+            },
+          }),
+        ]}
+        canViewPricing
+      />,
+    );
+    expect(screen.getByText(/Acme Fleet Services/)).toBeVisible();
+    expect(screen.queryByText(/No customer on file/)).not.toBeInTheDocument();
+  });
 });

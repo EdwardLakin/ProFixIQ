@@ -9,6 +9,8 @@ type MenuRepairItemPart =
 type Part = DB["public"]["Tables"]["parts"]["Row"];
 type PartStock = DB["public"]["Tables"]["part_stock"]["Row"];
 
+const PART_PAGE_SIZE = 500;
+
 export type PartReadinessLine = {
   partName: string;
   partNumber: string | null;
@@ -21,6 +23,31 @@ export type PartReadinessLine = {
   status: "ready" | "short" | "unmatched";
 };
 
+export type PartsReadinessResult = {
+  readinessByMenuRepairItemId: Map<string, PartReadinessLine[]>;
+  error: string | null;
+};
+
+async function loadShopParts(
+  admin: ReturnType<typeof createAdminSupabase>,
+  shopId: string,
+): Promise<Part[]> {
+  const parts: Part[] = [];
+  for (let from = 0; ; from += PART_PAGE_SIZE) {
+    const { data, error } = await admin
+      .from("parts")
+      .select("*")
+      .eq("shop_id", shopId)
+      .order("id", { ascending: true })
+      .range(from, from + PART_PAGE_SIZE - 1);
+    if (error) throw new Error(error.message);
+    const page = (data ?? []) as Part[];
+    parts.push(...page);
+    if (page.length < PART_PAGE_SIZE) break;
+  }
+  return parts;
+}
+
 /**
  * For a set of menu repair items, resolve each item's required-parts list
  * against the shop's part catalog and current stock, so the appointment
@@ -32,45 +59,44 @@ export async function buildPartsReadinessForMenuRepairItems(input: {
   admin: ReturnType<typeof createAdminSupabase>;
   shopId: string;
   menuRepairItemIds: string[];
-}): Promise<Map<string, PartReadinessLine[]>> {
+}): Promise<PartsReadinessResult> {
   const { admin, shopId, menuRepairItemIds } = input;
   const uniqueItemIds = [...new Set(menuRepairItemIds.filter(Boolean))];
-  if (uniqueItemIds.length === 0) return new Map();
+  if (uniqueItemIds.length === 0) {
+    return { readinessByMenuRepairItemId: new Map(), error: null };
+  }
 
-  const requiredParts = await loadRowsForIdChunks<MenuRepairItemPart>(
-    uniqueItemIds,
-    (ids, from, to) =>
-      admin
-        .from("menu_repair_item_parts")
-        .select("*")
-        .eq("shop_id", shopId)
-        .in("menu_repair_item_id", ids)
-        .order("id", { ascending: true })
-        .range(from, to),
-  );
+  let requiredParts: MenuRepairItemPart[];
+  let candidateParts: Part[];
+  try {
+    requiredParts = await loadRowsForIdChunks<MenuRepairItemPart>(
+      uniqueItemIds,
+      (ids, from, to) =>
+        admin
+          .from("menu_repair_item_parts")
+          .select("*")
+          .eq("shop_id", shopId)
+          .in("menu_repair_item_id", ids)
+          .order("id", { ascending: true })
+          .range(from, to),
+    );
 
-  if (requiredParts.length === 0) return new Map();
+    if (requiredParts.length === 0) {
+      return { readinessByMenuRepairItemId: new Map(), error: null };
+    }
 
-  const rawPartNumbers = [
-    ...new Set(
-      requiredParts
-        .map((row) => row.part_number?.trim())
-        .filter((value): value is string => Boolean(value)),
-    ),
-  ];
-
-  const candidateParts: Part[] = [];
-  if (rawPartNumbers.length > 0) {
-    const [byPartNumber, bySku] = await Promise.all([
-      admin
-        .from("parts")
-        .select("*")
-        .eq("shop_id", shopId)
-        .in("part_number", rawPartNumbers),
-      admin.from("parts").select("*").eq("shop_id", shopId).in("sku", rawPartNumbers),
-    ]);
-    for (const row of byPartNumber.data ?? []) candidateParts.push(row as Part);
-    for (const row of bySku.data ?? []) candidateParts.push(row as Part);
+    // Match by normalized part identity rather than a raw-text database
+    // filter: a required line's part_number can differ from the catalog
+    // only in case or punctuation ("of-2200" vs "OF 2200"), and a raw `.in`
+    // filter would treat that as no match at all. The shop's own part
+    // catalog is the bounded set to scan (the same approach the
+    // deterministic stock matcher already uses).
+    candidateParts = await loadShopParts(admin, shopId);
+  } catch (error) {
+    return {
+      readinessByMenuRepairItemId: new Map(),
+      error: error instanceof Error ? error.message : "Failed to load parts readiness",
+    };
   }
 
   const partsByNormalizedNumber = new Map<string, Part>();
@@ -84,17 +110,25 @@ export async function buildPartsReadinessForMenuRepairItems(input: {
   }
 
   const matchedPartIds = [...new Set(candidateParts.map((part) => part.id))];
-  const stockRows =
-    matchedPartIds.length > 0
-      ? await loadRowsForIdChunks<PartStock>(matchedPartIds, (ids, from, to) =>
-          admin
-            .from("part_stock")
-            .select("*")
-            .in("part_id", ids)
-            .order("id", { ascending: true })
-            .range(from, to),
-        )
-      : [];
+  let stockRows: PartStock[];
+  try {
+    stockRows =
+      matchedPartIds.length > 0
+        ? await loadRowsForIdChunks<PartStock>(matchedPartIds, (ids, from, to) =>
+            admin
+              .from("part_stock")
+              .select("*")
+              .in("part_id", ids)
+              .order("id", { ascending: true })
+              .range(from, to),
+          )
+        : [];
+  } catch (error) {
+    return {
+      readinessByMenuRepairItemId: new Map(),
+      error: error instanceof Error ? error.message : "Failed to load part stock",
+    };
+  }
 
   const availableByPartId = new Map<string, number>();
   for (const row of stockRows) {
@@ -137,5 +171,5 @@ export async function buildPartsReadinessForMenuRepairItems(input: {
     linesByMenuRepairItemId.set(row.menu_repair_item_id, existing);
   }
 
-  return linesByMenuRepairItemId;
+  return { readinessByMenuRepairItemId: linesByMenuRepairItemId, error: null };
 }

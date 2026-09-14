@@ -49,10 +49,13 @@ describe("buildAppointmentPreparations", () => {
     vi.clearAllMocks();
     loadDeferredWorkHistoryForVehicleMock.mockResolvedValue({ items: [], error: null });
     findMenuRepairItemForWorkOrderLineMock.mockResolvedValue(null);
-    buildPartsReadinessForMenuRepairItemsMock.mockResolvedValue(new Map());
+    buildPartsReadinessForMenuRepairItemsMock.mockResolvedValue({
+      readinessByMenuRepairItemId: new Map(),
+      error: null,
+    });
   });
 
-  it("returns an empty array for an empty booking list without querying anything", async () => {
+  it("returns empty results for an empty booking list without querying anything", async () => {
     const { buildAppointmentPreparations } = await import(
       "@/features/operations/server/appointmentPreparation/buildAppointmentPreparations"
     );
@@ -62,7 +65,7 @@ describe("buildAppointmentPreparations", () => {
       shopId: "shop-1",
       bookings: [],
     });
-    expect(result).toEqual([]);
+    expect(result).toEqual({ preparations: [], failedBookingIds: [], errors: [] });
   });
 
   it("flags missing vehicle/customer info and builds snapshots from loaded rows", async () => {
@@ -88,6 +91,7 @@ describe("buildAppointmentPreparations", () => {
       customers: [
         {
           id: "c1",
+          shop_id: "shop-1",
           name: null,
           first_name: "Jane",
           last_name: "Doe",
@@ -103,7 +107,7 @@ describe("buildAppointmentPreparations", () => {
     const { buildAppointmentPreparations } = await import(
       "@/features/operations/server/appointmentPreparation/buildAppointmentPreparations"
     );
-    const result = await buildAppointmentPreparations({
+    const { preparations } = await buildAppointmentPreparations({
       admin: supabase as never,
       shopId: "shop-1",
       bookings: [
@@ -111,12 +115,38 @@ describe("buildAppointmentPreparations", () => {
       ],
     });
 
-    expect(result).toHaveLength(1);
-    expect(result[0].vehicleSnapshot).toMatchObject({ year: 2019, make: "Toyota", model: "Corolla" });
-    expect(result[0].customerSnapshot).toMatchObject({ name: "Jane Doe" });
-    expect(result[0].missingInfo).toEqual(
+    expect(preparations).toHaveLength(1);
+    expect(preparations[0].vehicleSnapshot).toMatchObject({ year: 2019, make: "Toyota", model: "Corolla" });
+    expect(preparations[0].customerSnapshot).toMatchObject({ name: "Jane Doe" });
+    expect(preparations[0].missingInfo).toEqual(
       expect.arrayContaining(["missing_vin", "missing_mileage", "missing_customer_contact"]),
     );
+  });
+
+  it("scopes the customer lookup to the shop so a cross-tenant customer id cannot leak into the snapshot", async () => {
+    const supabase = createSupabase({
+      vehicles: [],
+      // This customer row belongs to a different shop; the query filter
+      // (not the mock) is what must exclude it.
+      customers: [],
+    });
+    const fromSpy = supabase.from;
+
+    const { buildAppointmentPreparations } = await import(
+      "@/features/operations/server/appointmentPreparation/buildAppointmentPreparations"
+    );
+    await buildAppointmentPreparations({
+      admin: supabase as never,
+      shopId: "shop-1",
+      bookings: [
+        { id: "b1", starts_at: "2026-09-15T09:00:00.000Z", status: "scheduled", customer_id: "c-other-shop", vehicle_id: null, notes: null },
+      ],
+    });
+
+    const customersQuery = fromSpy.mock.results.find(
+      (_, index) => fromSpy.mock.calls[index]?.[0] === "customers",
+    )?.value as QueryNode | undefined;
+    expect(customersQuery?.eq).toHaveBeenCalledWith("shop_id", "shop-1");
   });
 
   it("flags missing_vehicle and missing_customer when a booking has neither linked", async () => {
@@ -124,7 +154,7 @@ describe("buildAppointmentPreparations", () => {
     const { buildAppointmentPreparations } = await import(
       "@/features/operations/server/appointmentPreparation/buildAppointmentPreparations"
     );
-    const result = await buildAppointmentPreparations({
+    const { preparations } = await buildAppointmentPreparations({
       admin: supabase as never,
       shopId: "shop-1",
       bookings: [
@@ -132,10 +162,10 @@ describe("buildAppointmentPreparations", () => {
       ],
     });
 
-    expect(result[0].missingInfo).toEqual(
+    expect(preparations[0].missingInfo).toEqual(
       expect.arrayContaining(["missing_vehicle", "missing_customer"]),
     );
-    expect(result[0].deferredItems).toEqual([]);
+    expect(preparations[0].deferredItems).toEqual([]);
   });
 
   it("matches deferred history against known menu repair items via the shared work-order-line matcher", async () => {
@@ -169,14 +199,17 @@ describe("buildAppointmentPreparations", () => {
       error: null,
     });
     findMenuRepairItemForWorkOrderLineMock.mockResolvedValue("mri-1");
-    buildPartsReadinessForMenuRepairItemsMock.mockResolvedValue(
-      new Map([["mri-1", [{ partName: "Pads", partNumber: "BP-1", qtyRequired: 1, isRequired: true, matchedPartId: "part-1", qtyAvailable: 4, status: "ready" as const }]]]),
-    );
+    buildPartsReadinessForMenuRepairItemsMock.mockResolvedValue({
+      readinessByMenuRepairItemId: new Map([
+        ["mri-1", [{ partName: "Pads", partNumber: "BP-1", qtyRequired: 1, isRequired: true, matchedPartId: "part-1", qtyAvailable: 4, status: "ready" as const }]],
+      ]),
+      error: null,
+    });
 
     const { buildAppointmentPreparations } = await import(
       "@/features/operations/server/appointmentPreparation/buildAppointmentPreparations"
     );
-    const result = await buildAppointmentPreparations({
+    const { preparations } = await buildAppointmentPreparations({
       admin: supabase as never,
       shopId: "shop-1",
       bookings: [
@@ -187,7 +220,7 @@ describe("buildAppointmentPreparations", () => {
     expect(findMenuRepairItemForWorkOrderLineMock).toHaveBeenCalledWith(
       expect.objectContaining({ workOrderLineId: "line-1" }),
     );
-    expect(result[0].matchedMenuItems).toEqual([
+    expect(preparations[0].matchedMenuItems).toEqual([
       expect.objectContaining({
         menuRepairItemId: "mri-1",
         name: "Brake Job",
@@ -218,5 +251,84 @@ describe("buildAppointmentPreparations", () => {
     });
 
     expect(loadDeferredWorkHistoryForVehicleMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("excludes a booking from results and reports it as failed when its vehicle's deferred history fails to load", async () => {
+    const supabase = createSupabase({
+      vehicles: [
+        { id: "v1", shop_id: "shop-1", year: 2019, make: "Toyota", model: "Corolla", vin: "1T1", license_plate: null, unit_number: null, mileage: "50000", drivetrain: null, engine: null, fuel_type: null, transmission: null, notes: null },
+      ],
+      customers: [],
+    });
+    loadDeferredWorkHistoryForVehicleMock.mockResolvedValue({
+      items: [],
+      error: "Could not load previous recommendations.",
+    });
+
+    const { buildAppointmentPreparations } = await import(
+      "@/features/operations/server/appointmentPreparation/buildAppointmentPreparations"
+    );
+    const result = await buildAppointmentPreparations({
+      admin: supabase as never,
+      shopId: "shop-1",
+      bookings: [
+        { id: "b1", starts_at: "2026-09-15T09:00:00.000Z", status: "scheduled", customer_id: null, vehicle_id: "v1", notes: null },
+      ],
+    });
+
+    expect(result.preparations).toEqual([]);
+    expect(result.failedBookingIds).toEqual(["b1"]);
+    expect(result.errors).toEqual([
+      expect.stringContaining("Could not load previous recommendations."),
+    ]);
+  });
+
+  it("fails every booking with matched history when the shared parts-readiness batch call errors", async () => {
+    const supabase = createSupabase({
+      vehicles: [
+        { id: "v1", shop_id: "shop-1", year: 2019, make: "Toyota", model: "Corolla", vin: "1T1", license_plate: null, unit_number: null, mileage: "50000", drivetrain: null, engine: null, fuel_type: null, transmission: null, notes: null },
+      ],
+      customers: [],
+      menu_repair_items: [],
+    });
+    loadDeferredWorkHistoryForVehicleMock.mockResolvedValue({
+      items: [
+        {
+          rootLineId: "line-1",
+          quoteLineId: "q1",
+          workOrderId: "wo1",
+          workOrderNumber: "A100",
+          title: "Front brakes",
+          complaint: null,
+          decision: "deferred",
+          decisionAt: "2026-08-01T00:00:00.000Z",
+          laborTotal: 100,
+          partsTotal: 50,
+          taxTotal: 10,
+          grandTotal: 160,
+        },
+      ],
+      error: null,
+    });
+    findMenuRepairItemForWorkOrderLineMock.mockResolvedValue("mri-1");
+    buildPartsReadinessForMenuRepairItemsMock.mockResolvedValue({
+      readinessByMenuRepairItemId: new Map(),
+      error: "parts unavailable",
+    });
+
+    const { buildAppointmentPreparations } = await import(
+      "@/features/operations/server/appointmentPreparation/buildAppointmentPreparations"
+    );
+    const result = await buildAppointmentPreparations({
+      admin: supabase as never,
+      shopId: "shop-1",
+      bookings: [
+        { id: "b1", starts_at: "2026-09-15T09:00:00.000Z", status: "scheduled", customer_id: null, vehicle_id: "v1", notes: null },
+      ],
+    });
+
+    expect(result.preparations).toEqual([]);
+    expect(result.failedBookingIds).toEqual(["b1"]);
+    expect(result.errors).toEqual([expect.stringContaining("parts unavailable")]);
   });
 });

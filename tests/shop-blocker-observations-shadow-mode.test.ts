@@ -48,10 +48,6 @@ const getOpsNotifications = readFileSync(
   "features/agent/server/getOpsNotifications.ts",
   "utf8",
 );
-const fetchAllShopIdsHelper = readFileSync(
-  "features/shared/lib/server/fetchAllShopIds.ts",
-  "utf8",
-);
 const vercelConfig = readFileSync("vercel.json", "utf8");
 
 describe("Phase 3 — shadow-mode shop blocker observer", () => {
@@ -152,7 +148,7 @@ describe("Phase 3 — shadow-mode shop blocker observer", () => {
 
   it("pages through every shop instead of applying a fixed, non-progressing cap", () => {
     expect(route).toContain("fetchAllShopIds");
-    expect(fetchAllShopIdsHelper).toContain('.gt("created_at", cursor)');
+    expect(route).toContain('.gt("created_at", cursor)');
   });
 
   it("is not read by any existing assistant or dashboard surface", () => {

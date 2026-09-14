@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { resolveWorkOrderFinancialAccess } from "@/features/work-orders/workspace/server/workOrderFinancialAuthorization";
 import type {
   AppointmentPreparationListItem,
@@ -15,6 +16,8 @@ import type { Database } from "@shared/types/types/supabase";
 type DB = Database;
 type AppointmentPreparationRow =
   DB["public"]["Tables"]["appointment_preparations"]["Row"];
+
+const PAGE_SIZE = 500;
 
 const ALLOWED_ROLES = [
   "owner",
@@ -91,22 +94,36 @@ export async function GET() {
 
   const canViewPricing = financial.access.canViewSellPricing;
 
-  const { data, error } = await access.supabase
-    .from("appointment_preparations")
-    .select("*")
-    .eq("shop_id", access.profile.shop_id)
-    .eq("status", "active")
-    .order("starts_at", { ascending: true })
-    .limit(50);
+  // The table itself is not directly readable by any application role (see
+  // the migration) so that this redaction cannot be bypassed by querying it
+  // straight from the client — this route is the only staff-facing path to
+  // it, reading with the service-role client after its own authorization
+  // check above.
+  const admin = createAdminSupabase();
+  const rows: AppointmentPreparationRow[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await admin
+      .from("appointment_preparations")
+      .select("*")
+      .eq("shop_id", access.profile.shop_id)
+      .eq("status", "active")
+      .order("starts_at", { ascending: true })
+      .order("id", { ascending: true })
+      .range(from, from + PAGE_SIZE - 1);
 
-  if (error) {
-    return NextResponse.json<AppointmentPreparationsResponse>(
-      { ok: false, error: "Could not load upcoming appointment preparation." },
-      { status: 500 },
-    );
+    if (error) {
+      return NextResponse.json<AppointmentPreparationsResponse>(
+        { ok: false, error: "Could not load upcoming appointment preparation." },
+        { status: 500 },
+      );
+    }
+
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < PAGE_SIZE) break;
   }
 
-  const items = (data ?? []).map((row) => toListItem(row, canViewPricing));
+  const items = rows.map((row) => toListItem(row, canViewPricing));
 
   return NextResponse.json<AppointmentPreparationsResponse>(
     { ok: true, canViewPricing, items },

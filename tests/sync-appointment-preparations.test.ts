@@ -16,6 +16,7 @@ type BookingRow = {
   customer_id: string | null;
   vehicle_id: string | null;
   notes: string | null;
+  work_order_id: string | null;
 };
 
 type BookingsQueryNode = {
@@ -24,13 +25,14 @@ type BookingsQueryNode = {
   gte: (column: string, value: string) => BookingsQueryNode;
   lt: (column: string, value: string) => BookingsQueryNode;
   order: (column: string, opts?: { ascending?: boolean }) => BookingsQueryNode;
-  then: (
-    resolve: (value: { data: BookingRow[]; error: unknown }) => unknown,
-  ) => unknown;
+  range: (from: number, to: number) => Promise<{ data: BookingRow[] | null; error: { message: string } | null }>;
 };
 
-function createBookingsQuery(rows: BookingRow[], error: { message: string } | null = null) {
-  const calls: { gte?: [string, string]; lt?: [string, string] } = {};
+function createBookingsQuery(pages: BookingRow[][], error: { message: string } | null = null) {
+  const calls: { gte?: [string, string]; lt?: [string, string]; rangeCalls: Array<[number, number]> } = {
+    rangeCalls: [],
+  };
+  let pageIndex = 0;
   const node: BookingsQueryNode = {
     select: vi.fn(() => node),
     eq: vi.fn(() => node),
@@ -43,8 +45,13 @@ function createBookingsQuery(rows: BookingRow[], error: { message: string } | nu
       return node;
     }),
     order: vi.fn(() => node),
-    then: (resolve: (value: { data: BookingRow[]; error: unknown }) => unknown) =>
-      Promise.resolve({ data: rows, error }).then(resolve),
+    range: vi.fn((from: number, to: number) => {
+      calls.rangeCalls.push([from, to]);
+      if (error) return Promise.resolve({ data: null, error });
+      const page = pages[pageIndex] ?? [];
+      pageIndex += 1;
+      return Promise.resolve({ data: page, error: null });
+    }),
   };
   return { node, calls };
 }
@@ -55,12 +62,23 @@ type UpdateNode = {
   select: (columns: string) => Promise<{ data: Array<{ id: string }> | null; error: { message: string } | null }>;
 };
 
+type SelectExistingNode = {
+  eq: (col: string, value: unknown) => SelectExistingNode;
+  in: (
+    col: string,
+    values: string[],
+  ) => Promise<{ data: Array<{ booking_id: string; updated_at: string }> | null; error: { message: string } | null }>;
+};
+
 function createAppointmentPreparationsTable(input: {
   resolveResponse?: { data: Array<{ id: string }> | null; error: { message: string } | null };
   upsertError?: { message: string } | null;
+  existingRows?: Array<{ booking_id: string; updated_at: string }>;
+  existingError?: { message: string } | null;
 }) {
   const updateCalls: Array<{ payload: Record<string, unknown>; eqCalls: Array<[string, unknown]>; notCall?: [string, string, string] }> = [];
   const upsertCalls: Array<{ rows: unknown[]; options: unknown }> = [];
+  const selectExistingCalls: Array<{ eqCalls: Array<[string, unknown]>; inCall?: [string, string[]] }> = [];
 
   function makeUpdateNode(payload: Record<string, unknown>): UpdateNode {
     const record = { payload, eqCalls: [] as Array<[string, unknown]>, notCall: undefined as [string, string, string] | undefined };
@@ -83,7 +101,28 @@ function createAppointmentPreparationsTable(input: {
     return node;
   }
 
+  function makeSelectExistingNode(): SelectExistingNode {
+    const record = { eqCalls: [] as Array<[string, unknown]>, inCall: undefined as [string, string[]] | undefined };
+    selectExistingCalls.push(record);
+    const node: SelectExistingNode = {
+      eq: vi.fn((col: string, value: unknown) => {
+        record.eqCalls.push([col, value]);
+        return node;
+      }),
+      in: vi.fn((col: string, values: string[]) => {
+        record.inCall = [col, values];
+        return Promise.resolve(
+          input.existingError
+            ? { data: null, error: input.existingError }
+            : { data: input.existingRows ?? [], error: null },
+        );
+      }),
+    };
+    return node;
+  }
+
   const table = {
+    select: vi.fn(() => makeSelectExistingNode()),
     update: vi.fn((payload: Record<string, unknown>) => makeUpdateNode(payload)),
     upsert: vi.fn((rows: unknown[], options: unknown) => {
       upsertCalls.push({ rows, options });
@@ -91,23 +130,27 @@ function createAppointmentPreparationsTable(input: {
     }),
   };
 
-  return { table, updateCalls, upsertCalls };
+  return { table, updateCalls, upsertCalls, selectExistingCalls };
 }
 
 function createSupabase(input: {
-  bookings: BookingRow[];
+  bookingPages: BookingRow[][];
   bookingsError?: { message: string } | null;
   resolveResponse?: { data: Array<{ id: string }> | null; error: { message: string } | null };
   upsertError?: { message: string } | null;
+  existingRows?: Array<{ booking_id: string; updated_at: string }>;
+  existingError?: { message: string } | null;
 }) {
   const { node: bookingsQuery, calls: bookingsCalls } = createBookingsQuery(
-    input.bookings,
+    input.bookingPages,
     input.bookingsError ?? null,
   );
-  const { table: appointmentPreparationsTable, updateCalls, upsertCalls } =
+  const { table: appointmentPreparationsTable, updateCalls, upsertCalls, selectExistingCalls } =
     createAppointmentPreparationsTable({
       resolveResponse: input.resolveResponse,
       upsertError: input.upsertError,
+      existingRows: input.existingRows,
+      existingError: input.existingError,
     });
 
   const supabase = {
@@ -118,23 +161,38 @@ function createSupabase(input: {
     }),
   };
 
-  return { supabase, bookingsCalls, updateCalls, upsertCalls };
+  return { supabase, bookingsCalls, updateCalls, upsertCalls, selectExistingCalls };
 }
+
+function booking(overrides: Partial<BookingRow> & { id: string }): BookingRow {
+  return {
+    starts_at: "2026-09-15T09:00:00.000Z",
+    status: "scheduled",
+    customer_id: "c1",
+    vehicle_id: "v1",
+    notes: null,
+    work_order_id: null,
+    ...overrides,
+  };
+}
+
+const emptyBuildResult = { preparations: [], failedBookingIds: [], errors: [] };
 
 describe("syncAppointmentPreparations", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
 
-  it("queries bookings within the lookahead window and excludes cancelled/completed statuses", async () => {
+  it("queries bookings within the lookahead window and excludes cancelled/completed/already-converted bookings", async () => {
     const now = new Date("2026-09-14T12:00:00.000Z");
     const bookings: BookingRow[] = [
-      { id: "b1", starts_at: "2026-09-15T09:00:00.000Z", status: "scheduled", customer_id: "c1", vehicle_id: "v1", notes: null },
-      { id: "b2", starts_at: "2026-09-16T09:00:00.000Z", status: "cancelled", customer_id: "c2", vehicle_id: "v2", notes: null },
-      { id: "b3", starts_at: "2026-09-17T09:00:00.000Z", status: "completed", customer_id: "c3", vehicle_id: "v3", notes: null },
+      booking({ id: "b1" }),
+      booking({ id: "b2", status: "cancelled" }),
+      booking({ id: "b3", status: "completed" }),
+      booking({ id: "b4", work_order_id: "wo-existing" }),
     ];
-    buildAppointmentPreparationsMock.mockResolvedValue([]);
-    const { supabase, bookingsCalls } = createSupabase({ bookings });
+    buildAppointmentPreparationsMock.mockResolvedValue(emptyBuildResult);
+    const { supabase, bookingsCalls } = createSupabase({ bookingPages: [bookings] });
 
     const { syncAppointmentPreparations } = await import(
       "@/features/operations/server/syncAppointmentPreparations"
@@ -150,26 +208,50 @@ describe("syncAppointmentPreparations", () => {
     );
   });
 
+  it("pages through the full booking window instead of a single truncated read", async () => {
+    const now = new Date("2026-09-14T12:00:00.000Z");
+    const fullPage = Array.from({ length: 500 }, (_, i) => booking({ id: `b${i}` }));
+    const tailPage = [booking({ id: "b500" })];
+    buildAppointmentPreparationsMock.mockResolvedValue(emptyBuildResult);
+    const { supabase, bookingsCalls } = createSupabase({ bookingPages: [fullPage, tailPage] });
+
+    const { syncAppointmentPreparations } = await import(
+      "@/features/operations/server/syncAppointmentPreparations"
+    );
+    await syncAppointmentPreparations({ supabase: supabase as never, shopId: "shop-1", now });
+
+    expect(bookingsCalls.rangeCalls).toHaveLength(2);
+    const passedBookings = buildAppointmentPreparationsMock.mock.calls[0][0].bookings as BookingRow[];
+    expect(passedBookings).toHaveLength(501);
+    expect(passedBookings.map((b) => b.id)).toContain("b500");
+  });
+
   it("upserts a row per upcoming preparation keyed on booking_id", async () => {
     const now = new Date("2026-09-14T12:00:00.000Z");
-    const bookings: BookingRow[] = [
-      { id: "b1", starts_at: "2026-09-15T09:00:00.000Z", status: "scheduled", customer_id: "c1", vehicle_id: "v1", notes: null },
-    ];
-    buildAppointmentPreparationsMock.mockResolvedValue([
-      {
-        bookingId: "b1",
-        shopId: "shop-1",
-        startsAt: "2026-09-15T09:00:00.000Z",
-        vehicleId: "v1",
-        customerId: "c1",
-        vehicleSnapshot: { year: 2020, make: "Ford", model: "F150", vin: "1FT", licensePlate: null, unitNumber: null, mileage: null, drivetrain: null, engine: null, fuelType: null, transmission: null, notes: null },
-        customerSnapshot: { name: "Jane Doe", businessName: null, email: null, phone: null, isFleet: false },
-        deferredItems: [],
-        matchedMenuItems: [],
-        missingInfo: [],
-      },
-    ]);
-    const { supabase, upsertCalls } = createSupabase({ bookings, resolveResponse: { data: [], error: null } });
+    const bookings: BookingRow[] = [booking({ id: "b1" })];
+    buildAppointmentPreparationsMock.mockResolvedValue({
+      preparations: [
+        {
+          bookingId: "b1",
+          shopId: "shop-1",
+          startsAt: "2026-09-15T09:00:00.000Z",
+          vehicleId: "v1",
+          customerId: "c1",
+          vehicleSnapshot: { year: 2020, make: "Ford", model: "F150", vin: "1FT", licensePlate: null, unitNumber: null, mileage: null, drivetrain: null, engine: null, fuelType: null, transmission: null, notes: null },
+          customerSnapshot: { name: "Jane Doe", businessName: null, email: null, phone: null, isFleet: false },
+          deferredItems: [],
+          matchedMenuItems: [],
+          missingInfo: [],
+        },
+      ],
+      failedBookingIds: [],
+      errors: [],
+    });
+    const { supabase, upsertCalls } = createSupabase({
+      bookingPages: [bookings],
+      resolveResponse: { data: [], error: null },
+      existingRows: [],
+    });
 
     const { syncAppointmentPreparations } = await import(
       "@/features/operations/server/syncAppointmentPreparations"
@@ -184,28 +266,67 @@ describe("syncAppointmentPreparations", () => {
     expect(upsertCalls[0].options).toEqual({ onConflict: "booking_id" });
   });
 
+  it("skips re-activating a row a fresher run has already touched since this run started", async () => {
+    const now = new Date("2026-09-14T12:00:00.000Z");
+    const bookings: BookingRow[] = [booking({ id: "b1" })];
+    buildAppointmentPreparationsMock.mockResolvedValue({
+      preparations: [
+        {
+          bookingId: "b1",
+          shopId: "shop-1",
+          startsAt: "2026-09-15T09:00:00.000Z",
+          vehicleId: "v1",
+          customerId: "c1",
+          vehicleSnapshot: null,
+          customerSnapshot: null,
+          deferredItems: [],
+          matchedMenuItems: [],
+          missingInfo: [],
+        },
+      ],
+      failedBookingIds: [],
+      errors: [],
+    });
+    const { supabase, upsertCalls } = createSupabase({
+      bookingPages: [bookings],
+      resolveResponse: { data: [], error: null },
+      // A fresher run already touched this row after "now".
+      existingRows: [{ booking_id: "b1", updated_at: "2026-09-14T12:05:00.000Z" }],
+    });
+
+    const { syncAppointmentPreparations } = await import(
+      "@/features/operations/server/syncAppointmentPreparations"
+    );
+    await syncAppointmentPreparations({ supabase: supabase as never, shopId: "shop-1", now });
+
+    expect(upsertCalls).toHaveLength(0);
+  });
+
   it("resolves previously-active rows whose booking is no longer upcoming", async () => {
     const now = new Date("2026-09-14T12:00:00.000Z");
-    const bookings: BookingRow[] = [
-      { id: "b1", starts_at: "2026-09-15T09:00:00.000Z", status: "scheduled", customer_id: "c1", vehicle_id: "v1", notes: null },
-    ];
-    buildAppointmentPreparationsMock.mockResolvedValue([
-      {
-        bookingId: "b1",
-        shopId: "shop-1",
-        startsAt: "2026-09-15T09:00:00.000Z",
-        vehicleId: "v1",
-        customerId: "c1",
-        vehicleSnapshot: null,
-        customerSnapshot: null,
-        deferredItems: [],
-        matchedMenuItems: [],
-        missingInfo: [],
-      },
-    ]);
+    const bookings: BookingRow[] = [booking({ id: "b1" })];
+    buildAppointmentPreparationsMock.mockResolvedValue({
+      preparations: [
+        {
+          bookingId: "b1",
+          shopId: "shop-1",
+          startsAt: "2026-09-15T09:00:00.000Z",
+          vehicleId: "v1",
+          customerId: "c1",
+          vehicleSnapshot: null,
+          customerSnapshot: null,
+          deferredItems: [],
+          matchedMenuItems: [],
+          missingInfo: [],
+        },
+      ],
+      failedBookingIds: [],
+      errors: [],
+    });
     const { supabase, updateCalls } = createSupabase({
-      bookings,
+      bookingPages: [bookings],
       resolveResponse: { data: [{ id: "prep-old" }], error: null },
+      existingRows: [],
     });
 
     const { syncAppointmentPreparations } = await import(
@@ -221,11 +342,34 @@ describe("syncAppointmentPreparations", () => {
     expect(updateCalls[0].notCall).toEqual(["booking_id", "in", "(b1)"]);
   });
 
+  it("excludes a failed booking from the resolve pass so its existing preparation is left untouched", async () => {
+    const now = new Date("2026-09-14T12:00:00.000Z");
+    const bookings: BookingRow[] = [booking({ id: "b1" })];
+    buildAppointmentPreparationsMock.mockResolvedValue({
+      preparations: [],
+      failedBookingIds: ["b1"],
+      errors: ["vehicle v1: boom"],
+    });
+    const { supabase, updateCalls } = createSupabase({
+      bookingPages: [bookings],
+      resolveResponse: { data: [], error: null },
+      existingRows: [],
+    });
+
+    const { syncAppointmentPreparations } = await import(
+      "@/features/operations/server/syncAppointmentPreparations"
+    );
+    const summary = await syncAppointmentPreparations({ supabase: supabase as never, shopId: "shop-1", now });
+
+    expect(updateCalls[0].notCall).toEqual(["booking_id", "in", "(b1)"]);
+    expect(summary.errors).toEqual(["vehicle v1: boom"]);
+  });
+
   it("resolves every active row (no exclusion filter) when there are no upcoming bookings at all", async () => {
     const now = new Date("2026-09-14T12:00:00.000Z");
-    buildAppointmentPreparationsMock.mockResolvedValue([]);
+    buildAppointmentPreparationsMock.mockResolvedValue(emptyBuildResult);
     const { supabase, updateCalls } = createSupabase({
-      bookings: [],
+      bookingPages: [[]],
       resolveResponse: { data: [{ id: "prep-old" }], error: null },
     });
 
@@ -241,7 +385,7 @@ describe("syncAppointmentPreparations", () => {
   it("surfaces a bookings query failure without throwing", async () => {
     const now = new Date("2026-09-14T12:00:00.000Z");
     const { supabase } = createSupabase({
-      bookings: [],
+      bookingPages: [[]],
       bookingsError: { message: "db unavailable" },
     });
 

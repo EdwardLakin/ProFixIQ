@@ -45,10 +45,15 @@ function partsReadinessSummary(
 ): { label: string; tone: "ready" | "short" | "unknown" } | null {
   const lines = item.matchedMenuItems.flatMap((menuItem) => menuItem.partsReadiness);
   if (lines.length === 0) return null;
-  if (lines.some((line) => line.status === "short")) {
+  // An optional part being short or unmatched shouldn't send staff chasing
+  // inventory the repair doesn't actually need — only required lines decide
+  // the headline verdict.
+  const requiredLines = lines.filter((line) => line.isRequired);
+  const decisiveLines = requiredLines.length > 0 ? requiredLines : lines;
+  if (decisiveLines.some((line) => line.status === "short")) {
     return { label: "Parts needed", tone: "short" };
   }
-  if (lines.every((line) => line.status === "ready")) {
+  if (decisiveLines.every((line) => line.status === "ready")) {
     return { label: "Parts ready", tone: "ready" };
   }
   return { label: "Parts unconfirmed", tone: "unknown" };
@@ -74,9 +79,13 @@ export default function AppointmentPreparationList({ items, canViewPricing }: Pr
     <section aria-label="Upcoming appointment preparation" className="space-y-2">
       {items.map((item) => {
         const readiness = partsReadinessSummary(item);
-        const href = item.vehicleId
-          ? `/work-orders/create?vehicleId=${item.vehicleId}`
-          : undefined;
+        // bookingId is what lets the create flow link the new work order
+        // back to this appointment (bookings.work_order_id); vehicleId is
+        // only a convenience prefill on top of that. A card is still
+        // actionable even for a booking with no vehicle on file.
+        const hrefParams = new URLSearchParams({ bookingId: item.bookingId });
+        if (item.vehicleId) hrefParams.set("vehicleId", item.vehicleId);
+        const href = `/work-orders/create?${hrefParams.toString()}`;
         const content = (
           <>
             <div className="flex items-start justify-between gap-3">
@@ -85,7 +94,10 @@ export default function AppointmentPreparationList({ items, canViewPricing }: Pr
                   {vehicleLabel(item)}
                 </div>
                 <div className="text-xs text-[color:var(--theme-text-secondary)]">
-                  {item.customerSnapshot?.name ?? "No customer on file"} •{" "}
+                  {item.customerSnapshot?.name ??
+                    item.customerSnapshot?.businessName ??
+                    "No customer on file"}{" "}
+                  •{" "}
                   {formatWhen(item.startsAt)}
                 </div>
               </div>
@@ -132,7 +144,7 @@ export default function AppointmentPreparationList({ items, canViewPricing }: Pr
           </>
         );
 
-        return href ? (
+        return (
           <Link
             key={item.bookingId}
             href={href}
@@ -140,13 +152,6 @@ export default function AppointmentPreparationList({ items, canViewPricing }: Pr
           >
             {content}
           </Link>
-        ) : (
-          <div
-            key={item.bookingId}
-            className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
-          >
-            {content}
-          </div>
         );
       })}
     </section>

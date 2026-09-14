@@ -2,9 +2,14 @@
 -- upcoming bookings into a reviewable "appointment preparation" record —
 -- vehicle/customer context, still-outstanding deferred/declined history,
 -- any matching known menu repair, parts readiness, and missing-information
--- flags. Unlike Phase 3's shadow-mode blocker table, this one is meant to be
--- read by staff (surfaced inside ProFix Operations), so it carries a select
--- policy. Only the service-role cron job
+-- flags. This is internal-only at the table level, same as Phase 3's
+-- shadow-mode blocker table: no application role can read it directly, so
+-- pricing redaction (canViewSellPricing) cannot be bypassed by querying the
+-- table straight from the client. Staff reach it only through
+-- app/api/shop-assistant/appointment-preparations/route.ts, which
+-- authorizes the caller, reads with the service-role client, and redacts
+-- pricing per that caller's own financial access before responding. Only
+-- the service-role cron job
 -- (features/operations/server/syncAppointmentPreparations.ts) writes it.
 -- This never creates repair findings, approvals, orders, or punchable work.
 
@@ -40,6 +45,12 @@ create table if not exists public.appointment_preparations (
 create index if not exists appointment_preparations_shop_status_idx
   on public.appointment_preparations (shop_id, status, starts_at);
 
+create index if not exists appointment_preparations_vehicle_idx
+  on public.appointment_preparations (vehicle_id);
+
+create index if not exists appointment_preparations_customer_idx
+  on public.appointment_preparations (customer_id);
+
 drop trigger if exists appointment_preparations_set_updated_at
   on public.appointment_preparations;
 create trigger appointment_preparations_set_updated_at
@@ -48,18 +59,4 @@ for each row execute function public.shop_assistant_set_updated_at();
 
 alter table public.appointment_preparations enable row level security;
 revoke all on table public.appointment_preparations from anon, authenticated;
-grant select on table public.appointment_preparations to authenticated;
 grant all on table public.appointment_preparations to service_role;
-
-drop policy if exists appointment_preparations_staff_read
-  on public.appointment_preparations;
-create policy appointment_preparations_staff_read
-  on public.appointment_preparations
-  for select
-  to authenticated
-  using (
-    public.is_shop_member_v2(shop_id)
-    and public.profixiq_current_role() in (
-      'owner', 'admin', 'manager', 'advisor', 'service', 'lead_hand', 'foreman'
-    )
-  );

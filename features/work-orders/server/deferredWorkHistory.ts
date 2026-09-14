@@ -131,10 +131,15 @@ async function loadVehicleQuoteHistory(input: {
  * since been resolved (completed elsewhere) or that only exist in archived
  * source data.
  *
- * This is the shared implementation behind
- * `/api/work-orders/deferred-history` and the appointment-preparation
- * projection (Phase 4) — both need the exact same "what's still
- * outstanding for this vehicle" answer, so the logic lives here once.
+ * This is used by the appointment-preparation projection (Phase 4). It is
+ * intentionally a fresh copy of the logic in
+ * `/api/work-orders/deferred-history/route.ts` rather than an extraction of
+ * it: per this repository's additive-first change control, a shared-contract
+ * refactor of that pre-existing route has to land as its own
+ * compatible-integration PR with its own preserved-flow proof, not be bundled
+ * inside this additive feature. Once that follow-up PR lands, the route
+ * should be switched over to call this function instead of carrying its own
+ * copy.
  */
 export async function loadDeferredWorkHistoryForVehicle(input: {
   admin: ReturnType<typeof createAdminSupabase>;
