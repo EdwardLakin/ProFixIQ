@@ -320,7 +320,6 @@ export default function RegistrationScanModal({
                   ref={inputRef}
                   type="file"
                   accept="image/*"
-                  capture="environment"
                   className="sr-only"
                   onChange={(e) => {
                     const picked = e.target.files?.[0] ?? null;
