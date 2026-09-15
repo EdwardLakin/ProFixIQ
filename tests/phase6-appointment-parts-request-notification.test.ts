@@ -9,6 +9,10 @@ const notificationReader = readFileSync(
   "features/agent/server/syncAssistantNotifications.ts",
   "utf8",
 );
+const opsNotificationsModule = readFileSync(
+  "features/agent/server/getOpsNotifications.ts",
+  "utf8",
+);
 const shopStateModule = readFileSync(
   "features/shop-assistant/server/state/buildShopState.ts",
   "utf8",
@@ -27,7 +31,7 @@ describe("Phase 6 — internal notification for an AI-prepared parts request", (
   it("identifies automated requests durably — marker plus a null requested_by — without a new column, trigger, or migration on the shared part_requests table", () => {
     const fn = notificationReader.slice(
       notificationReader.indexOf(
-        "async function getDurableAutomatedPartsRequestNotifications",
+        "async function buildAutomatedPartsRequestOpsNotifications",
       ),
       notificationReader.indexOf(
         "// Two independent surfaces on the same page",
@@ -45,23 +49,33 @@ describe("Phase 6 — internal notification for an AI-prepared parts request", (
     );
   });
 
-  it("is computed only for the roles that already see the manual parts-pick signal", () => {
+  it("registers a durable notification code in the shared ops-notification vocabulary", () => {
+    expect(opsNotificationsModule).toContain('"ai_parts_request_prepared"');
+  });
+
+  it("flows through the same computed/upsert/resolve pipeline as every other ops notification, so the acknowledge route (which updates by assistant_notifications id) works on it — not a bespoke, unacknowledgeable synthetic id", () => {
     expect(notificationReader).toContain(
-      "const durableAutomatedPartsRequestNotifications = canSeePartsWorkflow",
+      "buildAutomatedPartsRequestOpsNotifications({ supabase, shopId })",
     );
-    expect(notificationReader).toContain(
-      "getDurableAutomatedPartsRequestNotifications({ shopId })",
+    // It must be appended into `computed` before fingerprints/upsertRows are
+    // built from it, not merged in after the upsert like the (unacknowledgeable)
+    // durable parts-pick signal below it.
+    const computedBlock = notificationReader.slice(
+      notificationReader.indexOf("let computed = await getOpsNotifications"),
+      notificationReader.indexOf("const fingerprints = computed.map"),
+    );
+    expect(computedBlock).toContain(
+      "buildAutomatedPartsRequestOpsNotifications",
     );
   });
 
-  it("merges into the same durable-notification path as the parts-pick signal, preserving acknowledgement state across recomputation", () => {
-    const mergeBlock = notificationReader.slice(
-      notificationReader.indexOf("for (const durable of ["),
-      notificationReader.indexOf("return Array.from(merged.values())"),
+  it("is shop-scoped only — never computed for the mechanic/user-scoped sync path", () => {
+    const computedBlock = notificationReader.slice(
+      notificationReader.indexOf("let computed = await getOpsNotifications"),
+      notificationReader.indexOf("const fingerprints = computed.map"),
     );
-    expect(mergeBlock).toContain("durablePartsPickNotifications");
-    expect(mergeBlock).toContain("durableAutomatedPartsRequestNotifications");
-    expect(mergeBlock).toContain('persisted.status === "acknowledged"');
+    const elseBranch = computedBlock.slice(computedBlock.indexOf("} else {"));
+    expect(elseBranch).toContain("buildAutomatedPartsRequestOpsNotifications");
   });
 
   it("imports the capability identity from Phase 5's own module rather than duplicating the marker string", () => {
@@ -76,7 +90,7 @@ describe("Phase 6 — internal notification for an AI-prepared parts request", (
   it("never claims execution the shop hasn't been enabled for and never orders parts itself", () => {
     const fn = notificationReader.slice(
       notificationReader.indexOf(
-        "async function getDurableAutomatedPartsRequestNotifications",
+        "async function buildAutomatedPartsRequestOpsNotifications",
       ),
       notificationReader.indexOf(
         "// Two independent surfaces on the same page",
@@ -96,14 +110,14 @@ describe("Phase 6 — internal notification for an AI-prepared parts request", (
   it("carries the entity identity a reviewer needs to act on it", () => {
     const fn = notificationReader.slice(
       notificationReader.indexOf(
-        "async function getDurableAutomatedPartsRequestNotifications",
+        "async function buildAutomatedPartsRequestOpsNotifications",
       ),
       notificationReader.indexOf(
         "// Two independent surfaces on the same page",
       ),
     );
-    expect(fn).toContain('entity_type: "part_request"');
-    expect(fn).toContain("entity_id: request.id");
+    expect(fn).toContain('entityType: "part_request"');
+    expect(fn).toContain("entityId: request.id");
     expect(fn).toContain("href: `/parts/requests/${request.id}`");
     expect(fn).toContain("workOrderId: request.work_order_id");
     expect(fn).toContain("workOrderLineId: request.job_id");

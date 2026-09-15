@@ -565,22 +565,29 @@ async function getDurablePartsPickNotifications(params: {
  * notes begin with AUTOMATED_PART_REQUEST_NOTES_MARKER, and its
  * requested_by is null (a service-role caller has no auth.uid(); every
  * other caller of create_part_request_with_items is a signed-in user).
+ *
+ * Unlike the manual parts-pick signal below, this returns plain
+ * OpsNotification candidates rather than a synthetic, already-"persisted"
+ * shape: they get appended to `computed` and go through the exact same
+ * fingerprint/upsert/resolve pipeline as every other ops notification, so
+ * the resulting row has a real assistant_notifications id and the
+ * existing acknowledge route (which updates by that id) works on it —
+ * rather than inventing a parallel, unacknowledgeable durable path.
  * Purely informational: this never mutates a work order, approval, or the
- * request itself, and it surfaces to the same roles who already see the
- * manual parts-pick signal.
+ * request itself.
  */
-async function getDurableAutomatedPartsRequestNotifications(params: {
+async function buildAutomatedPartsRequestOpsNotifications(params: {
+  supabase: ReturnType<typeof getServerSupabase>;
   shopId: string;
-}): Promise<PersistedAssistantNotification[]> {
-  const supabase = getServerSupabase();
-  const notifications: PersistedAssistantNotification[] = [];
+}): Promise<OpsNotification[]> {
+  const notifications: OpsNotification[] = [];
 
   for (
     let requestOffset = 0;
     ;
     requestOffset += AI_PART_REQUEST_PAGE_SIZE
   ) {
-    const { data: requests, error } = await supabase
+    const { data: requests, error } = await params.supabase
       .from("part_requests")
       .select("id, shop_id, work_order_id, job_id, notes, created_at, requested_by")
       .eq("shop_id", params.shopId)
@@ -597,35 +604,21 @@ async function getDurableAutomatedPartsRequestNotifications(params: {
       if (!request.created_at || !request.work_order_id) continue;
 
       notifications.push({
-        id: `ai-parts-request:${request.id}`,
-        shop_id: request.shop_id,
-        user_id: null,
-        role: "parts",
-        source: "appointment_parts_preparation",
-        fingerprint: `ai-parts-request::${request.id}`,
-        code: "ai_parts_request_prepared",
         level: "info",
+        code: "ai_parts_request_prepared",
         title: "AI prepared a parts request",
         message:
           "An internal parts request was automatically prepared for an upcoming booked job from a learned repair. Review it before it is ordered.",
         href: `/parts/requests/${request.id}`,
-        entity_type: "part_request",
-        entity_id: request.id,
-        status: "active",
-        metadata: {
+        entityType: "part_request",
+        entityId: request.id,
+        createdAt: request.created_at,
+        evidence: {
           workOrderId: request.work_order_id,
           workOrderLineId: request.job_id,
           requestId: request.id,
           automationCapability: APPOINTMENT_PARTS_PREPARATION_CAPABILITY,
-          durableSignal: true,
         },
-        first_seen_at: request.created_at,
-        last_seen_at: request.created_at,
-        acknowledged_at: null,
-        acknowledged_by: null,
-        resolved_at: null,
-        created_at: request.created_at,
-        updated_at: request.created_at,
       });
     }
 
@@ -718,9 +711,6 @@ async function performSyncAssistantNotifications(params: {
   const durablePartsPickNotifications = canSeePartsPickWorkflow
     ? await getDurablePartsPickNotifications({ shopId })
     : [];
-  const durableAutomatedPartsRequestNotifications = canSeePartsWorkflow
-    ? await getDurableAutomatedPartsRequestNotifications({ shopId })
-    : [];
 
   let computed = await getOpsNotifications(shopId);
 
@@ -730,6 +720,15 @@ async function performSyncAssistantNotifications(params: {
       userIds: assignmentUserIds,
       computed,
     });
+  } else {
+    // Shop-scoped only (mechanics don't see this — the same as every other
+    // work_order/part_request-entity notification, which
+    // filterComputedNotificationsForUser above already excludes by default
+    // for any entityType it doesn't special-case).
+    computed = [
+      ...computed,
+      ...(await buildAutomatedPartsRequestOpsNotifications({ supabase, shopId })),
+    ];
   }
 
   const fingerprints = computed.map((item) =>
@@ -907,10 +906,7 @@ async function performSyncAssistantNotifications(params: {
     merged.set(row.fingerprint, row);
   }
 
-  for (const durable of [
-    ...durablePartsPickNotifications,
-    ...durableAutomatedPartsRequestNotifications,
-  ]) {
+  for (const durable of durablePartsPickNotifications) {
     const persisted = merged.get(durable.fingerprint);
     if (!persisted) {
       merged.set(durable.fingerprint, durable);
