@@ -428,17 +428,28 @@ export async function getOpsNotifications(
   }
   const todayRange = getShopDayRange(shopRow?.timezone ?? null);
 
-  const { data: dayOfPreparations, error: dayOfPreparationsError } = await supabase
-    .from("appointment_preparations")
-    .select(
-      "id, booking_id, starts_at, vehicle_id, vehicle_snapshot, missing_info, matched_menu_items",
-    )
-    .eq("shop_id", shopId)
-    .eq("status", "active")
-    .gte("starts_at", todayRange.start)
-    .lt("starts_at", todayRange.end)
-    .order("starts_at", { ascending: true })
-    .limit(120);
+  // appointment_preparations is locked to the service role at the table
+  // level — "revoke all ... from anon, authenticated" in its migration,
+  // the same lockdown as the Phase 3 shadow-mode blocker table — so no
+  // interactive caller's own client can read it at all, regardless of RLS.
+  // The live/on-demand sync path (e.g. app/api/planner/notifications)
+  // calls this function with the plain cookie-backed client, so querying
+  // this table with `supabase` would throw a permission error on every
+  // interactive request. An admin client is safe here: the read is scoped
+  // by shop_id below, and this function's own callers already authorize
+  // the caller before reaching it.
+  const { data: dayOfPreparations, error: dayOfPreparationsError } =
+    await createAdminSupabase()
+      .from("appointment_preparations")
+      .select(
+        "id, booking_id, starts_at, vehicle_id, vehicle_snapshot, missing_info, matched_menu_items",
+      )
+      .eq("shop_id", shopId)
+      .eq("status", "active")
+      .gte("starts_at", todayRange.start)
+      .lt("starts_at", todayRange.end)
+      .order("starts_at", { ascending: true })
+      .limit(120);
 
   if (dayOfPreparationsError) {
     throw new Error(dayOfPreparationsError.message);

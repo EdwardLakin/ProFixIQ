@@ -42,6 +42,12 @@ describe("Phase 6 — day-of appointment readiness, the first day-of determinist
     expect(opsNotificationsModule).toContain('.lt("starts_at", todayRange.end)');
   });
 
+  it("reads appointment_preparations through an admin client — the table is locked to the service role at the table level (revoke all from anon, authenticated), so the plain interactive client used by the live/on-demand sync path (e.g. app/api/planner/notifications) cannot read it at all", () => {
+    expect(opsNotificationsModule).toContain(
+      'await createAdminSupabase()\n      .from("appointment_preparations")',
+    );
+  });
+
   describe("detection block", () => {
     const block = section(
       opsNotificationsModule,
