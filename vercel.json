@@ -21,6 +21,10 @@
       "schedule": "22 * * * *"
     },
     {
+      "path": "/api/internal/daily-assistant-digest",
+      "schedule": "42 * * * *"
+    },
+    {
       "path": "/api/internal/import-jobs/tick",
       "schedule": "* * * * *"
     },
