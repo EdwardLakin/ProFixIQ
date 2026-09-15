@@ -30,19 +30,23 @@ describe("Phase 7 — proactive daily digest delivered into the durable assistan
     );
   });
 
-  it("computes the day boundary in the shop's own local timezone, not a fixed UTC cutover", () => {
+  it("computes the day boundary in the shop's own local timezone, not a fixed UTC cutover, and normalizes a null/invalid timezone instead of throwing", () => {
     expect(digestModule).toContain("getShopLocalDayWindow(");
+    expect(digestModule).toContain("getShopDayRange(");
     expect(digestModule).toContain('.from("shops")');
     expect(digestModule).toContain("timezone");
   });
 
-  it("only delivers within a bounded shop-local morning window, converging an hourly sweep to once per day", () => {
+  it("only delivers within a bounded shop-local morning window, computed from explicit zoned boundaries rather than elapsed hours (DST-safe)", () => {
     expect(digestModule).toContain("MORNING_WINDOW_START_HOUR");
     expect(digestModule).toContain("MORNING_WINDOW_END_HOUR");
     expect(digestModule).toContain("inMorningWindow");
+    expect(digestModule).toContain("shopLocalDateTimeToUtc(");
+    expect(digestModule).not.toContain("hoursSinceMidnight");
   });
 
-  it("is idempotent per shop-local day via the same (thread_id, client_message_id) uniqueness every other assistant message relies on", () => {
+  it("is idempotent per shop-local day across every thread a recipient has, not just whichever thread this run picks as latest", () => {
+    expect(digestModule).toContain("hasDeliveredDigestToday(");
     expect(digestModule).toContain("`daily-digest:${localDayKey}`");
     expect(digestModule).toContain('error?.code !== "23505"');
     expect(digestModule).toContain("already_delivered");

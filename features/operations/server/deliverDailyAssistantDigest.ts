@@ -5,7 +5,11 @@ import {
   getOpsNotifications,
   type OpsNotification,
 } from "@/features/agent/server/getOpsNotifications";
-import { getShopLocalDayWindow } from "@/features/shared/lib/utils/shopDayWindow";
+import {
+  getShopDayRange,
+  getShopLocalDayWindow,
+  shopLocalDateTimeToUtc,
+} from "@/features/shared/lib/utils/shopDayWindow";
 import type { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 /**
@@ -108,10 +112,52 @@ async function findOrCreateAssistantThread(
 }
 
 /**
+ * The database uniqueness backing idempotent message delivery is scoped to
+ * (thread_id, client_message_id) — but which thread is "the" thread to
+ * append to for a given recipient is not stable across runs (a recipient
+ * can start a new conversation, or two threads can each look "latest" to a
+ * concurrent run). Scope the actual delivery check to (shop, recipient,
+ * day) across every thread the recipient has, not just whichever thread
+ * this run happens to pick, so a thread switch between two runs inside the
+ * same morning window cannot produce a second digest for the same day.
+ */
+async function hasDeliveredDigestToday(
+  admin: ReturnType<typeof createAdminSupabase>,
+  shopId: string,
+  userId: string,
+  clientMessageId: string,
+): Promise<boolean> {
+  const { data: threads, error: threadsError } = await admin
+    .from("shop_assistant_threads")
+    .select("id")
+    .eq("shop_id", shopId)
+    .eq("user_id", userId);
+  if (threadsError) {
+    throw new Error(`Could not list assistant threads: ${threadsError.message}`);
+  }
+  const threadIds = (threads ?? []).map((thread) => thread.id);
+  if (threadIds.length === 0) return false;
+
+  const { data: existing, error: existingError } = await admin
+    .from("shop_assistant_messages")
+    .select("id")
+    .in("thread_id", threadIds)
+    .eq("client_message_id", clientMessageId)
+    .limit(1)
+    .maybeSingle();
+  if (existingError) {
+    throw new Error(`Could not check for an existing daily digest: ${existingError.message}`);
+  }
+  return !!existing;
+}
+
+/**
  * Delivers the digest into one staff member's thread. Idempotent per
- * shop-local day via the same (thread_id, client_message_id) unique index
- * every other assistant message write already relies on: a conflicting
- * insert means today's digest already exists in that thread, not an error.
+ * shop-local day: hasDeliveredDigestToday narrows (does not fully close —
+ * a genuinely concurrent first delivery for the same recipient could still
+ * race) the window before picking a thread to append to, and the
+ * (thread_id, client_message_id) unique index every other assistant
+ * message write already relies on is the backstop for that specific race.
  */
 async function deliverDigestToStaffMember(
   admin: ReturnType<typeof createAdminSupabase>,
@@ -120,6 +166,12 @@ async function deliverDigestToStaffMember(
   localDayKey: string,
   content: string,
 ): Promise<"delivered" | "already_delivered"> {
+  const clientMessageId = `daily-digest:${localDayKey}`;
+
+  if (await hasDeliveredDigestToday(admin, shopId, userId, clientMessageId)) {
+    return "already_delivered";
+  }
+
   const threadId = await findOrCreateAssistantThread(admin, shopId, userId);
 
   const { data, error } = await admin
@@ -132,7 +184,7 @@ async function deliverDigestToStaffMember(
       kind: DIGEST_MESSAGE_KIND,
       content,
       payload: { source: DIGEST_SOURCE, localDayKey },
-      client_message_id: `daily-digest:${localDayKey}`,
+      client_message_id: clientMessageId,
     })
     .select("id")
     .maybeSingle();
@@ -172,11 +224,33 @@ export async function deliverDailyAssistantDigest(input: {
     .maybeSingle();
   if (shopError) return empty(false, [shopError.message]);
 
-  const window = getShopLocalDayWindow(shop?.timezone ?? null, now);
-  const hoursSinceMidnight = (now.getTime() - window.dayStartMs) / (1000 * 60 * 60);
-  const inMorningWindow =
-    hoursSinceMidnight >= MORNING_WINDOW_START_HOUR &&
-    hoursSinceMidnight < MORNING_WINDOW_END_HOUR;
+  // getShopDayRange normalizes a null/empty/invalid timezone to a safe
+  // fallback ("UTC") the same way every other shop-local-day caller in the
+  // app already does; getShopLocalDayWindow itself requires an already-safe
+  // IANA zone name and throws on anything else.
+  const safeTimezone = getShopDayRange(shop?.timezone ?? null, now).timezone;
+  const window = getShopLocalDayWindow(safeTimezone, now);
+
+  // Compare against explicit zoned 06:00/10:00 boundaries rather than
+  // elapsed milliseconds since local midnight: on a DST transition day the
+  // shop-local day is not exactly 24 wall-clock hours, so an elapsed-time
+  // comparison drifts against the actual local clock right when it matters
+  // most (the morning window itself).
+  const windowStartMs = Date.parse(
+    shopLocalDateTimeToUtc(
+      window.localDayKey,
+      `${String(MORNING_WINDOW_START_HOUR).padStart(2, "0")}:00`,
+      safeTimezone,
+    ),
+  );
+  const windowEndMs = Date.parse(
+    shopLocalDateTimeToUtc(
+      window.localDayKey,
+      `${String(MORNING_WINDOW_END_HOUR).padStart(2, "0")}:00`,
+      safeTimezone,
+    ),
+  );
+  const inMorningWindow = now.getTime() >= windowStartMs && now.getTime() < windowEndMs;
   if (!inMorningWindow) return empty(false);
 
   const { data: profiles, error: profilesError } = await admin
