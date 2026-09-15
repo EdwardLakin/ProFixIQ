@@ -35,6 +35,8 @@ function queryResult(data: unknown[]) {
   builder.eq = vi.fn(chain);
   builder.in = vi.fn(chain);
   builder.not = vi.fn(chain);
+  builder.is = vi.fn(chain);
+  builder.ilike = vi.fn(chain);
   builder.order = vi.fn(chain);
   builder.range = vi.fn(chain);
   builder.then = (

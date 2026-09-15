@@ -12,6 +12,10 @@ import {
   markAssistantNotificationTrustedWriterRollout,
 } from "./supabase";
 import { getOpsNotifications, type OpsNotification } from "./getOpsNotifications";
+import {
+  AUTOMATED_PART_REQUEST_NOTES_MARKER,
+  AUTOMATION_CAPABILITY as APPOINTMENT_PARTS_PREPARATION_CAPABILITY,
+} from "@/features/operations/server/appointmentPartsPreparation/prepareAppointmentPartsRequest";
 
 export type PersistedAssistantNotification = {
   id: string;
@@ -102,6 +106,8 @@ const PARTS_PICK_TERMINAL_ITEM_STATUSES = new Set([
 
 const PARTS_PICK_REQUEST_PAGE_SIZE = 200;
 const PARTS_PICK_ITEM_PAGE_SIZE = 1000;
+
+const AI_PART_REQUEST_PAGE_SIZE = 200;
 
 function normalizeAssistantNotificationStatus(
   value: unknown,
@@ -548,6 +554,87 @@ async function getDurablePartsPickNotifications(params: {
   return notifications;
 }
 
+/**
+ * Phase 6 of the dashboard assistant plan: the audit's own GREEN example
+ * ("emit an internal operational notification from a verified state
+ * transition") for Phase 5's `prepare_appointment_parts_request` command.
+ *
+ * A part_requests row this command created is identified durably — no new
+ * column on the shared, pre-existing part_requests table, and no trigger
+ * attached to it — by two facts already true of every row it creates: its
+ * notes begin with AUTOMATED_PART_REQUEST_NOTES_MARKER, and its
+ * requested_by is null (a service-role caller has no auth.uid(); every
+ * other caller of create_part_request_with_items is a signed-in user).
+ * Purely informational: this never mutates a work order, approval, or the
+ * request itself, and it surfaces to the same roles who already see the
+ * manual parts-pick signal.
+ */
+async function getDurableAutomatedPartsRequestNotifications(params: {
+  shopId: string;
+}): Promise<PersistedAssistantNotification[]> {
+  const supabase = getServerSupabase();
+  const notifications: PersistedAssistantNotification[] = [];
+
+  for (
+    let requestOffset = 0;
+    ;
+    requestOffset += AI_PART_REQUEST_PAGE_SIZE
+  ) {
+    const { data: requests, error } = await supabase
+      .from("part_requests")
+      .select("id, shop_id, work_order_id, job_id, notes, created_at, requested_by")
+      .eq("shop_id", params.shopId)
+      .is("requested_by", null)
+      .ilike("notes", `${AUTOMATED_PART_REQUEST_NOTES_MARKER}%`)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(requestOffset, requestOffset + AI_PART_REQUEST_PAGE_SIZE - 1);
+
+    if (error) throw new Error(error.message);
+
+    const page = requests ?? [];
+    for (const request of page) {
+      if (!request.created_at || !request.work_order_id) continue;
+
+      notifications.push({
+        id: `ai-parts-request:${request.id}`,
+        shop_id: request.shop_id,
+        user_id: null,
+        role: "parts",
+        source: "appointment_parts_preparation",
+        fingerprint: `ai-parts-request::${request.id}`,
+        code: "ai_parts_request_prepared",
+        level: "info",
+        title: "AI prepared a parts request",
+        message:
+          "An internal parts request was automatically prepared for an upcoming booked job from a learned repair. Review it before it is ordered.",
+        href: `/parts/requests/${request.id}`,
+        entity_type: "part_request",
+        entity_id: request.id,
+        status: "active",
+        metadata: {
+          workOrderId: request.work_order_id,
+          workOrderLineId: request.job_id,
+          requestId: request.id,
+          automationCapability: APPOINTMENT_PARTS_PREPARATION_CAPABILITY,
+          durableSignal: true,
+        },
+        first_seen_at: request.created_at,
+        last_seen_at: request.created_at,
+        acknowledged_at: null,
+        acknowledged_by: null,
+        resolved_at: null,
+        created_at: request.created_at,
+        updated_at: request.created_at,
+      });
+    }
+
+    if (page.length < AI_PART_REQUEST_PAGE_SIZE) break;
+  }
+
+  return notifications;
+}
+
 // Two independent surfaces on the same page (the live shop-state widget and
 // the suggested-actions/daily-summary panel) can each ask to sync
 // notifications for the same actor within the same request wave. Coalesce
@@ -630,6 +717,9 @@ async function performSyncAssistantNotifications(params: {
 
   const durablePartsPickNotifications = canSeePartsPickWorkflow
     ? await getDurablePartsPickNotifications({ shopId })
+    : [];
+  const durableAutomatedPartsRequestNotifications = canSeePartsWorkflow
+    ? await getDurableAutomatedPartsRequestNotifications({ shopId })
     : [];
 
   let computed = await getOpsNotifications(shopId);
@@ -817,7 +907,10 @@ async function performSyncAssistantNotifications(params: {
     merged.set(row.fingerprint, row);
   }
 
-  for (const durable of durablePartsPickNotifications) {
+  for (const durable of [
+    ...durablePartsPickNotifications,
+    ...durableAutomatedPartsRequestNotifications,
+  ]) {
     const persisted = merged.get(durable.fingerprint);
     if (!persisted) {
       merged.set(durable.fingerprint, durable);

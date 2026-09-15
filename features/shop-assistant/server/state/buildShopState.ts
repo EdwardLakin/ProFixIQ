@@ -80,7 +80,10 @@ function canViewAlert(
   if (alert.code === "approval_waiting" || alert.code === "quote_waiting") {
     return visibility.approvals;
   }
-  if (alert.code === "parts_delivery_overdue") {
+  if (
+    alert.code === "parts_delivery_overdue" ||
+    alert.code === "ai_parts_request_prepared"
+  ) {
     return visibility.parts || visibility.workOrders;
   }
   if (alert.code === "invoice_ready") return visibility.invoices;

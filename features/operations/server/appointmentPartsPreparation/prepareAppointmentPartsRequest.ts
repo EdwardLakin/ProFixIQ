@@ -71,6 +71,14 @@ type Vehicle = Pick<
 export const AUTOMATION_CAPABILITY = "appointment_parts_preparation" as const;
 export const AUTOMATION_SOURCE = "prepare_appointment_parts_request" as const;
 
+// A stable, machine-checkable marker prefixed onto the created request's
+// notes. Phase 6's internal notification (features/agent/server/
+// syncAssistantNotifications.ts) uses this — together with the fact that a
+// service-role-created request always has a null requested_by — to durably
+// identify which part_requests rows this GREEN command produced, without
+// requiring a new column on the shared, pre-existing part_requests table.
+export const AUTOMATED_PART_REQUEST_NOTES_MARKER = `[ai:${AUTOMATION_CAPABILITY}]` as const;
+
 export type AppointmentPartsCandidate = {
   line: WorkOrderLine;
   workOrder: WorkOrder;
@@ -372,7 +380,7 @@ export async function finalizeAppointmentPartsRequest(input: {
       partNumber: item.partNumber ?? undefined,
     })) as unknown as CreatePartRequestArgs["p_items"],
     p_job_id: line.id,
-    p_notes: `Automatically prepared from active menu repair "${menuRepairItem.name}" (Phase 5 GREEN command).`,
+    p_notes: `${AUTOMATED_PART_REQUEST_NOTES_MARKER} Automatically prepared from active menu repair "${menuRepairItem.name}" (Phase 5 GREEN command).`,
   };
   const { data, error: createError } = await admin.rpc(
     "create_part_request_with_items",
