@@ -51,6 +51,31 @@ describe("PR 3 signal gaps — closes the four proactive shadow-mode signals the
       expect(block).toContain("canonicallyAssignedLineIds.has(line.id)");
     });
 
+    it("reads the assignment cross-check through an admin client, not the interactive caller's own RLS-scoped client — a service/parts-role sync can read the candidate lines but not this bridge table, which would otherwise silently return empty instead of erroring", () => {
+      expect(block).toContain(
+        'await createAdminSupabase()\n        .from("work_order_line_technicians")',
+      );
+    });
+
+    it("pushes terminal-status exclusion into the database query, not just a later JS filter — otherwise 150+ older terminal rows could consume the whole oldest-first candidate window and starve real candidates", () => {
+      expect(opsNotificationsModule).toContain(
+        'const TERMINAL_LINE_STATUSES_FILTER = `(${[...TERMINAL_LINE_STATUSES].join(",")})`;',
+      );
+      expect(opsNotificationsModule).toContain(
+        '.not("status", "in", TERMINAL_LINE_STATUSES_FILTER)',
+      );
+    });
+
+    it("excludes informational/note lines — the canonical lifecycle rejects line_type 'info'/'note' from assignment mutations, so an alert for one could never be resolved", () => {
+      expect(opsNotificationsModule).toContain(
+        'const NON_ACTIONABLE_LINE_TYPES = new Set(["info", "note"]);',
+      );
+      expect(opsNotificationsModule).toContain(", line_type,");
+      expect(block).toContain(
+        "NON_ACTIONABLE_LINE_TYPES.has(String(line.line_type ?? \"\").toLowerCase())",
+      );
+    });
+
     it("only fires past the threshold, measured from approval time falling back to updated_at", () => {
       expect(block).toContain("line.approval_at ?? line.updated_at");
       expect(block).toContain("hours < UNASSIGNED_APPROVED_WORK_HOURS");
@@ -94,6 +119,21 @@ describe("PR 3 signal gaps — closes the four proactive shadow-mode signals the
         "href: item.request_id ? `/parts/requests/${item.request_id}` : undefined",
       );
     });
+
+    it("skips an item whose linked canonical quote line has moved past draft — part_request_items.status stays 'quoted' even after the advisor already sent it, so the wait may already be on the customer, not the advisor", () => {
+      expect(opsNotificationsModule).toContain(
+        'const QUOTE_LINE_UNREVIEWED_STATUSES = new Set(["draft"]);',
+      );
+      expect(opsNotificationsModule).toContain(
+        '.from("work_order_quote_lines")',
+      );
+      expect(opsNotificationsModule).toContain(
+        "const reviewedQuoteLineIds = new Set<string>();",
+      );
+      expect(block).toContain(
+        "if (item.quote_line_id && reviewedQuoteLineIds.has(item.quote_line_id)) {",
+      );
+    });
   });
 
   describe("parts received while job remains waiting", () => {
@@ -103,24 +143,40 @@ describe("PR 3 signal gaps — closes the four proactive shadow-mode signals the
       "// Completed work awaiting closeout or invoicing",
     );
 
-    it("queries received/partially_received part_request_items tied to a work order line", () => {
+    it("queries only fully received part_request_items tied to a work order line — a partial receipt still leaves outstanding quantity on order", () => {
       expect(opsNotificationsModule).toContain(
-        'const RECEIVED_PART_ITEM_STATUSES = new Set(["received", "partially_received"]);',
+        'const FULLY_RECEIVED_PART_ITEM_STATUS = "received";',
       );
       expect(opsNotificationsModule).toContain(
-        '.in("status", [...RECEIVED_PART_ITEM_STATUSES])',
+        '.eq("status", FULLY_RECEIVED_PART_ITEM_STATUS)',
       );
       expect(opsNotificationsModule).toContain(
         '.not("work_order_line_id", "is", null)',
       );
+      expect(opsNotificationsModule).not.toContain("partially_received");
     });
 
-    it("cross-references against the already-loaded on-hold lines rather than a second work_order_lines scan", () => {
+    it("cross-references against the canonical parts-specific waiting_parts status, not a generic on_hold line that may be blocked for an unrelated reason", () => {
       expect(opsNotificationsModule).toContain(
-        "const onHoldLineIds = new Set(lineRows.map((line) => line.id));",
+        'const WAITING_ON_PARTS_LINE_STATUS = "waiting_parts";',
+      );
+      expect(opsNotificationsModule).toContain(
+        '.eq("status", WAITING_ON_PARTS_LINE_STATUS)',
+      );
+      expect(opsNotificationsModule).toContain(
+        "const waitingOnPartsLineIds = new Set(",
       );
       expect(block).toContain(
-        "!item.work_order_line_id || !onHoldLineIds.has(item.work_order_line_id)",
+        "!waitingOnPartsLineIds.has(item.work_order_line_id)",
+      );
+    });
+
+    it("dedupes to at most one notification per line — two received items against the same waiting line must never collide in the persisted upsert batch", () => {
+      expect(block).toContain(
+        "const earliestReceivedItemByWaitingLineId = new Map<string, PartRequestItemRow>();",
+      );
+      expect(block).toContain(
+        "for (const item of earliestReceivedItemByWaitingLineId.values()) {",
       );
     });
 
