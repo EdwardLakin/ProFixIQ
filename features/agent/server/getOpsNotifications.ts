@@ -23,7 +23,11 @@ export type OpsNotificationCode =
   | "optimization_inspection_coverage_gap"
   | "optimization_missed_revenue"
   | "optimization_review_queued_suggestions"
-  | "ai_parts_request_prepared";
+  | "ai_parts_request_prepared"
+  | "approved_work_unassigned"
+  | "parts_quote_awaiting_review"
+  | "parts_received_job_waiting"
+  | "work_order_completed_awaiting_closeout";
 
 export type OpsNotification = {
   level: OpsNotificationLevel;
@@ -76,6 +80,32 @@ type PortalInvoiceRow = {
   updated_at: string | null;
 };
 
+type ApprovedUnassignedLineRow = {
+  id: string;
+  work_order_id: string | null;
+  status: string | null;
+  description: string | null;
+  complaint: string | null;
+  approval_state: string | null;
+  line_status: string | null;
+  approval_at: string | null;
+  assigned_tech_id: string | null;
+  assigned_to: string | null;
+  updated_at: string | null;
+};
+
+type PartRequestItemRow = {
+  id: string;
+  request_id: string | null;
+  work_order_id: string | null;
+  work_order_line_id: string | null;
+  description: string | null;
+  status: string | null;
+  quoted_price: number | null;
+  updated_at: string | null;
+  created_at: string | null;
+};
+
 const SHOP_OVERLOAD_UTILIZATION_PCT = 90;
 const SHOP_UNDERUTILIZATION_PCT = 40;
 const TECH_OVERLOAD_UTILIZATION_PCT = 95;
@@ -83,6 +113,27 @@ const TECH_OVERLOAD_ACTIVE_JOBS = 3;
 const LOW_THROUGHPUT_MIN_ELAPSED_HOURS = 6;
 const LOW_THROUGHPUT_MIN_SHIFTED_TECHS = 2;
 const LOW_THROUGHPUT_MAX_COMPLETIONS_PER_TECH = 0.5;
+const UNASSIGNED_APPROVED_WORK_HOURS = 8;
+const QUOTED_PARTS_REVIEW_HOURS = 24;
+const PARTS_RECEIVED_JOB_WAITING_HOURS = 12;
+const COMPLETED_AWAITING_CLOSEOUT_HOURS = 24;
+// A line counts as "approved" for this signal the same way the shop-
+// assistant parts-request RPC already does (v_preapproved in
+// create_part_request_with_items): explicit approval_state, or the
+// line_status reaching "authorized".
+const APPROVED_LINE_STATUSES = new Set(["approved"]);
+const AUTHORIZED_LINE_STATUSES = new Set(["authorized"]);
+// A line in any of these terminal states is done or dead - never a
+// candidate for "still needs a technician assigned".
+const TERMINAL_LINE_STATUSES = new Set([
+  "completed",
+  "ready_to_invoice",
+  "invoiced",
+  "cancelled",
+  "canceled",
+  "voided",
+]);
+const RECEIVED_PART_ITEM_STATUSES = new Set(["received", "partially_received"]);
 
 function secondsToHours(seconds: number | null | undefined): number {
   const parsed = Number(seconds ?? 0);
@@ -200,15 +251,82 @@ export async function getOpsNotifications(
     throw new Error(invoiceError.message);
   }
 
+  const { data: approvedLines, error: approvedLinesError } = await supabase
+    .from("work_order_lines")
+    .select(
+      "id, work_order_id, status, description, complaint, approval_state, line_status, approval_at, assigned_tech_id, assigned_to, updated_at",
+    )
+    .eq("shop_id", shopId)
+    .is("voided_at", null)
+    .or("approval_state.eq.approved,line_status.eq.authorized")
+    .is("assigned_tech_id", null)
+    .is("assigned_to", null)
+    .order("updated_at", { ascending: true })
+    .limit(150);
+
+  if (approvedLinesError) {
+    throw new Error(approvedLinesError.message);
+  }
+
+  const { data: quotedPartItems, error: quotedPartItemsError } = await supabase
+    .from("part_request_items")
+    .select(
+      "id, request_id, work_order_id, work_order_line_id, description, status, quoted_price, updated_at, created_at",
+    )
+    .eq("shop_id", shopId)
+    .eq("status", "quoted")
+    .order("updated_at", { ascending: true })
+    .limit(150);
+
+  if (quotedPartItemsError) {
+    throw new Error(quotedPartItemsError.message);
+  }
+
+  const { data: receivedPartItems, error: receivedPartItemsError } = await supabase
+    .from("part_request_items")
+    .select(
+      "id, request_id, work_order_id, work_order_line_id, description, status, quoted_price, updated_at, created_at",
+    )
+    .eq("shop_id", shopId)
+    .in("status", [...RECEIVED_PART_ITEM_STATUSES])
+    .not("work_order_line_id", "is", null)
+    .order("updated_at", { ascending: true })
+    .limit(150);
+
+  if (receivedPartItemsError) {
+    throw new Error(receivedPartItemsError.message);
+  }
+
+  const { data: completedWorkOrders, error: completedWorkOrdersError } = await supabase
+    .from("work_orders")
+    .select("id, custom_id, status, created_at, updated_at")
+    .eq("shop_id", shopId)
+    .eq("status", "completed")
+    .order("updated_at", { ascending: true })
+    .limit(120);
+
+  if (completedWorkOrdersError) {
+    throw new Error(completedWorkOrdersError.message);
+  }
+
   const woRows = (workOrders ?? []) as WorkOrderRow[];
   const lineRows = (heldLines ?? []) as WorkOrderLineRow[];
   const stageRows = (boardRows ?? []) as BoardRow[];
   const unsentInvoices = (portalInvoices ?? []) as PortalInvoiceRow[];
+  const approvedUnassignedLines = (approvedLines ?? []) as ApprovedUnassignedLineRow[];
+  const quotedItems = (quotedPartItems ?? []) as PartRequestItemRow[];
+  const receivedItems = (receivedPartItems ?? []) as PartRequestItemRow[];
+  const completedWoRows = (completedWorkOrders ?? []) as WorkOrderRow[];
 
   const workOrderById = new Map<string, WorkOrderRow>();
   for (const row of woRows) {
     workOrderById.set(row.id, row);
   }
+  for (const row of completedWoRows) {
+    workOrderById.set(row.id, row);
+  }
+
+  const onHoldLineIds = new Set(lineRows.map((line) => line.id));
 
   const seenApprovalFromBoard = new Set<string>();
 
@@ -399,6 +517,165 @@ export async function getOpsNotifications(
         hoursUnsent: hours,
         thresholdHours: FLOW_HEALTH_THRESHOLDS.unsentInvoiceHours,
         status: invoice.status,
+      },
+    });
+  }
+
+  // Approved work not assigned: assigned_tech_id/assigned_to being null is
+  // only a cheap pre-filter (the query above already narrowed to that) — a
+  // canonical multi-tech assignment can still exist via
+  // work_order_line_technicians without either legacy field set, so confirm
+  // against that table the same way resolveTechnicianAssignmentContract's
+  // callers elsewhere already do before treating a line as truly unassigned.
+  const candidateApprovedLines = approvedUnassignedLines.filter((line) => {
+    if (TERMINAL_LINE_STATUSES.has(String(line.status ?? "").toLowerCase())) {
+      return false;
+    }
+    const approvalState = String(line.approval_state ?? "").toLowerCase();
+    const lineStatus = String(line.line_status ?? "").toLowerCase();
+    return (
+      APPROVED_LINE_STATUSES.has(approvalState) ||
+      AUTHORIZED_LINE_STATUSES.has(lineStatus)
+    );
+  });
+
+  if (candidateApprovedLines.length > 0) {
+    const { data: canonicalAssignments, error: canonicalAssignmentsError } =
+      await supabase
+        .from("work_order_line_technicians")
+        .select("work_order_line_id, technician_id")
+        .in(
+          "work_order_line_id",
+          candidateApprovedLines.map((line) => line.id),
+        );
+
+    if (canonicalAssignmentsError) {
+      throw new Error(canonicalAssignmentsError.message);
+    }
+
+    const canonicallyAssignedLineIds = new Set(
+      (canonicalAssignments ?? [])
+        .map((row) => row.work_order_line_id)
+        .filter((value): value is string => typeof value === "string"),
+    );
+
+    for (const line of candidateApprovedLines) {
+      // assigned_tech_id and assigned_to are already guaranteed null by the
+      // query filter above; canonicallyAssignedLineIds is the one remaining
+      // assignment source (resolveTechnicianAssignmentContract's contract)
+      // left to check before this line truly has nobody assigned.
+      if (canonicallyAssignedLineIds.has(line.id)) continue;
+
+      const since = line.approval_at ?? line.updated_at;
+      const hours = ageHours(since);
+      if (hours == null || hours < UNASSIGNED_APPROVED_WORK_HOURS) continue;
+
+      const workOrder = line.work_order_id
+        ? workOrderById.get(line.work_order_id)
+        : undefined;
+
+      notifications.push({
+        level: "warning",
+        code: "approved_work_unassigned",
+        title: "Approved work not assigned",
+        message:
+          `${workOrder ? woLabel(workOrder.custom_id, workOrder.id) : "Work order"}: ` +
+          `${line.description ?? line.complaint ?? "Approved line"} ` +
+          `has been approved for ${hours.toFixed(1)} hours with no technician assigned.`,
+        href: line.work_order_id
+          ? `/work-orders/${line.work_order_id}/focused-job/${line.id}`
+          : undefined,
+        entityType: "work_order_line",
+        entityId: line.id,
+        createdAt: since ?? undefined,
+        evidence: {
+          hoursApproved: hours,
+          thresholdHours: UNASSIGNED_APPROVED_WORK_HOURS,
+          approvalState: line.approval_state,
+          lineStatus: line.line_status,
+        },
+      });
+    }
+  }
+
+  // Quoted parts awaiting advisor review: a supplier/vendor quote has come
+  // back (status "quoted") but nobody has moved it forward yet.
+  for (const item of quotedItems) {
+    const since = item.updated_at ?? item.created_at;
+    const hours = ageHours(since);
+    if (hours == null || hours < QUOTED_PARTS_REVIEW_HOURS) continue;
+
+    notifications.push({
+      level: "warning",
+      code: "parts_quote_awaiting_review",
+      title: "Parts quote awaiting review",
+      message: `${item.description ?? "A parts quote"} has been waiting for advisor review for ${hours.toFixed(1)} hours.`,
+      href: item.request_id ? `/parts/requests/${item.request_id}` : undefined,
+      entityType: "part_request_item",
+      entityId: item.id,
+      createdAt: since ?? undefined,
+      evidence: {
+        hoursWaiting: hours,
+        thresholdHours: QUOTED_PARTS_REVIEW_HOURS,
+        quotedPrice: item.quoted_price,
+        workOrderId: item.work_order_id,
+      },
+    });
+  }
+
+  // Parts received while the job remains waiting: the specific blocker a
+  // held line was waiting on (missing parts) is gone, but the line hasn't
+  // resumed — cross-referenced against the on-hold lines already loaded
+  // above rather than a second work_order_lines scan.
+  for (const item of receivedItems) {
+    if (!item.work_order_line_id || !onHoldLineIds.has(item.work_order_line_id)) {
+      continue;
+    }
+
+    const since = item.updated_at ?? item.created_at;
+    const hours = ageHours(since);
+    if (hours == null || hours < PARTS_RECEIVED_JOB_WAITING_HOURS) continue;
+
+    notifications.push({
+      level: "urgent",
+      code: "parts_received_job_waiting",
+      title: "Parts arrived — job still on hold",
+      message: `${item.description ?? "A required part"} arrived ${hours.toFixed(1)} hours ago, but the job hasn't resumed.`,
+      href: item.work_order_line_id
+        ? `/work-orders/${item.work_order_id ?? ""}/focused-job/${item.work_order_line_id}`
+        : undefined,
+      entityType: "work_order_line",
+      entityId: item.work_order_line_id,
+      createdAt: since ?? undefined,
+      evidence: {
+        hoursSinceReceived: hours,
+        thresholdHours: PARTS_RECEIVED_JOB_WAITING_HOURS,
+        partRequestItemId: item.id,
+        status: item.status,
+      },
+    });
+  }
+
+  // Completed work awaiting closeout or invoicing: distinct from
+  // invoice_unsent_too_long, which only fires once an invoice record
+  // already exists — this catches the earlier gap where a work order has
+  // been marked completed but hasn't even progressed to ready-to-invoice.
+  for (const row of completedWoRows) {
+    const hours = ageHours(row.updated_at);
+    if (hours == null || hours < COMPLETED_AWAITING_CLOSEOUT_HOURS) continue;
+
+    notifications.push({
+      level: "warning",
+      code: "work_order_completed_awaiting_closeout",
+      title: "Completed work awaiting closeout",
+      message: `${woLabel(row.custom_id, row.id)} has been completed for ${hours.toFixed(1)} hours without moving to invoicing.`,
+      href: `/work-orders/${row.id}`,
+      entityType: "work_order",
+      entityId: row.id,
+      createdAt: row.updated_at ?? undefined,
+      evidence: {
+        hoursCompleted: hours,
+        thresholdHours: COMPLETED_AWAITING_CLOSEOUT_HOURS,
       },
     });
   }

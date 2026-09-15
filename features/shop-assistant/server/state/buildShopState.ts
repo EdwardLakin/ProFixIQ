@@ -82,11 +82,21 @@ function canViewAlert(
   }
   if (
     alert.code === "parts_delivery_overdue" ||
-    alert.code === "ai_parts_request_prepared"
+    alert.code === "ai_parts_request_prepared" ||
+    alert.code === "parts_quote_awaiting_review" ||
+    alert.code === "parts_received_job_waiting"
   ) {
     return visibility.parts || visibility.workOrders;
   }
-  if (alert.code === "invoice_ready") return visibility.invoices;
+  if (
+    alert.code === "invoice_ready" ||
+    alert.code === "work_order_completed_awaiting_closeout"
+  ) {
+    return visibility.invoices;
+  }
+  if (alert.code === "approved_work_unassigned") {
+    return visibility.workforce || visibility.workOrders;
+  }
   if (
     alert.code.startsWith("tech_") ||
     alert.code === "shop_overloaded" ||
