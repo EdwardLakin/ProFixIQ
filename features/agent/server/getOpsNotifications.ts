@@ -5,6 +5,7 @@ import { getShopDayRange } from "@shared/lib/utils/shopDayWindow";
 import { buildOptimizationOpportunities } from "@/features/optimization/server/buildOptimizationOpportunities";
 import type { OptimizationOpportunity } from "@/features/optimization/types";
 import { ACTIONABLE_WORK_ORDER_NOTIFICATION_FILTER } from "@/features/shared/lib/workboard/utils";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type {
   MatchedMenuItem as AppointmentMatchedMenuItem,
   MissingInfoFlag as AppointmentMissingInfoFlag,
@@ -95,6 +96,7 @@ type ApprovedUnassignedLineRow = {
   complaint: string | null;
   approval_state: string | null;
   line_status: string | null;
+  line_type: string | null;
   approval_at: string | null;
   assigned_tech_id: string | null;
   assigned_to: string | null;
@@ -109,6 +111,7 @@ type PartRequestItemRow = {
   description: string | null;
   status: string | null;
   quoted_price: number | null;
+  quote_line_id: string | null;
   updated_at: string | null;
   created_at: string | null;
 };
@@ -150,7 +153,34 @@ const TERMINAL_LINE_STATUSES = new Set([
   "canceled",
   "voided",
 ]);
-const RECEIVED_PART_ITEM_STATUSES = new Set(["received", "partially_received"]);
+// Matches the terminal-status list this codebase's other read paths use
+// verbatim when they need it as a Postgrest `not(... in (...))` filter
+// (e.g. assignedWork.ts's TERMINAL_WORK_ORDER_STATUSES usage).
+const TERMINAL_LINE_STATUSES_FILTER = `(${[...TERMINAL_LINE_STATUSES].join(",")})`;
+// Non-actionable line types the canonical work-order lifecycle already
+// rejects for assignment/labor mutations (see e.g. the
+// pre_labor_parts_quote_hold and add_staff_line_decision_boundary
+// migrations' `line_type not in ('info','note')` guards) — an "assign a
+// technician" alert for one of these could never be resolved through the
+// supported workflow.
+const NON_ACTIONABLE_LINE_TYPES = new Set(["info", "note"]);
+// A partially received item still has outstanding quantity on order — the
+// canonical receiving flow (parts_sync_work_order_line_fulfillment_status)
+// only clears a line's parts blocker once every approved quantity is
+// staged, so only a fully "received" item can mean the blocker is gone.
+const FULLY_RECEIVED_PART_ITEM_STATUS = "received";
+// The one work_order_lines status the canonical parts-fulfillment trigger
+// itself sets while a line is blocked specifically on parts (as opposed to
+// a generic "on_hold" for an unrelated reason such as customer approval or
+// a safety concern) — see parts_sync_work_order_line_fulfillment_status's
+// 'order_receive' stage transition.
+const WAITING_ON_PARTS_LINE_STATUS = "waiting_parts";
+// A linked canonical quote line still in its initial "draft" status means
+// the advisor has not yet acted on it; anything further along (sent,
+// approved, declined, converted, ...) means the wait has already moved
+// past "needs advisor review" even though the linked part_request_item's
+// own status is still "quoted".
+const QUOTE_LINE_UNREVIEWED_STATUSES = new Set(["draft"]);
 // Mirrors the labels the read-only appointment-preparation list already
 // shows staff (features/shop-assistant/components/AppointmentPreparationList.tsx)
 // so this notification's wording matches what a reviewer sees when they
@@ -282,13 +312,18 @@ export async function getOpsNotifications(
   const { data: approvedLines, error: approvedLinesError } = await supabase
     .from("work_order_lines")
     .select(
-      "id, work_order_id, status, description, complaint, approval_state, line_status, approval_at, assigned_tech_id, assigned_to, updated_at",
+      "id, work_order_id, status, description, complaint, approval_state, line_status, line_type, approval_at, assigned_tech_id, assigned_to, updated_at",
     )
     .eq("shop_id", shopId)
     .is("voided_at", null)
     .or("approval_state.eq.approved,line_status.eq.authorized")
     .is("assigned_tech_id", null)
     .is("assigned_to", null)
+    // Terminal rows must never consume the oldest-first candidate window —
+    // a shop with 150+ older completed/cancelled lines whose legacy
+    // assignment columns are null would otherwise push every genuinely
+    // active, unassigned approved line out of this page.
+    .not("status", "in", TERMINAL_LINE_STATUSES_FILTER)
     .order("updated_at", { ascending: true })
     .limit(150);
 
@@ -299,7 +334,7 @@ export async function getOpsNotifications(
   const { data: quotedPartItems, error: quotedPartItemsError } = await supabase
     .from("part_request_items")
     .select(
-      "id, request_id, work_order_id, work_order_line_id, description, status, quoted_price, updated_at, created_at",
+      "id, request_id, work_order_id, work_order_line_id, description, status, quoted_price, quote_line_id, updated_at, created_at",
     )
     .eq("shop_id", shopId)
     .eq("status", "quoted")
@@ -313,16 +348,32 @@ export async function getOpsNotifications(
   const { data: receivedPartItems, error: receivedPartItemsError } = await supabase
     .from("part_request_items")
     .select(
-      "id, request_id, work_order_id, work_order_line_id, description, status, quoted_price, updated_at, created_at",
+      "id, request_id, work_order_id, work_order_line_id, description, status, quoted_price, quote_line_id, updated_at, created_at",
     )
     .eq("shop_id", shopId)
-    .in("status", [...RECEIVED_PART_ITEM_STATUSES])
+    .eq("status", FULLY_RECEIVED_PART_ITEM_STATUS)
     .not("work_order_line_id", "is", null)
     .order("updated_at", { ascending: true })
     .limit(150);
 
   if (receivedPartItemsError) {
     throw new Error(receivedPartItemsError.message);
+  }
+
+  // The line the canonical parts-fulfillment trigger itself blocks on
+  // parts (as opposed to a generic "on_hold" for an unrelated reason) is
+  // the only state that makes "parts arrived, job still waiting" a valid
+  // signal — see WAITING_ON_PARTS_LINE_STATUS above.
+  const { data: waitingOnPartsLines, error: waitingOnPartsLinesError } =
+    await supabase
+      .from("work_order_lines")
+      .select("id")
+      .eq("shop_id", shopId)
+      .eq("status", WAITING_ON_PARTS_LINE_STATUS)
+      .limit(150);
+
+  if (waitingOnPartsLinesError) {
+    throw new Error(waitingOnPartsLinesError.message);
   }
 
   const { data: completedWorkOrders, error: completedWorkOrdersError } = await supabase
@@ -384,7 +435,9 @@ export async function getOpsNotifications(
     workOrderById.set(row.id, row);
   }
 
-  const onHoldLineIds = new Set(lineRows.map((line) => line.id));
+  const waitingOnPartsLineIds = new Set(
+    (waitingOnPartsLines ?? []).map((line) => line.id),
+  );
 
   const seenApprovalFromBoard = new Set<string>();
 
@@ -589,6 +642,13 @@ export async function getOpsNotifications(
     if (TERMINAL_LINE_STATUSES.has(String(line.status ?? "").toLowerCase())) {
       return false;
     }
+    // An informational/note line is never actionable through the
+    // supported assignment workflow (the canonical lifecycle mutations
+    // reject line_type = 'info'/'note' outright) — an "assign a
+    // technician" alert for one of these could never be resolved.
+    if (NON_ACTIONABLE_LINE_TYPES.has(String(line.line_type ?? "").toLowerCase())) {
+      return false;
+    }
     const approvalState = String(line.approval_state ?? "").toLowerCase();
     const lineStatus = String(line.line_status ?? "").toLowerCase();
     return (
@@ -598,8 +658,16 @@ export async function getOpsNotifications(
   });
 
   if (candidateApprovedLines.length > 0) {
+    // This cross-check must see every canonical assignment regardless of
+    // the interactive caller's own row-level access — an interactive
+    // service/parts-role sync can read the candidate lines above via RLS
+    // but not this bridge table, which would otherwise return an empty
+    // (not errored) result and misreport a genuinely assigned line as
+    // unassigned. An admin client is safe here: every id queried already
+    // came from a shop_id-scoped read above, so there is no cross-tenant
+    // exposure.
     const { data: canonicalAssignments, error: canonicalAssignmentsError } =
-      await supabase
+      await createAdminSupabase()
         .from("work_order_line_technicians")
         .select("work_order_line_id, technician_id")
         .in(
@@ -657,8 +725,42 @@ export async function getOpsNotifications(
   }
 
   // Quoted parts awaiting advisor review: a supplier/vendor quote has come
-  // back (status "quoted") but nobody has moved it forward yet.
+  // back (status "quoted") but nobody has moved it forward yet. When an
+  // item is linked to a canonical quote line, the advisor may have already
+  // sent that quote to the customer — part_request_items.status stays
+  // "quoted" regardless, so the linked quote line's own status is the
+  // durable signal of whether the advisor has actually acted.
+  const quoteLineIdsToCheck = [
+    ...new Set(
+      quotedItems
+        .map((item) => item.quote_line_id)
+        .filter((id): id is string => typeof id === "string"),
+    ),
+  ];
+  const reviewedQuoteLineIds = new Set<string>();
+  if (quoteLineIdsToCheck.length > 0) {
+    const { data: linkedQuoteLines, error: linkedQuoteLinesError } = await supabase
+      .from("work_order_quote_lines")
+      .select("id, status")
+      .eq("shop_id", shopId)
+      .in("id", quoteLineIdsToCheck);
+
+    if (linkedQuoteLinesError) {
+      throw new Error(linkedQuoteLinesError.message);
+    }
+
+    for (const row of linkedQuoteLines ?? []) {
+      if (!QUOTE_LINE_UNREVIEWED_STATUSES.has(String(row.status ?? "").toLowerCase())) {
+        reviewedQuoteLineIds.add(row.id);
+      }
+    }
+  }
+
   for (const item of quotedItems) {
+    if (item.quote_line_id && reviewedQuoteLineIds.has(item.quote_line_id)) {
+      continue;
+    }
+
     const since = item.updated_at ?? item.created_at;
     const hours = ageHours(since);
     if (hours == null || hours < QUOTED_PARTS_REVIEW_HOURS) continue;
@@ -682,14 +784,39 @@ export async function getOpsNotifications(
   }
 
   // Parts received while the job remains waiting: the specific blocker a
-  // held line was waiting on (missing parts) is gone, but the line hasn't
-  // resumed — cross-referenced against the on-hold lines already loaded
-  // above rather than a second work_order_lines scan.
+  // line is waiting on (missing parts) is gone, but the line hasn't
+  // resumed — cross-referenced against waitingOnPartsLineIds, the
+  // canonical parts-specific hold state, rather than a second
+  // work_order_lines scan.
+  //
+  // Two or more items can be received against the same still-waiting
+  // line; only the earliest is kept so at most one notification is ever
+  // computed per line — two would share the same fingerprint
+  // (code + entityType + entityId + href) and collide in the persisted
+  // upsert batch.
+  const earliestReceivedItemByWaitingLineId = new Map<string, PartRequestItemRow>();
   for (const item of receivedItems) {
-    if (!item.work_order_line_id || !onHoldLineIds.has(item.work_order_line_id)) {
+    if (
+      !item.work_order_line_id ||
+      !waitingOnPartsLineIds.has(item.work_order_line_id)
+    ) {
       continue;
     }
 
+    const existing = earliestReceivedItemByWaitingLineId.get(item.work_order_line_id);
+    if (!existing) {
+      earliestReceivedItemByWaitingLineId.set(item.work_order_line_id, item);
+      continue;
+    }
+
+    const existingSince = existing.updated_at ?? existing.created_at;
+    const itemSince = item.updated_at ?? item.created_at;
+    if (itemSince && (!existingSince || itemSince < existingSince)) {
+      earliestReceivedItemByWaitingLineId.set(item.work_order_line_id, item);
+    }
+  }
+
+  for (const item of earliestReceivedItemByWaitingLineId.values()) {
     const since = item.updated_at ?? item.created_at;
     const hours = ageHours(since);
     if (hours == null || hours < PARTS_RECEIVED_JOB_WAITING_HOURS) continue;
@@ -703,7 +830,7 @@ export async function getOpsNotifications(
         ? `/work-orders/${item.work_order_id ?? ""}/focused-job/${item.work_order_line_id}`
         : undefined,
       entityType: "work_order_line",
-      entityId: item.work_order_line_id,
+      entityId: item.work_order_line_id ?? undefined,
       createdAt: since ?? undefined,
       evidence: {
         hoursSinceReceived: hours,
