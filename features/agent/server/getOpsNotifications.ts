@@ -1,9 +1,15 @@
 import { getServerSupabase } from "./supabase";
 import { FLOW_HEALTH_THRESHOLDS, ageHours } from "./flowHealth";
 import { getTechnicianLoadMetricsWithClient } from "@shared/lib/stats/getTechnicianLoadMetricsCore";
+import { getShopDayRange } from "@shared/lib/utils/shopDayWindow";
 import { buildOptimizationOpportunities } from "@/features/optimization/server/buildOptimizationOpportunities";
 import type { OptimizationOpportunity } from "@/features/optimization/types";
 import { ACTIONABLE_WORK_ORDER_NOTIFICATION_FILTER } from "@/features/shared/lib/workboard/utils";
+import type {
+  MatchedMenuItem as AppointmentMatchedMenuItem,
+  MissingInfoFlag as AppointmentMissingInfoFlag,
+  VehicleSnapshot as AppointmentVehicleSnapshot,
+} from "@/features/operations/server/appointmentPreparation/buildAppointmentPreparations";
 
 export type OpsNotificationLevel = "info" | "warning" | "urgent";
 
@@ -27,7 +33,8 @@ export type OpsNotificationCode =
   | "approved_work_unassigned"
   | "parts_quote_awaiting_review"
   | "parts_received_job_waiting"
-  | "work_order_completed_awaiting_closeout";
+  | "work_order_completed_awaiting_closeout"
+  | "appointment_day_of_readiness";
 
 export type OpsNotification = {
   level: OpsNotificationLevel;
@@ -106,6 +113,16 @@ type PartRequestItemRow = {
   created_at: string | null;
 };
 
+type DayOfAppointmentPreparationRow = {
+  id: string;
+  booking_id: string;
+  starts_at: string;
+  vehicle_id: string | null;
+  vehicle_snapshot: unknown;
+  missing_info: unknown;
+  matched_menu_items: unknown;
+};
+
 const SHOP_OVERLOAD_UTILIZATION_PCT = 90;
 const SHOP_UNDERUTILIZATION_PCT = 40;
 const TECH_OVERLOAD_UTILIZATION_PCT = 95;
@@ -134,6 +151,17 @@ const TERMINAL_LINE_STATUSES = new Set([
   "voided",
 ]);
 const RECEIVED_PART_ITEM_STATUSES = new Set(["received", "partially_received"]);
+// Mirrors the labels the read-only appointment-preparation list already
+// shows staff (features/shop-assistant/components/AppointmentPreparationList.tsx)
+// so this notification's wording matches what a reviewer sees when they
+// follow the href back to that projection.
+const MISSING_INFO_ISSUE_LABELS: Record<string, string> = {
+  missing_vehicle: "no vehicle on file",
+  missing_customer: "no customer on file",
+  missing_vin: "missing VIN",
+  missing_mileage: "missing mileage",
+  missing_customer_contact: "no customer contact info",
+};
 
 function secondsToHours(seconds: number | null | undefined): number {
   const parsed = Number(seconds ?? 0);
@@ -309,6 +337,35 @@ export async function getOpsNotifications(
     throw new Error(completedWorkOrdersError.message);
   }
 
+  // Phase 6 (day-of orchestration): the shop's own local "today", not a
+  // fixed UTC day or an elapsed-hours window — a shop in a different
+  // timezone must not see yesterday's or tomorrow's bookings flagged.
+  const { data: shopRow, error: shopTimezoneError } = await supabase
+    .from("shops")
+    .select("timezone")
+    .eq("id", shopId)
+    .maybeSingle();
+  if (shopTimezoneError) {
+    throw new Error(shopTimezoneError.message);
+  }
+  const todayRange = getShopDayRange(shopRow?.timezone ?? null);
+
+  const { data: dayOfPreparations, error: dayOfPreparationsError } = await supabase
+    .from("appointment_preparations")
+    .select(
+      "id, booking_id, starts_at, vehicle_id, vehicle_snapshot, missing_info, matched_menu_items",
+    )
+    .eq("shop_id", shopId)
+    .eq("status", "active")
+    .gte("starts_at", todayRange.start)
+    .lt("starts_at", todayRange.end)
+    .order("starts_at", { ascending: true })
+    .limit(120);
+
+  if (dayOfPreparationsError) {
+    throw new Error(dayOfPreparationsError.message);
+  }
+
   const woRows = (workOrders ?? []) as WorkOrderRow[];
   const lineRows = (heldLines ?? []) as WorkOrderLineRow[];
   const stageRows = (boardRows ?? []) as BoardRow[];
@@ -317,6 +374,7 @@ export async function getOpsNotifications(
   const quotedItems = (quotedPartItems ?? []) as PartRequestItemRow[];
   const receivedItems = (receivedPartItems ?? []) as PartRequestItemRow[];
   const completedWoRows = (completedWorkOrders ?? []) as WorkOrderRow[];
+  const dayOfPreparationRows = (dayOfPreparations ?? []) as DayOfAppointmentPreparationRow[];
 
   const workOrderById = new Map<string, WorkOrderRow>();
   for (const row of woRows) {
@@ -676,6 +734,72 @@ export async function getOpsNotifications(
       evidence: {
         hoursCompleted: hours,
         thresholdHours: COMPLETED_AWAITING_CLOSEOUT_HOURS,
+      },
+    });
+  }
+
+  // Day-of appointment readiness (Phase 6): once a booking's scheduled day
+  // arrives, surface whether the Phase 4 preparation projection found
+  // anything that still needs attention before the vehicle shows up —
+  // missing vehicle/customer info, or a matched repair whose required
+  // parts are short. This only reads the existing projection; it never
+  // creates or edits the projection, a work order, or a parts request.
+  // A booking with nothing outstanding produces no notification — the
+  // read-only projection list already covers the "all clear" case on
+  // demand, so this stays reserved for what needs a human to act on it.
+  for (const row of dayOfPreparationRows) {
+    const missingInfo = (row.missing_info ?? []) as AppointmentMissingInfoFlag[];
+    const matchedMenuItems = (row.matched_menu_items ??
+      []) as AppointmentMatchedMenuItem[];
+    const vehicleSnapshot = (row.vehicle_snapshot ??
+      null) as AppointmentVehicleSnapshot | null;
+
+    // Same verdict rule as the staff-facing preparation list
+    // (AppointmentPreparationList's partsReadinessSummary): an optional
+    // part being short shouldn't flag a repair that doesn't actually need
+    // it — only required lines decide, falling back to every line when
+    // none are marked required.
+    const allPartsLines = matchedMenuItems.flatMap((item) => item.partsReadiness);
+    const requiredPartsLines = allPartsLines.filter((line) => line.isRequired);
+    const decisivePartsLines =
+      requiredPartsLines.length > 0 ? requiredPartsLines : allPartsLines;
+    const partsShort = decisivePartsLines.some((line) => line.status === "short");
+
+    if (missingInfo.length === 0 && !partsShort) continue;
+
+    const vehicleLabel =
+      [vehicleSnapshot?.year, vehicleSnapshot?.make, vehicleSnapshot?.model]
+        .filter(Boolean)
+        .join(" ") ||
+      vehicleSnapshot?.vin ||
+      "Today's appointment";
+
+    const issues: string[] = [];
+    if (missingInfo.length > 0) {
+      issues.push(
+        missingInfo.map((flag) => MISSING_INFO_ISSUE_LABELS[flag] ?? flag).join(", "),
+      );
+    }
+    if (partsShort) {
+      issues.push("required parts are short for the matched repair");
+    }
+
+    const hrefParams = new URLSearchParams({ bookingId: row.booking_id });
+    if (row.vehicle_id) hrefParams.set("vehicleId", row.vehicle_id);
+
+    notifications.push({
+      level: "warning",
+      code: "appointment_day_of_readiness",
+      title: "Today's appointment needs attention",
+      message: `${vehicleLabel} is booked for today and ${issues.join("; ")}.`,
+      href: `/work-orders/create?${hrefParams.toString()}`,
+      entityType: "booking",
+      entityId: row.booking_id,
+      createdAt: row.starts_at,
+      evidence: {
+        startsAt: row.starts_at,
+        missingInfo,
+        partsShort,
       },
     });
   }

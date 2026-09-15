@@ -97,6 +97,9 @@ function canViewAlert(
   if (alert.code === "approved_work_unassigned") {
     return visibility.workforce || visibility.workOrders;
   }
+  if (alert.code === "appointment_day_of_readiness") {
+    return visibility.bookings || visibility.workOrders;
+  }
   if (
     alert.code.startsWith("tech_") ||
     alert.code === "shop_overloaded" ||
