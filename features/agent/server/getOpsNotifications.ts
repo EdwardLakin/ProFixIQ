@@ -35,7 +35,8 @@ export type OpsNotificationCode =
   | "parts_quote_awaiting_review"
   | "parts_received_job_waiting"
   | "work_order_completed_awaiting_closeout"
-  | "appointment_day_of_readiness";
+  | "appointment_day_of_readiness"
+  | "appointment_missed_check_in";
 
 export type OpsNotification = {
   level: OpsNotificationLevel;
@@ -126,6 +127,14 @@ type DayOfAppointmentPreparationRow = {
   matched_menu_items: unknown;
 };
 
+type OverdueBookingRow = {
+  id: string;
+  starts_at: string;
+  status: string | null;
+  vehicle_id: string | null;
+  work_order_id: string | null;
+};
+
 const SHOP_OVERLOAD_UTILIZATION_PCT = 90;
 const SHOP_UNDERUTILIZATION_PCT = 40;
 const TECH_OVERLOAD_UTILIZATION_PCT = 95;
@@ -192,6 +201,24 @@ const MISSING_INFO_ISSUE_LABELS: Record<string, string> = {
   missing_mileage: "missing mileage",
   missing_customer_contact: "no customer contact info",
 };
+// A booking is a candidate once its promised time has passed by this many
+// hours with nobody having checked it in yet (no linked work order).
+const MISSED_CHECK_IN_MIN_HOURS = 1;
+// Past this many hours overdue, a missed check-in is urgent rather than a
+// routine warning.
+const MISSED_CHECK_IN_URGENT_HOURS = 3;
+// Bounds the query to recent bookings only, so a booking that was simply
+// abandoned long ago (never cancelled, never converted) doesn't surface as
+// a permanent, unresolved alert forever.
+const MISSED_CHECK_IN_LOOKBACK_HOURS = 72;
+// Matches syncAppointmentPreparations.ts's EXCLUDED_BOOKING_STATUSES — a
+// cancelled or already-completed booking was never a missed check-in.
+const EXCLUDED_BOOKING_STATUSES_FOR_MISSED_CHECK_IN = new Set([
+  "cancelled",
+  "canceled",
+  "completed",
+]);
+const EXCLUDED_BOOKING_STATUSES_FOR_MISSED_CHECK_IN_FILTER = `(${[...EXCLUDED_BOOKING_STATUSES_FOR_MISSED_CHECK_IN].join(",")})`;
 
 function secondsToHours(seconds: number | null | undefined): number {
   const parsed = Number(seconds ?? 0);
@@ -417,6 +444,38 @@ export async function getOpsNotifications(
     throw new Error(dayOfPreparationsError.message);
   }
 
+  // Missed check-in (Phase 6, day-of orchestration): a booking whose
+  // promised time has passed with nobody having checked the vehicle in —
+  // work_order_id is still null. Bounded to a recent lookback window
+  // rather than shop-local "today" like the readiness signal above, since
+  // an unresolved missed check-in from yesterday is still a real,
+  // actionable problem.
+  const missedCheckInCutoff = new Date(
+    Date.now() - MISSED_CHECK_IN_MIN_HOURS * 3600000,
+  ).toISOString();
+  const missedCheckInLookbackStart = new Date(
+    Date.now() - MISSED_CHECK_IN_LOOKBACK_HOURS * 3600000,
+  ).toISOString();
+
+  const { data: overdueBookings, error: overdueBookingsError } = await supabase
+    .from("bookings")
+    .select("id, starts_at, status, vehicle_id, work_order_id")
+    .eq("shop_id", shopId)
+    .is("work_order_id", null)
+    .not(
+      "status",
+      "in",
+      EXCLUDED_BOOKING_STATUSES_FOR_MISSED_CHECK_IN_FILTER,
+    )
+    .gte("starts_at", missedCheckInLookbackStart)
+    .lt("starts_at", missedCheckInCutoff)
+    .order("starts_at", { ascending: true })
+    .limit(120);
+
+  if (overdueBookingsError) {
+    throw new Error(overdueBookingsError.message);
+  }
+
   const woRows = (workOrders ?? []) as WorkOrderRow[];
   const lineRows = (heldLines ?? []) as WorkOrderLineRow[];
   const stageRows = (boardRows ?? []) as BoardRow[];
@@ -426,6 +485,7 @@ export async function getOpsNotifications(
   const receivedItems = (receivedPartItems ?? []) as PartRequestItemRow[];
   const completedWoRows = (completedWorkOrders ?? []) as WorkOrderRow[];
   const dayOfPreparationRows = (dayOfPreparations ?? []) as DayOfAppointmentPreparationRow[];
+  const overdueBookingRows = (overdueBookings ?? []) as OverdueBookingRow[];
 
   const workOrderById = new Map<string, WorkOrderRow>();
   for (const row of woRows) {
@@ -927,6 +987,34 @@ export async function getOpsNotifications(
         startsAt: row.starts_at,
         missingInfo,
         partsShort,
+      },
+    });
+  }
+
+  // Missed check-in (Phase 6): the booking's promised time has passed and
+  // nobody has checked the vehicle in yet — this only reads the booking's
+  // own starts_at/work_order_id, never creates a work order or otherwise
+  // acts on the customer's behalf.
+  for (const row of overdueBookingRows) {
+    const hours = ageHours(row.starts_at);
+    if (hours == null) continue;
+
+    const hrefParams = new URLSearchParams({ bookingId: row.id });
+    if (row.vehicle_id) hrefParams.set("vehicleId", row.vehicle_id);
+
+    notifications.push({
+      level: hours >= MISSED_CHECK_IN_URGENT_HOURS ? "urgent" : "warning",
+      code: "appointment_missed_check_in",
+      title: "Appointment missed its check-in time",
+      message: `A booking scheduled ${hours.toFixed(1)} hours ago hasn't been checked in — no work order has been started for it yet.`,
+      href: `/work-orders/create?${hrefParams.toString()}`,
+      entityType: "booking",
+      entityId: row.id,
+      createdAt: row.starts_at,
+      evidence: {
+        hoursOverdue: hours,
+        thresholdHours: MISSED_CHECK_IN_MIN_HOURS,
+        status: row.status,
       },
     });
   }

@@ -100,8 +100,9 @@ describe("Phase 6 — day-of appointment readiness, the first day-of determinist
   });
 
   it("is visible on the shop-assistant alert surface to booking-facing and work-order-facing roles, not silently dropped by the default gate", () => {
+    expect(shopStateModule).toContain('alert.code === "appointment_day_of_readiness"');
     expect(shopStateModule).toContain(
-      'if (alert.code === "appointment_day_of_readiness") {\n    return visibility.bookings || visibility.workOrders;',
+      'return visibility.bookings || visibility.workOrders;',
     );
   });
 });

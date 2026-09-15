@@ -97,7 +97,10 @@ function canViewAlert(
   if (alert.code === "approved_work_unassigned") {
     return visibility.workforce || visibility.workOrders;
   }
-  if (alert.code === "appointment_day_of_readiness") {
+  if (
+    alert.code === "appointment_day_of_readiness" ||
+    alert.code === "appointment_missed_check_in"
+  ) {
     return visibility.bookings || visibility.workOrders;
   }
   if (
