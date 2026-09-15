@@ -13,9 +13,13 @@ const InputSchema = z.object({
 
 type Input = z.infer<typeof InputSchema>;
 
-export async function runGetBookings(rawInput: Input, ctx: ToolContext) {
+export async function runGetBookings(
+  rawInput: Input,
+  ctx: ToolContext,
+  supabaseClient?: ReturnType<typeof getServerSupabase>,
+) {
   const input = InputSchema.parse(rawInput);
-  const supabase = getServerSupabase();
+  const supabase = supabaseClient ?? getServerSupabase();
 
   let customerId = input.customerId ?? null;
 

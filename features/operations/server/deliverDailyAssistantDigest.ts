@@ -1,10 +1,7 @@
 import "server-only";
 
 import { hasAnyRole, ROLE_GROUPS } from "@/features/shared/lib/rbac";
-import {
-  getOpsNotifications,
-  type OpsNotification,
-} from "@/features/agent/server/getOpsNotifications";
+import { getRoleDailySummary } from "@/features/agent/server/getRoleDailySummary";
 import {
   getShopDayRange,
   getShopLocalDayWindow,
@@ -14,11 +11,13 @@ import type { createAdminSupabase } from "@/features/shared/lib/supabase/server"
 
 /**
  * Phase 7 of the dashboard assistant plan: proactive conversation delivery.
- * Once a day, in each shop's own local morning, deliver a digest of the
- * shop's current ops notifications into every eligible staff member's
- * existing durable shop-assistant thread — the same conversation surface
- * `app/api/shop-assistant/*` chat already reads and writes — instead of
- * requiring them to ask for it.
+ * Once a day, in each shop's own local morning, deliver each eligible staff
+ * member's role-aware daily summary into their existing durable
+ * shop-assistant thread — the same conversation surface `app/api/shop-
+ * assistant/*` chat already reads and writes, and the same canonical
+ * summary contract (getRoleDailySummary) the on-demand "Today" panel
+ * already uses — instead of requiring them to open the assistant and ask
+ * for it.
  *
  * Purely informational and additive: this creates or appends to a thread
  * exactly the way a live chat turn would (shop_assistant_threads /
@@ -32,8 +31,13 @@ import type { createAdminSupabase } from "@/features/shared/lib/supabase/server"
 const MORNING_WINDOW_START_HOUR = 6;
 const MORNING_WINDOW_END_HOUR = 10;
 const DIGEST_MESSAGE_KIND = "state_update" as const;
-const MAX_DIGEST_ITEMS = 6;
 const DIGEST_SOURCE = "daily_assistant_digest" as const;
+// shop_assistant_messages_content_size_chk caps content at 16000 chars. A
+// busy shop's canonical summary (e.g. a manager's shop-status snapshot,
+// which can list many active jobs) is not itself bounded to that limit, so
+// stay well under it with room for a truncation notice rather than let a
+// legitimate shop's digest fail its insert outright.
+const MAX_MESSAGE_CONTENT_LENGTH = 15000;
 
 export type DailyAssistantDigestSummary = {
   shopId: string;
@@ -44,41 +48,13 @@ export type DailyAssistantDigestSummary = {
   errors: string[];
 };
 
-function levelRank(level: OpsNotification["level"]): number {
-  return level === "urgent" ? 3 : level === "warning" ? 2 : 1;
-}
-
-/**
- * Formats the digest a person actually reads. Returns null when there is
- * nothing worth surfacing, so a quiet shop does not get a daily "all clear"
- * message cluttering their thread.
- */
-export function buildDailyDigestMessage(
-  localDayKey: string,
-  notifications: OpsNotification[],
-): string | null {
-  if (notifications.length === 0) return null;
-
-  const sorted = [...notifications].sort(
-    (a, b) => levelRank(b.level) - levelRank(a.level),
+function boundMessageContent(content: string): string {
+  if (content.length <= MAX_MESSAGE_CONTENT_LENGTH) return content;
+  const truncationNotice = "\n\n…(truncated — see the dashboard for full detail)";
+  return (
+    content.slice(0, MAX_MESSAGE_CONTENT_LENGTH - truncationNotice.length) +
+    truncationNotice
   );
-  const urgentCount = sorted.filter((item) => item.level === "urgent").length;
-  const warningCount = sorted.filter((item) => item.level === "warning").length;
-
-  const lines = [
-    `Good morning — here's the ${localDayKey} shop digest.`,
-    "",
-    `${sorted.length} item(s) need attention (${urgentCount} urgent, ${warningCount} warning).`,
-  ];
-
-  for (const item of sorted.slice(0, MAX_DIGEST_ITEMS)) {
-    lines.push(`• ${item.title}: ${item.message}`);
-  }
-  if (sorted.length > MAX_DIGEST_ITEMS) {
-    lines.push(`…and ${sorted.length - MAX_DIGEST_ITEMS} more on the dashboard.`);
-  }
-
-  return lines.join("\n");
 }
 
 async function findOrCreateAssistantThread(
@@ -151,28 +127,48 @@ async function hasDeliveredDigestToday(
   return !!existing;
 }
 
+type EligibleStaffMember = {
+  authUserId: string;
+  profileId: string;
+  role: string | null;
+};
+
 /**
- * Delivers the digest into one staff member's thread. Idempotent per
- * shop-local day: hasDeliveredDigestToday narrows (does not fully close —
- * a genuinely concurrent first delivery for the same recipient could still
- * race) the window before picking a thread to append to, and the
- * (thread_id, client_message_id) unique index every other assistant
- * message write already relies on is the backstop for that specific race.
+ * Delivers one staff member's role-aware daily summary into their thread.
+ * Idempotent per shop-local day: hasDeliveredDigestToday narrows (does not
+ * fully close — a genuinely concurrent first delivery for the same
+ * recipient could still race) the window before picking a thread to append
+ * to, and the (thread_id, client_message_id) unique index every other
+ * assistant message write already relies on is the backstop for that
+ * specific race.
  */
 async function deliverDigestToStaffMember(
   admin: ReturnType<typeof createAdminSupabase>,
   shopId: string,
-  userId: string,
+  staff: EligibleStaffMember,
   localDayKey: string,
-  content: string,
 ): Promise<"delivered" | "already_delivered"> {
   const clientMessageId = `daily-digest:${localDayKey}`;
 
-  if (await hasDeliveredDigestToday(admin, shopId, userId, clientMessageId)) {
+  if (await hasDeliveredDigestToday(admin, shopId, staff.authUserId, clientMessageId)) {
     return "already_delivered";
   }
 
-  const threadId = await findOrCreateAssistantThread(admin, shopId, userId);
+  // The canonical, role-aware summary contract — the same one the on-demand
+  // "Today" panel already uses — rather than a bespoke formatter, so staff
+  // never see two conflicting versions of "today's summary".
+  const summary = await getRoleDailySummary({
+    shopId,
+    userId: staff.authUserId,
+    profileId: staff.profileId,
+    role: staff.role,
+    supabaseClient: admin,
+  });
+  const trimmed = summary.summaryText.trim();
+  if (!trimmed) return "already_delivered";
+  const content = boundMessageContent(trimmed);
+
+  const threadId = await findOrCreateAssistantThread(admin, shopId, staff.authUserId);
 
   const { data, error } = await admin
     .from("shop_assistant_messages")
@@ -183,7 +179,13 @@ async function deliverDigestToStaffMember(
       role: "assistant",
       kind: DIGEST_MESSAGE_KIND,
       content,
-      payload: { source: DIGEST_SOURCE, localDayKey },
+      payload: {
+        source: DIGEST_SOURCE,
+        localDayKey,
+        role: summary.role,
+        links: summary.links,
+        actionItems: summary.actionItems,
+      },
       client_message_id: clientMessageId,
     })
     .select("id")
@@ -259,40 +261,38 @@ export async function deliverDailyAssistantDigest(input: {
     .eq("shop_id", shopId);
   if (profilesError) return empty(true, [profilesError.message]);
 
-  // Shop-wide operator roles only — mirrors the shop-wide (not user-scoped)
-  // notification set this digest is built from. Mechanics already get a
-  // narrower, assignment-scoped notification view; handing them this
-  // shop-wide digest would over-expose work that isn't theirs.
-  const eligible = (profiles ?? [])
+  // Shop-wide operator roles only. Mechanics already get their own
+  // narrower, assignment-scoped "Tech snapshot" summary on demand; the
+  // audit is explicit that day-of orchestration keeps assignments and
+  // technician findings under existing human authority, so this proactive
+  // push starts with the roles that already see shop-wide state today.
+  const eligible: EligibleStaffMember[] = (profiles ?? [])
     .filter((profile) => hasAnyRole(profile.role, ROLE_GROUPS.shopWideOperators))
-    .map((profile) => ({ authUserId: profile.user_id ?? profile.id }));
+    .map((profile) => ({
+      authUserId: profile.user_id ?? profile.id,
+      profileId: profile.id,
+      role: profile.role,
+    }));
 
   if (eligible.length === 0) return { ...empty(true), eligibleStaff: 0 };
-
-  const notifications = await getOpsNotifications(shopId, admin);
-  const content = buildDailyDigestMessage(window.localDayKey, notifications);
-  if (!content) {
-    return { ...empty(true), eligibleStaff: eligible.length };
-  }
 
   let delivered = 0;
   let alreadyDelivered = 0;
   const errors: string[] = [];
 
-  for (const { authUserId } of eligible) {
+  for (const staff of eligible) {
     try {
       const outcome = await deliverDigestToStaffMember(
         admin,
         shopId,
-        authUserId,
+        staff,
         window.localDayKey,
-        content,
       );
       if (outcome === "delivered") delivered += 1;
       else alreadyDelivered += 1;
     } catch (error) {
       errors.push(
-        `staff ${authUserId}: ${error instanceof Error ? error.message : "unknown error"}`,
+        `staff ${staff.authUserId}: ${error instanceof Error ? error.message : "unknown error"}`,
       );
     }
   }

@@ -236,6 +236,12 @@ export async function loadShopAssistantMessages(
 ): Promise<ShopAssistantMessage[]> {
   await getShopAssistantThread(actor, threadId);
 
+  // Select the newest `limit` messages, not the oldest — otherwise a
+  // long-lived thread that crosses the row limit permanently hides
+  // everything appended after its historical head (a later reply, an
+  // automated digest, anything). Fetch descending so the *selected window*
+  // is the newest slice, then reverse back to the ascending order every
+  // caller (chat history, LLM context, the thread UI) already expects.
   const { data, error } = await dbFor(actor)
     .from("shop_assistant_messages")
     .select(
@@ -243,12 +249,12 @@ export async function loadShopAssistantMessages(
     )
     .eq("thread_id", threadId)
     .eq("shop_id", actor.shopId)
-    .order("created_at", { ascending: true })
-    .order("id", { ascending: true })
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .limit(Math.min(Math.max(limit, 1), 200));
 
   if (error) throw new Error(error.message);
-  return ((data ?? []) as MessageRow[]).map(mapMessage);
+  return ((data ?? []) as MessageRow[]).map(mapMessage).reverse();
 }
 
 export async function insertUserMessageIdempotent(params: {

@@ -1,16 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const getOpsNotificationsMock = vi.fn();
+const getRoleDailySummaryMock = vi.fn();
 
-vi.mock("@/features/agent/server/getOpsNotifications", async () => {
-  const actual = await vi.importActual<
-    typeof import("@/features/agent/server/getOpsNotifications")
-  >("@/features/agent/server/getOpsNotifications");
-  return {
-    ...actual,
-    getOpsNotifications: getOpsNotificationsMock,
-  };
-});
+vi.mock("@/features/agent/server/getRoleDailySummary", () => ({
+  getRoleDailySummary: getRoleDailySummaryMock,
+}));
 
 type Row = Record<string, unknown>;
 
@@ -151,6 +145,17 @@ function createSupabaseStub(opts: SupabaseStubOptions) {
   return { admin, createdThreads, insertedMessages };
 }
 
+function summaryFor(role: string, text = `${role} snapshot for today.`) {
+  return {
+    role,
+    summaryText: text,
+    actionItems: [],
+    links: [],
+    notifications: [],
+    sourceSnapshot: {},
+  };
+}
+
 describe("deliverDailyAssistantDigest", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -160,9 +165,6 @@ describe("deliverDailyAssistantDigest", () => {
     const { deliverDailyAssistantDigest } = await import(
       "@/features/operations/server/deliverDailyAssistantDigest"
     );
-    getOpsNotificationsMock.mockResolvedValue([
-      { level: "warning", code: "parts_waiting_too_long", title: "t", message: "m" },
-    ]);
     const { admin } = createSupabaseStub({
       timezone: "UTC",
       profiles: [{ id: "p1", user_id: "u1", role: "owner" }],
@@ -177,14 +179,14 @@ describe("deliverDailyAssistantDigest", () => {
 
     expect(result.inMorningWindow).toBe(false);
     expect(result.delivered).toBe(0);
-    expect(getOpsNotificationsMock).not.toHaveBeenCalled();
+    expect(getRoleDailySummaryMock).not.toHaveBeenCalled();
   });
 
   it("treats a null/unset shop timezone as UTC instead of throwing", async () => {
     const { deliverDailyAssistantDigest } = await import(
       "@/features/operations/server/deliverDailyAssistantDigest"
     );
-    getOpsNotificationsMock.mockResolvedValue([]);
+    getRoleDailySummaryMock.mockResolvedValue(summaryFor("owner"));
     const { admin } = createSupabaseStub({
       timezone: null,
       profiles: [{ id: "p1", user_id: "u1", role: "owner" }],
@@ -204,9 +206,7 @@ describe("deliverDailyAssistantDigest", () => {
     const { deliverDailyAssistantDigest } = await import(
       "@/features/operations/server/deliverDailyAssistantDigest"
     );
-    getOpsNotificationsMock.mockResolvedValue([
-      { level: "warning", code: "parts_waiting_too_long", title: "t", message: "m" },
-    ]);
+    getRoleDailySummaryMock.mockResolvedValue(summaryFor("owner"));
     const { admin } = createSupabaseStub({
       timezone: "America/New_York",
       profiles: [{ id: "p1", user_id: "u1", role: "owner" }],
@@ -226,11 +226,11 @@ describe("deliverDailyAssistantDigest", () => {
     expect(result.delivered).toBe(1);
   });
 
-  it("delivers nothing (and does not spam an all-clear message) when there are no notifications", async () => {
+  it("skips delivery (defensively) when the canonical summary comes back blank", async () => {
     const { deliverDailyAssistantDigest } = await import(
       "@/features/operations/server/deliverDailyAssistantDigest"
     );
-    getOpsNotificationsMock.mockResolvedValue([]);
+    getRoleDailySummaryMock.mockResolvedValue(summaryFor("owner", "   "));
     const { admin, insertedMessages } = createSupabaseStub({
       timezone: "UTC",
       profiles: [{ id: "p1", user_id: "u1", role: "owner" }],
@@ -242,23 +242,44 @@ describe("deliverDailyAssistantDigest", () => {
       now: new Date("2026-09-15T07:00:00.000Z"),
     });
 
-    expect(result.inMorningWindow).toBe(true);
     expect(result.delivered).toBe(0);
     expect(insertedMessages).toHaveLength(0);
   });
 
-  it("delivers a digest into a new thread for each eligible shop-wide staff member, excluding mechanics", async () => {
+  it("bounds an oversized canonical summary instead of failing the content-size constraint", async () => {
     const { deliverDailyAssistantDigest } = await import(
       "@/features/operations/server/deliverDailyAssistantDigest"
     );
-    getOpsNotificationsMock.mockResolvedValue([
-      { level: "urgent", code: "work_order_on_hold_too_long", title: "On hold", message: "WO #1 on hold." },
-      { level: "warning", code: "parts_waiting_too_long", title: "Parts waiting", message: "WO #2 waiting." },
-    ]);
+    getRoleDailySummaryMock.mockResolvedValue(summaryFor("manager", "x".repeat(20000)));
+    const { admin, insertedMessages } = createSupabaseStub({
+      timezone: "UTC",
+      profiles: [{ id: "p1", user_id: "u1", role: "manager" }],
+    });
+
+    const result = await deliverDailyAssistantDigest({
+      admin: admin as never,
+      shopId: "shop-1",
+      now: new Date("2026-09-15T07:00:00.000Z"),
+    });
+
+    expect(result.delivered).toBe(1);
+    const content = insertedMessages[0].content as string;
+    expect(content.length).toBeLessThanOrEqual(15000);
+    expect(content).toContain("truncated");
+  });
+
+  it("delivers each eligible shop-wide staff member their own role-aware summary into a new thread, excluding mechanics", async () => {
+    const { deliverDailyAssistantDigest } = await import(
+      "@/features/operations/server/deliverDailyAssistantDigest"
+    );
+    getRoleDailySummaryMock.mockImplementation(
+      async (params: { role: string | null }) => summaryFor(params.role ?? "owner"),
+    );
     const { admin, createdThreads, insertedMessages } = createSupabaseStub({
       timezone: "UTC",
       profiles: [
         { id: "p-owner", user_id: "u-owner", role: "owner" },
+        { id: "p-advisor", user_id: "u-advisor", role: "advisor" },
         { id: "p-mechanic", user_id: "u-mechanic", role: "mechanic" },
       ],
     });
@@ -269,27 +290,37 @@ describe("deliverDailyAssistantDigest", () => {
       now: new Date("2026-09-15T07:00:00.000Z"),
     });
 
-    expect(result.eligibleStaff).toBe(1);
-    expect(result.delivered).toBe(1);
-    expect(createdThreads).toEqual([{ shop_id: "shop-1", user_id: "u-owner" }]);
-    expect(insertedMessages).toHaveLength(1);
-    expect(insertedMessages[0]).toMatchObject({
+    expect(result.eligibleStaff).toBe(2);
+    expect(result.delivered).toBe(2);
+    expect(createdThreads).toEqual(
+      expect.arrayContaining([
+        { shop_id: "shop-1", user_id: "u-owner" },
+        { shop_id: "shop-1", user_id: "u-advisor" },
+      ]),
+    );
+    expect(createdThreads).toHaveLength(2);
+    expect(insertedMessages).toHaveLength(2);
+    expect(getRoleDailySummaryMock).not.toHaveBeenCalledWith(
+      expect.objectContaining({ role: "mechanic" }),
+    );
+
+    const ownerMessage = insertedMessages.find(
+      (m) => (m.payload as Record<string, unknown>).role === "owner",
+    );
+    expect(ownerMessage).toMatchObject({
       role: "assistant",
       kind: "state_update",
       client_message_id: "daily-digest:2026-09-15",
+      content: "owner snapshot for today.",
     });
-    expect(insertedMessages[0].content).toContain("On hold");
-    expect(insertedMessages[0].content).toContain("Parts waiting");
   });
 
-  it("resolves the auth user id via profiles.user_id, falling back to profiles.id for unlinked profiles", async () => {
+  it("calls the canonical summary contract with the resolved auth user id, profile id, and role for each staff member", async () => {
     const { deliverDailyAssistantDigest } = await import(
       "@/features/operations/server/deliverDailyAssistantDigest"
     );
-    getOpsNotificationsMock.mockResolvedValue([
-      { level: "warning", code: "parts_waiting_too_long", title: "t", message: "m" },
-    ]);
-    const { admin, createdThreads } = createSupabaseStub({
+    getRoleDailySummaryMock.mockResolvedValue(summaryFor("admin"));
+    const { admin } = createSupabaseStub({
       timezone: "UTC",
       profiles: [{ id: "legacy-profile-1", user_id: null, role: "admin" }],
     });
@@ -300,18 +331,21 @@ describe("deliverDailyAssistantDigest", () => {
       now: new Date("2026-09-15T07:00:00.000Z"),
     });
 
-    expect(createdThreads).toEqual([
-      { shop_id: "shop-1", user_id: "legacy-profile-1" },
-    ]);
+    expect(getRoleDailySummaryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shopId: "shop-1",
+        userId: "legacy-profile-1",
+        profileId: "legacy-profile-1",
+        role: "admin",
+        supabaseClient: admin,
+      }),
+    );
   });
 
-  it("is idempotent per shop-local day when the digest already exists in the recipient's latest thread", async () => {
+  it("is idempotent per shop-local day when the digest already exists in the recipient's latest thread — never calling the summary contract at all", async () => {
     const { deliverDailyAssistantDigest } = await import(
       "@/features/operations/server/deliverDailyAssistantDigest"
     );
-    getOpsNotificationsMock.mockResolvedValue([
-      { level: "warning", code: "parts_waiting_too_long", title: "t", message: "m" },
-    ]);
     const { admin, insertedMessages } = createSupabaseStub({
       timezone: "UTC",
       profiles: [{ id: "p1", user_id: "u1", role: "owner" }],
@@ -329,15 +363,13 @@ describe("deliverDailyAssistantDigest", () => {
     expect(result.alreadyDelivered).toBe(1);
     expect(result.errors).toHaveLength(0);
     expect(insertedMessages).toHaveLength(0);
+    expect(getRoleDailySummaryMock).not.toHaveBeenCalled();
   });
 
   it("recognizes today's digest already delivered in a different, non-latest thread and does not deliver a second copy", async () => {
     const { deliverDailyAssistantDigest } = await import(
       "@/features/operations/server/deliverDailyAssistantDigest"
     );
-    getOpsNotificationsMock.mockResolvedValue([
-      { level: "warning", code: "parts_waiting_too_long", title: "t", message: "m" },
-    ]);
     // Simulates a recipient switching to a new conversation between two
     // hourly runs inside the same morning window: "thread-new" is now the
     // latest active thread, but the digest already landed in "thread-old"
@@ -366,9 +398,7 @@ describe("deliverDailyAssistantDigest", () => {
     const { deliverDailyAssistantDigest } = await import(
       "@/features/operations/server/deliverDailyAssistantDigest"
     );
-    getOpsNotificationsMock.mockResolvedValue([
-      { level: "warning", code: "parts_waiting_too_long", title: "t", message: "m" },
-    ]);
+    getRoleDailySummaryMock.mockResolvedValue(summaryFor("owner"));
     // No thread yet exists in this snapshot (a concurrent run's own insert
     // hasn't been observed by our pre-check), but the actual insert still
     // races into a unique-index conflict.

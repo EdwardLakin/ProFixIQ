@@ -282,8 +282,9 @@ async function filterComputedNotificationsForUser(params: {
   shopId: string;
   userIds: string[];
   computed: OpsNotification[];
+  supabaseClient?: ReturnType<typeof getServerSupabase>;
 }): Promise<OpsNotification[]> {
-  const supabase = getServerSupabase();
+  const supabase = params.supabaseClient ?? getServerSupabase();
   const userIds = Array.from(
     new Set(params.userIds.map((value) => value.trim()).filter(Boolean)),
   );
@@ -411,8 +412,9 @@ async function filterComputedNotificationsForUser(params: {
 
 async function getDurablePartsPickNotifications(params: {
   shopId: string;
+  supabaseClient?: ReturnType<typeof getServerSupabase>;
 }): Promise<PersistedAssistantNotification[]> {
-  const supabase = getServerSupabase();
+  const supabase = params.supabaseClient ?? getServerSupabase();
   const notifications: PersistedAssistantNotification[] = [];
 
   for (
@@ -644,6 +646,12 @@ export function syncAssistantNotifications(params: {
   userId?: string | null;
   assignmentUserIds?: string[];
   role?: string | null;
+  /**
+   * Injected client for callers outside a request context (a cron sweep).
+   * Defaults to the cookie-backed, request-scoped client for every existing
+   * interactive caller — purely additive, no behavior change without it.
+   */
+  supabaseClient?: ReturnType<typeof getServerSupabase>;
 }): Promise<PersistedAssistantNotification[]> {
   const {
     shopId,
@@ -675,6 +683,7 @@ async function performSyncAssistantNotifications(params: {
   userId?: string | null;
   assignmentUserIds?: string[];
   role?: string | null;
+  supabaseClient?: ReturnType<typeof getServerSupabase>;
 }): Promise<PersistedAssistantNotification[]> {
   const {
     shopId,
@@ -686,7 +695,7 @@ async function performSyncAssistantNotifications(params: {
     throw new Error("A shop workforce role is required for notifications");
   }
 
-  const supabase = getServerSupabase();
+  const supabase = params.supabaseClient ?? getServerSupabase();
   const notificationWriter = getAssistantNotificationWriter();
   await markAssistantNotificationTrustedWriterRollout(notificationWriter);
   const now = new Date().toISOString();
@@ -709,16 +718,17 @@ async function performSyncAssistantNotifications(params: {
   );
 
   const durablePartsPickNotifications = canSeePartsPickWorkflow
-    ? await getDurablePartsPickNotifications({ shopId })
+    ? await getDurablePartsPickNotifications({ shopId, supabaseClient: supabase })
     : [];
 
-  let computed = await getOpsNotifications(shopId);
+  let computed = await getOpsNotifications(shopId, supabase);
 
   if (userScoped && userId) {
     computed = await filterComputedNotificationsForUser({
       shopId,
       userIds: assignmentUserIds,
       computed,
+      supabaseClient: supabase,
     });
   } else {
     // Shop-scoped only (mechanics don't see this — the same as every other

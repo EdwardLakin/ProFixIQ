@@ -10,6 +10,15 @@ const cronRoute = readFileSync(
   "utf8",
 );
 const vercelConfig = readFileSync("vercel.json", "utf8");
+const roleDailySummaryModule = readFileSync(
+  "features/agent/server/getRoleDailySummary.ts",
+  "utf8",
+);
+const syncAssistantNotificationsModule = readFileSync(
+  "features/agent/server/syncAssistantNotifications.ts",
+  "utf8",
+);
+const getBookingsModule = readFileSync("features/agent/tools/getBookings.ts", "utf8");
 
 describe("Phase 7 — proactive daily digest delivered into the durable assistant thread", () => {
   it("reuses the existing shop-assistant conversation tables — no new schema", () => {
@@ -52,8 +61,15 @@ describe("Phase 7 — proactive daily digest delivered into the durable assistan
     expect(digestModule).toContain("already_delivered");
   });
 
-  it("skips silently when there is nothing to report, instead of sending a daily all-clear message", () => {
-    expect(digestModule).toContain("if (notifications.length === 0) return null;");
+  it("skips delivery defensively if the canonical summary ever comes back blank, rather than posting an empty message", () => {
+    expect(digestModule).toContain("const trimmed = summary.summaryText.trim();");
+    expect(digestModule).toContain("if (!trimmed) return");
+  });
+
+  it("bounds message content under the shop_assistant_messages content-size constraint, retaining a truncation notice rather than failing the insert", () => {
+    expect(digestModule).toContain("MAX_MESSAGE_CONTENT_LENGTH = 15000");
+    expect(digestModule).toContain("function boundMessageContent(content: string): string {");
+    expect(digestModule).toContain("const content = boundMessageContent(trimmed);");
   });
 
   it("restricts delivery to shop-wide operator roles, never a mechanic's narrower assignment-scoped view", () => {
@@ -65,8 +81,10 @@ describe("Phase 7 — proactive daily digest delivered into the durable assistan
     expect(digestModule).toContain("profile.user_id ?? profile.id");
   });
 
-  it("reuses the shared, already-cron-safe ops-notification computation rather than a bespoke summary path", () => {
-    expect(digestModule).toContain("getOpsNotifications(shopId, admin)");
+  it("delivers the canonical, role-aware daily summary contract — the same one the on-demand Today panel uses — rather than a bespoke parallel formatter", () => {
+    expect(digestModule).toContain("getRoleDailySummary(");
+    expect(digestModule).toContain("supabaseClient: admin");
+    expect(digestModule).not.toContain("getOpsNotifications(");
   });
 
   it("is authenticated as an internal cron route, not a user-facing one", () => {
@@ -80,5 +98,40 @@ describe("Phase 7 — proactive daily digest delivered into the durable assistan
     expect(vercelConfig).toMatch(
       /"path":\s*"\/api\/internal\/daily-assistant-digest",\s*\n\s*"schedule":\s*"42 \* \* \* \*"/,
     );
+  });
+
+  it("getRoleDailySummary accepts an injected client and threads it through every dependency it calls, defaulting to the interactive client for every existing caller", () => {
+    expect(roleDailySummaryModule).toContain("supabaseClient?: ReturnType<typeof getServerSupabase>");
+    expect(roleDailySummaryModule).toContain("supabaseClient: params.supabaseClient");
+    expect(roleDailySummaryModule).toMatch(
+      /runGetBookings\(\{ limit: 10 \}, ctx, params\.supabaseClient\)/,
+    );
+    expect(roleDailySummaryModule).toMatch(
+      /runGetStalledWorkOrders\(\{\}, ctx, params\.supabaseClient\)/,
+    );
+    expect(roleDailySummaryModule).toMatch(
+      /runGetShopCurrentStatus\(\{\}, ctx, params\.supabaseClient\)/,
+    );
+    expect(roleDailySummaryModule).toContain("ctx,\n        params.supabaseClient,");
+  });
+
+  it("syncAssistantNotifications accepts and threads the same injected client, so it does not silently fall back to an unauthenticated cookie-backed client from a cron context", () => {
+    expect(syncAssistantNotificationsModule).toContain(
+      "supabaseClient?: ReturnType<typeof getServerSupabase>",
+    );
+    expect(syncAssistantNotificationsModule).toContain(
+      "const supabase = params.supabaseClient ?? getServerSupabase();",
+    );
+    expect(syncAssistantNotificationsModule).toContain("getOpsNotifications(shopId, supabase)");
+    expect(syncAssistantNotificationsModule).toContain(
+      "getDurablePartsPickNotifications({ shopId, supabaseClient: supabase })",
+    );
+  });
+
+  it("every underlying tool a role summary can call accepts the same optional injected client, purely additively", () => {
+    expect(getBookingsModule).toContain(
+      "supabaseClient?: ReturnType<typeof getServerSupabase>",
+    );
+    expect(getBookingsModule).toContain("const supabase = supabaseClient ?? getServerSupabase();");
   });
 });
