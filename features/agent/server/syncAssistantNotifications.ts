@@ -12,6 +12,10 @@ import {
   markAssistantNotificationTrustedWriterRollout,
 } from "./supabase";
 import { getOpsNotifications, type OpsNotification } from "./getOpsNotifications";
+import {
+  AUTOMATED_PART_REQUEST_NOTES_MARKER,
+  AUTOMATION_CAPABILITY as APPOINTMENT_PARTS_PREPARATION_CAPABILITY,
+} from "@/features/operations/server/appointmentPartsPreparation/prepareAppointmentPartsRequest";
 
 export type PersistedAssistantNotification = {
   id: string;
@@ -102,6 +106,8 @@ const PARTS_PICK_TERMINAL_ITEM_STATUSES = new Set([
 
 const PARTS_PICK_REQUEST_PAGE_SIZE = 200;
 const PARTS_PICK_ITEM_PAGE_SIZE = 1000;
+
+const AI_PART_REQUEST_PAGE_SIZE = 200;
 
 function normalizeAssistantNotificationStatus(
   value: unknown,
@@ -548,6 +554,80 @@ async function getDurablePartsPickNotifications(params: {
   return notifications;
 }
 
+/**
+ * Phase 6 of the dashboard assistant plan: the audit's own GREEN example
+ * ("emit an internal operational notification from a verified state
+ * transition") for Phase 5's `prepare_appointment_parts_request` command.
+ *
+ * A part_requests row this command created is identified durably — no new
+ * column on the shared, pre-existing part_requests table, and no trigger
+ * attached to it — by two facts already true of every row it creates: its
+ * notes begin with AUTOMATED_PART_REQUEST_NOTES_MARKER, and its
+ * requested_by is null (a service-role caller has no auth.uid(); every
+ * other caller of create_part_request_with_items is a signed-in user).
+ *
+ * Unlike the manual parts-pick signal below, this returns plain
+ * OpsNotification candidates rather than a synthetic, already-"persisted"
+ * shape: they get appended to `computed` and go through the exact same
+ * fingerprint/upsert/resolve pipeline as every other ops notification, so
+ * the resulting row has a real assistant_notifications id and the
+ * existing acknowledge route (which updates by that id) works on it —
+ * rather than inventing a parallel, unacknowledgeable durable path.
+ * Purely informational: this never mutates a work order, approval, or the
+ * request itself.
+ */
+async function buildAutomatedPartsRequestOpsNotifications(params: {
+  supabase: ReturnType<typeof getServerSupabase>;
+  shopId: string;
+}): Promise<OpsNotification[]> {
+  const notifications: OpsNotification[] = [];
+
+  for (
+    let requestOffset = 0;
+    ;
+    requestOffset += AI_PART_REQUEST_PAGE_SIZE
+  ) {
+    const { data: requests, error } = await params.supabase
+      .from("part_requests")
+      .select("id, shop_id, work_order_id, job_id, notes, created_at, requested_by")
+      .eq("shop_id", params.shopId)
+      .is("requested_by", null)
+      .ilike("notes", `${AUTOMATED_PART_REQUEST_NOTES_MARKER}%`)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true })
+      .range(requestOffset, requestOffset + AI_PART_REQUEST_PAGE_SIZE - 1);
+
+    if (error) throw new Error(error.message);
+
+    const page = requests ?? [];
+    for (const request of page) {
+      if (!request.created_at || !request.work_order_id) continue;
+
+      notifications.push({
+        level: "info",
+        code: "ai_parts_request_prepared",
+        title: "AI prepared a parts request",
+        message:
+          "An internal parts request was automatically prepared for an upcoming booked job from a learned repair. Review it before it is ordered.",
+        href: `/parts/requests/${request.id}`,
+        entityType: "part_request",
+        entityId: request.id,
+        createdAt: request.created_at,
+        evidence: {
+          workOrderId: request.work_order_id,
+          workOrderLineId: request.job_id,
+          requestId: request.id,
+          automationCapability: APPOINTMENT_PARTS_PREPARATION_CAPABILITY,
+        },
+      });
+    }
+
+    if (page.length < AI_PART_REQUEST_PAGE_SIZE) break;
+  }
+
+  return notifications;
+}
+
 // Two independent surfaces on the same page (the live shop-state widget and
 // the suggested-actions/daily-summary panel) can each ask to sync
 // notifications for the same actor within the same request wave. Coalesce
@@ -640,6 +720,15 @@ async function performSyncAssistantNotifications(params: {
       userIds: assignmentUserIds,
       computed,
     });
+  } else {
+    // Shop-scoped only (mechanics don't see this — the same as every other
+    // work_order/part_request-entity notification, which
+    // filterComputedNotificationsForUser above already excludes by default
+    // for any entityType it doesn't special-case).
+    computed = [
+      ...computed,
+      ...(await buildAutomatedPartsRequestOpsNotifications({ supabase, shopId })),
+    ];
   }
 
   const fingerprints = computed.map((item) =>

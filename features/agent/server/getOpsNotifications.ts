@@ -22,7 +22,8 @@ export type OpsNotificationCode =
   | "optimization_pricing_normalization"
   | "optimization_inspection_coverage_gap"
   | "optimization_missed_revenue"
-  | "optimization_review_queued_suggestions";
+  | "optimization_review_queued_suggestions"
+  | "ai_parts_request_prepared";
 
 export type OpsNotification = {
   level: OpsNotificationLevel;
