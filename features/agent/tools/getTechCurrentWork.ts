@@ -52,9 +52,13 @@ function getWorkOrderInfo(
   return wo;
 }
 
-export async function runGetTechCurrentWork(rawInput: Input, ctx: ToolContext) {
+export async function runGetTechCurrentWork(
+  rawInput: Input,
+  ctx: ToolContext,
+  supabaseClient?: ReturnType<typeof getServerSupabase>,
+) {
   const input = InputSchema.parse(rawInput);
-  const supabase = getServerSupabase();
+  const supabase = supabaseClient ?? getServerSupabase();
 
   let techIds = Array.from(
     new Set(input.techIds ?? (input.techId ? [input.techId] : [])),

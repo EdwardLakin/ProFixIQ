@@ -38,8 +38,12 @@ function getWorkOrder(workOrder: WorkOrderRef) {
   return Array.isArray(workOrder) ? (workOrder[0] ?? null) : workOrder;
 }
 
-export async function runGetShopCurrentStatus(_: object, ctx: ToolContext) {
-  const supabase = getServerSupabase();
+export async function runGetShopCurrentStatus(
+  _: object,
+  ctx: ToolContext,
+  supabaseClient?: ReturnType<typeof getServerSupabase>,
+) {
+  const supabase = supabaseClient ?? getServerSupabase();
 
   const [
     { data: lines, error: linesError },

@@ -6,6 +6,7 @@ import {
   canonicalizeRole,
 } from "@/features/shared/lib/rbac";
 import { syncAssistantNotifications } from "./syncAssistantNotifications";
+import type { getServerSupabase } from "./supabase";
 import { runGetBookings } from "../tools/getBookings";
 import { runGetShopCurrentStatus } from "../tools/getShopCurrentStatus";
 import { runGetStalledWorkOrders } from "../tools/getStalledWorkOrders";
@@ -556,6 +557,13 @@ export async function getRoleDailySummary(params: {
   profileId?: string;
   role: string | null;
   signal?: AbortSignal;
+  /**
+   * Injected client for callers outside a request context (a cron sweep,
+   * e.g. the daily assistant digest). Every dependency below defaults to
+   * the cookie-backed, request-scoped client when this is omitted — purely
+   * additive, no behavior change for any existing interactive caller.
+   */
+  supabaseClient?: ReturnType<typeof getServerSupabase>;
 }): Promise<DailySummaryResult> {
   const canSyncNotifications = canAccessAssistantNotifications(params.role);
   const role = canSyncNotifications
@@ -583,6 +591,7 @@ export async function getRoleDailySummary(params: {
         userId: params.profileId ?? params.userId,
         assignmentUserIds: notificationUserIds,
         role,
+        supabaseClient: params.supabaseClient,
       })
     : [];
   params.signal?.throwIfAborted();
@@ -614,16 +623,20 @@ export async function getRoleDailySummary(params: {
   const shouldFetchTechWork = role === "mechanic";
 
   const bookings = shouldFetchBookings
-    ? await runGetBookings({ limit: 10 }, ctx)
+    ? await runGetBookings({ limit: 10 }, ctx, params.supabaseClient)
     : null;
   const stalled = shouldFetchStalled
-    ? await runGetStalledWorkOrders({}, ctx)
+    ? await runGetStalledWorkOrders({}, ctx, params.supabaseClient)
     : null;
   const shopStatus = shouldFetchShopStatus
-    ? await runGetShopCurrentStatus({}, ctx)
+    ? await runGetShopCurrentStatus({}, ctx, params.supabaseClient)
     : null;
   const techWork = shouldFetchTechWork
-    ? await runGetTechCurrentWork({ techIds: notificationUserIds }, ctx)
+    ? await runGetTechCurrentWork(
+        { techIds: notificationUserIds },
+        ctx,
+        params.supabaseClient,
+      )
     : null;
 
   const actionItems = dedupeStrings(

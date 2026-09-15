@@ -210,7 +210,7 @@ describe("assistant notification shared persistence contract", () => {
     );
     expect(dailySummarySource).toContain("profileId: params.profileId");
     expect(dailySummarySource).toContain(
-      "runGetTechCurrentWork({ techIds: notificationUserIds }, ctx)",
+      "{ techIds: notificationUserIds },\n        ctx,",
     );
     expect(techWorkSource).toContain('.in("assigned_tech_id", techIds)');
     expect(

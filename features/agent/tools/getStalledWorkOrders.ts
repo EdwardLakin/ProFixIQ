@@ -2,8 +2,12 @@ import { getServerSupabase } from "../server/supabase";
 import { ageHours, isWorkOrderFlowStalled } from "../server/flowHealth";
 import { applyToolAbortSignal, type ToolContext } from "../lib/toolTypes";
 
-export async function runGetStalledWorkOrders(_: object, ctx: ToolContext) {
-  const supabase = getServerSupabase();
+export async function runGetStalledWorkOrders(
+  _: object,
+  ctx: ToolContext,
+  supabaseClient?: ReturnType<typeof getServerSupabase>,
+) {
+  const supabase = supabaseClient ?? getServerSupabase();
 
   const { data, error } = await applyToolAbortSignal(
     supabase
