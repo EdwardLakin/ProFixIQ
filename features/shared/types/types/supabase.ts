@@ -1547,6 +1547,51 @@ export type Database = {
           },
         ]
       }
+      appointment_work_order_staging: {
+        Row: {
+          booking_id: string
+          created_at: string
+          generated_at: string
+          id: string
+          shop_id: string
+          staged_lines: Json
+          updated_at: string
+        }
+        Insert: {
+          booking_id: string
+          created_at?: string
+          generated_at?: string
+          id?: string
+          shop_id: string
+          staged_lines?: Json
+          updated_at?: string
+        }
+        Update: {
+          booking_id?: string
+          created_at?: string
+          generated_at?: string
+          id?: string
+          shop_id?: string
+          staged_lines?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointment_work_order_staging_booking_id_fkey"
+            columns: ["booking_id"]
+            isOneToOne: true
+            referencedRelation: "bookings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointment_work_order_staging_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       apps: {
         Row: {
           default_route: string
