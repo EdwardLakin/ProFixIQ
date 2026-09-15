@@ -123,7 +123,7 @@ describe("resolveAppointmentWorkOrderStagingCandidate", () => {
     expect(result.eligible).toBe(false);
   });
 
-  it("skips an item with no required parts defined — not an exact, actionable mapping", async () => {
+  it("stages a labor-only item with no required parts at all — just as exact and actionable as one that needs parts, unlike Phase 5's parts-request command where 'no parts to request' means ineligible", async () => {
     const { resolveAppointmentWorkOrderStagingCandidate } = await import(MODULE_PATH);
     const result = resolveAppointmentWorkOrderStagingCandidate({
       bookingId: BOOKING_ID,
@@ -131,6 +131,7 @@ describe("resolveAppointmentWorkOrderStagingCandidate", () => {
       preparationStatus: "active",
       matchedMenuItems: [
         matchedItem({
+          name: "Front brake inspection",
           partsReadiness: [
             {
               partName: "Optional trim clip",
@@ -145,7 +146,16 @@ describe("resolveAppointmentWorkOrderStagingCandidate", () => {
         }),
       ],
     });
-    expect(result.eligible).toBe(false);
+    expect(result.eligible).toBe(true);
+    if (!result.eligible) return;
+    expect(result.candidate.eligibleLines).toEqual([
+      {
+        menuRepairItemId: "menu-1",
+        name: "Front brake inspection",
+        laborHours: 1.5,
+        parts: [],
+      },
+    ]);
   });
 
   it("skips an item whose required part is short or unmatched, but an optional part being short doesn't block it", async () => {

@@ -171,6 +171,34 @@ describe("syncAppointmentWorkOrderStaging", () => {
     expect(clearAppointmentWorkOrderStagingMock).not.toHaveBeenCalled();
   });
 
+  it("clears an already-staged booking once execution is no longer enabled, even though it is still eligible — disabling the automation must retract its previously staged output, not leave it stale", async () => {
+    const { supabase } = createSupabase({
+      preparationPages: [[preparationRow({ booking_id: "booking-1" })]],
+      stagedPages: [[{ booking_id: "booking-1" }]],
+    });
+    resolveAppointmentWorkOrderStagingCandidateMock.mockReturnValue({
+      eligible: true,
+      candidate: { bookingId: "booking-1", shopId: SHOP_ID, eligibleLines: [] },
+    });
+    // Still eligible, but execution is disabled (owner toggle off, or the
+    // master kill switch) — finalize records evidence but does not write.
+    finalizeAppointmentWorkOrderStagingMock.mockResolvedValue({ executed: false });
+    clearAppointmentWorkOrderStagingMock.mockResolvedValue(undefined);
+
+    const { syncAppointmentWorkOrderStaging } = await import(MODULE_PATH);
+    const result = await syncAppointmentWorkOrderStaging({
+      supabase: supabase as never,
+      shopId: SHOP_ID,
+    });
+
+    expect(result.eligible).toBe(1);
+    expect(result.executed).toBe(0);
+    expect(result.cleared).toBe(1);
+    expect(clearAppointmentWorkOrderStagingMock).toHaveBeenCalledWith(
+      expect.objectContaining({ shopId: SHOP_ID, bookingIds: ["booking-1"] }),
+    );
+  });
+
   it("collects a per-booking error without aborting the rest of the sweep", async () => {
     const { supabase } = createSupabase({
       preparationPages: [

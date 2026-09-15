@@ -51,12 +51,16 @@ export type ResolveAppointmentWorkOrderStagingResult =
  * Pure function: given an already-computed appointment_preparations row's
  * status and matched menu items (Phase 4's projection — no additional
  * queries needed here), decide which matched repairs are exact and
- * parts-ready enough to stage. A matched item is eligible only when it is
- * active, has at least one required part, and every required part's
- * readiness is "ready" — an optional part being short doesn't block
- * staging, mirroring the same required-parts-first verdict rule the
- * day-of readiness notification and the staff-facing preparation list
- * both already use.
+ * parts-ready enough to stage. A matched item is eligible when it is
+ * active and every required part's readiness is "ready" — an optional
+ * part being short doesn't block staging, mirroring the same
+ * required-parts-first verdict rule the day-of readiness notification
+ * and the staff-facing preparation list both already use. A labor-only
+ * repair (no required parts at all — an inspection, alignment, or
+ * diagnostic) is just as exact and actionable as one that needs parts,
+ * so it is eligible too, not excluded: unlike Phase 5's parts-request
+ * command, this command's artifact is a repair line, not a parts
+ * request, so "no parts to request" isn't a reason to skip it here.
  */
 export function resolveAppointmentWorkOrderStagingCandidate(input: {
   bookingId: string;
@@ -75,7 +79,6 @@ export function resolveAppointmentWorkOrderStagingCandidate(input: {
     if (!item.isActive) continue;
 
     const requiredParts = item.partsReadiness.filter((line) => line.isRequired);
-    if (requiredParts.length === 0) continue;
     if (requiredParts.some((line) => line.status !== "ready")) continue;
 
     eligibleLines.push({

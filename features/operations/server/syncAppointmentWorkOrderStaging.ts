@@ -72,10 +72,13 @@ async function loadExistingStagedBookingIds(input: {
  * Sweep a shop's active appointment_preparations (Phase 4's already-
  * computed projection — no additional matching logic here) for Phase 6's
  * stage_appointment_work_order_lines GREEN command, then clear any
- * previously staged proposal that is no longer eligible this run
- * (converted, cancelled, or no longer parts-ready). This table is a live
- * "current proposal" cache, not a durable history — appointment_work_order_staging's
- * only source of truth is this sweep re-evaluating from scratch each time.
+ * previously staged proposal that this sweep did not just (re)write —
+ * whether because the booking converted, was cancelled, is no longer
+ * parts-ready, or execution simply isn't enabled for this shop right now.
+ * This table is a live "current proposal" cache, not a durable history —
+ * appointment_work_order_staging's only source of truth is this sweep
+ * re-evaluating from scratch each time, so disabling the automation
+ * retracts its previously staged output on the very next sweep.
  */
 export async function syncAppointmentWorkOrderStaging(input: {
   supabase: ReturnType<typeof createAdminSupabase>;
@@ -101,7 +104,13 @@ export async function syncAppointmentWorkOrderStaging(input: {
 
   let eligible = 0;
   let executed = 0;
-  const eligibleBookingIds = new Set<string>();
+  // Tracks bookings whose staged row was actually (re)written this sweep —
+  // deliberately not the same as "eligible": a booking can be eligible
+  // while execution stays disabled (the shop's automation policy, or the
+  // master kill switch, isn't enabled for work_order_line_creation), and
+  // in that case any previously staged row for it must still be cleared
+  // below, not kept around as stale output from a now-disabled command.
+  const shouldRemainStagedBookingIds = new Set<string>();
 
   for (const row of rows) {
     try {
@@ -115,13 +124,15 @@ export async function syncAppointmentWorkOrderStaging(input: {
       if (!resolved.eligible) continue;
 
       eligible += 1;
-      eligibleBookingIds.add(row.booking_id);
 
       const result = await finalizeAppointmentWorkOrderStaging({
         admin: supabase,
         candidate: resolved.candidate,
       });
-      if (result.executed) executed += 1;
+      if (result.executed) {
+        executed += 1;
+        shouldRemainStagedBookingIds.add(row.booking_id);
+      }
     } catch (error) {
       errors.push(
         `booking ${row.booking_id}: ${error instanceof Error ? error.message : "unknown error"}`,
@@ -136,7 +147,7 @@ export async function syncAppointmentWorkOrderStaging(input: {
     errors.push(existingStagedError);
   } else {
     const staleBookingIds = existingStagedBookingIds.filter(
-      (bookingId) => !eligibleBookingIds.has(bookingId),
+      (bookingId) => !shouldRemainStagedBookingIds.has(bookingId),
     );
     if (staleBookingIds.length > 0) {
       try {
