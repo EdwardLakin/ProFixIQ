@@ -62,8 +62,14 @@ describe("Phase 7 — proactive daily digest delivered into the durable assistan
   });
 
   it("skips delivery defensively if the canonical summary ever comes back blank, rather than posting an empty message", () => {
-    expect(digestModule).toContain("const content = summary.summaryText.trim();");
-    expect(digestModule).toContain("if (!content) return");
+    expect(digestModule).toContain("const trimmed = summary.summaryText.trim();");
+    expect(digestModule).toContain("if (!trimmed) return");
+  });
+
+  it("bounds message content under the shop_assistant_messages content-size constraint, retaining a truncation notice rather than failing the insert", () => {
+    expect(digestModule).toContain("MAX_MESSAGE_CONTENT_LENGTH = 15000");
+    expect(digestModule).toContain("function boundMessageContent(content: string): string {");
+    expect(digestModule).toContain("const content = boundMessageContent(trimmed);");
   });
 
   it("restricts delivery to shop-wide operator roles, never a mechanic's narrower assignment-scoped view", () => {

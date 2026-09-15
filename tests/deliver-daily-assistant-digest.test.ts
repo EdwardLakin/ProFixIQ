@@ -246,6 +246,28 @@ describe("deliverDailyAssistantDigest", () => {
     expect(insertedMessages).toHaveLength(0);
   });
 
+  it("bounds an oversized canonical summary instead of failing the content-size constraint", async () => {
+    const { deliverDailyAssistantDigest } = await import(
+      "@/features/operations/server/deliverDailyAssistantDigest"
+    );
+    getRoleDailySummaryMock.mockResolvedValue(summaryFor("manager", "x".repeat(20000)));
+    const { admin, insertedMessages } = createSupabaseStub({
+      timezone: "UTC",
+      profiles: [{ id: "p1", user_id: "u1", role: "manager" }],
+    });
+
+    const result = await deliverDailyAssistantDigest({
+      admin: admin as never,
+      shopId: "shop-1",
+      now: new Date("2026-09-15T07:00:00.000Z"),
+    });
+
+    expect(result.delivered).toBe(1);
+    const content = insertedMessages[0].content as string;
+    expect(content.length).toBeLessThanOrEqual(15000);
+    expect(content).toContain("truncated");
+  });
+
   it("delivers each eligible shop-wide staff member their own role-aware summary into a new thread, excluding mechanics", async () => {
     const { deliverDailyAssistantDigest } = await import(
       "@/features/operations/server/deliverDailyAssistantDigest"

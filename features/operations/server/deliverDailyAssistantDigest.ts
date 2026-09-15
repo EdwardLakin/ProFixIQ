@@ -32,6 +32,12 @@ const MORNING_WINDOW_START_HOUR = 6;
 const MORNING_WINDOW_END_HOUR = 10;
 const DIGEST_MESSAGE_KIND = "state_update" as const;
 const DIGEST_SOURCE = "daily_assistant_digest" as const;
+// shop_assistant_messages_content_size_chk caps content at 16000 chars. A
+// busy shop's canonical summary (e.g. a manager's shop-status snapshot,
+// which can list many active jobs) is not itself bounded to that limit, so
+// stay well under it with room for a truncation notice rather than let a
+// legitimate shop's digest fail its insert outright.
+const MAX_MESSAGE_CONTENT_LENGTH = 15000;
 
 export type DailyAssistantDigestSummary = {
   shopId: string;
@@ -41,6 +47,15 @@ export type DailyAssistantDigestSummary = {
   alreadyDelivered: number;
   errors: string[];
 };
+
+function boundMessageContent(content: string): string {
+  if (content.length <= MAX_MESSAGE_CONTENT_LENGTH) return content;
+  const truncationNotice = "\n\n…(truncated — see the dashboard for full detail)";
+  return (
+    content.slice(0, MAX_MESSAGE_CONTENT_LENGTH - truncationNotice.length) +
+    truncationNotice
+  );
+}
 
 async function findOrCreateAssistantThread(
   admin: ReturnType<typeof createAdminSupabase>,
@@ -149,8 +164,9 @@ async function deliverDigestToStaffMember(
     role: staff.role,
     supabaseClient: admin,
   });
-  const content = summary.summaryText.trim();
-  if (!content) return "already_delivered";
+  const trimmed = summary.summaryText.trim();
+  if (!trimmed) return "already_delivered";
+  const content = boundMessageContent(trimmed);
 
   const threadId = await findOrCreateAssistantThread(admin, shopId, staff.authUserId);
 

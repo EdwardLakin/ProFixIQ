@@ -14,6 +14,7 @@ type SupabaseStubOptions = {
   latestThreadByUser?: Record<string, string>;
   deliveredThreadIds?: Set<string>;
   conflictThreadIds?: Set<string>;
+  failThreadsListForUser?: string;
 };
 
 function createSupabaseStub(opts: SupabaseStubOptions) {
@@ -62,10 +63,19 @@ function createSupabaseStub(opts: SupabaseStubOptions) {
       return Promise.resolve({ data: { id }, error: null });
     });
     node.then = (
-      resolve: (value: { data: Row[]; error: null }) => unknown,
+      resolve: (value: {
+        data: Row[] | null;
+        error: { message: string } | null;
+      }) => unknown,
       reject?: (reason: unknown) => unknown,
     ) => {
       const userId = filters.user_id as string;
+      if (opts.failThreadsListForUser === userId) {
+        return Promise.resolve({
+          data: null,
+          error: { message: "boom" },
+        }).then(resolve, reject);
+      }
       const rows = (opts.allThreadsByUser?.[userId] ?? []).map((id) => ({ id }));
       return Promise.resolve({ data: rows, error: null }).then(resolve, reject);
     };
@@ -232,10 +242,54 @@ describe("deliverUrgentExceptionAlerts", () => {
     const result = await deliverUrgentExceptionAlerts({ admin: admin as never, shopId: "shop-1" });
 
     expect(result.eligibleStaff).toBe(1);
-    expect(syncAssistantNotificationsMock).toHaveBeenCalledWith(
-      expect.objectContaining({ role: "mechanic", userId: "u1", supabaseClient: admin }),
-    );
     expect(result.delivered).toBe(1);
+  });
+
+  it("scopes a mechanic's notifications by profile id, not just the auth user id — assignment columns store the profile id", async () => {
+    const { deliverUrgentExceptionAlerts } = await import(
+      "@/features/operations/server/deliverUrgentExceptionAlerts"
+    );
+    syncAssistantNotificationsMock.mockResolvedValue([notification({ id: "notif-mech" })]);
+    // A "linked" profile: profiles.id differs from profiles.user_id, as it
+    // does for any normally-linked staff account.
+    const { admin } = createSupabaseStub({
+      profiles: [{ id: "profile-1", user_id: "auth-1", role: "mechanic" }],
+    });
+
+    await deliverUrgentExceptionAlerts({ admin: admin as never, shopId: "shop-1" });
+
+    expect(syncAssistantNotificationsMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        role: "mechanic",
+        userId: "profile-1",
+        assignmentUserIds: expect.arrayContaining(["auth-1", "profile-1"]),
+        supabaseClient: admin,
+      }),
+    );
+  });
+
+  it("computes the shop-wide notification set once and reuses it across every non-mechanic recipient, rather than rerunning the full scan per recipient", async () => {
+    const { deliverUrgentExceptionAlerts } = await import(
+      "@/features/operations/server/deliverUrgentExceptionAlerts"
+    );
+    syncAssistantNotificationsMock.mockResolvedValue([notification({ id: "notif-shared" })]);
+    const { admin, insertedMessages } = createSupabaseStub({
+      profiles: [
+        { id: "p1", user_id: "u1", role: "owner" },
+        { id: "p2", user_id: "u2", role: "manager" },
+        { id: "p3", user_id: "u3", role: "advisor" },
+      ],
+    });
+
+    const result = await deliverUrgentExceptionAlerts({ admin: admin as never, shopId: "shop-1" });
+
+    expect(syncAssistantNotificationsMock).toHaveBeenCalledTimes(1);
+    expect(syncAssistantNotificationsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ shopId: "shop-1", role: "owner", supabaseClient: admin }),
+    );
+    expect(syncAssistantNotificationsMock.mock.calls[0][0]).not.toHaveProperty("userId");
+    expect(result.delivered).toBe(3);
+    expect(insertedMessages).toHaveLength(3);
   });
 
   it("is idempotent forever per (recipient, notification) — a notification id already delivered in a non-latest thread is never delivered again", async () => {
@@ -276,13 +330,11 @@ describe("deliverUrgentExceptionAlerts", () => {
     expect(result.errors).toHaveLength(0);
   });
 
-  it("reports a per-staff failure without aborting the rest of the sweep", async () => {
+  it("reports a shop-wide sync failure once, without attempting any delivery", async () => {
     const { deliverUrgentExceptionAlerts } = await import(
       "@/features/operations/server/deliverUrgentExceptionAlerts"
     );
-    syncAssistantNotificationsMock
-      .mockRejectedValueOnce(new Error("boom"))
-      .mockResolvedValueOnce([notification({ id: "notif-2" })]);
+    syncAssistantNotificationsMock.mockRejectedValue(new Error("boom"));
     const { admin, insertedMessages } = createSupabaseStub({
       profiles: [
         { id: "p1", user_id: "u1", role: "owner" },
@@ -292,7 +344,51 @@ describe("deliverUrgentExceptionAlerts", () => {
 
     const result = await deliverUrgentExceptionAlerts({ admin: admin as never, shopId: "shop-1" });
 
-    expect(result.errors).toEqual(["staff u1: boom"]);
+    expect(result.errors).toEqual(["shop-wide: boom"]);
+    expect(result.delivered).toBe(0);
+    expect(insertedMessages).toHaveLength(0);
+  });
+
+  it("reports one recipient's delivery failure without blocking delivery to the rest of the shop-wide sweep", async () => {
+    const { deliverUrgentExceptionAlerts } = await import(
+      "@/features/operations/server/deliverUrgentExceptionAlerts"
+    );
+    syncAssistantNotificationsMock.mockResolvedValue([notification({ id: "notif-shared" })]);
+    const { admin, insertedMessages } = createSupabaseStub({
+      profiles: [
+        { id: "p1", user_id: "u1", role: "owner" },
+        { id: "p2", user_id: "u2", role: "manager" },
+      ],
+      failThreadsListForUser: "u1",
+    });
+
+    const result = await deliverUrgentExceptionAlerts({ admin: admin as never, shopId: "shop-1" });
+
+    expect(result.errors).toEqual([expect.stringContaining("staff u1:")]);
+    expect(result.delivered).toBe(1);
+    expect(insertedMessages).toHaveLength(1);
+  });
+
+  it("isolates a mechanic's own sync failure from the shared shop-wide delivery", async () => {
+    const { deliverUrgentExceptionAlerts } = await import(
+      "@/features/operations/server/deliverUrgentExceptionAlerts"
+    );
+    syncAssistantNotificationsMock.mockImplementation(
+      async (params: { role: string | null }) => {
+        if (params.role === "mechanic") throw new Error("mechanic boom");
+        return [notification({ id: "notif-shared" })];
+      },
+    );
+    const { admin, insertedMessages } = createSupabaseStub({
+      profiles: [
+        { id: "p1", user_id: "u1", role: "owner" },
+        { id: "p2", user_id: "u2", role: "mechanic" },
+      ],
+    });
+
+    const result = await deliverUrgentExceptionAlerts({ admin: admin as never, shopId: "shop-1" });
+
+    expect(result.errors).toEqual(["staff u2: mechanic boom"]);
     expect(result.delivered).toBe(1);
     expect(insertedMessages).toHaveLength(1);
   });

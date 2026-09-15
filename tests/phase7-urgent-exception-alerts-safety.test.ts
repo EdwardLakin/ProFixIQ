@@ -65,6 +65,22 @@ describe("Phase 7 — event-driven exception alerts delivered into the durable a
     expect(alertsModule).toContain("profile.user_id ?? profile.id");
   });
 
+  it("scopes a mechanic's notification sync by profile id, matching assignment columns, not just the auth user id", () => {
+    expect(alertsModule).toContain("userId: staff.profileId");
+    expect(alertsModule).toContain(
+      "assignmentUserIds: [staff.authUserId, staff.profileId]",
+    );
+  });
+
+  it("computes the shop-wide notification set once and reuses it across every non-mechanic recipient rather than rerunning the full scan per recipient", () => {
+    const block = alertsModule.slice(
+      alertsModule.indexOf("if (nonMechanicStaff.length > 0)"),
+      alertsModule.indexOf("for (const staff of mechanicStaff)"),
+    );
+    expect(block).toContain("syncAssistantNotifications({");
+    expect(block).not.toMatch(/for \([\s\S]{0,200}syncAssistantNotifications\(/);
+  });
+
   it("passes the injected admin client through to syncAssistantNotifications so it never falls back to an unauthenticated cookie-backed client from a cron context", () => {
     expect(alertsModule).toContain("supabaseClient: admin");
   });

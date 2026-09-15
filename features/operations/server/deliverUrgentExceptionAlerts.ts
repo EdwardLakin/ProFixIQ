@@ -1,7 +1,10 @@
 import "server-only";
 
-import { canAccessAssistantNotifications } from "@/features/shared/lib/rbac";
-import { syncAssistantNotifications } from "@/features/agent/server/syncAssistantNotifications";
+import { canAccessAssistantNotifications, canonicalizeRole } from "@/features/shared/lib/rbac";
+import {
+  syncAssistantNotifications,
+  type PersistedAssistantNotification,
+} from "@/features/agent/server/syncAssistantNotifications";
 import type { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 /**
@@ -45,6 +48,20 @@ type ExceptionCandidate = {
   message: string;
   href: string | null;
 };
+
+function toExceptionCandidates(
+  notifications: PersistedAssistantNotification[],
+): ExceptionCandidate[] {
+  return notifications
+    .filter((notification) => notification.level === "critical" && notification.status === "active")
+    .map((notification) => ({
+      id: notification.id,
+      code: notification.code,
+      title: notification.title,
+      message: notification.message,
+      href: notification.href,
+    }));
+}
 
 async function findOrCreateAssistantThread(
   admin: ReturnType<typeof createAdminSupabase>,
@@ -194,6 +211,7 @@ export async function deliverUrgentExceptionAlerts(input: {
     .filter((profile) => canAccessAssistantNotifications(profile.role))
     .map((profile) => ({
       authUserId: profile.user_id ?? profile.id,
+      profileId: profile.id,
       role: profile.role,
     }));
 
@@ -201,31 +219,78 @@ export async function deliverUrgentExceptionAlerts(input: {
   let delivered = 0;
   let alreadyDelivered = 0;
 
-  for (const staff of eligible) {
+  const deliverCandidates = async (
+    authUserId: string,
+    urgent: ExceptionCandidate[],
+  ) => {
+    candidates += urgent.length;
+    for (const notification of urgent) {
+      const outcome = await deliverAlertToStaffMember(admin, shopId, authUserId, notification);
+      if (outcome === "delivered") delivered += 1;
+      else alreadyDelivered += 1;
+    }
+  };
+
+  // Shop-wide (non-mechanic) recipients all see the same threshold-based
+  // notification set — the per-role visibility split inside
+  // syncAssistantNotifications only ever affects durable, non-critical
+  // categories (parts-pick/parts-workflow), never a critical/urgent one —
+  // so compute it once per shop and reuse it, instead of rerunning the
+  // full shop-wide scan (work orders, lines, invoices, staffing,
+  // optimization, suggestions, parts) once per recipient. A shop with many
+  // staff would otherwise make this sweep's duration grow linearly with
+  // headcount, on a cron that runs every ten minutes.
+  const nonMechanicStaff = eligible.filter(
+    (staff) => canonicalizeRole(staff.role) !== "mechanic",
+  );
+  const mechanicStaff = eligible.filter(
+    (staff) => canonicalizeRole(staff.role) === "mechanic",
+  );
+
+  if (nonMechanicStaff.length > 0) {
+    let urgent: ExceptionCandidate[] = [];
     try {
       const notifications = await syncAssistantNotifications({
         shopId,
-        userId: staff.authUserId,
-        assignmentUserIds: [staff.authUserId],
+        role: nonMechanicStaff[0].role,
+        supabaseClient: admin,
+      });
+      urgent = toExceptionCandidates(notifications);
+    } catch (error) {
+      errors.push(
+        `shop-wide: ${error instanceof Error ? error.message : "unknown error"}`,
+      );
+    }
+
+    // Delivery is still isolated per recipient: one recipient's thread
+    // failing to create does not block delivery to the rest.
+    for (const staff of nonMechanicStaff) {
+      try {
+        await deliverCandidates(staff.authUserId, urgent);
+      } catch (error) {
+        errors.push(
+          `staff ${staff.authUserId}: ${error instanceof Error ? error.message : "unknown error"}`,
+        );
+      }
+    }
+  }
+
+  for (const staff of mechanicStaff) {
+    try {
+      // Assignment columns (work_order_lines.assigned_tech_id,
+      // work_order_line_technicians.technician_id, labor segments) store
+      // the canonical profile id, not the auth user id — pass both, the
+      // same way getRoleDailySummary's own notification scoping already
+      // does, or a linked mechanic (profiles.id !== profiles.user_id)
+      // silently gets none of their own assigned critical work.
+      const notifications = await syncAssistantNotifications({
+        shopId,
+        userId: staff.profileId,
+        assignmentUserIds: [staff.authUserId, staff.profileId],
         role: staff.role,
         supabaseClient: admin,
       });
-      const urgent = notifications.filter(
-        (notification) => notification.level === "critical" && notification.status === "active",
-      );
-      candidates += urgent.length;
-
-      for (const notification of urgent) {
-        const outcome = await deliverAlertToStaffMember(admin, shopId, staff.authUserId, {
-          id: notification.id,
-          code: notification.code,
-          title: notification.title,
-          message: notification.message,
-          href: notification.href,
-        });
-        if (outcome === "delivered") delivered += 1;
-        else alreadyDelivered += 1;
-      }
+      await deliverCandidates(staff.authUserId, toExceptionCandidates(notifications));
     } catch (error) {
       errors.push(
         `staff ${staff.authUserId}: ${error instanceof Error ? error.message : "unknown error"}`,
