@@ -151,22 +151,19 @@ export async function POST(req: Request) {
   }
   const idempotencyKey = suppliedKey || randomUUID();
 
-  const { data, error } = (await access.supabase.rpc(
-    "create_menu_item_with_parts_intake",
-    {
-      p_shop_id: access.profile.shop_id,
-      p_actor_profile_id: access.profile.id,
-      p_actor_auth_user_id: access.authUserId,
-      p_idempotency_key: idempotencyKey,
-      p_item: {
-        name,
-        description: body?.item?.description?.trim() || null,
-        labor_time: laborTime ?? null,
-        inspection_template_id: templateId,
-      },
-      p_parts: parts,
+  const { data, error } = (await access.supabase.rpc("create_menu_item_with_parts_intake", {
+    p_shop_id: access.profile.shop_id,
+    p_actor_profile_id: access.profile.id,
+    p_actor_auth_user_id: access.authUserId,
+    p_idempotency_key: idempotencyKey,
+    p_item: {
+      name,
+      description: body?.item?.description?.trim() || null,
+      labor_time: laborTime ?? null,
+      inspection_template_id: templateId,
     },
-  )) as {
+    p_parts: parts,
+  })) as {
     data: CreationResult | null;
     error: { message: string } | null;
   };
