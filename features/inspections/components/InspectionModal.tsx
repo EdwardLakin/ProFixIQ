@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, useCallback } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Dialog } from "@headlessui/react";
+import { createPortal } from "react-dom";
+
 import InspectionHost from "@/features/inspections/components/inspectionHost";
 
 type Props = {
   open: boolean;
   src: string | null;
   title?: string;
-  // ✅ make it required so the modal can actually close
   onClose: () => void;
 };
 
@@ -29,7 +30,6 @@ function deriveScreenTemplateFromUrl(url: URL): string | null {
   const parts = url.pathname.split("/").filter(Boolean);
   const last = parts[parts.length - 1] || "";
 
-  // ✅ If we're on the fill route, screen template comes from ?template=
   if (last === "fill") {
     return url.searchParams.get("template") || null;
   }
@@ -63,6 +63,7 @@ export default function InspectionModal({
   onClose,
 }: Props) {
   const [compact, setCompact] = useState(true);
+  const [workspaceTarget, setWorkspaceTarget] = useState<HTMLElement | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const derived = useMemo(() => {
@@ -84,11 +85,9 @@ export default function InspectionModal({
       const displayTemplate = deriveDisplayTemplateFromUrl(url);
       const params = paramsToObject(url.searchParams);
 
-      // ✅ Force embed mode in the modal
       params.embed = params.embed || "1";
       params.compact = params.compact || "1";
 
-      // Normalize legacy param keys
       const woId =
         url.searchParams.get("workOrderId") ||
         url.searchParams.get("work_order_id") ||
@@ -166,7 +165,39 @@ export default function InspectionModal({
     }
   }, [onClose]);
 
-  // ✅ Close when inspection finishes (FinishInspectionButton dispatches completed + close)
+  // On the Work Order page the repair-lines module already owns the exact
+  // left / center / right workspace footprint. Portal the inspection into
+  // that footprint instead of opening a second navigation surface or modal.
+  // Other callers keep the existing modal fallback unchanged.
+  useEffect(() => {
+    if (!open || typeof document === "undefined") {
+      setWorkspaceTarget(null);
+      return;
+    }
+
+    const target = document.querySelector<HTMLElement>(
+      '[data-workspace-module="repairLines"]',
+    );
+    if (!target) {
+      setWorkspaceTarget(null);
+      return;
+    }
+
+    const previousPosition = target.style.position;
+    const computedPosition = window.getComputedStyle(target).position;
+    if (computedPosition === "static") {
+      target.style.position = "relative";
+    }
+    target.dataset.inspectionWorkspaceHost = "true";
+    setWorkspaceTarget(target);
+
+    return () => {
+      delete target.dataset.inspectionWorkspaceHost;
+      target.style.position = previousPosition;
+      setWorkspaceTarget(null);
+    };
+  }, [open]);
+
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -183,7 +214,7 @@ export default function InspectionModal({
   }, [close]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || workspaceTarget) return;
     const el = scrollRef.current;
     if (!el) return;
 
@@ -225,48 +256,87 @@ export default function InspectionModal({
       el.removeEventListener("touchstart", onTouchStart);
       el.removeEventListener("touchmove", onTouchMove);
     };
-  }, [open]);
+  }, [open, workspaceTarget]);
+
+  const inspectionContent = (
+    <>
+      {derived.missingWOLine && (
+        <div className="m-4 rounded-xl border border-amber-400/50 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
+          <strong>Heads up:</strong>{" "}
+          <code className="font-mono">workOrderLineId</code> is missing; save/finish will be blocked.
+        </div>
+      )}
+
+      {!derived.screenTemplate ? (
+        <div className="m-4 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-6 text-center text-sm text-muted-foreground">
+          No inspection selected.
+        </div>
+      ) : (
+        <InspectionHost
+          template={derived.screenTemplate}
+          embed
+          params={derived.params}
+        />
+      )}
+    </>
+  );
+
+  if (!open) return null;
+
+  if (workspaceTarget) {
+    return createPortal(
+      <section
+        data-inspection-workspace-transition="true"
+        className="absolute inset-0 z-30 min-h-[44rem] overflow-y-auto rounded-[24px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-[0_20px_55px_rgba(15,23,42,0.14)]"
+      >
+        <div className="sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]/95 px-4 py-2.5 backdrop-blur">
+          <div className="min-w-0">
+            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--brand-primary)]">
+              Inspection workspace
+            </div>
+            <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
+              {derived.displayTemplate || title}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={close}
+            className="shrink-0 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
+          >
+            Back to job
+          </button>
+        </div>
+        {inspectionContent}
+      </section>,
+      workspaceTarget,
+    );
+  }
 
   const panelWidth = compact ? "max-w-6xl" : "max-w-[1440px]";
   const bodyHeight = compact ? "h-[82vh]" : "h-[calc(96vh-64px)]";
 
-  const cardBase =
-    "overflow-hidden rounded-[26px] border border-[color:var(--theme-border-soft)] " +
-    "bg-[var(--theme-gradient-panel)] text-[color:var(--theme-text-primary)] " +
-    "shadow-[var(--theme-shadow-medium)]";
-
-  const innerShell = "bg-[var(--theme-gradient-panel)]";
-
   return (
     <Dialog
       open={open}
-      // ✅ Backdrop click + Esc will call close()
       onClose={close}
       className="pfq-inspection-modal fixed inset-0 z-[500] flex items-center justify-center px-2 py-3 sm:px-4 sm:py-5"
     >
-      {/* clickable dimmed backdrop */}
       <div
         className="fixed inset-0 bg-[color:var(--theme-surface-inset)]/90 backdrop-blur-md"
         aria-hidden
       />
 
       <Dialog.Panel
-        className={`relative z-[510] mx-auto w-full ${panelWidth} ${cardBase}`}
+        className={`relative z-[510] mx-auto w-full ${panelWidth} overflow-hidden rounded-[26px] border border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="absolute inset-x-0 top-0 z-20 h-[3px] bg-[linear-gradient(90deg,rgba(184,115,51,0),rgba(184,115,51,0.95),rgba(253,186,116,0.95),rgba(184,115,51,0))]" />
-        <div className="pointer-events-none absolute inset-x-10 top-0 z-10 h-24 bg-[radial-gradient(circle_at_top,rgba(184,115,51,0.14),transparent_72%)]" />
 
-        {/* Header */}
         <div className="relative flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 sm:px-5">
           <div className="min-w-0">
-            <Dialog.Title
-              className="truncate text-[0.8rem] uppercase tracking-[0.22em] text-[color:var(--theme-text-primary)]"
-              style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
-            >
+            <Dialog.Title className="truncate text-[0.8rem] uppercase tracking-[0.22em] text-[color:var(--theme-text-primary)]">
               {title}
             </Dialog.Title>
-
             {derived.displayTemplate && (
               <p className="mt-0.5 truncate text-xs text-[color:var(--theme-text-secondary)]">
                 <span className="font-medium text-[color:var(--brand-primary)]">
@@ -280,14 +350,14 @@ export default function InspectionModal({
             <button
               type="button"
               onClick={() => setCompact((v) => !v)}
-              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-soft)] hover:bg-[color:var(--theme-surface-subtle)]"
+              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
             >
               {compact ? "Expand" : "Shrink"}
             </button>
             <button
               type="button"
               onClick={close}
-              className="grid h-8 w-8 place-items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[0.78rem] text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-soft)] hover:bg-[color:var(--theme-surface-subtle)] active:scale-95"
+              className="grid h-8 w-8 place-items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[0.78rem] text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)] active:scale-95"
               aria-label="Close inspection"
             >
               ✕
@@ -295,32 +365,15 @@ export default function InspectionModal({
           </div>
         </div>
 
-        {/* Body */}
         <div
           ref={scrollRef}
-          className={`${bodyHeight} overflow-y-auto overscroll-contain ${innerShell} text-[color:var(--theme-text-primary)]`}
+          className={`${bodyHeight} overflow-y-auto overscroll-contain bg-[var(--theme-gradient-panel)] text-[color:var(--theme-text-primary)]`}
           style={{
             WebkitOverflowScrolling: "touch",
             scrollbarGutter: "stable both-edges",
           }}
         >
-          {derived.missingWOLine && (
-            <div className="m-4 rounded-xl border border-amber-400/50 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:bg-amber-950/40 dark:text-amber-100">
-              <strong>Heads up:</strong>{" "}
-              <code className="font-mono text-amber-50">workOrderLineId</code> is
-              missing; save/finish will be blocked.
-            </div>
-          )}
-
-          {!derived.screenTemplate ? (
-            <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-4 py-6 text-center text-sm text-muted-foreground">
-              No inspection selected.
-            </div>
-          ) : (
-            <div className="mx-auto w-full">
-              <InspectionHost template={derived.screenTemplate} embed params={derived.params} />
-            </div>
-          )}
+          {inspectionContent}
         </div>
       </Dialog.Panel>
     </Dialog>
