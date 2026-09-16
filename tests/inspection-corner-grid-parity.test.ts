@@ -23,9 +23,9 @@ describe("inspection corner-grid parity", () => {
     expect(screen).toContain("showGridFindings");
   });
 
-  it("keeps hydraulic brake and tire measurement inputs in the keyboard tab order", () => {
-    expect(hydraulicBrakeGrid.match(/tabIndex=\{0\}/g)?.length).toBeGreaterThanOrEqual(2);
-    expect(hydraulicTireGrid.match(/tabIndex=\{0\}/g)?.length).toBeGreaterThanOrEqual(2);
+  it("keeps hydraulic brake and tire measurement inputs on native keyboard tab behavior", () => {
+    expect(hydraulicBrakeGrid).not.toContain("tabIndex={0}");
+    expect(hydraulicTireGrid).not.toContain("tabIndex={0}");
   });
 
   it("renders canonical finding fields below compact measurements", () => {
