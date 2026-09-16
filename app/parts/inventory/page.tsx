@@ -378,9 +378,7 @@ function errMsg(err: unknown): string {
 }
 
 /* ------------------------- RPC helper --------------------------- */
-/** Try 6-arg function first; if schema cache hasn’t picked it up,
- * fall back to the 5-arg legacy shape. Strictly typed; ignores return value.
- */
+/** Invoke the canonical six-argument stock-move RPC. */
 async function applyStockMoveRPC(
   supabase: ReturnType<typeof createBrowserSupabase>,
   args: {
@@ -389,44 +387,23 @@ async function applyStockMoveRPC(
     p_qty: number;
     p_reason: StockMoveReason;
     p_ref_kind: string;
-    p_ref_id?: string | null;
+    p_ref_id: string;
   },
 ): Promise<void> {
   type FnArgs = DB["public"]["Functions"]["apply_stock_move"]["Args"];
 
-  // 6-arg (conditionally include p_ref_id so shapes match)
-  const payload6 = {
+  const payload: FnArgs = {
     p_part: args.p_part,
     p_loc: args.p_loc,
     p_qty: args.p_qty,
-    p_reason: args.p_reason as FnArgs extends { p_reason: infer R } ? R : never,
+    p_reason: args.p_reason,
     p_ref_kind: args.p_ref_kind,
-    ...(args.p_ref_id !== undefined ? { p_ref_id: args.p_ref_id } : {}),
-  } as FnArgs;
+    p_ref_id: args.p_ref_id,
+  };
 
-  const call6 = await supabase.rpc("apply_stock_move", payload6);
-  if (!call6.error) return;
-
-  const msg = (call6.error?.message ?? "").toLowerCase();
-  const cacheShapeIssue =
-    msg.includes("could not find the function") ||
-    msg.includes("schema cache") ||
-    msg.includes("function apply_stock_move(");
-
-  if (!cacheShapeIssue) throw new Error(call6.error?.message ?? "apply_stock_move failed");
-
-  // 5-arg (legacy, no p_ref_id)
-  const payload5 = {
-    p_part: args.p_part,
-    p_loc: args.p_loc,
-    p_qty: args.p_qty,
-    p_reason: args.p_reason as FnArgs extends { p_reason: infer R } ? R : never,
-    p_ref_kind: args.p_ref_kind,
-  } as FnArgs;
-
-  const call5 = await supabase.rpc("apply_stock_move", payload5);
-  if (call5.error) {
-    throw new Error(call5.error.message ?? "apply_stock_move failed");
+  const { error } = await supabase.rpc("apply_stock_move", payload);
+  if (error) {
+    throw new Error(error.message ?? "apply_stock_move failed");
   }
 }
 

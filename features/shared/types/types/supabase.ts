@@ -28118,29 +28118,17 @@ export type Database = {
         }
         Returns: Json
       }
-      apply_stock_move:
-        | {
-            Args: {
-              p_loc: string
-              p_part: string
-              p_qty: number
-              p_reason: Database["public"]["Enums"]["stock_move_reason"]
-              p_ref_id?: string
-              p_ref_kind?: string
-            }
-            Returns: string
-          }
-        | {
-            Args: {
-              p_loc: string
-              p_part: string
-              p_qty: number
-              p_reason: string
-              p_ref_id: string
-              p_ref_kind: string
-            }
-            Returns: string
-          }
+      apply_stock_move: {
+        Args: {
+          p_loc: string
+          p_part: string
+          p_qty: number
+          p_reason: string
+          p_ref_id: string
+          p_ref_kind: string
+        }
+        Returns: string
+      }
       apply_stripe_subscription_webhook_snapshot: {
         Args: {
           p_customer_id: string
