@@ -334,7 +334,10 @@ export default function InspectionModal({
 
         <div className="relative flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3 sm:px-5">
           <div className="min-w-0">
-            <Dialog.Title className="truncate text-[0.8rem] uppercase tracking-[0.22em] text-[color:var(--theme-text-primary)]">
+            <Dialog.Title
+              className="truncate text-[0.8rem] uppercase tracking-[0.22em] text-[color:var(--theme-text-primary)]"
+              style={{ fontFamily: "var(--font-blackops), system-ui, sans-serif" }}
+            >
               {title}
             </Dialog.Title>
             {derived.displayTemplate && (
@@ -350,14 +353,14 @@ export default function InspectionModal({
             <button
               type="button"
               onClick={() => setCompact((v) => !v)}
-              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
+              className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-soft)] hover:bg-[color:var(--theme-surface-subtle)]"
             >
               {compact ? "Expand" : "Shrink"}
             </button>
             <button
               type="button"
               onClick={close}
-              className="grid h-8 w-8 place-items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[0.78rem] text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)] active:scale-95"
+              className="grid h-8 w-8 place-items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[0.78rem] text-[color:var(--theme-text-primary)] transition hover:border-[var(--accent-copper-soft)] hover:bg-[color:var(--theme-surface-subtle)] active:scale-95"
               aria-label="Close inspection"
             >
               ✕
