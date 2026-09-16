@@ -151,12 +151,7 @@ export async function POST(req: Request) {
   }
   const idempotencyKey = suppliedKey || randomUUID();
 
-  const rpc = access.supabase.rpc as unknown as (
-    name: string,
-    args: Record<string, unknown>,
-  ) => Promise<{ data: CreationResult | null; error: { message: string } | null }>;
-
-  const { data, error } = await rpc("create_menu_item_with_parts_intake", {
+  const { data, error } = (await access.supabase.rpc("create_menu_item_with_parts_intake", {
     p_shop_id: access.profile.shop_id,
     p_actor_profile_id: access.profile.id,
     p_actor_auth_user_id: access.authUserId,
@@ -168,7 +163,10 @@ export async function POST(req: Request) {
       inspection_template_id: templateId,
     },
     p_parts: parts,
-  });
+  })) as {
+    data: CreationResult | null;
+    error: { message: string } | null;
+  };
 
   if (error || !data?.ok || !data.menu_item_id) {
     const detail = error?.message ?? "The menu item could not be created.";
