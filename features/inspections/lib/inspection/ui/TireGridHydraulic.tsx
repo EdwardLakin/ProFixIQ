@@ -473,7 +473,7 @@ export default function TireGridHydraulic(props: Props) {
         <div className="grid grid-cols-[100px_minmax(0,1fr)] items-center gap-2">
           <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">{leftLabel}</div>
           <div className="relative">
-            <input value={leftCell ? valOf(leftCell) : ""} className={inputCls()} placeholder={leftCell ? "Value" : "—"} inputMode={isText(leftCell) ? "text" : "decimal"} type={isText(leftCell) ? "text" : "number"} onChange={(e) => leftCell && commitValue(leftCell.idx, e.currentTarget.value)} disabled={!leftCell} />
+            <input tabIndex={0} value={leftCell ? valOf(leftCell) : ""} className={inputCls()} placeholder={leftCell ? "Value" : "—"} inputMode={isText(leftCell) ? "text" : "decimal"} type={isText(leftCell) ? "text" : "number"} onChange={(e) => leftCell && commitValue(leftCell.idx, e.currentTarget.value)} disabled={!leftCell} />
             <span className={unitCls()}>{U(leftCell)}</span>
           </div>
         </div>
@@ -481,7 +481,7 @@ export default function TireGridHydraulic(props: Props) {
           <div className="grid grid-cols-[100px_minmax(0,1fr)] items-center gap-2">
             <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">{rightLabel}</div>
             <div className="relative">
-              <input value={rightCell ? valOf(rightCell) : ""} className={inputCls()} placeholder={rightCell ? "Value" : "—"} inputMode={isText(rightCell) ? "text" : "decimal"} type={isText(rightCell) ? "text" : "number"} onChange={(e) => rightCell && commitValue(rightCell.idx, e.currentTarget.value)} disabled={!rightCell} />
+              <input tabIndex={0} value={rightCell ? valOf(rightCell) : ""} className={inputCls()} placeholder={rightCell ? "Value" : "—"} inputMode={isText(rightCell) ? "text" : "decimal"} type={isText(rightCell) ? "text" : "number"} onChange={(e) => rightCell && commitValue(rightCell.idx, e.currentTarget.value)} disabled={!rightCell} />
               <span className={unitCls()}>{U(rightCell)}</span>
             </div>
           </div>
