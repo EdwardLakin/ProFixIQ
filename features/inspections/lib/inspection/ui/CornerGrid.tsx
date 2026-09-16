@@ -141,7 +141,6 @@ export default function CornerGrid(props: CornerGridProps) {
             className={inputCls()}
             type="number"
             inputMode="decimal"
-            tabIndex={0}
             placeholder={pads ? "Pads/Shoes" : "—"}
             value={String(pads?.item?.value ?? "")}
             onFocus={() => pads && onSpecHint?.(pads.metricLabel)}
@@ -157,7 +156,6 @@ export default function CornerGrid(props: CornerGridProps) {
             className={inputCls()}
             type="number"
             inputMode="decimal"
-            tabIndex={0}
             placeholder={rotor ? "Rotor/Drum" : "—"}
             value={String(rotor?.item?.value ?? "")}
             onFocus={() => rotor && onSpecHint?.(rotor.metricLabel)}
