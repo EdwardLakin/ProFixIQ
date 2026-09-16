@@ -267,24 +267,12 @@ begin
       'P0-002 runtime assertion failed: hardened stock RPC ACL is wrong';
   end if;
 
-  if has_function_privilege(
-    'anon',
-    'public.apply_stock_move(uuid,uuid,numeric,public.stock_move_reason,text,uuid)',
-    'EXECUTE'
-  )
-  or has_function_privilege(
-    'authenticated',
-    'public.apply_stock_move(uuid,uuid,numeric,public.stock_move_reason,text,uuid)',
-    'EXECUTE'
-  )
-  or has_function_privilege(
-    'service_role',
-    'public.apply_stock_move(uuid,uuid,numeric,public.stock_move_reason,text,uuid)',
-    'EXECUTE'
-  ) then
-    raise exception
-      'P0-002 runtime assertion failed: unsafe enum overload remains exposed';
-  end if;
+  if pg_catalog.to_regprocedure(
+  'public.apply_stock_move(uuid,uuid,numeric,public.stock_move_reason,text,uuid)'
+) is not null then
+  raise exception
+    'P0-002 runtime assertion failed: unsafe enum overload still exists';
+end if;
 
   if has_function_privilege(
     'anon',

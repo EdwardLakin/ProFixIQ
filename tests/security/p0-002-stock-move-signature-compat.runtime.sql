@@ -2,8 +2,11 @@
 
 begin;
 
--- The clean-replay path already has the enum overload. The preflight must not
--- replace its implementation; it may only keep the legacy signature locked.
+-- The final clean-replay contract removes the ambiguous enum overload. Recreate
+-- the historical locked placeholder first so this compatibility test can still
+-- prove the preflight is idempotent before verifying the final cleanup migration.
+\ir ../../supabase/migrations/20260725100000_p0_002_stock_move_signature_compat.sql
+
 create temp table p0_002_existing_enum_overload as
 select pg_catalog.pg_get_functiondef(procedure.oid) as definition
 from pg_catalog.pg_proc procedure
@@ -118,8 +121,9 @@ $$;
 
 -- This is the exact step that failed against production. Reaching the final
 -- assertion proves the existing P0-002 migration can follow the compatibility
--- preflight without changing the already-merged migration.
+-- preflight, then the current cleanup migration leaves one canonical RPC.
 \ir ../../supabase/migrations/20260725103000_harden_p0_002_rpc_privileges.sql
+\ir ../../supabase/migrations/20260916172500_remove_ambiguous_apply_stock_move_overload.sql
 
 do $$
 begin
@@ -138,23 +142,11 @@ begin
     'public.apply_stock_move(uuid,uuid,numeric,text,text,uuid)',
     'EXECUTE'
   )
-  or has_function_privilege(
-    'anon',
-    'public.apply_stock_move(uuid,uuid,numeric,public.stock_move_reason,text,uuid)',
-    'EXECUTE'
-  )
-  or has_function_privilege(
-    'authenticated',
-    'public.apply_stock_move(uuid,uuid,numeric,public.stock_move_reason,text,uuid)',
-    'EXECUTE'
-  )
-  or has_function_privilege(
-    'service_role',
-    'public.apply_stock_move(uuid,uuid,numeric,public.stock_move_reason,text,uuid)',
-    'EXECUTE'
-  ) then
+  or pg_catalog.to_regprocedure(
+    'public.apply_stock_move(uuid,uuid,numeric,public.stock_move_reason,text,uuid)'
+  ) is not null then
     raise exception
-      'P0-002 compatibility assertion failed: final RPC ACLs are wrong';
+      'P0-002 compatibility assertion failed: final RPC contract is wrong';
   end if;
 end
 $$;

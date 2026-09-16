@@ -68,14 +68,7 @@ export async function PATCH(
     );
   }
 
-  const rpc = access.supabase.rpc as unknown as (
-    name: string,
-    args: Record<string, unknown>,
-  ) => Promise<{
-    data: ReviewResult | null;
-    error: { message: string } | null;
-  }>;
-  const { data, error } = await rpc("review_menu_item_part_intake", {
+  const { data, error } = (await access.supabase.rpc("review_menu_item_part_intake", {
     p_shop_id: access.profile.shop_id,
     p_actor_profile_id: access.profile.id,
     p_actor_auth_user_id: access.authUserId,
@@ -84,7 +77,10 @@ export async function PATCH(
     p_quantity: quantity,
     p_unit_cost: unitCost,
     p_operation_key: operationKey,
-  });
+  })) as {
+    data: ReviewResult | null;
+    error: { message: string } | null;
+  };
 
   if (error || !data?.ok) {
     const detail = error?.message ?? "The menu part could not be reviewed.";
