@@ -59,6 +59,19 @@ describe("maintenance suggestion quote contract", () => {
     );
   });
 
+  it("creates an idempotent Parts quote task even when the suggestion has no known parts recipe", () => {
+    expect(maintenanceWriter).toContain("ensureMaintenancePartsQuoteTask({");
+    expect(maintenanceWriter).toContain('.from("part_requests")');
+    expect(maintenanceWriter).toContain('.eq("quote_line_id", quoteLineId)');
+    expect(maintenanceWriter).toContain('status: "requested"');
+    expect(maintenanceWriter).toContain('.from("part_request_items")');
+    expect(maintenanceWriter).toContain(
+      "description: `Parts to quote — ${serviceLabel}`",
+    );
+    expect(maintenanceWriter).toContain("qty_requested: 1");
+    expect(maintenanceWriter).toContain("syncQuoteLinePartsStatus(supabase");
+  });
+
   it("adds a bundle in one canonical batch and surfaces Supabase object errors", () => {
     expect(bundleRoute).toContain("addMaintenanceSuggestionsToWorkOrder({");
     expect(bundleRoute).not.toContain("for (const serviceCode of serviceCodes)");
