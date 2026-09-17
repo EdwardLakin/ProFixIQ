@@ -3,12 +3,10 @@
 import type { ReactNode } from "react";
 import { useCallback, useMemo, useState } from "react";
 import {
-  Camera,
   Check,
   CheckCircle2,
   ChevronRight,
   Circle,
-  FileCheck2,
   Mic,
   Search,
   Send,
@@ -152,22 +150,6 @@ export default function InspectionWorkspaceShell({
     control?.click();
   }, []);
 
-  const focusActivePhoto = useCallback(() => {
-    if (typeof document === "undefined" || activeSectionId == null) return;
-    const section = document.querySelector<HTMLElement>(
-      `[data-inspection-workspace-runtime] [data-section-index="${activeSectionId}"]`,
-    );
-    if (!section) return;
-    const button = Array.from(section.querySelectorAll<HTMLButtonElement>("button")).find(
-      (candidate) =>
-        String(candidate.textContent ?? "").toLowerCase().includes("photo"),
-    );
-    if (button) {
-      button.scrollIntoView({ behavior: "smooth", block: "center" });
-      button.focus({ preventScroll: true });
-    }
-  }, [activeSectionId]);
-
   const focusCanonicalPanel = useCallback((needle: string) => {
     if (typeof document === "undefined") return;
     const root = document.querySelector<HTMLElement>(
@@ -183,12 +165,44 @@ export default function InspectionWorkspaceShell({
     candidate?.scrollIntoView({ behavior: "smooth", block: "center" });
   }, []);
 
-  const focusFindings = useCallback(() => {
-    if (typeof document === "undefined") return;
-    document
-      .querySelector<HTMLElement>("[data-inspection-live-findings]")
-      ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-  }, []);
+  const focusFinding = useCallback(
+    (finding: InspectionWorkspaceFinding) => {
+      if (typeof document === "undefined") return;
+      const [sectionId] = finding.id.split(":");
+      if (!sectionId) return;
+
+      onSelectSection(sectionId);
+
+      const locate = () => {
+        const section = document.querySelector<HTMLElement>(
+          `[data-inspection-workspace-runtime] [data-section-index="${sectionId}"]`,
+        );
+        if (!section) return;
+
+        const title = finding.title.trim().toLowerCase();
+        const label = Array.from(
+          section.querySelectorAll<HTMLElement>("span, h3, h4, button, div"),
+        ).find(
+          (element) =>
+            String(element.textContent ?? "").trim().toLowerCase() === title,
+        );
+        if (!label) return;
+
+        const item = label.closest<HTMLElement>("div.relative") ?? label;
+        item.scrollIntoView({ behavior: "smooth", block: "center" });
+        const focusable = item.querySelector<HTMLElement>(
+          "button, input, textarea, select, [tabindex]:not([tabindex='-1'])",
+        );
+        focusable?.focus({ preventScroll: true });
+      };
+
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(locate);
+      });
+      window.setTimeout(locate, 80);
+    },
+    [onSelectSection],
+  );
 
   const activeSelector =
     activeSectionId == null
@@ -409,22 +423,10 @@ export default function InspectionWorkspaceShell({
             onClick={clickCanonicalVoice}
           />
           <DefaultControl
-            icon={<FileCheck2 className="h-4 w-4" aria-hidden />}
-            label="Review findings"
-            onClick={focusFindings}
+            icon={<Check className="h-4 w-4" aria-hidden />}
+            label="Sign inspection"
+            onClick={() => focusCanonicalPanel("Technician Signature")}
           />
-          <div className="grid grid-cols-2 gap-2">
-            <DefaultControl
-              icon={<Camera className="h-4 w-4" aria-hidden />}
-              label="Add photo"
-              onClick={focusActivePhoto}
-            />
-            <DefaultControl
-              icon={<Check className="h-4 w-4" aria-hidden />}
-              label="Sign inspection"
-              onClick={() => focusCanonicalPanel("Technician Signature")}
-            />
-          </div>
           <DefaultControl
             icon={<Send className="h-4 w-4" aria-hidden />}
             label="Submit findings"
@@ -457,9 +459,12 @@ export default function InspectionWorkspaceShell({
               </div>
             ) : (
               findings.map((finding) => (
-                <div
+                <button
                   key={finding.id}
-                  className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3"
+                  type="button"
+                  onClick={() => focusFinding(finding)}
+                  className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-left transition hover:border-sky-400/60 hover:bg-[color:var(--theme-surface-subtle)] focus:outline-none focus:ring-2 focus:ring-sky-500/50"
+                  aria-label={`Go to ${finding.title}`}
                 >
                   <div className="flex items-start gap-2">
                     <span
@@ -498,7 +503,7 @@ export default function InspectionWorkspaceShell({
                       ) : null}
                     </div>
                   </div>
-                </div>
+                </button>
               ))
             )}
           </div>
