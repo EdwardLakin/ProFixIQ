@@ -23,6 +23,26 @@ function nullableText(value: unknown): string | null {
   return cleaned || null;
 }
 
+function deriveJobContext(input: {
+  explicit?: string | null;
+  request: AnyRecord;
+  items: AnyRecord[];
+}): string | null {
+  const explicit = text(input.explicit);
+  if (explicit) return explicit;
+
+  const legacyJob = text(input.request.job_id);
+  if (legacyJob) return legacyJob;
+
+  const firstItemDescription = text(input.items[0]?.description);
+  if (!firstItemDescription) return null;
+
+  return (
+    firstItemDescription.replace(/^parts\s+to\s+quote\s*[—–-]\s*/i, "").trim() ||
+    firstItemDescription
+  );
+}
+
 export function mapRequestItemToWorkbenchItem(input: {
   item: AnyRecord;
   hasStockSuggestion?: boolean;
@@ -117,7 +137,11 @@ export function mapRequestToWorkbenchModel(input: {
     status: nullableText(input.request.status),
     workOrderId: input.workOrderId ?? nullableText(input.request.work_order_id),
     workOrderCustomId: input.workOrderCustomId ?? null,
-    jobContext: input.jobContext ?? nullableText(input.request.job_id),
+    jobContext: deriveJobContext({
+      explicit: input.jobContext,
+      request: input.request,
+      items: input.items,
+    }),
     createdAt: nullableText(input.request.created_at),
     defaultSupplierId: input.defaultSupplierId ?? null,
     defaultLocationId: input.defaultLocationId ?? null,
