@@ -364,7 +364,7 @@ export async function POST(
     }
   }
 
-  const nextQty = qty == null ? null : Math.max(1, Math.floor(qty));
+  const nextQty = qty == null ? null : qty;
   if (quotedPrice != null && quotedPrice < 0) {
     return NextResponse.json(
       { ok: false, error: "quotedPrice must be zero or greater" },
