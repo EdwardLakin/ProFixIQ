@@ -28,6 +28,55 @@ describe("parts request workbench job context", () => {
     expect(model.items[0]?.description).toBe("");
   });
 
+  it("does not let the page single-line fallback replace a pre-approval quote service", () => {
+    const model = mapRequestToWorkbenchModel({
+      request: {
+        id: "request-1",
+        work_order_id: "work-order-1",
+        quote_line_id: "quote-line-1",
+        job_id: null,
+        notes:
+          "Service to quote: Cooling system service\nMaintenance parts quote required: Cooling system service (COOLANT_SERVICE)",
+        status: "requested",
+      },
+      items: [
+        {
+          id: "item-1",
+          description: "",
+          qty: 1,
+          status: "requested",
+        },
+      ],
+      jobContext: "Diesel Works",
+    });
+
+    expect(model.jobContext).toBe("Cooling system service");
+    expect(model.items[0]?.description).toBe("");
+  });
+
+  it("reads the legacy maintenance quote note when canonical service context is absent", () => {
+    const model = mapRequestToWorkbenchModel({
+      request: {
+        id: "request-1",
+        quote_line_id: "quote-line-1",
+        job_id: null,
+        notes:
+          "Maintenance parts quote required: Brake fluid flush (BRAKE_FLUID_FLUSH)",
+      },
+      items: [
+        {
+          id: "item-1",
+          description: "",
+          qty: 1,
+        },
+      ],
+      jobContext: "Diesel Works",
+    });
+
+    expect(model.jobContext).toBe("Brake fluid flush");
+    expect(model.items[0]?.description).toBe("");
+  });
+
   it("keeps compatibility with existing placeholder rows while hiding the placeholder from the part field", () => {
     const model = mapRequestToWorkbenchModel({
       request: {

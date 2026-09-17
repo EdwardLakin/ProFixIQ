@@ -28,28 +28,57 @@ function stripMaintenancePartPlaceholder(value: unknown): string {
   return raw.replace(/^parts\s+to\s+quote\s*[—–-]\s*/i, "").trim();
 }
 
+function maintenanceServiceFromNotes(value: unknown): string {
+  const notes = text(value);
+  if (!notes) return "";
+
+  const canonical = notes.match(
+    /(?:^|\n)service\s+to\s+quote:\s*([^\n]+)/i,
+  )?.[1]?.trim();
+  if (canonical) return canonical;
+
+  return (
+    notes.match(
+      /(?:^|\n)maintenance\s+parts\s+quote\s+required:\s*([^\n(]+?)(?:\s*\([^\n]*\))?(?:\n|$)/i,
+    )?.[1]?.trim() ?? ""
+  );
+}
+
 function deriveJobContext(input: {
   explicit?: string | null;
   request: AnyRecord;
   items: AnyRecord[];
 }): string | null {
+  const preApprovalQuoteRequest =
+    Boolean(nullableText(input.request.quote_line_id)) &&
+    !input.items.some((item) => Boolean(nullableText(item.work_order_line_id)));
+
+  const serviceFromNotes = maintenanceServiceFromNotes(input.request.notes);
+  const firstItemDescription = text(input.items[0]?.description);
+  const serviceFromItem = firstItemDescription
+    ? stripMaintenancePartPlaceholder(firstItemDescription) || firstItemDescription
+    : "";
+
+  // A pre-approval quote request does not yet have a canonical work-order line.
+  // The page may still supply its historical single-line fallback as explicit
+  // context; preferring that would make every quote request display the same
+  // unrelated work-order-line description. Use the quote's own service context
+  // until materialization creates a real work_order_line_id.
+  if (preApprovalQuoteRequest) {
+    if (serviceFromNotes) return serviceFromNotes;
+    if (serviceFromItem) return serviceFromItem;
+  }
+
   const explicit = text(input.explicit);
   if (explicit) return explicit;
 
   const legacyJob = text(input.request.job_id);
   if (legacyJob) return legacyJob;
 
-  const requestNotes = text(input.request.notes);
-  const serviceMatch = requestNotes.match(
-    /(?:^|\n)service\s+to\s+quote:\s*([^\n]+)/i,
-  );
-  const serviceFromNotes = serviceMatch?.[1]?.trim() ?? "";
   if (serviceFromNotes) return serviceFromNotes;
+  if (serviceFromItem) return serviceFromItem;
 
-  const firstItemDescription = text(input.items[0]?.description);
-  if (!firstItemDescription) return null;
-
-  return stripMaintenancePartPlaceholder(firstItemDescription) || firstItemDescription;
+  return null;
 }
 
 export function mapRequestItemToWorkbenchItem(input: {
