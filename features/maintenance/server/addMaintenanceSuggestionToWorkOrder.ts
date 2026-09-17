@@ -68,6 +68,10 @@ function finiteNonNegative(value: number | null): number | null {
     : null;
 }
 
+function money(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 type ResolvedMenuItem = {
   id: string;
   total_price: number | null;
@@ -93,12 +97,30 @@ function quoteItemFor(
     finiteNonNegative(menuItem?.total_price ?? null) ??
     finiteNonNegative(menuItem?.base_price ?? null) ??
     finiteNonNegative(suggestion.effectivePrice);
+  const menuPartsTotal = menuItem?.parts.length
+    ? money(
+        menuItem.parts.reduce((sum, part) => {
+          const qty =
+            typeof part.qty === "number" && Number.isFinite(part.qty) && part.qty > 0
+              ? part.qty
+              : 1;
+          const unitPrice = finiteNonNegative(part.unitPrice ?? null) ?? 0;
+          return sum + qty * unitPrice;
+        }, 0),
+      )
+    : null;
+  const menuLaborTotal =
+    menuPartsTotal != null && effectivePrice != null
+      ? money(Math.max(0, effectivePrice - menuPartsTotal))
+      : null;
 
   return {
     description: suggestion.label.trim(),
     jobType: normalizeJobType(suggestion.jobType),
     estLaborHours: finiteNonNegative(suggestion.laborHours),
     laborHours: finiteNonNegative(suggestion.laborHours),
+    ...(menuLaborTotal == null ? {} : { laborTotal: menuLaborTotal }),
+    ...(menuPartsTotal == null ? {} : { partsTotal: menuPartsTotal }),
     notes: suggestion.notes,
     source: "maintenance_suggestion",
     findingIdentity: `maintenance_suggestion:${serviceCode}`,
