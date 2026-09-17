@@ -3,6 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type {
   CanonicalQuoteItem,
+  CanonicalQuotePart,
 } from "@/features/work-orders/lib/work-orders/canonicalQuoteLines";
 import {
   createCanonicalQuoteLines,
@@ -67,12 +68,24 @@ function finiteNonNegative(value: number | null): number | null {
     : null;
 }
 
+function money(value: number): number {
+  return Math.round((value + Number.EPSILON) * 100) / 100;
+}
+
 type ResolvedMenuItem = {
   id: string;
   total_price: number | null;
   base_price: number | null;
   inspection_template_id: string | null;
   service_key: string | null;
+  parts: CanonicalQuotePart[];
+};
+
+type ResolvedMenuPart = {
+  menu_item_id: string;
+  name: string | null;
+  quantity: number | null;
+  unit_cost: number | null;
 };
 
 function quoteItemFor(
@@ -84,15 +97,34 @@ function quoteItemFor(
     finiteNonNegative(menuItem?.total_price ?? null) ??
     finiteNonNegative(menuItem?.base_price ?? null) ??
     finiteNonNegative(suggestion.effectivePrice);
+  const menuPartsTotal = menuItem?.parts.length
+    ? money(
+        menuItem.parts.reduce((sum, part) => {
+          const qty =
+            typeof part.qty === "number" && Number.isFinite(part.qty) && part.qty > 0
+              ? part.qty
+              : 1;
+          const unitPrice = finiteNonNegative(part.unitPrice ?? null) ?? 0;
+          return sum + qty * unitPrice;
+        }, 0),
+      )
+    : null;
+  const menuLaborTotal =
+    menuPartsTotal != null && effectivePrice != null
+      ? money(Math.max(0, effectivePrice - menuPartsTotal))
+      : null;
 
   return {
     description: suggestion.label.trim(),
     jobType: normalizeJobType(suggestion.jobType),
     estLaborHours: finiteNonNegative(suggestion.laborHours),
     laborHours: finiteNonNegative(suggestion.laborHours),
+    ...(menuLaborTotal == null ? {} : { laborTotal: menuLaborTotal }),
+    ...(menuPartsTotal == null ? {} : { partsTotal: menuPartsTotal }),
     notes: suggestion.notes,
     source: "maintenance_suggestion",
     findingIdentity: `maintenance_suggestion:${serviceCode}`,
+    parts: menuItem?.parts.length ? menuItem.parts : undefined,
     ...(effectivePrice == null
       ? {}
       : { subtotal: effectivePrice, grandTotal: effectivePrice }),
@@ -183,7 +215,7 @@ async function ensureMaintenancePartsQuoteRequest(input: {
 
   const { data: existingRequests, error: requestLookupError } = await supabase
     .from("part_requests")
-    .select("id, status")
+    .select("id, status, notes")
     .eq("shop_id", shopId)
     .eq("work_order_id", workOrderId)
     .eq("quote_line_id", quoteLineId)
@@ -194,10 +226,11 @@ async function ensureMaintenancePartsQuoteRequest(input: {
     (request) => String(request.status ?? "").toLowerCase() !== "cancelled",
   );
 
+  const serviceContext = `Service to quote: ${input.description}`;
   let requestId = reusable?.id ? String(reusable.id) : "";
   if (!requestId) {
     const requestNotes = [
-      `Service to quote: ${input.description}`,
+      serviceContext,
       input.notes,
       `Quote line: ${quoteLineId}`,
     ]
@@ -220,6 +253,14 @@ async function ensureMaintenancePartsQuoteRequest(input: {
       throw requestError ?? new Error("Failed to create maintenance parts request");
     }
     requestId = String(createdRequest.id);
+  } else if (!String(reusable?.notes ?? "").includes(serviceContext)) {
+    const nextNotes = [serviceContext, reusable?.notes].filter(Boolean).join("\n");
+    const { error: noteError } = await supabase
+      .from("part_requests")
+      .update({ notes: nextNotes })
+      .eq("id", requestId)
+      .eq("shop_id", shopId);
+    if (noteError) throw noteError;
   }
 
   const { data: existingItems, error: itemLookupError } = await supabase
@@ -236,7 +277,7 @@ async function ensureMaintenancePartsQuoteRequest(input: {
       work_order_id: workOrderId,
       quote_line_id: quoteLineId,
       work_order_line_id: null,
-      description: input.description,
+      description: "",
       qty: 1,
       qty_requested: 1,
       unit_cost: null,
@@ -299,7 +340,37 @@ export async function addMaintenanceSuggestionsToWorkOrder(
       .in("id", menuItemIds)
       .or(`shop_id.eq.${workOrder.shop_id},shop_id.is.null`);
     if (error) throw error;
-    menuItems = (data ?? []) as ResolvedMenuItem[];
+
+    const { data: menuPartData, error: menuPartError } = await supabase
+      .from("menu_item_parts")
+      .select("menu_item_id, name, quantity, unit_cost")
+      .in("menu_item_id", menuItemIds);
+    if (menuPartError) throw menuPartError;
+
+    const partsByMenuItemId = new Map<string, CanonicalQuotePart[]>();
+    for (const row of (menuPartData ?? []) as ResolvedMenuPart[]) {
+      const description = String(row.name ?? "").trim();
+      if (!description) continue;
+      const qty =
+        typeof row.quantity === "number" && Number.isFinite(row.quantity) && row.quantity > 0
+          ? row.quantity
+          : 1;
+      const unitPrice = finiteNonNegative(row.unit_cost);
+      const part: CanonicalQuotePart = {
+        description,
+        qty,
+        unitCost: unitPrice,
+        unitPrice,
+      };
+      const current = partsByMenuItemId.get(row.menu_item_id) ?? [];
+      current.push(part);
+      partsByMenuItemId.set(row.menu_item_id, current);
+    }
+
+    menuItems = ((data ?? []) as Omit<ResolvedMenuItem, "parts">[]).map((item) => ({
+      ...item,
+      parts: partsByMenuItemId.get(item.id) ?? [],
+    }));
   }
   const menuItemsById = new Map(menuItems.map((item) => [item.id, item]));
 

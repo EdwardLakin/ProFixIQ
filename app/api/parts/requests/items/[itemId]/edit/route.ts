@@ -95,7 +95,7 @@ export async function PATCH(
     if ("qty" in body) {
       const qty = numberOrNull(body.qty, "qty");
       if (qty == null || qty <= 0) return NextResponse.json({ ok: false, error: "qty must be greater than zero." }, { status: 400 });
-      update.qty = Math.max(1, Math.floor(qty));
+      update.qty = qty;
     }
     if ("quoted_price" in body) {
       const quotedPrice = numberOrNull(body.quoted_price, "quoted_price");

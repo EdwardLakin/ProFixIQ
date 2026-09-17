@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { syncQuoteLinePartsStatus } from "@/features/parts/server/syncQuoteLinePartsStatus";
 
 type DB = Database;
 type PartRow = DB["public"]["Tables"]["parts"]["Row"] & {
@@ -92,7 +93,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
 
   const { data: item, error: itemError } = await access.supabase
     .from("part_request_items")
-    .select("id,shop_id,part_id,requested_manufacturer")
+    .select(
+      "id,shop_id,part_id,requested_manufacturer,quote_line_id,work_order_line_id,qty,qty_requested,quoted_price,unit_price",
+    )
     .eq("id", itemId)
     .eq("shop_id", access.profile.shop_id)
     .maybeSingle();
@@ -119,6 +122,67 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
     if (!part) {
       return NextResponse.json({ ok: false, error: "Inventory part not found." }, { status: 404 });
     }
+
+    // Quote-origin items are intentionally not linked to a work-order line until
+    // approval materializes the repair. Persist the inventory choice directly on
+    // the quote item instead of invoking the operational attach RPC, which must
+    // create a work_order_part and therefore requires a materialized line.
+    if (isUuid(item.quote_line_id) && !isUuid(item.work_order_line_id)) {
+      const selectedSellPrice =
+        item.quoted_price ?? item.unit_price ?? part.price ?? part.default_price ?? null;
+      const { data: updatedItem, error: quoteAttachError } = await access.supabase
+        .from("part_request_items")
+        .update({
+          part_id: part.id,
+          ...(selectedSellPrice == null
+            ? {}
+            : {
+                quoted_price: selectedSellPrice,
+                unit_price: selectedSellPrice,
+              }),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", itemId)
+        .eq("shop_id", access.profile.shop_id)
+        .eq("quote_line_id", item.quote_line_id)
+        .is("work_order_line_id", null)
+        .select("*")
+        .maybeSingle();
+
+      if (quoteAttachError || !updatedItem) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "PARTS_QUOTE_INVENTORY_ATTACH_FAILED",
+            error: quoteAttachError?.message ?? "Inventory selection did not persist.",
+          },
+          { status: 409 },
+        );
+      }
+
+      const sync = await syncQuoteLinePartsStatus(access.supabase, {
+        shopId: access.profile.shop_id,
+        quoteLineId: item.quote_line_id,
+      });
+      if (!sync.ok) {
+        return NextResponse.json(
+          {
+            ok: false,
+            code: "PARTS_QUOTE_SYNC_FAILED",
+            error: sync.error ?? "Inventory selection persisted but quote sync failed.",
+          },
+          { status: 409 },
+        );
+      }
+
+      return NextResponse.json({
+        ok: true,
+        item: updatedItem,
+        partId: part.id,
+        part,
+      });
+    }
+
     const rpc = access.supabase as unknown as RpcClient;
     const { data: attachData, error: updateError } = await rpc.rpc(
       "parts_attach_inventory_to_request_item_atomic",
