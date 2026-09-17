@@ -5,6 +5,17 @@ import { Dialog } from "@headlessui/react";
 import { createPortal } from "react-dom";
 
 import InspectionHost from "@/features/inspections/components/inspectionHost";
+import InspectionWorkspaceShell, {
+  type InspectionWorkspaceCounts,
+  type InspectionWorkspaceFinding,
+  type InspectionWorkspaceSection,
+} from "@/features/inspections/workspace/InspectionWorkspaceShell";
+import {
+  getLatestInspectionWorkspaceState,
+  requestInspectionWorkspaceSection,
+  subscribeInspectionWorkspaceState,
+  type InspectionWorkspaceSessionSnapshot,
+} from "@/features/inspections/workspace/inspectionWorkspaceBridge";
 
 type Props = {
   open: boolean;
@@ -56,6 +67,40 @@ function deriveDisplayTemplateFromUrl(url: URL): string | null {
   return name || id || deriveScreenTemplateFromUrl(url);
 }
 
+function normalizedStatus(value: unknown): string {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function isCompletedInspectionStatus(value: unknown): boolean {
+  return ["ok", "pass", "na", "fail", "recommend"].includes(
+    normalizedStatus(value),
+  );
+}
+
+function WorkspaceJumpControl({
+  label,
+  onClick,
+  emphasis = false,
+}: {
+  label: string;
+  onClick: () => void;
+  emphasis?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={
+        emphasis
+          ? "inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-sky-500/70 bg-sky-600 px-3 text-sm font-semibold text-white transition hover:bg-sky-500"
+          : "inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-sm font-semibold text-[color:var(--theme-text-primary)] transition hover:bg-[color:var(--theme-surface-subtle)]"
+      }
+    >
+      {label}
+    </button>
+  );
+}
+
 export default function InspectionModal({
   open,
   src,
@@ -64,6 +109,8 @@ export default function InspectionModal({
 }: Props) {
   const [compact, setCompact] = useState(true);
   const [workspaceTarget, setWorkspaceTarget] = useState<HTMLElement | null>(null);
+  const [workspaceSession, setWorkspaceSession] =
+    useState<InspectionWorkspaceSessionSnapshot | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const derived = useMemo(() => {
@@ -158,6 +205,18 @@ export default function InspectionModal({
     }
   }, [src]);
 
+  const workspaceIdentity = useMemo(
+    () => ({
+      inspectionId: derived.params.inspectionId || null,
+      workOrderLineId:
+        derived.params.workOrderLineId ||
+        derived.params.work_order_line_id ||
+        derived.params.lineId ||
+        null,
+    }),
+    [derived.params],
+  );
+
   const close = useCallback(() => {
     onClose();
     if (typeof window !== "undefined") {
@@ -197,6 +256,40 @@ export default function InspectionModal({
       setWorkspaceTarget(null);
     };
   }, [open]);
+
+  // Mirror only the canonical inspection hook's UI state. The workspace does
+  // not own inspection persistence or mutations; it just renders that state.
+  useEffect(() => {
+    if (!open || !workspaceTarget) {
+      setWorkspaceSession(null);
+      return;
+    }
+
+    const matchesWorkspace = (snapshot: InspectionWorkspaceSessionSnapshot) => {
+      const expectedLineId = String(workspaceIdentity.workOrderLineId ?? "").trim();
+      const snapshotLineId = String(snapshot.workOrderLineId ?? "").trim();
+      if (expectedLineId && snapshotLineId !== expectedLineId) return false;
+
+      const expectedInspectionId = String(workspaceIdentity.inspectionId ?? "").trim();
+      const snapshotInspectionId = String(snapshot.id ?? "").trim();
+      if (
+        expectedInspectionId &&
+        snapshotInspectionId &&
+        snapshotInspectionId !== expectedInspectionId
+      ) {
+        return false;
+      }
+
+      return true;
+    };
+
+    const latest = getLatestInspectionWorkspaceState(workspaceIdentity);
+    if (latest && matchesWorkspace(latest)) setWorkspaceSession(latest);
+
+    return subscribeInspectionWorkspaceState((snapshot) => {
+      if (matchesWorkspace(snapshot)) setWorkspaceSession(snapshot);
+    });
+  }, [open, workspaceIdentity, workspaceTarget]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -258,6 +351,142 @@ export default function InspectionModal({
     };
   }, [open, workspaceTarget]);
 
+  const workspaceModel = useMemo(() => {
+    const rawSections = Array.isArray(workspaceSession?.sections)
+      ? workspaceSession.sections
+      : [];
+
+    const sections: InspectionWorkspaceSection[] = rawSections.map(
+      (section, sectionIndex) => {
+        const items = Array.isArray(section.items) ? section.items : [];
+        const completed = items.filter((item) =>
+          isCompletedInspectionStatus(item.status),
+        ).length;
+
+        return {
+          id: String(sectionIndex),
+          title: String(section.title || `Section ${sectionIndex + 1}`),
+          subtitle:
+            items.length > 0
+              ? `${completed} of ${items.length} items completed`
+              : "No checklist items",
+          completed,
+          total: items.length,
+        };
+      },
+    );
+
+    let fail = 0;
+    let recommend = 0;
+    let passOrNa = 0;
+    let submittedFindings = 0;
+    const findings: InspectionWorkspaceFinding[] = [];
+
+    rawSections.forEach((section, sectionIndex) => {
+      const items = Array.isArray(section.items) ? section.items : [];
+      items.forEach((item, itemIndex) => {
+        const status = normalizedStatus(item.status);
+        if (status === "fail") fail += 1;
+        if (status === "recommend") recommend += 1;
+        if (status === "ok" || status === "pass" || status === "na") {
+          passOrNa += 1;
+        }
+        if (item.estimateSubmitted === true) submittedFindings += 1;
+
+        if (status === "fail" || status === "recommend") {
+          const label = String(item.item || item.name || `Finding ${itemIndex + 1}`);
+          const note = String(item.notes || item.note || "").trim();
+          findings.push({
+            id: `${sectionIndex}:${itemIndex}`,
+            title: label,
+            status,
+            summary: note || undefined,
+            meta: `${String(section.title || `Section ${sectionIndex + 1}`)}${
+              item.estimateSubmitted ? " · submitted to Quote Review" : ""
+            }`,
+          });
+        }
+      });
+    });
+
+    const voiceLines = Number(
+      workspaceSession?.voiceMeta?.linesAddedToWorkOrder ?? 0,
+    );
+    const counts: InspectionWorkspaceCounts = {
+      fail,
+      recommend,
+      passOrNa,
+      workOrderLines: Math.max(
+        Number.isFinite(voiceLines) ? voiceLines : 0,
+        submittedFindings,
+      ),
+    };
+
+    const requestedActiveIndex = Number(workspaceSession?.currentSectionIndex ?? 0);
+    const activeIndex =
+      Number.isInteger(requestedActiveIndex) &&
+      requestedActiveIndex >= 0 &&
+      requestedActiveIndex < sections.length
+        ? requestedActiveIndex
+        : 0;
+
+    return {
+      sections,
+      counts,
+      findings,
+      completedSections: sections.filter(
+        (section) => section.total > 0 && section.completed >= section.total,
+      ).length,
+      activeIndex,
+      activeSectionId: sections.length > 0 ? String(activeIndex) : null,
+    };
+  }, [workspaceSession]);
+
+  const scrollToWorkspaceText = useCallback(
+    (text: string) => {
+      if (!workspaceTarget) return;
+      const normalized = text.toLowerCase();
+      const candidates = workspaceTarget.querySelectorAll<HTMLElement>(
+        "button, h2, h3, label, [role='group']",
+      );
+      const target = Array.from(candidates).find((candidate) =>
+        String(candidate.textContent ?? "").toLowerCase().includes(normalized),
+      );
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    },
+    [workspaceTarget],
+  );
+
+  const scrollToActiveSection = useCallback(() => {
+    if (!workspaceTarget) return;
+    workspaceTarget
+      .querySelector<HTMLElement>(
+        `[data-section-index="${workspaceModel.activeIndex}"]`,
+      )
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [workspaceModel.activeIndex, workspaceTarget]);
+
+  const handleWorkspaceSectionSelect = useCallback(
+    (sectionId: string) => {
+      const sectionIndex = Number(sectionId);
+      if (!Number.isInteger(sectionIndex)) return;
+
+      requestInspectionWorkspaceSection({
+        inspectionId: workspaceSession?.id || workspaceIdentity.inspectionId,
+        workOrderLineId:
+          workspaceSession?.workOrderLineId || workspaceIdentity.workOrderLineId,
+        sectionIndex,
+      });
+
+      window.requestAnimationFrame(() => {
+        workspaceTarget
+          ?.querySelector<HTMLElement>(`[data-section-index="${sectionIndex}"]`)
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    },
+    [workspaceIdentity, workspaceSession, workspaceTarget],
+  );
+
   const inspectionContent = (
     <>
       {derived.missingWOLine && (
@@ -287,15 +516,18 @@ export default function InspectionModal({
     return createPortal(
       <section
         data-inspection-workspace-transition="true"
-        className="absolute inset-0 z-30 min-h-[44rem] overflow-y-auto rounded-[24px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-[0_20px_55px_rgba(15,23,42,0.14)]"
+        className="absolute inset-0 z-30 min-h-[44rem] overflow-y-auto rounded-[24px] border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3 shadow-[0_20px_55px_rgba(15,23,42,0.14)]"
       >
-        <div className="sticky top-0 z-40 flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]/95 px-4 py-2.5 backdrop-blur">
+        <div className="sticky top-0 z-40 mb-3 flex items-center justify-between gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)]/95 px-4 py-2.5 backdrop-blur">
           <div className="min-w-0">
             <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-[color:var(--brand-primary)]">
-              Inspection workspace
+              Work order inspection
             </div>
             <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
-              {derived.displayTemplate || title}
+              {workspaceSession?.templateitem ||
+                workspaceSession?.templateName ||
+                derived.displayTemplate ||
+                title}
             </div>
           </div>
           <button
@@ -306,7 +538,56 @@ export default function InspectionModal({
             Back to job
           </button>
         </div>
-        {inspectionContent}
+
+        <InspectionWorkspaceShell
+          title={
+            workspaceSession?.templateitem ||
+            workspaceSession?.templateName ||
+            derived.displayTemplate ||
+            title
+          }
+          subtitle="Live inspection state · existing inspection handlers remain canonical"
+          sections={workspaceModel.sections}
+          activeSectionId={workspaceModel.activeSectionId}
+          onSelectSection={handleWorkspaceSectionSelect}
+          counts={workspaceModel.counts}
+          completedSections={workspaceModel.completedSections}
+          totalSections={workspaceModel.sections.length}
+          findings={workspaceModel.findings}
+          center={inspectionContent}
+          voiceControl={
+            <WorkspaceJumpControl
+              label="Go to voice controls"
+              emphasis
+              onClick={() => scrollToWorkspaceText("Voice controls")}
+            />
+          }
+          reviewFindingsControl={
+            <WorkspaceJumpControl
+              label="Review live findings"
+              onClick={() => scrollToWorkspaceText("Live Findings")}
+            />
+          }
+          addPhotoControl={
+            <WorkspaceJumpControl
+              label="Active section"
+              onClick={scrollToActiveSection}
+            />
+          }
+          signControl={
+            <WorkspaceJumpControl
+              label="Go to signature"
+              onClick={() => scrollToWorkspaceText("signature")}
+            />
+          }
+          submitControl={
+            <WorkspaceJumpControl
+              label="Go to submit findings"
+              emphasis
+              onClick={() => scrollToWorkspaceText("Submit findings before signing")}
+            />
+          }
+        />
       </section>,
       workspaceTarget,
     );
