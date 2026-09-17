@@ -367,6 +367,27 @@ export default function InspectionWorkspaceShell({
         <div
           data-inspection-workspace-runtime
           className="min-h-0 min-w-0 overflow-y-auto p-3 md:p-4"
+          onClickCapture={(event) => {
+            const target = event.target;
+            if (!(target instanceof Element)) return;
+            const button = target.closest<HTMLButtonElement>("button");
+            if (!button) return;
+            const label = String(button.textContent ?? "").trim().toLowerCase();
+            if (label !== "+ add part") return;
+
+            const item = button.closest<HTMLElement>("div.relative");
+            window.setTimeout(() => {
+              const scope = item ?? document;
+              const addAnother = Array.from(
+                scope.querySelectorAll<HTMLButtonElement>("button"),
+              ).find(
+                (candidate) =>
+                  String(candidate.textContent ?? "").trim().toLowerCase() ===
+                  "+ add another part",
+              );
+              addAnother?.click();
+            }, 0);
+          }}
         >
           {center}
         </div>
