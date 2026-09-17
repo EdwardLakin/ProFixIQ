@@ -1,4 +1,4 @@
-//features/inspections/lib/inspection/ui/AirCornerGrid.tsx
+//features/inspections/lib/inspection/ui/CornerGrid.tsx
 
 "use client";
 
@@ -15,6 +15,13 @@ type CornerGridProps = {
 
 const CORNERS = ["LF", "RF", "LR", "RR"] as const;
 type Corner = (typeof CORNERS)[number];
+
+const CORNER_LABEL: Record<Corner, string> = {
+  LF: "Left Front",
+  RF: "Right Front",
+  LR: "Left Rear",
+  RR: "Right Rear",
+};
 
 const HYD_ITEM_RE = /^(?<corner>LF|RF|LR|RR)\s+(?<metric>.+)$/i;
 
@@ -50,18 +57,14 @@ function normalizeMetricLabel(metric: string): string {
 
 function inputCls() {
   return [
-    "h-[34px] w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]",
-    "px-3 py-1.5 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]",
-    "focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70",
+    "h-10 w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)]",
+    "px-3 py-1.5 pr-11 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)]",
+    "focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/40",
   ].join(" ");
 }
 
 function unitCls() {
-  return "pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-[color:var(--theme-text-secondary)]";
-}
-
-function cornerShellCls() {
-  return "rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
+  return "pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium text-[color:var(--theme-text-secondary)]";
 }
 
 export default function CornerGrid(props: CornerGridProps) {
@@ -89,7 +92,10 @@ export default function CornerGrid(props: CornerGridProps) {
       const kind = metricKindFrom(metric);
       if (kind === "other") return;
 
-      const unit = (unitHint ? unitHint(metric) : "").trim() || (it.unit ?? "").trim() || "mm";
+      const unit =
+        (unitHint ? unitHint(metric) : "").trim() ||
+        (it.unit ?? "").trim() ||
+        "mm";
 
       const cell: Cell = {
         idx,
@@ -105,7 +111,9 @@ export default function CornerGrid(props: CornerGridProps) {
       if (kind === "rotor" && !bucket.rotor) bucket.rotor = cell;
     });
 
-    const hasAny = CORNERS.some((c) => !!(byCorner[c].pads || byCorner[c].rotor));
+    const hasAny = CORNERS.some(
+      (corner) => !!(byCorner[corner].pads || byCorner[corner].rotor),
+    );
     return { byCorner, hasAny };
   }, [items, unitHint]);
 
@@ -125,60 +133,82 @@ export default function CornerGrid(props: CornerGridProps) {
   };
 
   const Stack = (corner: Corner) => {
-    const b = parsed.byCorner[corner];
-    const pads = b.pads;
-    const rotor = b.rotor;
+    const bucket = parsed.byCorner[corner];
+    const pads = bucket.pads;
+    const rotor = bucket.rotor;
 
     return (
-      <div className="flex flex-col gap-2">
-        <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-          {corner}
+      <div className="min-w-0 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-sm">
+        <div className="mb-3 flex items-center justify-between gap-2 border-b border-[color:var(--theme-border-soft)] pb-2">
+          <div>
+            <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+              {CORNER_LABEL[corner]}
+            </div>
+            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+              {corner}
+            </div>
+          </div>
         </div>
 
-        {/* Pads/Shoes */}
-        <div className="relative">
-          <input
-            className={inputCls()}
-            type="number"
-            inputMode="decimal"
-            placeholder={pads ? "Pads/Shoes" : "—"}
-            value={String(pads?.item?.value ?? "")}
-            onFocus={() => pads && onSpecHint?.(pads.metricLabel)}
-            onChange={(e) => commit(pads, e.currentTarget.value)}
-            disabled={!pads}
-          />
-          <span className={unitCls()}>{pads?.unit ?? "mm"}</span>
-        </div>
+        <div className="space-y-3">
+          <label className="block min-w-0">
+            <span className="mb-1 block text-[11px] font-medium text-[color:var(--theme-text-secondary)]">
+              Pad / shoe thickness
+            </span>
+            <div className="relative">
+              <input
+                className={inputCls()}
+                type="number"
+                inputMode="decimal"
+                placeholder={pads ? "Enter value" : "Not configured"}
+                value={String(pads?.item?.value ?? "")}
+                onFocus={() => pads && onSpecHint?.(pads.metricLabel)}
+                onChange={(event) => commit(pads, event.currentTarget.value)}
+                disabled={!pads}
+              />
+              <span className={unitCls()}>{pads?.unit ?? "mm"}</span>
+            </div>
+          </label>
 
-        {/* Rotor/Drum */}
-        <div className="relative">
-          <input
-            className={inputCls()}
-            type="number"
-            inputMode="decimal"
-            placeholder={rotor ? "Rotor/Drum" : "—"}
-            value={String(rotor?.item?.value ?? "")}
-            onFocus={() => rotor && onSpecHint?.(rotor.metricLabel)}
-            onChange={(e) => commit(rotor, e.currentTarget.value)}
-            disabled={!rotor}
-          />
-          <span className={unitCls()}>{rotor?.unit ?? "mm"}</span>
+          <label className="block min-w-0">
+            <span className="mb-1 block text-[11px] font-medium text-[color:var(--theme-text-secondary)]">
+              Rotor / drum thickness
+            </span>
+            <div className="relative">
+              <input
+                className={inputCls()}
+                type="number"
+                inputMode="decimal"
+                placeholder={rotor ? "Enter value" : "Not configured"}
+                value={String(rotor?.item?.value ?? "")}
+                onFocus={() => rotor && onSpecHint?.(rotor.metricLabel)}
+                onChange={(event) => commit(rotor, event.currentTarget.value)}
+                disabled={!rotor}
+              />
+              <span className={unitCls()}>{rotor?.unit ?? "mm"}</span>
+            </div>
+          </label>
         </div>
       </div>
     );
   };
 
   return (
-    <div className="grid w-full gap-3">
-      <div className="flex items-center justify-between gap-3 px-1">
-        <div className="text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-          Hydraulic brake measurements
+    <div className="grid w-full gap-3" data-inspection-corner-grid="hydraulic">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+        <div>
+          <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+            Hydraulic brake measurements
+          </div>
+          <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
+            Enter pad/shoe and rotor/drum measurements by wheel position.
+          </div>
         </div>
 
         <button
           type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:border-orange-500/70 hover:bg-[color:var(--theme-surface-overlay)]"
+          onClick={() => setOpen((value) => !value)}
+          className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)] hover:border-orange-500/70 hover:bg-[color:var(--theme-surface-overlay)]"
           aria-expanded={open}
           title={open ? "Collapse" : "Expand"}
           tabIndex={-1}
@@ -188,39 +218,10 @@ export default function CornerGrid(props: CornerGridProps) {
       </div>
 
       {open ? (
-        <div className={["p-4", cornerShellCls()].join(" ")}>
-          <div className="grid gap-6">
-            {/* FRONT */}
-            <div>
-              <div
-                className="mb-2 text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
-                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-              >
-                Front
-              </div>
-
-              <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
-                {Stack("LF")}
-                {Stack("RF")}
-              </div>
-            </div>
-
-            {/* REAR */}
-            <div>
-              <div
-                className="mb-2 text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
-                style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
-              >
-                Rear
-              </div>
-
-              <div className="grid grid-cols-1 items-start gap-4 md:grid-cols-2">
-                {Stack("LR")}
-                {Stack("RR")}
-              </div>
-            </div>
-
-          </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+          {CORNERS.map((corner) => (
+            <div key={corner}>{Stack(corner)}</div>
+          ))}
         </div>
       ) : null}
     </div>
