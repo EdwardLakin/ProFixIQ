@@ -9,6 +9,10 @@ const editRoute = readFileSync(
   "app/api/parts/requests/items/[itemId]/edit/route.ts",
   "utf8",
 );
+const quoteSaveRoute = readFileSync(
+  "app/api/parts/requests/items/[itemId]/quote-save/route.ts",
+  "utf8",
+);
 const workbenchRow = readFileSync(
   "features/parts/components/request-workbench/PartsRequestWorkbenchRow.tsx",
   "utf8",
@@ -37,8 +41,10 @@ describe("editable request quantities", () => {
     expect(workbenchRow).toContain('step="any"');
   });
 
-  it("preserves positive fractional quantities on save", () => {
+  it("preserves positive fractional quantities on both edit and quote-save paths", () => {
     expect(editRoute).toContain("update.qty = qty;");
     expect(editRoute).not.toContain("Math.floor(qty)");
+    expect(quoteSaveRoute).toContain("const nextQty = qty == null ? null : qty;");
+    expect(quoteSaveRoute).not.toContain("Math.floor(qty)");
   });
 });
