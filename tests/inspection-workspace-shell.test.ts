@@ -17,6 +17,10 @@ const cornerGrid = readFileSync(
   "features/inspections/lib/inspection/ui/CornerGrid.tsx",
   "utf8",
 );
+const photoUploadButton = readFileSync(
+  "features/inspections/lib/inspection/PhotoUploadButton.tsx",
+  "utf8",
+);
 
 describe("inspection workspace shell", () => {
   it("keeps the reference three-surface composition explicit", () => {
@@ -64,6 +68,33 @@ describe("inspection workspace shell", () => {
     expect(shell).toContain("data-inspection-voice-start-control");
     expect(shell).toContain('label="Start Listening"');
     expect(shell).toContain("clickCanonicalVoice");
+  });
+
+  it("keeps the right rail focused on actionable inspection commands", () => {
+    expect(shell).not.toContain('label="Review findings"');
+    expect(shell).not.toContain('label="Add photo"');
+    expect(shell).toContain('label="Sign inspection"');
+    expect(shell).toContain('label="Submit findings"');
+  });
+
+  it("makes live findings navigate back to their inspection item", () => {
+    expect(shell).toContain("focusFinding");
+    expect(shell).toContain("onClick={() => focusFinding(finding)}");
+    expect(shell).toContain("finding.id.split(\":\")");
+    expect(shell).toContain("scrollIntoView");
+  });
+
+  it("opens the first visible part row from the workspace add-part action", () => {
+    expect(shell).toContain('label !== "+ add part"');
+    expect(shell).toContain('"+ add another part"');
+    expect(shell).toContain("addAnother?.click()");
+  });
+
+  it("lets item photo evidence use the native image chooser instead of forcing the camera", () => {
+    expect(photoUploadButton).toContain('type="file"');
+    expect(photoUploadButton).toContain('accept="image/*"');
+    expect(photoUploadButton).toContain("multiple");
+    expect(photoUploadButton).not.toContain('capture="environment"');
   });
 
   it("uses a readable four-corner hydraulic measurement presentation", () => {

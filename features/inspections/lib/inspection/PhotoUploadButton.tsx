@@ -327,7 +327,6 @@ export default function PhotoUploadButton({
           type="file"
           multiple
           accept="image/*"
-          capture="environment"
           onChange={handleFileChange}
           disabled={uploading || !canUpload}
           className="sr-only"
