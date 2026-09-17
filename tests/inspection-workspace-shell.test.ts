@@ -5,6 +5,18 @@ const shell = readFileSync(
   "features/inspections/workspace/InspectionWorkspaceShell.tsx",
   "utf8",
 );
+const customerVehicleHeader = readFileSync(
+  "features/inspections/lib/inspection/ui/CustomerVehicleHeader.tsx",
+  "utf8",
+);
+const voiceButton = readFileSync(
+  "features/inspections/lib/inspection/StartListeningButton.tsx",
+  "utf8",
+);
+const cornerGrid = readFileSync(
+  "features/inspections/lib/inspection/ui/CornerGrid.tsx",
+  "utf8",
+);
 
 describe("inspection workspace shell", () => {
   it("keeps the reference three-surface composition explicit", () => {
@@ -26,12 +38,41 @@ describe("inspection workspace shell", () => {
     expect(shell).not.toContain("work_order_");
   });
 
-  it("exposes existing controls as injected UI instead of redefining actions", () => {
+  it("keeps canonical controls injectable instead of moving persistence into the shell", () => {
     expect(shell).toContain("voiceControl?: ReactNode");
     expect(shell).toContain("reviewFindingsControl?: ReactNode");
     expect(shell).toContain("addPhotoControl?: ReactNode");
     expect(shell).toContain("signControl?: ReactNode");
     expect(shell).toContain("submitControl?: ReactNode");
     expect(shell).toContain("onSelectSection: (sectionId: string) => void");
+  });
+
+  it("renders only the selected inspection section in the center workspace", () => {
+    expect(shell).toContain("data-inspection-workspace-runtime");
+    expect(shell).toContain("[data-inspection-workspace-runtime] [data-section-index]");
+    expect(shell).toContain("display: none !important");
+    expect(shell).toContain("activeSelector");
+    expect(shell).toContain("display: block !important");
+  });
+
+  it("removes duplicate context and relocates voice access to the command rail", () => {
+    expect(customerVehicleHeader).toContain(
+      'data-inspection-customer-vehicle-header="true"',
+    );
+    expect(voiceButton).toContain('data-inspection-voice-start-control="true"');
+    expect(shell).toContain("data-inspection-customer-vehicle-header");
+    expect(shell).toContain("data-inspection-voice-start-control");
+    expect(shell).toContain('label="Start Listening"');
+    expect(shell).toContain("clickCanonicalVoice");
+  });
+
+  it("uses a readable four-corner hydraulic measurement presentation", () => {
+    expect(cornerGrid).toContain('data-inspection-corner-grid="hydraulic"');
+    expect(cornerGrid).toContain("Left Front");
+    expect(cornerGrid).toContain("Right Front");
+    expect(cornerGrid).toContain("Left Rear");
+    expect(cornerGrid).toContain("Right Rear");
+    expect(cornerGrid).toContain("Pad / shoe thickness");
+    expect(cornerGrid).toContain("Rotor / drum thickness");
   });
 });

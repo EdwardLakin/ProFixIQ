@@ -71,7 +71,10 @@ export default function CustomerVehicleHeader({
   ].filter(Boolean) as string[];
 
   return (
-    <div className="mt-3 border-t border-[color:var(--theme-border-soft)] pt-3">
+    <div
+      data-inspection-customer-vehicle-header="true"
+      className="mt-3 border-t border-[color:var(--theme-border-soft)] pt-3"
+    >
       {(templateName || rightSlot) && (
       <div className="mb-2 flex items-start justify-between gap-3">
         {templateName ? <h1 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">{templateName}</h1> : <span />}

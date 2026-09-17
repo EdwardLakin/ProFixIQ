@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import {
   Camera,
   Check,
@@ -67,9 +67,9 @@ function progressPercent(completed: number, total: number): number {
 
 function railButtonClass(active = false): string {
   return cn(
-    "group flex min-h-12 w-full items-center gap-3 rounded-xl border px-3 py-2.5 text-left transition",
+    "group flex min-h-[58px] w-full items-center gap-2.5 rounded-xl border px-3 py-2.5 text-left transition",
     active
-      ? "border-sky-400/45 bg-sky-500/10 shadow-[inset_3px_0_0_rgba(14,165,233,0.85)]"
+      ? "border-sky-400/50 bg-sky-500/10 shadow-[inset_3px_0_0_rgba(14,165,233,0.9)]"
       : "border-transparent bg-transparent hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-subtle)]",
   );
 }
@@ -78,14 +78,17 @@ function DefaultControl({
   icon,
   label,
   emphasis = false,
+  onClick,
 }: {
   icon: ReactNode;
   label: string;
   emphasis?: boolean;
+  onClick?: () => void;
 }) {
   return (
     <button
       type="button"
+      onClick={onClick}
       className={cn(
         "inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl border px-3 text-sm font-semibold transition",
         emphasis
@@ -132,31 +135,137 @@ export default function InspectionWorkspaceShell({
           ),
     [normalizedQuery, sections],
   );
+
+  const activeSection = useMemo(
+    () => sections.find((section) => section.id === activeSectionId) ?? null,
+    [activeSectionId, sections],
+  );
   const overallPercent = progressPercent(completedSections, totalSections);
+  const visibleSubtitle =
+    subtitle && !subtitle.toLowerCase().includes("canonical") ? subtitle : null;
+
+  const clickCanonicalVoice = useCallback(() => {
+    if (typeof document === "undefined") return;
+    const control = document.querySelector<HTMLButtonElement>(
+      '[data-inspection-workspace-runtime] [data-inspection-voice-start-control="true"]',
+    );
+    control?.click();
+  }, []);
+
+  const focusActivePhoto = useCallback(() => {
+    if (typeof document === "undefined" || activeSectionId == null) return;
+    const section = document.querySelector<HTMLElement>(
+      `[data-inspection-workspace-runtime] [data-section-index="${activeSectionId}"]`,
+    );
+    if (!section) return;
+    const button = Array.from(section.querySelectorAll<HTMLButtonElement>("button")).find(
+      (candidate) =>
+        String(candidate.textContent ?? "").toLowerCase().includes("photo"),
+    );
+    if (button) {
+      button.scrollIntoView({ behavior: "smooth", block: "center" });
+      button.focus({ preventScroll: true });
+    }
+  }, [activeSectionId]);
+
+  const focusCanonicalPanel = useCallback((needle: string) => {
+    if (typeof document === "undefined") return;
+    const root = document.querySelector<HTMLElement>(
+      "[data-inspection-workspace-runtime]",
+    );
+    if (!root) return;
+    const normalized = needle.toLowerCase();
+    const candidate = Array.from(
+      root.querySelectorAll<HTMLElement>("button, h2, h3, label, div"),
+    ).find((element) =>
+      String(element.textContent ?? "").trim().toLowerCase().includes(normalized),
+    );
+    candidate?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, []);
+
+  const focusFindings = useCallback(() => {
+    if (typeof document === "undefined") return;
+    document
+      .querySelector<HTMLElement>("[data-inspection-live-findings]")
+      ?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, []);
+
+  const activeSelector =
+    activeSectionId == null
+      ? ""
+      : `[data-inspection-workspace-runtime] [data-section-index=\"${activeSectionId}\"]`;
 
   return (
     <section
       data-inspection-workspace
+      data-active-section-id={activeSectionId ?? undefined}
       className={cn(
-        "grid min-h-0 gap-3 xl:grid-cols-[280px_minmax(0,1fr)_320px]",
+        "grid min-h-0 gap-3 xl:grid-cols-[260px_minmax(0,1fr)_320px] 2xl:grid-cols-[280px_minmax(0,1fr)_340px]",
         className,
       )}
     >
+      <style>{`
+        [data-inspection-workspace-runtime] .inspection-embed {
+          max-width: none !important;
+          padding: 0 !important;
+          margin: 0 !important;
+        }
+        [data-inspection-workspace-runtime] [data-section-index] {
+          display: none !important;
+        }
+        ${activeSelector} {
+          display: block !important;
+          opacity: 1 !important;
+          margin: 0 !important;
+        }
+        [data-inspection-workspace-runtime] .inspection-embed > .relative.space-y-3 > div:has([data-inspection-customer-vehicle-header]) {
+          display: none !important;
+        }
+        [data-inspection-workspace-runtime] .rounded-2xl:has([data-inspection-voice-start-control="true"]) {
+          display: none !important;
+        }
+        [data-inspection-workspace-runtime] [class*="lg:grid-cols-[minmax(0,1fr)_auto]"] {
+          grid-template-columns: minmax(0, 1fr) !important;
+          align-items: start !important;
+        }
+        [data-inspection-workspace-runtime] [class*="lg:grid-cols-[minmax(0,1fr)_240px]"] {
+          grid-template-columns: minmax(0, 1fr) !important;
+        }
+        [data-inspection-workspace-runtime] [aria-label="Bulk section actions"] {
+          width: 100% !important;
+          justify-content: flex-start !important;
+        }
+        [data-inspection-workspace-runtime] [data-section-index] h2,
+        [data-inspection-workspace-runtime] [data-section-index] button[aria-expanded] {
+          white-space: normal !important;
+          overflow: visible !important;
+          text-overflow: clip !important;
+        }
+        [data-inspection-workspace-runtime] [data-section-index] {
+          overflow-x: auto;
+        }
+        [data-inspection-workspace-runtime] [data-section-index] input,
+        [data-inspection-workspace-runtime] [data-section-index] textarea,
+        [data-inspection-workspace-runtime] [data-section-index] button {
+          min-width: 0;
+        }
+      `}</style>
+
       <aside
         data-inspection-workspace-sections
         className="min-h-0 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] p-3 shadow-[var(--theme-shadow-soft)]"
       >
         <div className="px-1 pb-3">
-          <div className="flex items-center justify-between gap-3">
-            <div>
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
               <h2 className="text-base font-semibold text-[color:var(--theme-text-primary)]">
                 Inspection Sections
               </h2>
               <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                {completedSections} of {totalSections} complete
+                {totalSections} sections
               </p>
             </div>
-            <span className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+            <span className="shrink-0 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-xs font-semibold text-[color:var(--theme-text-secondary)]">
               {overallPercent}%
             </span>
           </div>
@@ -168,7 +277,7 @@ export default function InspectionWorkspaceShell({
           </div>
         </div>
 
-        <label className="mb-2 flex min-h-11 items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-sm text-[color:var(--theme-text-secondary)]">
+        <label className="mb-2 flex min-h-10 items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 text-sm text-[color:var(--theme-text-secondary)]">
           <Search className="h-4 w-4 shrink-0" aria-hidden />
           <input
             value={query}
@@ -179,10 +288,15 @@ export default function InspectionWorkspaceShell({
           />
         </label>
 
-        <div className="max-h-[calc(100dvh-23rem)] space-y-1 overflow-y-auto pr-1 xl:max-h-[calc(100dvh-18rem)]">
+        <div className="max-h-[calc(100dvh-22rem)] space-y-1 overflow-y-auto pr-1 xl:max-h-[calc(100dvh-17rem)]">
           {visibleSections.map((section) => {
             const active = section.id === activeSectionId;
-            const complete = section.total > 0 && section.completed >= section.total;
+            const complete =
+              section.total > 0 &&
+              section.completed > 0 &&
+              section.completed >= section.total;
+            const partial =
+              section.completed > 0 && section.completed < section.total;
             return (
               <button
                 key={section.id}
@@ -201,17 +315,14 @@ export default function InspectionWorkspaceShell({
                   )}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                  <span className="block whitespace-normal break-words text-sm font-semibold leading-5 text-[color:var(--theme-text-primary)]">
                     {section.title}
                   </span>
-                  {section.subtitle ? (
-                    <span className="mt-0.5 block truncate text-[11px] text-[color:var(--theme-text-muted)]">
-                      {section.subtitle}
-                    </span>
-                  ) : null}
-                </span>
-                <span className="shrink-0 text-xs font-semibold text-[color:var(--theme-text-secondary)]">
-                  {section.completed} / {section.total}
+                  <span className="mt-0.5 block text-[11px] text-[color:var(--theme-text-muted)]">
+                    {partial
+                      ? `${section.completed} completed · ${section.total} items`
+                      : `${section.total} ${section.total === 1 ? "item" : "items"}`}
+                  </span>
                 </span>
                 <ChevronRight
                   className="h-4 w-4 shrink-0 text-[color:var(--theme-text-muted)] transition group-hover:translate-x-0.5"
@@ -225,22 +336,26 @@ export default function InspectionWorkspaceShell({
 
       <main
         data-inspection-workspace-center
-        className="min-w-0 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] shadow-[var(--theme-shadow-soft)]"
+        className="min-w-0 overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] shadow-[var(--theme-shadow-soft)]"
       >
         <div className="border-b border-[color:var(--theme-border-soft)] px-4 py-4 md:px-5">
           <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-500">
             Inspection workspace
           </div>
-          <h2 className="mt-1 text-xl font-semibold text-[color:var(--theme-text-primary)]">
-            {title}
+          <h2 className="mt-1 whitespace-normal break-words text-xl font-semibold leading-tight text-[color:var(--theme-text-primary)] md:text-2xl">
+            {activeSection?.title || title}
           </h2>
-          {subtitle ? (
-            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-              {subtitle}
-            </p>
-          ) : null}
+          <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+            {title}
+            {visibleSubtitle ? ` · ${visibleSubtitle}` : ""}
+          </p>
         </div>
-        <div className="min-h-0 p-3 md:p-4">{center}</div>
+        <div
+          data-inspection-workspace-runtime
+          className="min-h-0 min-w-0 overflow-y-auto p-3 md:p-4"
+        >
+          {center}
+        </div>
         {footer ? (
           <div className="border-t border-[color:var(--theme-border-soft)] p-3 md:p-4">
             {footer}
@@ -266,7 +381,7 @@ export default function InspectionWorkspaceShell({
               style={{ width: `${overallPercent}%` }}
             />
           </div>
-          <div className="mt-3 grid grid-cols-4 gap-2">
+          <div className="mt-3 grid grid-cols-2 gap-2">
             <div className="rounded-xl border border-red-300/50 bg-red-500/10 px-2 py-2 text-center">
               <div className="text-lg font-semibold text-red-600 dark:text-red-300">{counts.fail}</div>
               <div className="text-[10px] font-semibold uppercase tracking-wide text-red-600 dark:text-red-300">Fail</div>
@@ -287,32 +402,55 @@ export default function InspectionWorkspaceShell({
         </div>
 
         <div className="space-y-2 border-b border-[color:var(--theme-border-soft)] py-3">
-          {voiceControl ?? (
-            <DefaultControl icon={<Mic className="h-4 w-4" aria-hidden />} label="Start Listening" emphasis />
-          )}
-          {reviewFindingsControl ?? (
-            <DefaultControl icon={<FileCheck2 className="h-4 w-4" aria-hidden />} label="Review findings" />
-          )}
+          <DefaultControl
+            icon={<Mic className="h-4 w-4" aria-hidden />}
+            label="Start Listening"
+            emphasis
+            onClick={clickCanonicalVoice}
+          />
+          <DefaultControl
+            icon={<FileCheck2 className="h-4 w-4" aria-hidden />}
+            label="Review findings"
+            onClick={focusFindings}
+          />
           <div className="grid grid-cols-2 gap-2">
-            {addPhotoControl ?? (
-              <DefaultControl icon={<Camera className="h-4 w-4" aria-hidden />} label="Add photo" />
-            )}
-            {signControl ?? (
-              <DefaultControl icon={<Check className="h-4 w-4" aria-hidden />} label="Sign inspection" />
-            )}
+            <DefaultControl
+              icon={<Camera className="h-4 w-4" aria-hidden />}
+              label="Add photo"
+              onClick={focusActivePhoto}
+            />
+            <DefaultControl
+              icon={<Check className="h-4 w-4" aria-hidden />}
+              label="Sign inspection"
+              onClick={() => focusCanonicalPanel("Technician Signature")}
+            />
           </div>
-          {submitControl ?? (
-            <DefaultControl icon={<Send className="h-4 w-4" aria-hidden />} label="Submit findings" emphasis />
-          )}
+          <DefaultControl
+            icon={<Send className="h-4 w-4" aria-hidden />}
+            label="Submit findings"
+            emphasis
+            onClick={() => focusCanonicalPanel("Submit findings before signing")}
+          />
+
+          <div className="hidden" aria-hidden="true">
+            {voiceControl}
+            {reviewFindingsControl}
+            {addPhotoControl}
+            {signControl}
+            {submitControl}
+          </div>
         </div>
 
-        <div className="border-b border-[color:var(--theme-border-soft)] py-3">
+        <div
+          data-inspection-live-findings
+          className="border-b border-[color:var(--theme-border-soft)] py-3"
+        >
           <div className="mb-2 flex items-center justify-between gap-3">
             <h3 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
               Live Findings ({findings.length})
             </h3>
           </div>
-          <div className="max-h-[32rem] space-y-2 overflow-y-auto pr-1">
+          <div className="max-h-[30rem] space-y-2 overflow-y-auto pr-1">
             {findings.length === 0 ? (
               <div className="rounded-xl border border-dashed border-[color:var(--theme-border-soft)] px-3 py-4 text-center text-xs text-[color:var(--theme-text-muted)]">
                 Failed and recommended items appear here as they are recorded.
@@ -334,12 +472,12 @@ export default function InspectionWorkspaceShell({
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start justify-between gap-2">
-                        <h4 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                        <h4 className="min-w-0 break-words text-sm font-semibold text-[color:var(--theme-text-primary)]">
                           {finding.title}
                         </h4>
                         <span
                           className={cn(
-                            "rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+                            "shrink-0 rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
                             finding.status === "fail"
                               ? "bg-red-500/10 text-red-600 dark:text-red-300"
                               : "bg-amber-500/10 text-amber-700 dark:text-amber-300",
@@ -349,7 +487,7 @@ export default function InspectionWorkspaceShell({
                         </span>
                       </div>
                       {finding.summary ? (
-                        <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+                        <p className="mt-1 break-words text-xs leading-5 text-[color:var(--theme-text-secondary)]">
                           {finding.summary}
                         </p>
                       ) : null}
