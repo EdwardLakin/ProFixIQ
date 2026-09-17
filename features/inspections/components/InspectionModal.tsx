@@ -217,11 +217,11 @@ export default function InspectionModal({
     [derived.params],
   );
 
+  // `inspection:close` is a close command emitted by the inspection flow.
+  // The modal handles it below, so direct close actions must not redispatch
+  // the same event and synchronously recurse through their own listener.
   const close = useCallback(() => {
     onClose();
-    if (typeof window !== "undefined") {
-      window.dispatchEvent(new CustomEvent("inspection:close"));
-    }
   }, [onClose]);
 
   // On the Work Order page the repair-lines module already owns the exact
