@@ -34,6 +34,8 @@ export default function StartListeningButton({
 
   return (
     <Button
+      data-inspection-voice-start-control="true"
+      data-listening-state={isListening ? "listening" : "idle"}
       type="button"
       onClick={handleStart}
       disabled={isListening}
