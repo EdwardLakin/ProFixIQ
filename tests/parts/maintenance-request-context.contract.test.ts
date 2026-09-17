@@ -15,7 +15,8 @@ describe("maintenance parts request context", () => {
     expect(mapper).toContain("deriveJobContext");
     expect(mapper).toContain("firstItemDescription");
     expect(mapper).toContain("parts\\s+to\\s+quote");
-    expect(maintenanceWriter).toContain("description: input.description");
+    expect(mapper).toContain("maintenanceServiceFromNotes");
+    expect(maintenanceWriter).toContain('description: ""');
     expect(maintenanceWriter).toContain("Service to quote: ${input.description}");
   });
 });
