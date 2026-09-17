@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   InspectionItem,
   InspectionSection,
@@ -8,6 +8,10 @@ import {
   QuoteLineItem,
   BrakeType,
 } from "@inspections/lib/inspection/types";
+import {
+  publishInspectionWorkspaceState,
+  subscribeInspectionWorkspaceSectionRequests,
+} from "@/features/inspections/workspace/inspectionWorkspaceBridge";
 
 type AxleLayoutConfig = { axleCount: number; brakeType: BrakeType };
 
@@ -157,6 +161,55 @@ export default function useInspectionSession(initialSession?: Partial<SessionWit
   }));
 
   const stamp = () => ({ lastUpdated: new Date().toISOString() });
+
+  // The work-order inspection workspace needs a live, read-only view of the
+  // canonical inspection session. Publish that view from the state owner
+  // rather than recreating inspection state or persistence in the workspace.
+  useEffect(() => {
+    publishInspectionWorkspaceState(session);
+  }, [session]);
+
+  // Section navigation is the only workspace command handled here. It is
+  // scoped to the current inspection/work-order line and updates the same
+  // canonical session cursor used by the existing inspection screen.
+  useEffect(
+    () =>
+      subscribeInspectionWorkspaceSectionRequests((request) => {
+        setSession((prev) => {
+          const requestedLineId = String(request.workOrderLineId ?? "").trim();
+          const requestedInspectionId = String(request.inspectionId ?? "").trim();
+          const currentLineId = String(prev.workOrderLineId ?? "").trim();
+          const currentInspectionId = String(prev.id ?? "").trim();
+
+          if (requestedLineId && requestedLineId !== currentLineId) return prev;
+          if (
+            requestedInspectionId &&
+            currentInspectionId &&
+            requestedInspectionId !== currentInspectionId
+          ) {
+            return prev;
+          }
+
+          const sectionIndex = request.sectionIndex;
+          if (
+            !Number.isInteger(sectionIndex) ||
+            sectionIndex < 0 ||
+            sectionIndex >= prev.sections.length ||
+            prev.currentSectionIndex === sectionIndex
+          ) {
+            return prev;
+          }
+
+          return {
+            ...prev,
+            currentSectionIndex: sectionIndex,
+            currentItemIndex: 0,
+            lastUpdated: new Date().toISOString(),
+          };
+        });
+      }),
+    [],
+  );
 
   const updateInspection = (updates: Partial<SessionWithLineId>) =>
     setSession((prev) => ({ ...prev, ...updates, ...stamp() }));
