@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useEffect, useState } from "react";
 import { SmartInsightBadges } from "./SmartInsightBadges";
 import { InventoryFieldCombobox } from "./InventoryFieldCombobox";
 import { canonicalStatusLabel } from "../../lib/status-display";
@@ -71,6 +71,11 @@ export function PartsRequestWorkbenchRow({
       : item.supplierQuoteStatus === "received"
         ? "Supplier Quote Received"
         : canonicalStatusLabel(item.status);
+  const [qtyDraft, setQtyDraft] = useState(() => String(item.qty));
+
+  useEffect(() => {
+    setQtyDraft(String(item.qty));
+  }, [item.id, item.qty]);
 
   return (
     <tr className="border-t border-[color:var(--desktop-border)] align-top">
@@ -139,9 +144,22 @@ export function PartsRequestWorkbenchRow({
         <input
           className={`${input} max-w-20`}
           type="number"
-          min="1"
-          value={item.qty}
-          onChange={(event) => onChange?.({ ...item, qty: Number(event.target.value) })}
+          min="0.01"
+          step="any"
+          value={qtyDraft}
+          onChange={(event) => {
+            const next = event.target.value;
+            setQtyDraft(next);
+            if (next === "") return;
+            const parsed = Number(next);
+            if (Number.isFinite(parsed)) onChange?.({ ...item, qty: parsed });
+          }}
+          onBlur={() => {
+            const parsed = Number(qtyDraft);
+            if (qtyDraft.trim() === "" || !Number.isFinite(parsed) || parsed <= 0) {
+              setQtyDraft(String(item.qty));
+            }
+          }}
         />
       </td>
       <td className="p-2">
