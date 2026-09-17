@@ -59,13 +59,22 @@ describe("maintenance suggestion quote contract", () => {
     );
   });
 
-  it("creates an idempotent Parts quote request even when the suggestion has no known parts recipe", () => {
+  it("seeds mapped menu parts but keeps a blank part row when no recipe is known", () => {
+    expect(maintenanceWriter).toContain('.from("menu_item_parts")');
+    expect(maintenanceWriter).toContain(
+      '.select("menu_item_id, name, quantity, unit_cost")',
+    );
+    expect(maintenanceWriter).toContain(
+      "parts: menuItem?.parts.length ? menuItem.parts : undefined",
+    );
+    expect(maintenanceWriter).toContain("unitPrice,");
     expect(maintenanceWriter).toContain("ensureMaintenancePartsQuoteRequest({");
     expect(maintenanceWriter).toContain('.from("part_requests")');
     expect(maintenanceWriter).toContain('.eq("quote_line_id", quoteLineId)');
     expect(maintenanceWriter).toContain('status: "requested"');
+    expect(maintenanceWriter).toContain("Service to quote: ${input.description}");
     expect(maintenanceWriter).toContain('.from("part_request_items")');
-    expect(maintenanceWriter).toContain("description: input.description");
+    expect(maintenanceWriter).toContain('description: ""');
     expect(maintenanceWriter).not.toContain("description: `Parts to quote");
     expect(maintenanceWriter).toContain("qty_requested: 1");
     expect(maintenanceWriter).toContain("syncQuoteLinePartsStatus(supabase");
