@@ -2,19 +2,21 @@ import { describe, expect, it } from "vitest";
 import { mapRequestToWorkbenchModel } from "./mapToWorkbenchModel";
 
 describe("parts request workbench job context", () => {
-  it("shows the maintenance service when a pre-approval quote request has no work-order line yet", () => {
+  it("moves maintenance service context to the request header and leaves the part description blank", () => {
     const model = mapRequestToWorkbenchModel({
       request: {
         id: "request-1",
         work_order_id: "work-order-1",
         quote_line_id: "quote-line-1",
         job_id: null,
+        notes:
+          "Service to quote: Automatic transmission service\nQuote line: quote-line-1",
         status: "requested",
       },
       items: [
         {
           id: "item-1",
-          description: "Parts to quote — Automatic transmission service",
+          description: "Automatic transmission service",
           qty: 1,
           status: "requested",
         },
@@ -23,6 +25,28 @@ describe("parts request workbench job context", () => {
     });
 
     expect(model.jobContext).toBe("Automatic transmission service");
+    expect(model.items[0]?.description).toBe("");
+  });
+
+  it("keeps compatibility with existing placeholder rows while hiding the placeholder from the part field", () => {
+    const model = mapRequestToWorkbenchModel({
+      request: {
+        id: "request-1",
+        quote_line_id: "quote-line-1",
+        job_id: null,
+      },
+      items: [
+        {
+          id: "item-1",
+          description: "Parts to quote — Brake fluid flush",
+          qty: 1,
+        },
+      ],
+      jobContext: "",
+    });
+
+    expect(model.jobContext).toBe("Brake fluid flush");
+    expect(model.items[0]?.description).toBe("");
   });
 
   it("keeps the canonical work-order-line context when one is available", () => {
@@ -31,13 +55,15 @@ describe("parts request workbench job context", () => {
       items: [
         {
           id: "item-1",
-          description: "Parts to quote — Brake fluid flush",
+          description: "Oil filter",
           qty: 1,
+          work_order_line_id: "line-1",
         },
       ],
       jobContext: "Replace front brakes",
     });
 
     expect(model.jobContext).toBe("Replace front brakes");
+    expect(model.items[0]?.description).toBe("Oil filter");
   });
 });

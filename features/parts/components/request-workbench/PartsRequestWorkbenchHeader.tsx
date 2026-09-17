@@ -39,10 +39,10 @@ export function PartsRequestWorkbenchHeader({
   packageCommittedCount?: number;
 }): JSX.Element {
   const meta = [
-    jobContext,
     createdAt ? `Created ${createdAt}${createdBy ? ` by ${createdBy}` : ""}` : null,
   ].filter(Boolean);
   const title = workOrderCustomId || `Parts Request ${requestLabel}`;
+  const requestContext = jobContext || requestLabel;
 
   return (
     <div className="flex flex-wrap items-start justify-between gap-4">
@@ -60,7 +60,7 @@ export function PartsRequestWorkbenchHeader({
         </div>
         {workOrderCustomId ? (
           <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-secondary)]">
-            Parts request · {requestLabel}
+            Parts request · {requestContext}
           </div>
         ) : null}
         <div className="mt-2 flex flex-wrap gap-2 text-sm text-[color:var(--theme-text-secondary)]">

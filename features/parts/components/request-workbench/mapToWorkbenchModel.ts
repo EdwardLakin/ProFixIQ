@@ -23,6 +23,11 @@ function nullableText(value: unknown): string | null {
   return cleaned || null;
 }
 
+function stripMaintenancePartPlaceholder(value: unknown): string {
+  const raw = text(value);
+  return raw.replace(/^parts\s+to\s+quote\s*[—–-]\s*/i, "").trim();
+}
+
 function deriveJobContext(input: {
   explicit?: string | null;
   request: AnyRecord;
@@ -34,17 +39,22 @@ function deriveJobContext(input: {
   const legacyJob = text(input.request.job_id);
   if (legacyJob) return legacyJob;
 
+  const requestNotes = text(input.request.notes);
+  const serviceMatch = requestNotes.match(
+    /(?:^|\n)service\s+to\s+quote:\s*([^\n]+)/i,
+  );
+  const serviceFromNotes = serviceMatch?.[1]?.trim() ?? "";
+  if (serviceFromNotes) return serviceFromNotes;
+
   const firstItemDescription = text(input.items[0]?.description);
   if (!firstItemDescription) return null;
 
-  return (
-    firstItemDescription.replace(/^parts\s+to\s+quote\s*[—–-]\s*/i, "").trim() ||
-    firstItemDescription
-  );
+  return stripMaintenancePartPlaceholder(firstItemDescription) || firstItemDescription;
 }
 
 export function mapRequestItemToWorkbenchItem(input: {
   item: AnyRecord;
+  hideDescription?: boolean;
   hasStockSuggestion?: boolean;
   availableStock?: number | null;
   supplierSuggestionCount?: number;
@@ -66,7 +76,7 @@ export function mapRequestItemToWorkbenchItem(input: {
 
   return {
     id: text(item.id),
-    description: text(item.description, "Part"),
+    description: input.hideDescription ? "" : text(item.description),
     requestedPartNumber: nullableText(item.requested_part_number),
     requestedManufacturer: nullableText(item.requested_manufacturer),
     selectedPartNumber: nullableText(selectedPart?.part_number ?? selectedPart?.sku),
@@ -130,6 +140,14 @@ export function mapRequestToWorkbenchModel(input: {
     input.requestLabel,
     text(input.request.custom_id, requestId ? requestId.slice(0, 8) : "Request"),
   );
+  const jobContext = deriveJobContext({
+    explicit: input.jobContext,
+    request: input.request,
+    items: input.items,
+  });
+  const preApprovalQuoteRequest =
+    Boolean(nullableText(input.request.quote_line_id)) &&
+    !input.items.some((item) => Boolean(nullableText(item.work_order_line_id)));
 
   return {
     requestId,
@@ -137,11 +155,7 @@ export function mapRequestToWorkbenchModel(input: {
     status: nullableText(input.request.status),
     workOrderId: input.workOrderId ?? nullableText(input.request.work_order_id),
     workOrderCustomId: input.workOrderCustomId ?? null,
-    jobContext: deriveJobContext({
-      explicit: input.jobContext,
-      request: input.request,
-      items: input.items,
-    }),
+    jobContext,
     createdAt: nullableText(input.request.created_at),
     defaultSupplierId: input.defaultSupplierId ?? null,
     defaultLocationId: input.defaultLocationId ?? null,
@@ -167,8 +181,16 @@ export function mapRequestToWorkbenchModel(input: {
     draftPurchaseOrders: input.draftPurchaseOrders ?? [],
     items: input.items.map((item) => {
       const itemId = text(item.id);
+      const itemDescription = stripMaintenancePartPlaceholder(item.description);
+      const hideDescription =
+        preApprovalQuoteRequest &&
+        Boolean(jobContext) &&
+        Boolean(itemDescription) &&
+        itemDescription.toLowerCase() === jobContext?.toLowerCase();
+
       return mapRequestItemToWorkbenchItem({
         item,
+        hideDescription,
         hasStockSuggestion: (input.stockSuggestionCountByItemId?.[itemId] ?? 0) > 0,
         availableStock: input.availableStockByItemId?.[itemId] ?? null,
         supplierSuggestionCount: input.supplierSuggestionCountByItemId?.[itemId] ?? 0,
