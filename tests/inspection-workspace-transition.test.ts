@@ -36,6 +36,13 @@ describe("work-order inspection workspace transition", () => {
     expect(modalSource).toContain("requestInspectionWorkspaceSection");
   });
 
+  it("treats inspection close as a command instead of redispatching it recursively", () => {
+    expect(modalSource).toContain('window.addEventListener("inspection:close"');
+    expect(modalSource).not.toContain(
+      'window.dispatchEvent(new CustomEvent("inspection:close"))',
+    );
+  });
+
   it("keeps persistence, APIs, and schema behavior out of the transition layer", () => {
     expect(modalSource).not.toContain("supabase.from(");
     expect(modalSource).not.toContain("/api/work-orders/import-from-inspection");
