@@ -7,8 +7,8 @@ import type {
 import {
   createCanonicalQuoteLines,
 } from "@/features/work-orders/lib/work-orders/canonicalQuoteLines";
-import { requireResumableCreateWorkOrder } from "@/features/work-orders/lib/client/validateMutableWorkOrder";
 import { syncQuoteLinePartsStatus } from "@/features/parts/server/syncQuoteLinePartsStatus";
+import { requireResumableCreateWorkOrder } from "@/features/work-orders/lib/client/validateMutableWorkOrder";
 import type { DB, MaintenanceSuggestionItem } from "./types";
 
 type AddMaintenanceSuggestionOpts = {
@@ -170,40 +170,40 @@ async function loadSuggestionCache(
     : [];
 }
 
-async function ensureMaintenancePartsQuoteTask(input: {
+async function ensureMaintenancePartsQuoteRequest(input: {
   supabase: SupabaseClient<DB>;
   shopId: string;
   workOrderId: string;
   quoteLineId: string;
   requestedBy: string;
-  serviceLabel: string;
-  serviceCode: string;
+  description: string;
+  notes: string | null;
 }): Promise<void> {
-  const {
-    supabase,
-    shopId,
-    workOrderId,
-    quoteLineId,
-    requestedBy,
-    serviceLabel,
-    serviceCode,
-  } = input;
+  const { supabase, shopId, workOrderId, quoteLineId, requestedBy } = input;
 
-  const { data: existingRequests, error: existingRequestError } = await supabase
+  const { data: existingRequests, error: requestLookupError } = await supabase
     .from("part_requests")
     .select("id, status")
     .eq("shop_id", shopId)
     .eq("work_order_id", workOrderId)
     .eq("quote_line_id", quoteLineId)
-    .neq("status", "cancelled")
-    .order("created_at", { ascending: false })
-    .limit(1);
+    .order("created_at", { ascending: false });
+  if (requestLookupError) throw requestLookupError;
 
-  if (existingRequestError) throw existingRequestError;
+  const reusable = (existingRequests ?? []).find(
+    (request) => String(request.status ?? "").toLowerCase() !== "cancelled",
+  );
 
-  let requestId = existingRequests?.[0]?.id ?? null;
+  let requestId = reusable?.id ? String(reusable.id) : "";
   if (!requestId) {
-    const { data: createdRequest, error: createRequestError } = await supabase
+    const requestNotes = [
+      `Service to quote: ${input.description}`,
+      input.notes,
+      `Quote line: ${quoteLineId}`,
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const { data: createdRequest, error: requestError } = await supabase
       .from("part_requests")
       .insert({
         shop_id: shopId,
@@ -211,43 +211,40 @@ async function ensureMaintenancePartsQuoteTask(input: {
         quote_line_id: quoteLineId,
         job_id: null,
         requested_by: requestedBy,
+        notes: requestNotes || null,
         status: "requested",
-        notes: `Maintenance parts quote required: ${serviceLabel} (${serviceCode})`,
       })
       .select("id")
       .single();
-
-    if (createRequestError || !createdRequest?.id) {
-      throw createRequestError ?? new Error("Failed to create maintenance parts request");
+    if (requestError || !createdRequest?.id) {
+      throw requestError ?? new Error("Failed to create maintenance parts request");
     }
-    requestId = createdRequest.id;
+    requestId = String(createdRequest.id);
   }
 
-  const { data: existingItems, error: existingItemsError } = await supabase
+  const { data: existingItems, error: itemLookupError } = await supabase
     .from("part_request_items")
     .select("id")
     .eq("request_id", requestId)
-    .eq("quote_line_id", quoteLineId)
     .limit(1);
+  if (itemLookupError) throw itemLookupError;
 
-  if (existingItemsError) throw existingItemsError;
-
-  if (!existingItems?.[0]?.id) {
-    const { error: createItemError } = await supabase
-      .from("part_request_items")
-      .insert({
-        request_id: requestId,
-        shop_id: shopId,
-        work_order_id: workOrderId,
-        quote_line_id: quoteLineId,
-        work_order_line_id: null,
-        description: `Parts to quote — ${serviceLabel}`,
-        qty: 1,
-        qty_requested: 1,
-        status: "requested",
-      });
-
-    if (createItemError) throw createItemError;
+  if (!existingItems?.length) {
+    const { error: itemError } = await supabase.from("part_request_items").insert({
+      request_id: requestId,
+      shop_id: shopId,
+      work_order_id: workOrderId,
+      quote_line_id: quoteLineId,
+      work_order_line_id: null,
+      description: input.description,
+      qty: 1,
+      qty_requested: 1,
+      unit_cost: null,
+      unit_price: null,
+      quoted_price: null,
+      status: "requested",
+    });
+    if (itemError) throw itemError;
   }
 
   const syncResult = await syncQuoteLinePartsStatus(supabase, {
@@ -378,14 +375,14 @@ export async function addMaintenanceSuggestionsToWorkOrder(
       continue;
     }
 
-    await ensureMaintenancePartsQuoteTask({
+    await ensureMaintenancePartsQuoteRequest({
       supabase,
       shopId: workOrder.shop_id,
       workOrderId,
       quoteLineId: result.id,
       requestedBy: userId,
-      serviceLabel: candidate.suggestion.label.trim(),
-      serviceCode: candidate.serviceCode,
+      description: candidate.item.description,
+      notes: candidate.item.notes ?? null,
     });
 
     added.push({

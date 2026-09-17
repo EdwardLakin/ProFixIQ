@@ -59,15 +59,14 @@ describe("maintenance suggestion quote contract", () => {
     );
   });
 
-  it("creates an idempotent Parts quote task even when the suggestion has no known parts recipe", () => {
-    expect(maintenanceWriter).toContain("ensureMaintenancePartsQuoteTask({");
+  it("creates an idempotent Parts quote request even when the suggestion has no known parts recipe", () => {
+    expect(maintenanceWriter).toContain("ensureMaintenancePartsQuoteRequest({");
     expect(maintenanceWriter).toContain('.from("part_requests")');
     expect(maintenanceWriter).toContain('.eq("quote_line_id", quoteLineId)');
     expect(maintenanceWriter).toContain('status: "requested"');
     expect(maintenanceWriter).toContain('.from("part_request_items")');
-    expect(maintenanceWriter).toContain(
-      "description: `Parts to quote — ${serviceLabel}`",
-    );
+    expect(maintenanceWriter).toContain("description: input.description");
+    expect(maintenanceWriter).not.toContain("description: `Parts to quote");
     expect(maintenanceWriter).toContain("qty_requested: 1");
     expect(maintenanceWriter).toContain("syncQuoteLinePartsStatus(supabase");
   });
