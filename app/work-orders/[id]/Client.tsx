@@ -1856,7 +1856,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                     alt=""
                     loading="lazy"
                     decoding="async"
-                    className="h-24 w-24 shrink-0 rounded-xl border border-[color:var(--theme-border-soft)] object-cover"
+                    className="h-24 w-40 shrink-0 rounded-xl border border-[color:var(--theme-border-soft)] object-cover"
                   />
                 ) : null}
                 <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
