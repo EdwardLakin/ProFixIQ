@@ -10,7 +10,7 @@ const deleteRoute = readFileSync(
   "utf8",
 );
 const migration = readFileSync(
-  "supabase/migrations/20260917203000_quote_review_delete_draft_line.sql",
+  "supabase/migrations/20260918023310_quote_review_delete_draft_line.sql",
   "utf8",
 );
 
