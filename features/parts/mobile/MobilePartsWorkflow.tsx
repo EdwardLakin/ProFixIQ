@@ -326,15 +326,21 @@ export default function MobilePartsWorkflow(): JSX.Element {
     return () => window.removeEventListener("parts:received", refresh);
   }, [load]);
 
-  const counts = useMemo(
-    () => ({
-      requests: entries.filter((entry) => entry.lane === "requests").length,
-      approval: entries.filter((entry) => entry.lane === "approval").length,
-      ordered: entries.filter((entry) => entry.lane === "ordered").length,
-      ready: entries.filter((entry) => entry.lane === "ready").length,
-    }),
-    [entries],
-  );
+  const counts = useMemo(() => {
+    const countWorkOrders = (targetLane: Lane): number =>
+      new Set(
+        entries
+          .filter((entry) => entry.lane === targetLane)
+          .map((entry) => entry.workOrderId ?? `unlinked:${entry.requestId}`),
+      ).size;
+
+    return {
+      requests: countWorkOrders("requests"),
+      approval: countWorkOrders("approval"),
+      ordered: countWorkOrders("ordered"),
+      ready: countWorkOrders("ready"),
+    };
+  }, [entries]);
   const visibleEntries = useMemo(
     () => entries.filter((entry) => entry.lane === lane),
     [entries, lane],
