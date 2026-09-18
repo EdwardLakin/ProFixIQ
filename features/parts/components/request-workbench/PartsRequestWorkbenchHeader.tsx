@@ -17,6 +17,7 @@ export function PartsRequestWorkbenchHeader({
   onRequestSupplierQuote,
   selectedCount,
   requestQuoteDisabled,
+  onSaveQuote,
   onCommitPackage,
   commitPackageDisabled,
   packageCommittedCount,
@@ -34,6 +35,7 @@ export function PartsRequestWorkbenchHeader({
   onRequestSupplierQuote?: () => void;
   selectedCount?: number;
   requestQuoteDisabled?: boolean;
+  onSaveQuote?: () => void;
   onCommitPackage?: () => void;
   commitPackageDisabled?: boolean;
   packageCommittedCount?: number;
@@ -43,6 +45,16 @@ export function PartsRequestWorkbenchHeader({
   ].filter(Boolean);
   const title = workOrderCustomId || `Parts Request ${requestLabel}`;
   const requestContext = jobContext || requestLabel;
+  const normalizedStatus = String(status ?? "requested").toLowerCase();
+  const releaseReady = [
+    "approved",
+    "partially_ordered",
+    "partially_received",
+    "received",
+    "partially_consumed",
+    "partially_returned",
+  ].includes(normalizedStatus);
+  const releaseComplete = (packageCommittedCount ?? 0) > 0;
 
   return (
     <div className="flex flex-wrap items-start justify-between gap-4">
@@ -95,21 +107,32 @@ export function PartsRequestWorkbenchHeader({
           ))}
         </select>
 
-        {packageCommittedCount && packageCommittedCount > 0 ? (
-          <span className="rounded-lg border border-emerald-400/25 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-100">
-            {packageCommittedCount} saved to work order
-          </span>
-        ) : null}
-
-        {onCommitPackage ? (
-          <button
-            type="button"
-            onClick={onCommitPackage}
-            disabled={commitPackageDisabled}
-            className="rounded-lg border border-emerald-500/40 bg-emerald-600/85 px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] hover:bg-emerald-500 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            Save Parts Package to Work Order
-          </button>
+        {(onSaveQuote || onCommitPackage) ? (
+          <div className="flex items-center overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
+            {onSaveQuote ? (
+              <button
+                type="button"
+                onClick={onSaveQuote}
+                disabled={releaseReady}
+                className="border-r border-[color:var(--theme-border-soft)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] transition enabled:bg-emerald-600/85 enabled:hover:bg-emerald-500 disabled:cursor-not-allowed disabled:text-[color:var(--theme-text-muted)]"
+              >
+                {releaseReady ? "✓ Parts Quote Saved" : "1 · Save Parts Quote"}
+              </button>
+            ) : null}
+            {onCommitPackage ? (
+              <button
+                type="button"
+                onClick={onCommitPackage}
+                disabled={commitPackageDisabled || !releaseReady || releaseComplete}
+                className="px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] transition enabled:bg-emerald-600/85 enabled:hover:bg-emerald-500 disabled:cursor-not-allowed disabled:text-[color:var(--theme-text-muted)]"
+                title={!releaseReady ? "Available after repair approval" : undefined}
+              >
+                {releaseComplete
+                  ? "✓ Released to Work Order"
+                  : "2 · Release Parts to Work Order"}
+              </button>
+            ) : null}
+          </div>
         ) : null}
 
         {onRequestSupplierQuote ? (
