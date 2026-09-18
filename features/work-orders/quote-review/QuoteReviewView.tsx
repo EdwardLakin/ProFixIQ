@@ -513,6 +513,7 @@ export default function QuoteReviewView(props: {
   const [decisionContact, setDecisionContact] = useState<ContactMethod>("phone");
   const [decisionNote, setDecisionNote] = useState("");
   const [decisionSaving, setDecisionSaving] = useState(false);
+  const [deletingLineId, setDeletingLineId] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [sending, setSending] = useState(false);
   const [savingCustomerEmail, setSavingCustomerEmail] = useState(false);
@@ -977,6 +978,40 @@ export default function QuoteReviewView(props: {
     setDecisionDialog({ line, decision });
   }
 
+  async function deleteQuoteLine(line: EditableQuoteLine) {
+    if (deletingLineId || !currentActor.canAuthorizeQuotes) return;
+
+    const label = safeTrim(line.description) || "this quote line";
+    const confirmed = window.confirm(
+      `Delete "${label}" from this quote? This permanently removes the unsent quote line. Any linked pre-approval Parts Request rows will also be removed and their request will be cancelled.`,
+    );
+    if (!confirmed) return;
+
+    setDeletingLineId(line.id);
+    try {
+      const response = await fetch(
+        `/api/work-orders/quotes/${line.id}/delete`,
+        { method: "DELETE" },
+      );
+      const payload = (await response.json().catch(() => null)) as
+        | { ok?: boolean; error?: string }
+        | null;
+
+      if (!response.ok || !payload?.ok) {
+        throw new Error(payload?.error ?? "Could not delete quote line.");
+      }
+
+      toast.success(`Deleted "${label}" from the quote.`);
+      await reload();
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Could not delete quote line.",
+      );
+    } finally {
+      setDeletingLineId(null);
+    }
+  }
+
   async function confirmShopDecision() {
     if (!decisionDialog || decisionSaving) return;
     setDecisionSaving(true);
@@ -1250,6 +1285,10 @@ export default function QuoteReviewView(props: {
                     const dedicatedPricing = customerPricingSummary(line);
                     const commercialEditingDisabled =
                       finalDecision || pricingQuarantined;
+                    const canDeleteQuoteLine =
+                      currentActor.canAuthorizeQuotes &&
+                      !commercialEditingDisabled &&
+                      !isSentForDecision(line);
                     const finalizedLineTotalUnavailable =
                       pricingQuarantined &&
                       partsTotal == null &&
@@ -1418,6 +1457,16 @@ export default function QuoteReviewView(props: {
                               <button type="button" disabled={!canSendLine(line) && !isSentForDecision(line)} onClick={() => openDecisionDialog(line, "approve")} className="rounded-xl border border-emerald-300/40 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-100 disabled:opacity-45">Approve</button>
                               <button type="button" onClick={() => openDecisionDialog(line, "defer")} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">Defer</button>
                               <button type="button" onClick={() => openDecisionDialog(line, "decline")} className="rounded-xl border border-red-400/45 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-100">Decline</button>
+                              {canDeleteQuoteLine ? (
+                                <button
+                                  type="button"
+                                  disabled={deletingLineId === line.id}
+                                  onClick={() => void deleteQuoteLine(line)}
+                                  className="rounded-xl border border-red-500/55 bg-red-950/25 px-3 py-2 text-xs font-semibold text-red-100 hover:bg-red-500/15 disabled:opacity-45"
+                                >
+                                  {deletingLineId === line.id ? "Deleting…" : "Delete"}
+                                </button>
+                              ) : null}
                             </> : null}
                           </div>
 
