@@ -73,6 +73,9 @@ type HistoryInsight = { quoteLineId: string; historyLineId: string; workOrderId:
 type EditableQuoteLine = QuoteLine & {
   _dirty?: boolean;
   _laborRateDraft?: number | null;
+  _laborHoursInput?: string;
+  _laborRateInput?: string;
+  _laborAmountInput?: string;
 };
 
 type QuoteMetadata = {
@@ -1491,15 +1494,81 @@ export default function QuoteReviewView(props: {
                                 </label>
                                 <label className="text-xs text-[color:var(--theme-text-secondary)]">
                                   Labor hours
-                                  <input inputMode="decimal" value={String(laborHours)} onChange={(e) => patchQuoteLine(line.id, { labor_hours: asNumber(e.target.value) ?? 0, est_labor_hours: asNumber(e.target.value) ?? 0 })} className={inputCls} />
+                                  <input
+                                    inputMode="decimal"
+                                    value={line._laborHoursInput ?? String(laborHours)}
+                                    onChange={(e) => {
+                                      const raw = e.target.value;
+                                      const parsed = raw.trim() === "" ? null : asNumber(raw);
+                                      patchQuoteLine(line.id, {
+                                        _laborHoursInput: raw,
+                                        ...(parsed == null
+                                          ? {}
+                                          : {
+                                              labor_hours: parsed,
+                                              est_labor_hours: parsed,
+                                            }),
+                                      });
+                                    }}
+                                    onBlur={() =>
+                                      patchQuoteLine(line.id, {
+                                        _laborHoursInput: String(
+                                          quoteLineLaborHours(line),
+                                        ),
+                                      })
+                                    }
+                                    className={inputCls}
+                                  />
                                 </label>
                                 <label className="text-xs text-[color:var(--theme-text-secondary)]">
                                   Labor rate
-                                  <input inputMode="decimal" value={String(lineLaborRate)} onChange={(e) => patchQuoteLine(line.id, { _laborRateDraft: asNumber(e.target.value) ?? 0 })} className={inputCls} />
+                                  <input
+                                    inputMode="decimal"
+                                    value={line._laborRateInput ?? String(lineLaborRate)}
+                                    onChange={(e) => {
+                                      const raw = e.target.value;
+                                      const parsed = raw.trim() === "" ? null : asNumber(raw);
+                                      patchQuoteLine(line.id, {
+                                        _laborRateInput: raw,
+                                        ...(parsed == null
+                                          ? {}
+                                          : { _laborRateDraft: parsed }),
+                                      });
+                                    }}
+                                    onBlur={() =>
+                                      patchQuoteLine(line.id, {
+                                        _laborRateInput: String(
+                                          quoteLineLaborRate(line, laborRate),
+                                        ),
+                                      })
+                                    }
+                                    className={inputCls}
+                                  />
                                 </label>
                                 <label className="text-xs text-[color:var(--theme-text-secondary)]">
                                   Labor amount
-                                  <input inputMode="decimal" value={String(laborTotal)} onChange={(e) => patchQuoteLine(line.id, { labor_total: asNumber(e.target.value) ?? 0 })} className={inputCls} />
+                                  <input
+                                    inputMode="decimal"
+                                    value={line._laborAmountInput ?? String(laborTotal)}
+                                    onChange={(e) => {
+                                      const raw = e.target.value;
+                                      const parsed = raw.trim() === "" ? null : asNumber(raw);
+                                      patchQuoteLine(line.id, {
+                                        _laborAmountInput: raw,
+                                        ...(parsed == null
+                                          ? {}
+                                          : { labor_total: parsed }),
+                                      });
+                                    }}
+                                    onBlur={() =>
+                                      patchQuoteLine(line.id, {
+                                        _laborAmountInput: String(
+                                          quoteLineLaborTotal(line, laborRate),
+                                        ),
+                                      })
+                                    }
+                                    className={inputCls}
+                                  />
                                 </label>
                                 <label className="text-xs text-[color:var(--theme-text-secondary)]">
                                   Parts sell total (calculated)

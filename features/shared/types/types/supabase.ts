@@ -28917,6 +28917,10 @@ export type Database = {
         }
         Returns: Json
       }
+      delete_work_order_quote_line_draft: {
+        Args: { p_quote_line_id: string }
+        Returns: Json
+      }
       dispatch_actor_profile_id: {
         Args: { p_actor_user_id: string; p_shop_id: string }
         Returns: string
