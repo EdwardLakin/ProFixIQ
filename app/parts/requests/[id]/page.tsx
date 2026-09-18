@@ -21,12 +21,14 @@ import {
   type SaveItemInput,
 } from "@/features/parts/components/request-workbench";
 import {
+  PARTS_REQUEST_STAGE_ORDER,
   isPartsRequestItemPriced,
   itemFlowLabel,
   partsRequestStageLabel,
   summarizePartsRequestStages,
   toItemFlowDisplay,
   toPartsRequestStage,
+  type PartsRequestStage,
 } from "@/features/parts/lib/status-display";
 import {
   buildPartTrustMeta,
@@ -233,6 +235,62 @@ function requestStateLabel(status: unknown): string {
   if (value === "received") return "Ready for tech";
   if (value === "cancelled") return "Cancelled";
   return value.replace(/_/g, " ");
+}
+
+function partsRequestStageFor(request: RequestUi): PartsRequestStage {
+  return toPartsRequestStage({
+    rawStatus: request.req.status,
+    items: request.items.map((item) => ({
+      rawStatus: item.status,
+      description: item.description,
+      partId: item.part_id,
+      requestedPartNumber: item.requested_part_number,
+      requestedManufacturer: item.requested_manufacturer,
+      quotedPrice: item.quoted_price,
+      unitPrice: item.unit_price,
+      qty: item.qty,
+      qtyRequested: item.qty_requested,
+      qtyApproved: item.qty_approved,
+      qtyOrdered: item.qty_ordered,
+      qtyReceived: item.qty_received,
+      qtyReserved: item.qty_reserved,
+      qtyConsumed: item.qty_consumed,
+      qtyReturned: item.qty_returned,
+    })),
+  });
+}
+
+function partsStageTone(stage: PartsRequestStage): {
+  card: string;
+  strip: string;
+  pill: string;
+} {
+  if (stage === "needs_quote") {
+    return {
+      card: "border-red-400/40 bg-red-500/8",
+      strip: "bg-red-400",
+      pill: "border-red-400/40 bg-red-500/10 text-red-100",
+    };
+  }
+  if (stage === "awaiting_approval") {
+    return {
+      card: "border-amber-400/35 bg-amber-500/8",
+      strip: "bg-amber-400",
+      pill: "border-amber-400/40 bg-amber-500/10 text-amber-100",
+    };
+  }
+  if (stage === "order_receive") {
+    return {
+      card: "border-sky-400/35 bg-sky-500/8",
+      strip: "bg-sky-400",
+      pill: "border-sky-400/40 bg-sky-500/10 text-sky-100",
+    };
+  }
+  return {
+    card: "border-emerald-400/35 bg-emerald-500/8",
+    strip: "bg-emerald-400",
+    pill: "border-emerald-400/40 bg-emerald-500/10 text-emerald-100",
+  };
 }
 
 
@@ -2100,6 +2158,28 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const cancelledRequestCount = requests.filter(
     (request) => String(request.req.status ?? "").toLowerCase() === "cancelled",
   ).length;
+  const activePartsRequests = requests
+    .filter(
+      (request) =>
+        String(request.req.status ?? "").toLowerCase() !== "cancelled",
+    )
+    .slice()
+    .sort((a, b) => {
+      const aStage = partsRequestStageFor(a);
+      const bStage = partsRequestStageFor(b);
+      const stageDelta =
+        PARTS_REQUEST_STAGE_ORDER.indexOf(aStage) -
+        PARTS_REQUEST_STAGE_ORDER.indexOf(bStage);
+      if (stageDelta !== 0) return stageDelta;
+      return workspaceRequestLabel(a).localeCompare(workspaceRequestLabel(b));
+    });
+  const attentionRequestCount = activePartsRequests.filter(
+    (request) => partsRequestStageFor(request) === "needs_quote",
+  ).length;
+  const activeRequestStage = activeRequest
+    ? partsRequestStageFor(activeRequest)
+    : "needs_quote";
+  const activeQuoteSaved = activeRequestStage !== "needs_quote";
 
   return (
     <div className={pageWrap}>
@@ -2150,18 +2230,25 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                   <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
                     Parts jobs
                   </div>
-                  <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-                    {requests.length - cancelledRequestCount} active · {cancelledRequestCount} history
+                  <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-[color:var(--theme-text-secondary)]">
+                    <span>{activePartsRequests.length} active</span>
+                    <span
+                      className={
+                        attentionRequestCount > 0
+                          ? "font-semibold text-red-200"
+                          : "text-emerald-200"
+                      }
+                    >
+                      · {attentionRequestCount} needs attention
+                    </span>
+                    <span>· {cancelledRequestCount} history</span>
                   </div>
                 </div>
                 <div className="space-y-2">
-                  {requests
-                    .filter(
-                      (request) =>
-                        String(request.req.status ?? "").toLowerCase() !== "cancelled",
-                    )
-                    .map((request) => {
+                  {activePartsRequests.map((request) => {
                       const selected = request.req.id === activeRequest?.req.id;
+                      const stage = partsRequestStageFor(request);
+                      const tone = partsStageTone(stage);
                       const total = request.items.reduce(
                         (sum, item) =>
                           sum +
@@ -2175,18 +2262,23 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                           type="button"
                           onClick={() => setActiveRequestId(request.req.id)}
                           className={
-                            "w-full rounded-xl border p-3 text-left transition " +
+                            "relative w-full overflow-hidden rounded-xl border p-3 pl-4 text-left transition " +
+                            tone.card +
                             (selected
-                              ? "border-sky-400/50 bg-sky-500/10 shadow-[0_8px_24px_rgba(14,165,233,0.08)]"
-                              : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] hover:bg-[color:var(--theme-surface-subtle)]")
+                              ? " ring-2 ring-sky-400/55 shadow-[0_8px_24px_rgba(14,165,233,0.10)]"
+                              : " hover:brightness-110")
                           }
                         >
+                          <span
+                            aria-hidden="true"
+                            className={"absolute inset-y-0 left-0 w-1 " + tone.strip}
+                          />
                           <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
                             {workspaceRequestLabel(request)}
                           </div>
                           <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
-                            <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 capitalize text-[color:var(--theme-text-secondary)]">
-                              {requestStateLabel(request.req.status)}
+                            <span className={"rounded-full border px-2 py-0.5 " + tone.pill}>
+                              {partsRequestStageLabel(stage)}
                             </span>
                             <span className="font-mono font-semibold text-[color:var(--theme-text-primary)]">
                               {"$" + total.toFixed(2)}
@@ -3445,8 +3537,13 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                   <div className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">
                     {activeRequest ? workspaceRequestLabel(activeRequest) : "—"}
                   </div>
-                  <div className="mt-2 inline-flex rounded-full border border-[color:var(--theme-border-soft)] px-2.5 py-1 text-xs capitalize text-[color:var(--theme-text-secondary)]">
-                    {activeStatus}
+                  <div
+                    className={
+                      "mt-2 inline-flex rounded-full border px-2.5 py-1 text-xs " +
+                      partsStageTone(activeRequestStage).pill
+                    }
+                  >
+                    {partsRequestStageLabel(activeRequestStage)}
                   </div>
                 </div>
 
@@ -3469,12 +3566,14 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                     <div
                       className={
                         "rounded-xl border px-3 py-2 text-sm font-semibold " +
-                        (!activeReleased && !activeCancelled
+                        (!activeQuoteSaved && !activeCancelled
                           ? "border-emerald-400/45 bg-emerald-500/12 text-emerald-100"
-                          : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-muted)]")
+                          : activeQuoteSaved
+                            ? "border-emerald-400/25 bg-emerald-500/6 text-emerald-200"
+                            : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-muted)]")
                       }
                     >
-                      1 · Save Parts Quote
+                      {activeQuoteSaved ? "✓ Parts Quote Saved" : "1 · Save Parts Quote"}
                     </div>
                     <div
                       className={
@@ -3488,9 +3587,11 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                     </div>
                   </div>
                   <p className="text-xs leading-5 text-[color:var(--theme-text-muted)]">
-                    {!activeReleased
-                      ? "Save the quoted parts first. Release becomes available after repair approval."
-                      : "Approved parts can now be released to the operational work-order line."}
+                    {!activeQuoteSaved
+                      ? "Complete and save the parts quote before it can move to approval."
+                      : !activeReleased
+                        ? "Parts quote is saved. Release becomes available after repair approval."
+                        : "Repair is approved. Release the quoted parts to the operational work-order line."}
                   </p>
                   {wo?.id ? (
                     <button
