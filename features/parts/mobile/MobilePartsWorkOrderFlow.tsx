@@ -724,7 +724,7 @@ export default function MobilePartsWorkOrderFlow(): JSX.Element {
               <button
                 type="button"
                 className={primaryButton + " flex-1"}
-                disabled={saving || activeStage === "released"}
+                disabled={saving}
                 onClick={() => void saveActiveRequest()}
               >
                 {saving
