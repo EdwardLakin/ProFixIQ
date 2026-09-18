@@ -34,7 +34,7 @@ describe("mobile parts workbench", () => {
   });
 
   it("reuses the exact shop parts workbench and therefore its canonical mutation endpoints", () => {
-    expect(mobileWorkbench).toContain('import PartsRequestsForWorkOrderPage from "@/app/parts/requests/[id]/page"');
+    expect(mobileWorkbench).toContain('import PartsRequestsForWorkOrderPage from "../../../parts/requests/[id]/page"');
     expect(shopWorkbench).toContain("/quote-save");
     expect(shopWorkbench).toContain("/inventory");
     expect(shopWorkbench).toContain("/commit-package");
