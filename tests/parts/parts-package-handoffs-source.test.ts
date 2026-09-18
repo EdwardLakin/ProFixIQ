@@ -55,11 +55,13 @@ describe("parts package handoff source contracts", () => {
     );
   });
 
-  it("resolves canonical parts-request ids to their owning work order and scopes the result", () => {
+  it("resolves canonical parts-request ids to their owning work order and focuses that request inside the full work-order workspace", () => {
     expect(requestPage).toContain("const { data: requestById, error: requestLookupError }");
     expect(requestPage).toContain('.eq("id", routeId)');
-    expect(requestPage).toContain("requestIdFilter = String(requestById.id)");
-    expect(requestPage).toContain('requestsForWorkOrder.eq("id", requestIdFilter)');
+    expect(requestPage).toContain("requestFocusId = String(requestById.id)");
+    expect(requestPage).toContain('.eq("work_order_id", woRow.id)');
+    expect(requestPage).toContain("setActiveRequestId");
+    expect(requestPage).not.toContain('requestsForWorkOrder.eq("id", requestIdFilter)');
   });
 
   it("sends a stable content-derived idempotency key when committing a parts package", () => {
