@@ -28,7 +28,8 @@ describe("parts request inventory lifecycle route separation", () => {
     expect(commitRoute).not.toContain("upsert_part_allocation_from_request_item");
     expect(commitRoute).not.toContain("upsert-from-line");
     expect(page).toContain("/api/parts/requests/${requestId}/commit-package");
-    expect(header).toContain("Save Parts Package to Work Order");
+    expect(header).toContain("2 · Release Parts to Work Order");
+    expect(header).toContain("Available after repair approval");
     expect(page).not.toContain("Part added to work order.");
   });
 

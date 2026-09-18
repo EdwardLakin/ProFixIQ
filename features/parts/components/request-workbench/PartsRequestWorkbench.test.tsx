@@ -90,7 +90,9 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
     const onAttachInventory = vi.fn(async () => ({ partId: "part-2", addedToWorkOrder: false }));
     const onCommitPackage = vi.fn();
 
-    render(<PartsRequestWorkbench model={model(null)} onAttachInventory={onAttachInventory} onCommitPackage={onCommitPackage} />);
+    const approvedModel = model(null);
+    approvedModel.status = "approved";
+    render(<PartsRequestWorkbench model={approvedModel} onAttachInventory={onAttachInventory} onCommitPackage={onCommitPackage} />);
 
     await user.click(screen.getByRole("button", { name: "Attach Part" }));
     await user.click(screen.getByLabelText(/ACDelco Oil Filter/i));
@@ -102,7 +104,7 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
     expect(screen.queryByRole("button", { name: "Add to Work Order" })).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Change Part" })).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Save Parts Package to Work Order" }));
+    await user.click(screen.getByRole("button", { name: "2 · Release Parts to Work Order" }));
     expect(onCommitPackage).toHaveBeenCalledTimes(1);
   });
 
