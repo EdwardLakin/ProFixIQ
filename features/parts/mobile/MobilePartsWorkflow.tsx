@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
@@ -70,6 +71,18 @@ type AllocationDraft = {
   qty: number;
 };
 
+type WorkOrderGroup = {
+  key: string;
+  workOrderId: string | null;
+  workOrderLabel: string;
+  entries: WorkflowEntry[];
+  requestCount: number;
+  requested: number;
+  approved: number;
+  received: number;
+  allocated: number;
+};
+
 type ApiResult = { ok?: boolean; error?: string };
 
 const ACTIVE_REQUEST_STATUSES = ["requested", "quoted", "approved"] as const;
@@ -126,6 +139,7 @@ function laneLabel(lane: Lane): string {
 
 export default function MobilePartsWorkflow(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
+  const searchParams = useSearchParams();
   const [lane, setLane] = useState<Lane>("requests");
   const [entries, setEntries] = useState<WorkflowEntry[]>([]);
   const [locations, setLocations] = useState<LocationLite[]>([]);
@@ -295,6 +309,18 @@ export default function MobilePartsWorkflow(): JSX.Element {
   }, [load]);
 
   useEffect(() => {
+    const requestedView = searchParams.get("view");
+    if (
+      requestedView === "requests" ||
+      requestedView === "approval" ||
+      requestedView === "ordered" ||
+      requestedView === "ready"
+    ) {
+      setLane(requestedView);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     const refresh = () => void load();
     window.addEventListener("parts:received", refresh);
     return () => window.removeEventListener("parts:received", refresh);
@@ -313,6 +339,39 @@ export default function MobilePartsWorkflow(): JSX.Element {
     () => entries.filter((entry) => entry.lane === lane),
     [entries, lane],
   );
+  const visibleGroups = useMemo<WorkOrderGroup[]>(() => {
+    const groups = new Map<string, WorkOrderGroup>();
+    for (const entry of visibleEntries) {
+      const key = entry.workOrderId ?? `unlinked:${entry.requestId}`;
+      const current = groups.get(key) ?? {
+        key,
+        workOrderId: entry.workOrderId,
+        workOrderLabel: entry.workOrderLabel,
+        entries: [],
+        requestCount: 0,
+        requested: 0,
+        approved: 0,
+        received: 0,
+        allocated: 0,
+      };
+      current.entries.push(entry);
+      current.requested += entry.qtyRequested;
+      current.approved += entry.qtyApproved;
+      current.received += entry.qtyReceived;
+      current.allocated += entry.qtyAllocated;
+      groups.set(key, current);
+    }
+
+    for (const group of groups.values()) {
+      group.requestCount = new Set(group.entries.map((entry) => entry.requestId)).size;
+    }
+
+    return Array.from(groups.values()).sort((a, b) =>
+      a.workOrderLabel.localeCompare(b.workOrderLabel, undefined, {
+        numeric: true,
+      }),
+    );
+  }, [visibleEntries]);
   const locationOptions = useMemo(
     () =>
       locations.map((location) => ({
@@ -453,7 +512,7 @@ export default function MobilePartsWorkflow(): JSX.Element {
               {laneLabel(lane)}
             </div>
             <h2 className="mt-1 text-xl font-semibold text-[color:var(--theme-text-primary)]">
-              {counts[lane]} active {counts[lane] === 1 ? "item" : "items"}
+              {visibleGroups.length} active {visibleGroups.length === 1 ? "work order" : "work orders"}
             </h2>
           </div>
           <button
@@ -472,51 +531,43 @@ export default function MobilePartsWorkflow(): JSX.Element {
           </div>
         ) : null}
 
-        {!loading && !error && visibleEntries.length === 0 ? (
+        {!loading && !error && visibleGroups.length === 0 ? (
           <div className="mt-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-5 text-sm text-[color:var(--theme-text-secondary)]">
             No parts are currently in this lane.
           </div>
         ) : null}
 
         <div className="mt-4 grid gap-3">
-          {visibleEntries.map((entry) => {
-            const remainingReceive = Math.max(
-              0,
-              entry.targetQty - entry.qtyReceived,
-            );
-            const remainingAllocate = Math.max(
-              0,
-              entry.targetQty - entry.qtyAllocated,
-            );
-            const workbenchHref = entry.workOrderId
-              ? `/parts/requests/${entry.workOrderId}`
-              : "/parts/requests";
+          {visibleGroups.map((group) => {
+            const workbenchHref = group.workOrderId
+              ? `/mobile/parts/${group.workOrderId}`
+              : "/mobile/parts";
 
             return (
               <article
-                key={entry.key}
+                key={group.key}
                 className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="truncate text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
-                      {entry.workOrderLabel}
+                      {group.workOrderLabel}
                     </div>
                     <h3 className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">
-                      {entry.description}
+                      {group.requestCount} parts {group.requestCount === 1 ? "request" : "requests"}
                     </h3>
                   </div>
                   <span className="shrink-0 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-2.5 py-1 text-[10px] uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">
-                    {entry.itemStatus.replaceAll("_", " ")}
+                    {laneLabel(lane)}
                   </span>
                 </div>
 
                 <div className="mt-3 grid grid-cols-4 gap-1.5 text-center text-[10px] text-[color:var(--theme-text-secondary)]">
                   {[
-                    ["Requested", entry.qtyRequested],
-                    ["Approved", entry.qtyApproved],
-                    ["Received", entry.qtyReceived],
-                    ["Allocated", entry.qtyAllocated],
+                    ["Requested", group.requested],
+                    ["Approved", group.approved],
+                    ["Received", group.received],
+                    ["Allocated", group.allocated],
                   ].map(([label, value]) => (
                     <div
                       key={String(label)}
@@ -531,41 +582,80 @@ export default function MobilePartsWorkflow(): JSX.Element {
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2">
-                  {lane === "ordered" && entry.itemId ? (
-                    <button
-                      type="button"
-                      className={primaryActionClass}
-                      onClick={() => setReceiveEntry(entry)}
-                      disabled={remainingReceive <= 0 || locations.length === 0}
-                    >
-                      Receive {remainingReceive > 0 ? formatQty(remainingReceive) : ""}
-                    </button>
-                  ) : null}
-
-                  {lane === "ready" && entry.itemId ? (
-                    <button
-                      type="button"
-                      className={primaryActionClass}
-                      onClick={() => openAllocation(entry)}
-                      disabled={remainingAllocate <= 0 || locations.length === 0}
-                    >
-                      Allocate {remainingAllocate > 0 ? formatQty(remainingAllocate) : ""}
-                    </button>
-                  ) : null}
-
-                  <Link className={actionClass} href={workbenchHref}>
+                  <Link className={primaryActionClass} href={workbenchHref}>
                     Open parts workbench
                   </Link>
-
-                  {entry.workOrderLineId ? (
-                    <Link
-                      className={actionClass}
-                      href={`/mobile/jobs/${entry.workOrderLineId}`}
-                    >
-                      Open job
-                    </Link>
-                  ) : null}
                 </div>
+
+                {lane === "ordered" || lane === "ready" ? (
+                  <details className="mt-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-3">
+                    <summary className="cursor-pointer text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                      {group.entries.length} actionable {group.entries.length === 1 ? "part" : "parts"}
+                    </summary>
+                    <div className="mt-3 space-y-2">
+                      {group.entries.map((entry) => {
+                        const remainingReceive = Math.max(
+                          0,
+                          entry.targetQty - entry.qtyReceived,
+                        );
+                        const remainingAllocate = Math.max(
+                          0,
+                          entry.targetQty - entry.qtyAllocated,
+                        );
+                        return (
+                          <div
+                            key={entry.key}
+                            className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3"
+                          >
+                            <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                              {entry.description}
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {lane === "ordered" && entry.itemId ? (
+                                <button
+                                  type="button"
+                                  className={primaryActionClass}
+                                  onClick={() => setReceiveEntry(entry)}
+                                  disabled={
+                                    remainingReceive <= 0 || locations.length === 0
+                                  }
+                                >
+                                  Receive{" "}
+                                  {remainingReceive > 0
+                                    ? formatQty(remainingReceive)
+                                    : ""}
+                                </button>
+                              ) : null}
+                              {lane === "ready" && entry.itemId ? (
+                                <button
+                                  type="button"
+                                  className={primaryActionClass}
+                                  onClick={() => openAllocation(entry)}
+                                  disabled={
+                                    remainingAllocate <= 0 || locations.length === 0
+                                  }
+                                >
+                                  Allocate{" "}
+                                  {remainingAllocate > 0
+                                    ? formatQty(remainingAllocate)
+                                    : ""}
+                                </button>
+                              ) : null}
+                              {entry.workOrderLineId ? (
+                                <Link
+                                  className={actionClass}
+                                  href={`/mobile/jobs/${entry.workOrderLineId}`}
+                                >
+                                  Open job
+                                </Link>
+                              ) : null}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </details>
+                ) : null}
               </article>
             );
           })}
