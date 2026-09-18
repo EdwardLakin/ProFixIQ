@@ -10,7 +10,7 @@ describe("mobile parts workbench", () => {
     expect(workflow).toContain("type WorkOrderGroup");
     expect(workflow).toContain("visibleGroups.map");
     expect(workflow).toContain("requestCount");
-    expect(workflow).toContain("parts requests");
+    expect(workflow).toContain('{group.requestCount} parts {group.requestCount === 1 ? "request" : "requests"}');
     expect(workflow).not.toContain("visibleEntries.map((entry)");
   });
 
