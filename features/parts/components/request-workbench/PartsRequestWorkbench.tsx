@@ -65,6 +65,7 @@ function canRequestSupplierQuote(item: PartsRequestWorkbenchItem): boolean {
 export function PartsRequestWorkbench({
   model,
   onSaveItem,
+  onAddItem,
   onUseInventory,
   onAttachInventory,
   onOrderItem,
@@ -84,6 +85,7 @@ export function PartsRequestWorkbench({
 }: {
   model: PartsRequestWorkbenchModel;
   onSaveItem?: (input: SaveItemInput) => Promise<void> | void;
+  onAddItem?: () => Promise<void> | void;
   onUseInventory?: (itemId: string) => Promise<void> | void;
   onAttachInventory?: (input: AttachInventoryInput) => Promise<Partial<PartsRequestWorkbenchItem> | void> | Partial<PartsRequestWorkbenchItem> | void;
   onOrderItem?: (itemId: string) => Promise<void> | void;
@@ -381,6 +383,18 @@ export function PartsRequestWorkbench({
         }}
         onDelete={onDeleteItem}
       />
+
+      {onAddItem ? (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => void onAddItem()}
+            className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-sm font-medium text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
+          >
+            Add Part
+          </button>
+        </div>
+      ) : null}
 
       <SupplierQuoteRequestModal
         open={quoteModalOpen}
