@@ -5,6 +5,7 @@ import type { WorkbenchOption } from "./types";
 
 export function PartsRequestWorkbenchHeader({
   requestLabel,
+  compact = false,
   status,
   workOrderId,
   workOrderCustomId,
@@ -23,6 +24,7 @@ export function PartsRequestWorkbenchHeader({
   packageCommittedCount,
 }: {
   requestLabel: string;
+  compact?: boolean;
   status?: string | null;
   workOrderId?: string | null;
   workOrderCustomId?: string | null;
@@ -59,27 +61,37 @@ export function PartsRequestWorkbenchHeader({
   return (
     <div className="flex flex-wrap items-start justify-between gap-4">
       <div className="min-w-0">
-        <div className="text-xs text-[color:var(--theme-text-secondary)]">
-          Parts Requests › {workOrderCustomId || requestLabel}
-        </div>
-        <div className="mt-3 flex flex-wrap items-center gap-3">
-          <h1 className="text-2xl font-semibold text-[color:var(--theme-text-primary)]">{title}</h1>
+        {!compact ? (
+          <div className="text-xs text-[color:var(--theme-text-secondary)]">
+            Parts Requests › {workOrderCustomId || requestLabel}
+          </div>
+        ) : null}
+        <div className={compact ? "flex flex-wrap items-center gap-3" : "mt-3 flex flex-wrap items-center gap-3"}>
+          <h1 className={compact ? "text-xl font-semibold text-[color:var(--theme-text-primary)]" : "text-2xl font-semibold text-[color:var(--theme-text-primary)]"}>
+            {compact ? requestContext : title}
+          </h1>
           {status ? (
             <span className="rounded-full border border-sky-400/35 bg-sky-950/25 px-3 py-1 text-xs font-medium text-sky-100">
               {status}
             </span>
           ) : null}
         </div>
-        {workOrderCustomId ? (
+        {!compact && workOrderCustomId ? (
           <div className="mt-1 text-sm font-medium text-[color:var(--theme-text-secondary)]">
             Parts request · {requestContext}
           </div>
         ) : null}
-        <div className="mt-2 flex flex-wrap gap-2 text-sm text-[color:var(--theme-text-secondary)]">
-          {meta.map((item) => (
-            <span key={String(item)}>{item}</span>
-          ))}
-        </div>
+        {!compact ? (
+          <div className="mt-2 flex flex-wrap gap-2 text-sm text-[color:var(--theme-text-secondary)]">
+            {meta.map((item) => (
+              <span key={String(item)}>{item}</span>
+            ))}
+          </div>
+        ) : workOrderCustomId ? (
+          <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+            {workOrderCustomId}
+          </div>
+        ) : null}
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
