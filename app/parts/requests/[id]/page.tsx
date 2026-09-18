@@ -214,6 +214,27 @@ function lineLabelFrom(line?: LineLite): string {
   return b;
 }
 
+function requestServiceContext(req: RequestRow, fallback = "Parts request"): string {
+  const notes = String(req.notes ?? "");
+  const serviceMatch =
+    notes.match(/Service to quote:\s*([^\n\r]+)/i) ??
+    notes.match(/Maintenance parts quote required:\s*([^\n\r]+)/i);
+  const service = serviceMatch?.[1]?.trim();
+  if (service) return service;
+  return fallback;
+}
+
+function requestStateLabel(status: unknown): string {
+  const value = String(status ?? "requested").toLowerCase();
+  if (value === "quoted") return "Awaiting approval";
+  if (value === "approved") return "Released";
+  if (value === "partially_ordered") return "Partially ordered";
+  if (value === "partially_received") return "Receiving";
+  if (value === "received") return "Ready for tech";
+  if (value === "cancelled") return "Cancelled";
+  return value.replace(/_/g, " ");
+}
+
 
 export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const { id: routeId } = useParams<{ id: string }>();
@@ -226,6 +247,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     () => new Map(),
   );
   const [requests, setRequests] = useState<RequestUi[]>([]);
+  const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [parts, setParts] = useState<PartRow[]>([]);
   const [trustByPartId, setTrustByPartId] = useState<Record<string, PartTrustMeta>>({});
   const [locations, setLocations] = useState<LocationRow[]>([]);
@@ -398,12 +420,12 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const preserveContent = options.preserveContent === true;
     if (!preserveContent) setLoading(true);
 
-    let requestIdFilter: string | null = null;
+    let requestFocusId: string | null = null;
     let woRow = await resolveWorkOrder(routeId);
 
-    // Quote Review links to the canonical request id. Keep supporting the
-    // older work-order id/custom-id route while resolving a request id to its
-    // owning work order and limiting the page to that request.
+    // Quote Review may link to the canonical request id. Resolve that request
+    // to its work order, then load the full work-order parts workspace and
+    // focus the linked request instead of isolating a single request card.
     if (!woRow && isUuid(routeId)) {
       const { data: requestById, error: requestLookupError } = await supabase
         .from("part_requests")
@@ -418,7 +440,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         : "";
       if (linkedWorkOrderId && requestById) {
         woRow = await resolveWorkOrder(linkedWorkOrderId);
-        requestIdFilter = String(requestById.id);
+        requestFocusId = String(requestById.id);
       }
     }
 
@@ -443,13 +465,10 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
     setWo(woRow);
 
-    const requestsForWorkOrder = supabase
+    const requestQuery = supabase
       .from("part_requests")
       .select("*")
       .eq("work_order_id", woRow.id);
-    const requestQuery = requestIdFilter
-      ? requestsForWorkOrder.eq("id", requestIdFilter)
-      : requestsForWorkOrder;
     const { data: reqs, error: reqErr } = await requestQuery.order("created_at", {
       ascending: false,
     });
@@ -518,6 +537,25 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     });
 
     setRequests(uiRequests);
+    setActiveRequestId((current) => {
+      if (current && uiRequests.some((request) => request.req.id === current)) {
+        return current;
+      }
+      if (
+        requestFocusId &&
+        uiRequests.some((request) => request.req.id === requestFocusId)
+      ) {
+        return requestFocusId;
+      }
+      return (
+        uiRequests.find(
+          (request) =>
+            String(request.req.status ?? "").toLowerCase() !== "cancelled",
+        )?.req.id ??
+        uiRequests[0]?.req.id ??
+        null
+      );
+    });
 
     const requestItemIds = uiRequests.flatMap((request) => request.items.map((item) => String(item.id)));
     if (requestItemIds.length > 0) {
