@@ -64,6 +64,7 @@ function canRequestSupplierQuote(item: PartsRequestWorkbenchItem): boolean {
 
 export function PartsRequestWorkbench({
   model,
+  compactHeader = false,
   onSaveItem,
   onAddItem,
   onUseInventory,
@@ -84,6 +85,7 @@ export function PartsRequestWorkbench({
   onDeleteItem,
 }: {
   model: PartsRequestWorkbenchModel;
+  compactHeader?: boolean;
   onSaveItem?: (input: SaveItemInput) => Promise<void> | void;
   onAddItem?: () => Promise<void> | void;
   onUseInventory?: (itemId: string) => Promise<void> | void;
@@ -287,6 +289,7 @@ export function PartsRequestWorkbench({
     <div className="space-y-4 p-4 text-[color:var(--theme-text-primary)]">
       <PartsRequestWorkbenchHeader
         requestLabel={model.requestLabel}
+        compact={compactHeader}
         status={model.status}
         workOrderId={model.workOrderId}
         workOrderCustomId={model.workOrderCustomId}
