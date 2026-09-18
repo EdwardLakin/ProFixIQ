@@ -2,7 +2,11 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const workflow = readFileSync("features/parts/mobile/MobilePartsWorkflow.tsx", "utf8");
-const mobileWorkbench = readFileSync("app/mobile/parts/[id]/page.tsx", "utf8");
+const mobilePage = readFileSync("app/mobile/parts/[id]/page.tsx", "utf8");
+const mobileFlow = readFileSync(
+  "features/parts/mobile/MobilePartsWorkOrderFlow.tsx",
+  "utf8",
+);
 const shopWorkbench = readFileSync("app/parts/requests/[id]/page.tsx", "utf8");
 
 describe("mobile parts workbench", () => {
@@ -10,7 +14,9 @@ describe("mobile parts workbench", () => {
     expect(workflow).toContain("type WorkOrderGroup");
     expect(workflow).toContain("visibleGroups.map");
     expect(workflow).toContain("requestCount");
-    expect(workflow).toContain('{group.requestCount} parts {group.requestCount === 1 ? "request" : "requests"}');
+    expect(workflow).toContain(
+      '{group.requestCount} parts {group.requestCount === 1 ? "request" : "requests"}',
+    );
     expect(workflow).not.toContain("visibleEntries.map((entry)");
   });
 
@@ -27,24 +33,37 @@ describe("mobile parts workbench", () => {
     expect(workflow).toContain("setLane(requestedView)");
   });
 
-  it("routes each work order to a mobile-native workbench", () => {
+  it("routes each work order to a purpose-built mobile task flow", () => {
     expect(workflow).toContain("/mobile/parts/");
-    expect(mobileWorkbench).toContain("PartsRequestsForWorkOrderPage");
-    expect(mobileWorkbench).toContain("<PartsRequestsForWorkOrderPage />");
+    expect(mobilePage).toContain("MobilePartsWorkOrderFlow");
+    expect(mobilePage).toContain("<MobilePartsWorkOrderFlow />");
+    expect(mobilePage).not.toContain("PartsRequestsForWorkOrderPage");
   });
 
-  it("reuses the exact shop parts workbench and therefore its canonical mutation endpoints", () => {
-    expect(mobileWorkbench).toContain('import PartsRequestsForWorkOrderPage from "../../../parts/requests/[id]/page"');
-    expect(shopWorkbench).toContain("/quote-save");
-    expect(shopWorkbench).toContain("/inventory");
-    expect(shopWorkbench).toContain("/commit-package");
-    expect(shopWorkbench).toContain("/supplier-quote");
-    expect(shopWorkbench).toContain("/allocate");
+  it("keeps the mobile task flow on the same canonical Parts API endpoints", () => {
+    for (const endpoint of [
+      "/quote-save",
+      "/inventory",
+      "/commit-package",
+      "/edit",
+    ]) {
+      expect(mobileFlow).toContain(endpoint);
+      expect(shopWorkbench).toContain(endpoint);
+    }
   });
 
-  it("keeps receive and allocate actions available from the grouped mobile queue", () => {
+  it("keeps receive and allocate quick actions available from the grouped queue", () => {
     expect(workflow).toContain("setReceiveEntry(entry)");
     expect(workflow).toContain("openAllocation(entry)");
     expect(workflow).toContain("/allocate");
+  });
+
+  it("focuses the mobile work-order screen on quick Parts tasks", () => {
+    expect(mobileFlow).toContain("Save Parts Quote");
+    expect(mobileFlow).toContain("Release to Work Order");
+    expect(mobileFlow).toContain("+ Add part");
+    expect(mobileFlow).toContain("Select inventory part");
+    expect(mobileFlow).toContain("Change inventory part");
+    expect(mobileFlow).not.toContain("Parts command center");
   });
 });

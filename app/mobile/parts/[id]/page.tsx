@@ -1,11 +1,11 @@
-import PartsRequestsForWorkOrderPage from "../../../parts/requests/[id]/page";
+import MobilePartsWorkOrderFlow from "@/features/parts/mobile/MobilePartsWorkOrderFlow";
 
 export const dynamic = "force-dynamic";
 
 export default function MobilePartsWorkbenchPage(): JSX.Element {
   return (
-    <div className="mx-auto w-full max-w-6xl px-2 py-2 sm:px-3">
-      <PartsRequestsForWorkOrderPage />
+    <div className="mx-auto w-full max-w-xl px-3 py-3">
+      <MobilePartsWorkOrderFlow />
     </div>
   );
 }
