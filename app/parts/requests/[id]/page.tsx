@@ -2067,6 +2067,40 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     return summarizePartsRequestStages(requestStates);
   }, [requests]);
 
+  function workspaceRequestLabel(request: RequestUi): string {
+    const lineId = resolveWorkOrderLineId(request.req, request.items);
+    const lineText =
+      lineId && isUuid(lineId) ? lineLabelFrom(lineById.get(lineId)) : "";
+    return requestServiceContext(request.req, lineText || "Parts request");
+  }
+
+  const activeRequest =
+    requests.find((request) => request.req.id === activeRequestId) ??
+    requests.find(
+      (request) =>
+        String(request.req.status ?? "").toLowerCase() !== "cancelled",
+    ) ??
+    requests[0] ??
+    null;
+  const activeRequestTotal = activeRequest
+    ? activeRequest.items.reduce(
+        (sum, item) =>
+          sum +
+          n(item.qty ?? item.qty_requested ?? 0) *
+            n(item.quoted_price ?? item.unit_price ?? 0),
+        0,
+      )
+    : 0;
+  const activeStatus = requestStateLabel(activeRequest?.req.status);
+  const activeReleased = activeRequest
+    ? isRequestOperationallyReleased(activeRequest.req.status)
+    : false;
+  const activeCancelled =
+    String(activeRequest?.req.status ?? "").toLowerCase() === "cancelled";
+  const cancelledRequestCount = requests.filter(
+    (request) => String(request.req.status ?? "").toLowerCase() === "cancelled",
+  ).length;
+
   return (
     <div className={pageWrap}>
       <div className="sticky top-2 z-20 flex items-center justify-between gap-3 rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)]/90 px-3 py-2 backdrop-blur">
@@ -2110,8 +2144,92 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
               No parts requests for this work order yet.
             </div>
           ) : (
-            <div className="space-y-4">
-              {requests.map((r, requestIndex) => {
+            <div className="grid min-h-[680px] gap-4 xl:grid-cols-[260px_minmax(0,1fr)_280px]">
+              <aside className="self-start rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-3 xl:sticky xl:top-20">
+                <div className="mb-3">
+                  <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                    Parts jobs
+                  </div>
+                  <div className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
+                    {requests.length - cancelledRequestCount} active · {cancelledRequestCount} history
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  {requests
+                    .filter(
+                      (request) =>
+                        String(request.req.status ?? "").toLowerCase() !== "cancelled",
+                    )
+                    .map((request) => {
+                      const selected = request.req.id === activeRequest?.req.id;
+                      const total = request.items.reduce(
+                        (sum, item) =>
+                          sum +
+                          n(item.qty ?? item.qty_requested ?? 0) *
+                            n(item.quoted_price ?? item.unit_price ?? 0),
+                        0,
+                      );
+                      return (
+                        <button
+                          key={request.req.id}
+                          type="button"
+                          onClick={() => setActiveRequestId(request.req.id)}
+                          className={
+                            "w-full rounded-xl border p-3 text-left transition " +
+                            (selected
+                              ? "border-sky-400/50 bg-sky-500/10 shadow-[0_8px_24px_rgba(14,165,233,0.08)]"
+                              : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] hover:bg-[color:var(--theme-surface-subtle)]")
+                          }
+                        >
+                          <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                            {workspaceRequestLabel(request)}
+                          </div>
+                          <div className="mt-2 flex items-center justify-between gap-2 text-[11px]">
+                            <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 capitalize text-[color:var(--theme-text-secondary)]">
+                              {requestStateLabel(request.req.status)}
+                            </span>
+                            <span className="font-mono font-semibold text-[color:var(--theme-text-primary)]">
+                              {"$" + total.toFixed(2)}
+                            </span>
+                          </div>
+                          <div className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
+                            {request.items.length} part{request.items.length === 1 ? "" : "s"}
+                          </div>
+                        </button>
+                      );
+                    })}
+                  {cancelledRequestCount > 0 ? (
+                    <details className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-2">
+                      <summary className="cursor-pointer text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                        History ({cancelledRequestCount})
+                      </summary>
+                      <div className="mt-2 space-y-1">
+                        {requests
+                          .filter(
+                            (request) =>
+                              String(request.req.status ?? "").toLowerCase() ===
+                              "cancelled",
+                          )
+                          .map((request) => (
+                            <button
+                              key={request.req.id}
+                              type="button"
+                              onClick={() => setActiveRequestId(request.req.id)}
+                              className="w-full rounded-lg px-2 py-2 text-left text-xs text-[color:var(--theme-text-muted)] hover:bg-[color:var(--theme-surface-subtle)]"
+                            >
+                              {workspaceRequestLabel(request)}
+                            </button>
+                          ))}
+                      </div>
+                    </details>
+                  ) : null}
+                </div>
+              </aside>
+
+              <main className="min-w-0 space-y-4">
+              {requests
+                .filter((request) => request.req.id === activeRequest?.req.id)
+                .map((r, requestIndex) => {
                 const busy = savingReqId === r.req.id;
                 const batchNumber = requests.length - requestIndex;
                 const requestLabel =
@@ -3316,6 +3434,75 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                   </div>
                 );
               })}
+              </main>
+
+              <aside className="self-start rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 xl:sticky xl:top-20">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
+                  Parts command center
+                </div>
+                <div className="mt-4 border-b border-[color:var(--theme-border-soft)] pb-4">
+                  <div className="text-xs text-[color:var(--theme-text-muted)]">Selected job</div>
+                  <div className="mt-1 text-base font-semibold text-[color:var(--theme-text-primary)]">
+                    {activeRequest ? workspaceRequestLabel(activeRequest) : "—"}
+                  </div>
+                  <div className="mt-2 inline-flex rounded-full border border-[color:var(--theme-border-soft)] px-2.5 py-1 text-xs capitalize text-[color:var(--theme-text-secondary)]">
+                    {activeStatus}
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 border-b border-[color:var(--theme-border-soft)] py-4 text-sm">
+                  <div className="rounded-xl bg-[color:var(--theme-surface-inset)] p-3">
+                    <div className="text-[11px] text-[color:var(--theme-text-muted)]">Parts</div>
+                    <div className="mt-1 text-lg font-semibold">{activeRequest?.items.length ?? 0}</div>
+                  </div>
+                  <div className="rounded-xl bg-[color:var(--theme-surface-inset)] p-3">
+                    <div className="text-[11px] text-[color:var(--theme-text-muted)]">Quoted</div>
+                    <div className="mt-1 text-lg font-semibold">{"$" + activeRequestTotal.toFixed(2)}</div>
+                  </div>
+                </div>
+
+                <div className="space-y-3 pt-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
+                    Lifecycle
+                  </div>
+                  <div className="grid gap-2">
+                    <div
+                      className={
+                        "rounded-xl border px-3 py-2 text-sm font-semibold " +
+                        (!activeReleased && !activeCancelled
+                          ? "border-emerald-400/45 bg-emerald-500/12 text-emerald-100"
+                          : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-muted)]")
+                      }
+                    >
+                      1 · Save Parts Quote
+                    </div>
+                    <div
+                      className={
+                        "rounded-xl border px-3 py-2 text-sm font-semibold " +
+                        (activeReleased
+                          ? "border-emerald-400/45 bg-emerald-500/12 text-emerald-100"
+                          : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-muted)]")
+                      }
+                    >
+                      2 · Release Parts to Work Order
+                    </div>
+                  </div>
+                  <p className="text-xs leading-5 text-[color:var(--theme-text-muted)]">
+                    {!activeReleased
+                      ? "Save the quoted parts first. Release becomes available after repair approval."
+                      : "Approved parts can now be released to the operational work-order line."}
+                  </p>
+                  {wo?.id ? (
+                    <button
+                      type="button"
+                      onClick={() => router.push("/work-orders/" + wo.id)}
+                      className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm font-medium hover:bg-[color:var(--theme-surface-subtle)]"
+                    >
+                      View Work Order
+                    </button>
+                  ) : null}
+                </div>
+              </aside>
             </div>
           )}
         </>
