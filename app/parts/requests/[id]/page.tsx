@@ -226,17 +226,6 @@ function requestServiceContext(req: RequestRow, fallback = "Parts request"): str
   return fallback;
 }
 
-function requestStateLabel(status: unknown): string {
-  const value = String(status ?? "requested").toLowerCase();
-  if (value === "quoted") return "Awaiting approval";
-  if (value === "approved") return "Released";
-  if (value === "partially_ordered") return "Partially ordered";
-  if (value === "partially_received") return "Receiving";
-  if (value === "received") return "Ready for tech";
-  if (value === "cancelled") return "Cancelled";
-  return value.replace(/_/g, " ");
-}
-
 function partsRequestStageFor(request: RequestUi): PartsRequestStage {
   return toPartsRequestStage({
     rawStatus: request.req.status,
@@ -2149,7 +2138,6 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
         0,
       )
     : 0;
-  const activeStatus = requestStateLabel(activeRequest?.req.status);
   const activeReleased = activeRequest
     ? isRequestOperationallyReleased(activeRequest.req.status)
     : false;
