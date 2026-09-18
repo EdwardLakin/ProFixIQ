@@ -2455,6 +2455,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                     <div key={r.req.id} className={glassCard}>
                       <PartsRequestWorkbench
                         model={model}
+                        compactHeader
                         onAddItem={async () => {
                           await addRow(r.req.id);
                         }}
