@@ -301,6 +301,16 @@ export function PartsRequestWorkbench({
         }
         selectedCount={selectedItems.length}
         requestQuoteDisabled={selectedItems.length === 0}
+        onSaveQuote={
+          onSaveItem
+            ? async () => {
+                for (const item of items) {
+                  await saveItem(item.id);
+                }
+                toast.success("Parts quote saved.");
+              }
+            : undefined
+        }
         onCommitPackage={onCommitPackage}
         commitPackageDisabled={items.length === 0}
         packageCommittedCount={model.packageCommittedCount}
