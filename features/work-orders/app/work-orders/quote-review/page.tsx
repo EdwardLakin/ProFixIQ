@@ -17,12 +17,12 @@ type DB = Database;
 
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
 type Line = DB["public"]["Tables"]["work_order_lines"]["Row"];
-type Shop = DB["public"]["Tables"]["shops"]["Row"];
+type Customer = DB["public"]["Tables"]["customers"]["Row"];
 type QuoteLine = DB["public"]["Tables"]["work_order_quote_lines"]["Row"];
 type Profile = DB["public"]["Tables"]["profiles"]["Row"];
 
 type WorkOrderWithMeta = WorkOrder & {
-  shops?: Pick<Shop, "name"> | null;
+  customers?: Pick<Customer, "name" | "first_name" | "last_name" | "business_name" | "identity_name"> | null;
   work_order_lines?: Array<
     Pick<Line, "id" | "status" | "approval_state" | "labor_time" | "line_no" | "description" | "created_at" | "updated_at">
   >;
@@ -35,6 +35,20 @@ const INPUT_DARK = ui.input;
 
 function safeTrim(x: unknown): string {
   return typeof x === "string" ? x.trim() : "";
+}
+
+function customerDisplayName(workOrder: WorkOrderWithMeta): string {
+  const customer = workOrder.customers;
+  const direct =
+    safeTrim(customer?.identity_name) ||
+    safeTrim(customer?.name) ||
+    [safeTrim(customer?.first_name), safeTrim(customer?.last_name)]
+      .filter(Boolean)
+      .join(" ") ||
+    safeTrim(customer?.business_name) ||
+    safeTrim(workOrder.customer_name);
+
+  return direct || "Customer";
 }
 
 function queueAccent(waitingForParts: boolean): {
@@ -134,7 +148,7 @@ function ApprovalsList(): JSX.Element {
       .select(
         `
         *,
-        shops(name),
+        customers(name,first_name,last_name,business_name,identity_name),
         work_order_lines(id,status,approval_state,labor_time,line_no,description,created_at,updated_at),
         work_order_quote_lines(id,stage,status,approved_at,declined_at,work_order_line_id)
       `,
@@ -206,14 +220,14 @@ function ApprovalsList(): JSX.Element {
         : next.filter((w) => {
             const cid = String(w.custom_id ?? "").toLowerCase();
             const id = String(w.id ?? "").toLowerCase();
-            const shopName = String(w.shops?.name ?? "").toLowerCase();
+            const customerName = customerDisplayName(w).toLowerCase();
             const status = String(w.status ?? "").toLowerCase().replaceAll("_", " ");
             const queueState = w.waiting_for_parts ? "waiting for parts" : "quotes ready";
 
             return (
               cid.includes(qlc) ||
               id.includes(qlc) ||
-              shopName.includes(qlc) ||
+              customerName.includes(qlc) ||
               status.includes(qlc) ||
               queueState.includes(qlc)
             );
@@ -394,7 +408,7 @@ function ApprovalsList(): JSX.Element {
                     </div>
 
                     <div className="mt-2 truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                      {w.shops?.name || "Work order"}
+                      {customerDisplayName(w)}
                     </div>
                     <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
                       {formatDecisionStatus({ workStatus: w.status }).label}
