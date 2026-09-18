@@ -66,4 +66,10 @@ describe("mobile parts workbench", () => {
     expect(mobileFlow).toContain("Change inventory part");
     expect(mobileFlow).not.toContain("Parts command center");
   });
+  it("renders a visible high-contrast open-parts action on each work-order card", () => {
+    expect(workflow).toContain("border-sky-600 bg-sky-600 text-white");
+    expect(workflow).toContain(">\n                    Open parts\n                  </Link>");
+    expect(workflow).not.toContain("bg-[color:var(--accent-copper)]");
+  });
+
 });

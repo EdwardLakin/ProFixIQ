@@ -94,7 +94,7 @@ const CANCELLED_ITEM_STATUSES = new Set([
 ]);
 const actionClass =
   "inline-flex min-h-10 items-center justify-center rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)] transition hover:border-[color:var(--accent-copper)] disabled:cursor-not-allowed disabled:opacity-50";
-const primaryActionClass = `${actionClass} border-[color:var(--accent-copper)] bg-[color:var(--accent-copper)] text-white`;
+const primaryActionClass = `${actionClass} border-sky-600 bg-sky-600 text-white hover:border-sky-500 hover:bg-sky-500`;
 
 function numberValue(value: unknown): number {
   const parsed = typeof value === "number" ? value : Number(value);
@@ -588,8 +588,8 @@ export default function MobilePartsWorkflow(): JSX.Element {
                 </div>
 
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Link className={primaryActionClass} href={workbenchHref}>
-                    Open parts workbench
+                  <Link className={primaryActionClass + " min-w-[10rem]"} href={workbenchHref}>
+                    Open parts
                   </Link>
                 </div>
 

@@ -91,7 +91,7 @@ describe("mobile technician stabilization", () => {
     expect(mobilePartsWorkflow).toContain("part_request_items");
     expect(receiveDrawer).toContain("/receive");
     expect(mobilePartsWorkflow).toContain("/allocate");
-    expect(mobilePartsWorkflow).toContain("Open parts workbench");
+    expect(mobilePartsWorkflow).toContain("Open parts");
     expect(mobilePartsPage).not.toContain("Mobile parts rollout");
   });
 });
