@@ -1,4 +1,4 @@
-import PartsRequestsForWorkOrderPage from "@/app/parts/requests/[id]/page";
+import PartsRequestsForWorkOrderPage from "../../../parts/requests/[id]/page";
 
 export const dynamic = "force-dynamic";
 
