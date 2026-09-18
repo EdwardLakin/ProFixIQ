@@ -1038,8 +1038,12 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     const target = requests.find((r) => r.req.id === reqId);
     if (!target) return;
 
-    const resolvedLineId = getEffectiveWorkOrderLineId(target.req, target.items);
     const quoteLineId = target.req.quote_line_id ?? null;
+    const directlyLinkedLineId = resolveWorkOrderLineId(target.req, target.items);
+    const resolvedLineId =
+      directlyLinkedLineId ??
+      (!quoteLineId ? getEffectiveWorkOrderLineId(target.req, target.items) : null);
+
     if ((!resolvedLineId || !isUuid(resolvedLineId)) && !quoteLineId) {
       toast.error("This parts request is not attached to a valid work order line yet.");
       return;
@@ -1047,10 +1051,11 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
     setSavingReqId(reqId);
     try {
-      const lineId = getEffectiveWorkOrderLineId(target.req, target.items);
-      const safeLineId = lineId && isUuid(lineId) ? lineId : null;
+      const safeLineId =
+        resolvedLineId && isUuid(resolvedLineId) ? resolvedLineId : null;
       const lineText =
         safeLineId ? lineLabelFrom(lineById.get(safeLineId)) : "";
+      const isPreApprovalQuoteRequest = Boolean(quoteLineId) && !safeLineId;
 
       const insertPayload: DB["public"]["Tables"]["part_request_items"]["Insert"] =
         {
@@ -1059,7 +1064,11 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
           work_order_id: target.req.work_order_id ?? undefined,
           quote_line_id: target.req.quote_line_id ?? undefined,
           work_order_line_id: safeLineId,
-          description: lineText ? `(${lineText})` : "",
+          description: isPreApprovalQuoteRequest
+            ? ""
+            : lineText
+              ? `(${lineText})`
+              : "",
           qty: 1,
           quoted_price: null,
           vendor: null,
@@ -2198,6 +2207,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                     <div key={r.req.id} className={glassCard}>
                       <PartsRequestWorkbench
                         model={model}
+                        onAddItem={async () => {
+                          await addRow(r.req.id);
+                        }}
                         onSaveItem={async (input: SaveItemInput) => {
                           const qty = Number(input.qty);
                           const sellPrice = input.sellPrice == null ? null : Number(input.sellPrice);
