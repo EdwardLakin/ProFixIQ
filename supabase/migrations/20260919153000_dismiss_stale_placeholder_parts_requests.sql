@@ -131,6 +131,46 @@ begin
   where id = p_request_id
     and shop_id = p_shop_id;
 
+  if v_request.quote_line_id is not null then
+    perform public.sync_quote_line_pricing_from_parts(
+      p_shop_id,
+      v_request.quote_line_id
+    );
+
+    update public.work_order_quote_lines
+    set metadata = jsonb_set(
+          jsonb_set(
+            coalesce(metadata, '{}'::jsonb),
+            '{parts_required}',
+            'false'::jsonb,
+            true
+          ),
+          '{no_parts_required}',
+          'true'::jsonb,
+          true
+        ),
+        status = case
+          when lower(coalesce(status, '')) = 'pending_parts'
+            then 'advisor_pending'
+          else status
+        end,
+        stage = case
+          when lower(coalesce(stage, '')) = 'advisor_pending'
+            then 'advisor_pending'
+          else stage
+        end,
+        updated_at = now()
+    where id = v_request.quote_line_id
+      and shop_id = p_shop_id
+      and work_order_line_id is null
+      and sent_to_customer_at is null
+      and sent_at is null
+      and approved_at is null
+      and declined_at is null
+      and deferred_at is null
+      and converted_at is null;
+  end if;
+
   return jsonb_build_object(
     'ok', true,
     'idempotent', false,
