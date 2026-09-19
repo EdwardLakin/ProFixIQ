@@ -312,6 +312,16 @@ export default function MobilePartsWorkOrderFlow(): JSX.Element {
   const activeTotal = active
     ? active.items.reduce((sum, item) => sum + itemQty(item) * itemPrice(item), 0)
     : 0;
+  const canOfferNoPartsRequired =
+    activeStage === "needs_quote" &&
+    Boolean(active?.items.length) &&
+    (active?.items ?? []).every(
+      (item) =>
+        !item.part_id &&
+        !text(item.requested_part_number) &&
+        !text(item.requested_manufacturer) &&
+        itemPrice(item) === 0,
+    );
 
   useEffect(() => {
     if (!pickerItemId) return;
@@ -483,6 +493,41 @@ export default function MobilePartsWorkOrderFlow(): JSX.Element {
       await load();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not release parts.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function dismissActiveStaleRequest(): Promise<void> {
+    if (!active || activeStage !== "needs_quote") return;
+
+    const confirmed = window.confirm(
+      "Mark this request as no parts required? This only works for untouched placeholder requests and will remove it from the active Parts queue.",
+    );
+    if (!confirmed) return;
+
+    setSaving(true);
+    try {
+      const response = await fetch(
+        `/api/parts/requests/${active.request.id}/dismiss-stale`,
+        { method: "POST" },
+      );
+      const body = (await response.json().catch(() => null)) as ApiBody | null;
+      if (!response.ok || body?.ok === false) {
+        throw new Error(
+          body?.error ||
+            "This request has real parts activity and cannot be dismissed as stale.",
+        );
+      }
+
+      toast.success("No parts required. Stale request moved to history.");
+      await load();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not dismiss the stale parts request.",
+      );
     } finally {
       setSaving(false);
     }
@@ -739,13 +784,25 @@ export default function MobilePartsWorkOrderFlow(): JSX.Element {
           </div>
 
           {activeStage !== "released" ? (
-            <button
-              type="button"
-              className={secondaryButton + " mt-3 w-full"}
-              onClick={() => void addPart()}
-            >
-              + Add part
-            </button>
+            <div className="mt-3 grid gap-2">
+              <button
+                type="button"
+                className={secondaryButton + " w-full"}
+                onClick={() => void addPart()}
+              >
+                + Add part
+              </button>
+              {canOfferNoPartsRequired ? (
+                <button
+                  type="button"
+                  className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-red-300 bg-red-50 px-4 py-2 text-sm font-semibold text-red-700 disabled:opacity-45"
+                  disabled={saving}
+                  onClick={() => void dismissActiveStaleRequest()}
+                >
+                  No parts required
+                </button>
+              ) : null}
+            </div>
           ) : null}
         </section>
       ) : (
