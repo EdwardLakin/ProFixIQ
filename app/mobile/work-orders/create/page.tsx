@@ -1680,7 +1680,17 @@ export default function MobileCreateWorkOrderPage() {
 
               <RegistrationScanModal
                 currentCustomer={customer}
-                currentVehicle={vehicle}
+                currentVehicle={{
+                  vin: vehicle.vin ?? null,
+                  license_plate: vehicle.license_plate ?? null,
+                  year:
+                    vehicle.year === null || vehicle.year === undefined
+                      ? null
+                      : String(vehicle.year),
+                  make: vehicle.make ?? null,
+                  model: vehicle.model ?? null,
+                  engine: vehicle.engine ?? null,
+                }}
                 customerId={customer.id}
                 vehicleId={vehicle.id}
                 onApply={(result: RegistrationScanApplyResult) => {
