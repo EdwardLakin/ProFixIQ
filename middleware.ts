@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import type { SupabaseClient } from "@supabase/supabase-js";
+import type { AuthError, SupabaseClient, User } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import {
@@ -147,6 +147,26 @@ function createMiddlewareSupabase(
       },
     },
   });
+}
+
+// `getUser()` always makes a network round-trip to GoTrue's `/auth/v1/user`
+// endpoint to revalidate the JWT server-side. When no session cookie exists,
+// the underlying client falls back to sending the anon key as the bearer
+// token, and GoTrue rejects it with a `bad_jwt` ("missing sub claim") 403 —
+// this fires on essentially every anonymous request and floods the Auth
+// logs. `getSession()` reads the session from the request cookies without
+// hitting the network, so we can skip the doomed `getUser()` call entirely
+// when there is no session to revalidate.
+async function resolveMiddlewareUser(
+  supabase: SupabaseClient<Database>,
+): Promise<{ data: { user: User | null }; error: AuthError | null }> {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  if (!session) {
+    return { data: { user: null }, error: null };
+  }
+  return supabase.auth.getUser();
 }
 
 async function resolvePortalAccessServer(
@@ -328,7 +348,7 @@ export async function middleware(req: NextRequest) {
       responseState,
       rebuildResponse,
     );
-    await supabase.auth.getUser();
+    await resolveMiddlewareUser(supabase);
     return responseState.current;
   }
 
@@ -412,7 +432,7 @@ export async function middleware(req: NextRequest) {
   const {
     data: { user },
     error: userError,
-  } = await supabase.auth.getUser();
+  } = await resolveMiddlewareUser(supabase);
 
   if (userError && userError.message !== "Auth session missing!") {
     console.info("[auth/middleware-get-user]", {
