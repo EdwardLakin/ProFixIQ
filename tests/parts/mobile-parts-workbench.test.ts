@@ -72,4 +72,12 @@ describe("mobile parts workbench", () => {
     expect(workflow).not.toContain("bg-[color:var(--accent-copper)]");
   });
 
+  it("loads mobile inventory availability from the canonical Parts picker API", () => {
+    expect(mobileFlow).toContain("/api/parts/picker?");
+    expect(mobileFlow).toContain("body?.stock ?? []");
+    expect(mobileFlow).toContain("qty_on_hand");
+    expect(mobileFlow).toContain("stockByPart.get(part.id) ?? 0");
+    expect(mobileFlow).not.toContain("onHandQty: null");
+  });
+
 });
