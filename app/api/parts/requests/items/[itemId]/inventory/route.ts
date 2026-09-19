@@ -134,6 +134,10 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
         .from("part_request_items")
         .update({
           part_id: part.id,
+          requested_part_number:
+            clean(part.part_number) ?? clean(part.sku),
+          requested_manufacturer:
+            clean(part.manufacturer) ?? clean(part.supplier),
           ...(selectedSellPrice == null
             ? {}
             : {

@@ -22,6 +22,10 @@ describe("pre-approval Parts Request inventory selection", () => {
   it("persists quote-origin inventory choices without materializing a work-order part", () => {
     expect(inventoryRoute).toContain("isUuid(item.quote_line_id) && !isUuid(item.work_order_line_id)");
     expect(inventoryRoute).toContain("part_id: part.id");
+    expect(inventoryRoute).toContain("requested_part_number:");
+    expect(inventoryRoute).toContain("clean(part.part_number) ?? clean(part.sku)");
+    expect(inventoryRoute).toContain("requested_manufacturer:");
+    expect(inventoryRoute).toContain("clean(part.manufacturer) ?? clean(part.supplier)");
     expect(inventoryRoute).toContain("syncQuoteLinePartsStatus(access.supabase");
     expect(inventoryRoute.indexOf("isUuid(item.quote_line_id) && !isUuid(item.work_order_line_id)")).toBeLessThan(
       inventoryRoute.indexOf('"parts_attach_inventory_to_request_item_atomic"'),
