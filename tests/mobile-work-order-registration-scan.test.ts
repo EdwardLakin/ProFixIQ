@@ -11,9 +11,11 @@ describe("mobile work-order registration scan", () => {
   });
 
   it("applies scanned customer and vehicle identity to the mobile create form", () => {
-    expect(page).toContain("first_name: result.customer.first_name");
-    expect(page).toContain("license_plate: result.vehicle.license_plate");
-    expect(page).toContain("vin: result.vehicle.vin");
+    expect(page).toContain("customerFields.first_name =");
+    expect(page).toContain("result.customer.first_name ?? null");
+    expect(page).toContain("vehicleFields.license_plate =");
+    expect(page).toContain("result.vehicle.license_plate ?? null");
+    expect(page).toContain("vehicleFields.vin = result.vehicle.vin ?? null");
   });
 
   it("stores the reviewed registration image on the resolved vehicle", () => {
