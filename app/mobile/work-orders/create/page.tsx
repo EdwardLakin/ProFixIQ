@@ -35,6 +35,11 @@ import { MobileJobLineAdd } from "@/features/work-orders/mobile/MobileJobLineAdd
 import NewWorkOrderLineForm from "@/features/work-orders/components/NewWorkOrderLineForm";
 import { useWorkOrderDraft } from "app/work-orders/state/useWorkOrderDraft";
 import VinCaptureModal from "app/vehicle/VinCaptureModal";
+import RegistrationScanModal, {
+  type RegistrationScanApplyResult,
+} from "@/features/vehicles/components/RegistrationScanModal";
+import { uploadVehicleMediaFile } from "@/features/vehicles/lib/vehicleMediaUpload";
+import { toast } from "sonner";
 import { setOfflineMutationScope } from "@/features/shared/lib/offline/mutations";
 import {
   createAdvisorDraftId,
@@ -567,6 +572,18 @@ export default function MobileCreateWorkOrderPage() {
 
   const [shopId, setShopId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [currentProfileId, setCurrentProfileId] = useState<string | null>(null);
+  const [pendingRegistrationFile, setPendingRegistrationFile] =
+    useState<File | null>(null);
+  const [pendingRegistrationContext, setPendingRegistrationContext] =
+    useState<{ customerId: string | null; vehicleId: string | null } | null>(
+      null,
+    );
+
+  const clearPendingRegistrationScan = useCallback(() => {
+    setPendingRegistrationFile(null);
+    setPendingRegistrationContext(null);
+  }, []);
 
   const [loading, setLoading] = useState(false);
   const [creatingWo, setCreatingWo] = useState(false);
@@ -603,6 +620,20 @@ export default function MobileCreateWorkOrderPage() {
 
       if (uid) {
         try {
+          const profileByUserId = await supabase
+            .from("profiles")
+            .select("id")
+            .eq("user_id", uid)
+            .maybeSingle();
+          const profileById = profileByUserId.data?.id
+            ? profileByUserId
+            : await supabase
+                .from("profiles")
+                .select("id")
+                .eq("id", uid)
+                .maybeSingle();
+          setCurrentProfileId(profileById.data?.id ?? null);
+
           const sid = await getOrLinkShopId(supabase, uid);
           setShopId(sid);
           if (sid) {
@@ -1048,6 +1079,40 @@ export default function MobileCreateWorkOrderPage() {
       const veh = await ensureVehicle(cust);
       void requestVehicleRecallEnrichment(veh.id);
 
+      if (pendingRegistrationFile) {
+        const contextStillMatches =
+          !pendingRegistrationContext ||
+          ((pendingRegistrationContext.customerId === null ||
+            pendingRegistrationContext.customerId === cust.id) &&
+            (pendingRegistrationContext.vehicleId === null ||
+              pendingRegistrationContext.vehicleId === veh.id));
+
+        if (!contextStillMatches) {
+          clearPendingRegistrationScan();
+          toast.error(
+            "Registration photo not saved because the customer or vehicle changed after the scan.",
+          );
+        } else {
+          const registrationFile = pendingRegistrationFile;
+          const uploadResult = await uploadVehicleMediaFile({
+            supabase,
+            vehicleId: veh.id,
+            shopId,
+            uploadedBy: currentProfileId,
+            bucket: "vehicle-docs",
+            type: "document",
+            file: registrationFile,
+            filename: `Registration - ${registrationFile.name}`,
+          });
+          if (uploadResult.ok) {
+            clearPendingRegistrationScan();
+            toast.success("Registration image saved to the vehicle profile.");
+          } else {
+            toast.error(`Registration image not saved: ${uploadResult.error}`);
+          }
+        }
+      }
+
       if (draftLines.length > 0) {
         const prepared = buildAdvisorDraft();
         if (!prepared) throw new Error("Draft scope is unavailable.");
@@ -1127,9 +1192,13 @@ export default function MobileCreateWorkOrderPage() {
   }, [
     creatingWo,
     currentUserId,
+    currentProfileId,
     shopId,
     customer,
     vehicle.id,
+    pendingRegistrationFile,
+    pendingRegistrationContext,
+    clearPendingRegistrationScan,
     draftLines,
     buildAdvisorDraft,
     ensureCustomer,
@@ -1249,6 +1318,13 @@ export default function MobileCreateWorkOrderPage() {
                 value={customerSearch}
                 offlineRows={offlineCustomers}
                 onPick={(c) => {
+                  if (
+                    pendingRegistrationContext?.customerId &&
+                    pendingRegistrationContext.customerId !== c.id
+                  ) {
+                    clearPendingRegistrationScan();
+                    toast("Registration scan cleared — a different customer was selected.");
+                  }
                   setCustomer({
                     id: c.id,
                     first_name: c.first_name ?? null,
@@ -1339,6 +1415,13 @@ export default function MobileCreateWorkOrderPage() {
                 value={vehicleSearch}
                 offlineRows={offlineVehicles}
                 onPick={(v) => {
+                  if (
+                    pendingRegistrationContext?.vehicleId &&
+                    pendingRegistrationContext.vehicleId !== v.id
+                  ) {
+                    clearPendingRegistrationScan();
+                    toast("Registration scan cleared — a different vehicle was selected.");
+                  }
                   setVehicle({
                     id: v.id,
                     vin: v.vin ?? null,
@@ -1591,9 +1674,96 @@ export default function MobileCreateWorkOrderPage() {
                 }}
               >
                 <span className="cursor-pointer rounded-full border border-[var(--accent-copper)] px-3 py-1.5 text-[0.7rem] font-medium text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/10">
-                  Add by VIN / Scan
+                  Scan VIN
                 </span>
               </VinCaptureModal>
+
+              <RegistrationScanModal
+                currentCustomer={customer}
+                currentVehicle={{
+                  vin: vehicle.vin ?? null,
+                  license_plate: vehicle.license_plate ?? null,
+                  year:
+                    vehicle.year === null || vehicle.year === undefined
+                      ? null
+                      : String(vehicle.year),
+                  make: vehicle.make ?? null,
+                  model: vehicle.model ?? null,
+                  engine: vehicle.engine ?? null,
+                }}
+                customerId={customer.id}
+                vehicleId={vehicle.id}
+                onApply={(result: RegistrationScanApplyResult) => {
+                  const customerFields: Partial<MobileCustomer> = {};
+                  if (result.customer.first_name !== undefined) {
+                    customerFields.first_name =
+                      result.customer.first_name ?? null;
+                  }
+                  if (result.customer.last_name !== undefined) {
+                    customerFields.last_name =
+                      result.customer.last_name ?? null;
+                  }
+                  if (result.customer.phone !== undefined) {
+                    customerFields.phone = result.customer.phone ?? null;
+                  }
+                  if (result.customer.email !== undefined) {
+                    customerFields.email = result.customer.email ?? null;
+                  }
+                  if (result.customer.address !== undefined) {
+                    customerFields.address = result.customer.address ?? null;
+                  }
+                  if (result.customer.city !== undefined) {
+                    customerFields.city = result.customer.city ?? null;
+                  }
+                  if (result.customer.province !== undefined) {
+                    customerFields.province = result.customer.province ?? null;
+                  }
+                  if (result.customer.postal_code !== undefined) {
+                    customerFields.postal_code =
+                      result.customer.postal_code ?? null;
+                  }
+                  if (Object.keys(customerFields).length > 0) {
+                    setCustomer((prev) => ({ ...prev, ...customerFields }));
+                  }
+
+                  const vehicleFields: Partial<MobileVehicle> = {};
+                  if (result.vehicle.vin !== undefined) {
+                    vehicleFields.vin = result.vehicle.vin ?? null;
+                  }
+                  if (result.vehicle.license_plate !== undefined) {
+                    vehicleFields.license_plate =
+                      result.vehicle.license_plate ?? null;
+                  }
+                  if (result.vehicle.year !== undefined) {
+                    vehicleFields.year = result.vehicle.year ?? null;
+                  }
+                  if (result.vehicle.make !== undefined) {
+                    vehicleFields.make = result.vehicle.make ?? null;
+                  }
+                  if (result.vehicle.model !== undefined) {
+                    vehicleFields.model = result.vehicle.model ?? null;
+                  }
+                  if (result.vehicle.engine !== undefined) {
+                    vehicleFields.engine = result.vehicle.engine ?? null;
+                  }
+                  if (Object.keys(vehicleFields).length > 0) {
+                    setVehicle((prev) => ({ ...prev, ...vehicleFields }));
+                    setPendingRegistrationFile(result.file);
+                    setPendingRegistrationContext({
+                      customerId: customer.id,
+                      vehicleId: vehicle.id,
+                    });
+                  }
+
+                  toast.success(
+                    "Registration scanned. Review the customer and vehicle details before creating the work order.",
+                  );
+                }}
+              >
+                <span className="cursor-pointer rounded-full border border-[var(--accent-copper)] px-3 py-1.5 text-[0.7rem] font-medium text-[var(--accent-copper-light)] hover:bg-[var(--accent-copper)]/10">
+                  Scan registration
+                </span>
+              </RegistrationScanModal>
             </div>
           </div>
 
