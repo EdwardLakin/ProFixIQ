@@ -61,7 +61,7 @@ describe("inspection sign and portal approval regressions", () => {
     const middleware = read("middleware.ts");
     const apiBranch = middleware.indexOf('pathname.startsWith("/api")');
     const refresh = middleware.indexOf(
-      "await supabase.auth.getUser()",
+      "await resolveMiddlewareUser(supabase)",
       apiBranch,
     );
 

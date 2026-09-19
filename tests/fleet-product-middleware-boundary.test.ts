@@ -101,10 +101,21 @@ vi.mock("@supabase/ssr", () => ({
 
     return {
       auth: {
-        getUser: async () => {
+        // Mirrors @supabase/ssr: getSession() reads (and silently refreshes)
+        // the session from stored cookies without a /auth/v1/user round trip;
+        // getUser() separately revalidates the JWT server-side.
+        getSession: async () => {
           if (authFixture.refreshedCookies.length > 0) {
             options.cookies.setAll(authFixture.refreshedCookies);
           }
+          return {
+            data: {
+              session: authFixture.user ? { user: authFixture.user } : null,
+            },
+            error: null,
+          };
+        },
+        getUser: async () => {
           return {
             data: { user: authFixture.user },
             error: null,
