@@ -31,7 +31,51 @@ const nextConfig: NextConfig = {
   },
 
   async headers() {
+    const isDev = process.env.NODE_ENV !== "production";
+    const supabaseHost = "scjjkmuwadwkaaqjoigx.supabase.co";
+
+    const csp = [
+      `default-src 'self'`,
+      `base-uri 'self'`,
+      `object-src 'none'`,
+      `frame-ancestors 'none'`,
+      `form-action 'self'`,
+      `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+      `style-src 'self' 'unsafe-inline'`,
+      `img-src 'self' data: blob: https://${supabaseHost} https://chart.googleapis.com`,
+      `font-src 'self' data:`,
+      `media-src 'self' blob: https://${supabaseHost}`,
+      `worker-src 'self' blob:`,
+      `frame-src 'self'`,
+      `connect-src 'self' https://${supabaseHost} wss://${supabaseHost} https://api.openai.com wss://api.openai.com${isDev ? " ws://localhost:* http://localhost:*" : ""}`,
+      `upgrade-insecure-requests`,
+    ].join("; ");
+
+    const securityHeaders = [
+      { key: "Content-Security-Policy", value: csp },
+      { key: "X-Frame-Options", value: "DENY" },
+      { key: "X-Content-Type-Options", value: "nosniff" },
+      { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+      {
+        key: "Permissions-Policy",
+        value:
+          "camera=(self), microphone=(self), geolocation=(self), payment=(), usb=(), interest-cohort=()",
+      },
+      ...(isDev
+        ? []
+        : [
+            {
+              key: "Strict-Transport-Security",
+              value: "max-age=63072000; includeSubDomains",
+            },
+          ]),
+    ];
+
     return [
+      {
+        source: "/:path*",
+        headers: securityHeaders,
+      },
       {
         source: "/sw.js",
         headers: [
