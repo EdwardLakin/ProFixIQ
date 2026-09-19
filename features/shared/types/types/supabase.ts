@@ -29941,6 +29941,14 @@ export type Database = {
         }
         Returns: Json
       }
+      parts_dismiss_stale_placeholder_request_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_request_id: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
       parts_ensure_request_quote_line: {
         Args: { p_request_id: string }
         Returns: Json
