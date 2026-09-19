@@ -87,6 +87,17 @@ type ApiBody = {
   committedCount?: number;
 };
 
+type PickerStockRow = {
+  part_id: string;
+  qty_on_hand: number | null;
+};
+
+type PickerResponse = {
+  parts?: PartRow[];
+  stock?: PickerStockRow[];
+  error?: string;
+};
+
 function text(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
 }
@@ -176,7 +187,7 @@ export default function MobilePartsWorkOrderFlow(): JSX.Element {
   const [requests, setRequests] = useState<RequestModel[]>([]);
   const [activeRequestId, setActiveRequestId] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, DraftItem>>({});
-  const [parts, setParts] = useState<PartRow[]>([]);
+  const [pickerResults, setPickerResults] = useState<InventorySearchResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [pickerItemId, setPickerItemId] = useState<string | null>(null);
@@ -283,18 +294,7 @@ export default function MobilePartsWorkOrderFlow(): JSX.Element {
       }
       setDrafts(nextDrafts);
 
-      if (wo.shop_id) {
-        const { data: partData, error: partError } = await supabase
-          .from("parts")
-          .select("*")
-          .eq("shop_id", wo.shop_id)
-          .order("name")
-          .limit(1000);
-        if (partError) throw partError;
-        setParts((partData ?? []) as PartRow[]);
-      } else {
-        setParts([]);
-      }
+      setPickerResults([]);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Unable to load parts.");
     } finally {
@@ -313,30 +313,67 @@ export default function MobilePartsWorkOrderFlow(): JSX.Element {
     ? active.items.reduce((sum, item) => sum + itemQty(item) * itemPrice(item), 0)
     : 0;
 
-  const pickerResults = useMemo<InventorySearchResult[]>(() => {
-    const query = pickerQuery.trim().toLowerCase();
-    return parts
-      .filter((part) => {
-        if (!query) return true;
-        return [
-          part.name,
-          part.part_number,
-          part.sku,
-          part.manufacturer,
-          part.supplier,
-        ]
-          .map((value) => text(value).toLowerCase())
-          .some((value) => value.includes(query));
-      })
-      .map((part) => ({
-        value: part.id,
-        label: text(part.name) || text(part.part_number) || "Part",
-        sku: part.sku,
-        partNumber: part.part_number,
-        manufacturer: part.manufacturer ?? part.supplier ?? null,
-        onHandQty: null,
-      }));
-  }, [parts, pickerQuery]);
+  useEffect(() => {
+    if (!pickerItemId) return;
+
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      void (async () => {
+        try {
+          const params = new URLSearchParams();
+          const query = pickerQuery.trim();
+          if (query) params.set("q", query);
+
+          const response = await fetch(`/api/parts/picker?${params.toString()}`, {
+            method: "GET",
+            cache: "no-store",
+            credentials: "same-origin",
+            signal: controller.signal,
+          });
+          const body = (await response.json().catch(() => null)) as
+            | PickerResponse
+            | null;
+          if (!response.ok) {
+            throw new Error(body?.error || "Unable to load parts inventory.");
+          }
+
+          const stockByPart = new Map<string, number>();
+          for (const row of body?.stock ?? []) {
+            const partId = text(row.part_id);
+            if (!partId) continue;
+            stockByPart.set(
+              partId,
+              (stockByPart.get(partId) ?? 0) + numberValue(row.qty_on_hand, 0),
+            );
+          }
+
+          setPickerResults(
+            (body?.parts ?? []).map((part) => ({
+              value: part.id,
+              label: text(part.name) || text(part.part_number) || "Part",
+              sku: part.sku,
+              partNumber: part.part_number,
+              manufacturer: part.manufacturer ?? part.supplier ?? null,
+              onHandQty: stockByPart.get(part.id) ?? 0,
+            })),
+          );
+        } catch (error) {
+          if (controller.signal.aborted) return;
+          toast.error(
+            error instanceof Error
+              ? error.message
+              : "Unable to load parts inventory.",
+          );
+          setPickerResults([]);
+        }
+      })();
+    }, 180);
+
+    return () => {
+      window.clearTimeout(timer);
+      controller.abort();
+    };
+  }, [pickerItemId, pickerQuery]);
 
   function updateDraft(itemId: string, patch: Partial<DraftItem>): void {
     setDrafts((current) => ({
@@ -763,6 +800,7 @@ export default function MobilePartsWorkOrderFlow(): JSX.Element {
           setPickerItemId(null);
           setPickerPartId(null);
           setPickerQuery("");
+          setPickerResults([]);
         }}
       />
     </div>
