@@ -1694,37 +1694,59 @@ export default function MobileCreateWorkOrderPage() {
                 customerId={customer.id}
                 vehicleId={vehicle.id}
                 onApply={(result: RegistrationScanApplyResult) => {
-                  const customerFields = {
-                    first_name: result.customer.first_name ?? undefined,
-                    last_name: result.customer.last_name ?? undefined,
-                    phone: result.customer.phone ?? undefined,
-                    email: result.customer.email ?? undefined,
-                    address: result.customer.address ?? undefined,
-                    city: result.customer.city ?? undefined,
-                    province: result.customer.province ?? undefined,
-                    postal_code: result.customer.postal_code ?? undefined,
-                  };
-                  if (
-                    Object.values(customerFields).some(
-                      (value) => value !== undefined,
-                    )
-                  ) {
+                  const customerFields: Partial<MobileCustomer> = {};
+                  if (result.customer.first_name !== undefined) {
+                    customerFields.first_name =
+                      result.customer.first_name ?? null;
+                  }
+                  if (result.customer.last_name !== undefined) {
+                    customerFields.last_name =
+                      result.customer.last_name ?? null;
+                  }
+                  if (result.customer.phone !== undefined) {
+                    customerFields.phone = result.customer.phone ?? null;
+                  }
+                  if (result.customer.email !== undefined) {
+                    customerFields.email = result.customer.email ?? null;
+                  }
+                  if (result.customer.address !== undefined) {
+                    customerFields.address = result.customer.address ?? null;
+                  }
+                  if (result.customer.city !== undefined) {
+                    customerFields.city = result.customer.city ?? null;
+                  }
+                  if (result.customer.province !== undefined) {
+                    customerFields.province = result.customer.province ?? null;
+                  }
+                  if (result.customer.postal_code !== undefined) {
+                    customerFields.postal_code =
+                      result.customer.postal_code ?? null;
+                  }
+                  if (Object.keys(customerFields).length > 0) {
                     setCustomer((prev) => ({ ...prev, ...customerFields }));
                   }
 
-                  const vehicleFields = {
-                    vin: result.vehicle.vin ?? undefined,
-                    license_plate: result.vehicle.license_plate ?? undefined,
-                    year: result.vehicle.year ?? undefined,
-                    make: result.vehicle.make ?? undefined,
-                    model: result.vehicle.model ?? undefined,
-                    engine: result.vehicle.engine ?? undefined,
-                  };
-                  if (
-                    Object.values(vehicleFields).some(
-                      (value) => value !== undefined,
-                    )
-                  ) {
+                  const vehicleFields: Partial<MobileVehicle> = {};
+                  if (result.vehicle.vin !== undefined) {
+                    vehicleFields.vin = result.vehicle.vin ?? null;
+                  }
+                  if (result.vehicle.license_plate !== undefined) {
+                    vehicleFields.license_plate =
+                      result.vehicle.license_plate ?? null;
+                  }
+                  if (result.vehicle.year !== undefined) {
+                    vehicleFields.year = result.vehicle.year ?? null;
+                  }
+                  if (result.vehicle.make !== undefined) {
+                    vehicleFields.make = result.vehicle.make ?? null;
+                  }
+                  if (result.vehicle.model !== undefined) {
+                    vehicleFields.model = result.vehicle.model ?? null;
+                  }
+                  if (result.vehicle.engine !== undefined) {
+                    vehicleFields.engine = result.vehicle.engine ?? null;
+                  }
+                  if (Object.keys(vehicleFields).length > 0) {
                     setVehicle((prev) => ({ ...prev, ...vehicleFields }));
                     setPendingRegistrationFile(result.file);
                     setPendingRegistrationContext({
