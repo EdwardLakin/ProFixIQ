@@ -39,7 +39,7 @@ export async function GET(request: Request) {
   let partsQuery = admin
     .from("parts")
     .select(
-      "id,shop_id,name,sku,part_number,category,default_cost,cost,price",
+      "id,shop_id,name,sku,part_number,manufacturer,supplier,category,default_cost,cost,price,default_price",
     )
     .eq("shop_id", access.profile.shop_id)
     .order("name")
