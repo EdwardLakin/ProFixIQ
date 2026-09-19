@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { logOperationalEvent } from "@/features/work-orders/server/logOperationalEvent";
-import { syncQuoteLinePartsStatus } from "@/features/parts/server/syncQuoteLinePartsStatus";
 
 type RpcError = {
   message: string;
@@ -93,24 +92,6 @@ export async function POST(
       { ok: false, error: "The stale parts request was not dismissed." },
       { status: 409 },
     );
-  }
-
-  if (result.quote_line_id) {
-    const sync = await syncQuoteLinePartsStatus(access.supabase, {
-      shopId: access.profile.shop_id,
-      quoteLineId: result.quote_line_id,
-    });
-    if (!sync.ok) {
-      return NextResponse.json(
-        {
-          ok: false,
-          error:
-            sync.error ||
-            "Parts request was dismissed, but quote-line pricing did not resync.",
-        },
-        { status: 409 },
-      );
-    }
   }
 
   if (!result.idempotent) {
