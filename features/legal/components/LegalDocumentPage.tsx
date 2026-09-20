@@ -14,7 +14,18 @@ export default function LegalDocumentPage({ content }: { content: string }) {
         </Link>
 
         <article className="prose prose-invert prose-slate mt-8 max-w-none prose-headings:font-semibold prose-a:text-[color:var(--marketing-copper,#c2703d)] prose-table:text-sm">
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{
+              table: ({ children }) => (
+                <div className="overflow-x-auto">
+                  <table>{children}</table>
+                </div>
+              ),
+            }}
+          >
+            {content}
+          </ReactMarkdown>
         </article>
       </div>
     </div>

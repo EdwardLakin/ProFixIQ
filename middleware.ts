@@ -392,6 +392,7 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/auth/reset") ||
     pathname.startsWith("/auth/set-password") ||
     pathname.startsWith("/demo") ||
+    pathname.startsWith("/legal") ||
     isPublicFleetMetadata ||
     isPortalAuthPage ||
     isLegacyPortalConfirm ||
@@ -863,6 +864,8 @@ export const config = {
     "/auth/reset",
     "/auth/set-password",
     "/demo/:path*",
+    "/legal",
+    "/legal/:path*",
     "/portal/:path*",
     "/assets/:path*",
     "/drivers/:path*",
