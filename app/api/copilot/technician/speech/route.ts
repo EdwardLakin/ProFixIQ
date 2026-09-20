@@ -25,6 +25,9 @@ const ENDPOINT = "/api/copilot/technician/speech";
 const FEATURE = "technician_copilot_speech" as const;
 const SPEECH_MODEL = NATURAL_SPEECH_MODEL;
 const MAX_SPEECH_CHARACTERS = NATURAL_SPEECH_MAX_CHARACTERS;
+const TECHNICIAN_COPILOT_SPEECH_VOICE = "cedar" as const;
+const TECHNICIAN_COPILOT_SPEECH_INSTRUCTIONS =
+  "Use a calm, polished British accent with quiet authority. Sound intelligent, composed, concise, and subtly warm, like a sophisticated workshop AI assistant. Keep the delivery measured and conversational, with crisp pronunciation, restrained emotion, natural pauses, and understated confidence. Avoid announcer energy, exaggerated theatricality, cheerfulness, or a robotic cadence. Do not add or omit information.";
 
 type TechnicianCopilotAccess = Awaited<
   ReturnType<typeof requireTechnicianCopilotAccess>
@@ -182,6 +185,8 @@ export async function POST(request: NextRequest) {
   const result = await synthesizeNaturalSpeech({
     text,
     timeoutMs: policy.timeoutMs,
+    voice: TECHNICIAN_COPILOT_SPEECH_VOICE,
+    instructions: TECHNICIAN_COPILOT_SPEECH_INSTRUCTIONS,
   });
 
   if (!result.ok) {
