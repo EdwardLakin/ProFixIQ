@@ -20,6 +20,14 @@ const withSerwist = withSerwistInit({
 const nextConfig: NextConfig = {
   reactStrictMode: true,
 
+  // /legal/* pages read their content from docs/legal/*.md at request time via
+  // fs.readFileSync. That directory sits outside app/ and public/, so it isn't
+  // reliably picked up by Next's automatic serverless file tracing — make the
+  // inclusion explicit so the deployed function always has the source files.
+  outputFileTracingIncludes: {
+    "app/legal/**/*": ["./docs/legal/**/*.md"],
+  },
+
   images: {
     remotePatterns: [
       {

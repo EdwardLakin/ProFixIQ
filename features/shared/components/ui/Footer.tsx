@@ -25,13 +25,21 @@ const groups = [
       { label: "Customer portal", href: "/customer/sign-in" },
     ],
   },
+  {
+    title: "Legal",
+    links: [
+      { label: "Terms of Service", href: "/legal/terms" },
+      { label: "Privacy Policy", href: "/legal/privacy" },
+      { label: "Legal Center", href: "/legal" },
+    ],
+  },
 ];
 
 export default function Footer({ className }: { className?: string }) {
   return (
     <footer className={cn("border-t border-[color:var(--marketing-border)] bg-[color:var(--marketing-ink)] text-white", className)}>
       <div className="mx-auto max-w-[1400px] px-5 py-16 sm:px-8 sm:py-20">
-        <div className="grid gap-12 lg:grid-cols-[1.35fr_0.65fr_0.65fr]">
+        <div className="grid gap-12 sm:grid-cols-3 lg:grid-cols-[1.1fr_0.6fr_0.6fr_0.6fr]">
           <div className="max-w-xl">
             <Link href="/" className="flex items-center gap-3">
               <span className="grid h-11 w-11 place-items-center rounded-xl bg-white"><ProFixIQMark className="h-8 w-8" /></span>
