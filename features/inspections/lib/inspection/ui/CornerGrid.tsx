@@ -161,9 +161,9 @@ export default function CornerGrid(props: CornerGridProps) {
                 type="number"
                 inputMode="decimal"
                 placeholder={pads ? "Enter value" : "Not configured"}
-                value={String(pads?.item?.value ?? "")}
+                defaultValue={String(pads?.item?.value ?? "")}
                 onFocus={() => pads && onSpecHint?.(pads.metricLabel)}
-                onChange={(event) => commit(pads, event.currentTarget.value)}
+                onBlur={(event) => commit(pads, event.currentTarget.value)}
                 disabled={!pads}
               />
               <span className={unitCls()}>{pads?.unit ?? "mm"}</span>
@@ -180,9 +180,9 @@ export default function CornerGrid(props: CornerGridProps) {
                 type="number"
                 inputMode="decimal"
                 placeholder={rotor ? "Enter value" : "Not configured"}
-                value={String(rotor?.item?.value ?? "")}
+                defaultValue={String(rotor?.item?.value ?? "")}
                 onFocus={() => rotor && onSpecHint?.(rotor.metricLabel)}
-                onChange={(event) => commit(rotor, event.currentTarget.value)}
+                onBlur={(event) => commit(rotor, event.currentTarget.value)}
                 disabled={!rotor}
               />
               <span className={unitCls()}>{rotor?.unit ?? "mm"}</span>
