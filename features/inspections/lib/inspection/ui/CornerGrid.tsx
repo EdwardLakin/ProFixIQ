@@ -5,12 +5,14 @@
 import { useMemo, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
+import MeasurementInput from "@inspections/lib/inspection/ui/MeasurementInput";
 
 type CornerGridProps = {
   sectionIndex: number;
   items: InspectionItem[];
   unitHint?: (label: string) => string;
   onSpecHint?: (label: string) => void;
+  locked?: boolean;
 };
 
 const CORNERS = ["LF", "RF", "LR", "RR"] as const;
@@ -68,7 +70,7 @@ function unitCls() {
 }
 
 export default function CornerGrid(props: CornerGridProps) {
-  const { sectionIndex, items, unitHint, onSpecHint } = props;
+  const { sectionIndex, items, unitHint, onSpecHint, locked } = props;
   const { updateItem } = useInspectionForm();
   const [open, setOpen] = useState(true);
 
@@ -156,15 +158,15 @@ export default function CornerGrid(props: CornerGridProps) {
               Pad / shoe thickness
             </span>
             <div className="relative">
-              <input
+              <MeasurementInput
                 className={inputCls()}
                 type="number"
                 inputMode="decimal"
                 placeholder={pads ? "Enter value" : "Not configured"}
-                defaultValue={String(pads?.item?.value ?? "")}
+                value={String(pads?.item?.value ?? "")}
                 onFocus={() => pads && onSpecHint?.(pads.metricLabel)}
-                onBlur={(event) => commit(pads, event.currentTarget.value)}
-                disabled={!pads}
+                onCommit={(value) => commit(pads, value)}
+                disabled={!pads || locked}
               />
               <span className={unitCls()}>{pads?.unit ?? "mm"}</span>
             </div>
@@ -175,15 +177,15 @@ export default function CornerGrid(props: CornerGridProps) {
               Rotor / drum thickness
             </span>
             <div className="relative">
-              <input
+              <MeasurementInput
                 className={inputCls()}
                 type="number"
                 inputMode="decimal"
                 placeholder={rotor ? "Enter value" : "Not configured"}
-                defaultValue={String(rotor?.item?.value ?? "")}
+                value={String(rotor?.item?.value ?? "")}
                 onFocus={() => rotor && onSpecHint?.(rotor.metricLabel)}
-                onBlur={(event) => commit(rotor, event.currentTarget.value)}
-                disabled={!rotor}
+                onCommit={(value) => commit(rotor, value)}
+                disabled={!rotor || locked}
               />
               <span className={unitCls()}>{rotor?.unit ?? "mm"}</span>
             </div>
