@@ -2,16 +2,13 @@ import "server-only";
 
 import { getOpenAIClient, isOpenAIConfigured } from "./openai";
 
-// The one voice/model pairing every spoken-reply surface in the app should
-// use. gpt-4o-mini-tts's "marin" voice is OpenAI's newest, most natural-
-// sounding preset — this is what replaced the old, flat SpeechSynthesisUtterance
-// fallback everywhere it was still the primary voice (see
-// GenericInspectionScreen.tsx's speakLocal, now a last-resort fallback only).
-// Keep every caller on this same pairing rather than letting each surface
-// pick its own — a natural voice is only "the CoPilot's voice" if it sounds
-// the same everywhere.
+// Shared speech defaults. Callers may override the built-in voice when a
+// product surface intentionally has its own audible identity; inspection and
+// ordinary dictation keep the shared "marin" default, while the Technician
+// CoPilot can select its dedicated voice without changing those workflows.
 export const NATURAL_SPEECH_MODEL = "gpt-4o-mini-tts" as const;
 export const NATURAL_SPEECH_VOICE = "marin" as const;
+export type NaturalSpeechVoice = typeof NATURAL_SPEECH_VOICE | "cedar";
 export const NATURAL_SPEECH_MAX_CHARACTERS = 4_000;
 
 const DEFAULT_INSTRUCTIONS =
@@ -37,6 +34,7 @@ export async function synthesizeNaturalSpeech(input: {
   text: string;
   timeoutMs: number;
   instructions?: string;
+  voice?: NaturalSpeechVoice;
 }): Promise<NaturalSpeechResult> {
   if (!isOpenAIConfigured()) {
     return {
@@ -53,7 +51,7 @@ export async function synthesizeNaturalSpeech(input: {
     const speech = await getOpenAIClient().audio.speech.create(
       {
         model: NATURAL_SPEECH_MODEL,
-        voice: NATURAL_SPEECH_VOICE,
+        voice: input.voice ?? NATURAL_SPEECH_VOICE,
         input: input.text,
         instructions: input.instructions ?? DEFAULT_INSTRUCTIONS,
         response_format: "mp3",
