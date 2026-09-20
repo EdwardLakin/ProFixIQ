@@ -99,8 +99,9 @@ describe("POST /api/copilot/technician/speech", () => {
     expect(mocks.createSpeech).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "gpt-4o-mini-tts",
-        voice: "marin",
+        voice: "cedar",
         input: "Next job is the Ford.",
+        instructions: expect.stringContaining("calm, polished British accent"),
         response_format: "mp3",
       }),
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
