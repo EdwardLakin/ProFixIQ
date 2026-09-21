@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  describeInternalDependency,
   diagnoseAgentPipelineRequest,
   partitionAgentQuestions,
   summarizeAgentPipeline,
@@ -55,6 +56,64 @@ describe("Agent pipeline diagnostics", () => {
       title: "Specialist review blocked",
       actionLabel: "Restart from stage",
     });
+  });
+
+  it("gives an OpenAI quota outage a specific, non-code-sounding explanation", () => {
+    expect(diagnoseAgentPipelineRequest({
+      id: "request-3",
+      status: "in_progress",
+      createdAt: "2026-08-14T18:00:00.000Z",
+      updatedAt: "2026-08-14T18:01:00.000Z",
+      reporterQuestions: [],
+      team: {
+        caseStatus: "blocked",
+        currentStage: "architecture_guardian",
+        updatedAt: "2026-08-14T18:01:00.000Z",
+        internalDependency: "openai_quota",
+      },
+    }, NOW)).toMatchObject({
+      kind: "internal_blocker",
+      title: "OpenAI quota exhausted",
+      internalDependency: "openai_quota",
+    });
+  });
+
+  it("aggregates requests blocked on the same dependency into one outage signal", () => {
+    const requests = [
+      {
+        id: "quota-1",
+        status: "in_progress",
+        createdAt: "2026-08-14T18:00:00.000Z",
+        updatedAt: "2026-08-14T18:01:00.000Z",
+        team: { caseStatus: "blocked", currentStage: "architecture_guardian", internalDependency: "openai_quota" },
+      },
+      {
+        id: "quota-2",
+        status: "in_progress",
+        createdAt: "2026-08-14T18:00:00.000Z",
+        updatedAt: "2026-08-14T18:01:00.000Z",
+        team: { caseStatus: "blocked", currentStage: "planning", internalDependency: "openai_quota" },
+      },
+      {
+        id: "not-outage",
+        status: "awaiting_approval",
+        createdAt: "2026-08-14T18:00:00.000Z",
+        updatedAt: "2026-08-14T19:59:00.000Z",
+      },
+    ];
+
+    expect(summarizeAgentPipeline(requests, NOW).dependencyOutages).toEqual([
+      {
+        dependency: "openai_quota",
+        label: "OpenAI quota exhausted",
+        count: 2,
+        requestIds: ["quota-1", "quota-2"],
+      },
+    ]);
+  });
+
+  it("falls back to a humanized label for an unrecognized dependency", () => {
+    expect(describeInternalDependency("mystery_new_dependency")).toBe("mystery new dependency");
   });
 
   it("summarizes failed, blocked, stale, and approval queues", () => {
