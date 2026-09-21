@@ -66,19 +66,28 @@ function asRecord(value: Json | null): Record<string, Json | undefined> | null {
   return value as Record<string, Json | undefined>;
 }
 
-function isArchivedSource(
-  row:
-    | Pick<WorkOrder, "archived_at" | "source_intake_id" | "external_id">
-    | undefined,
+function isExcludedSource(
+  row: Pick<WorkOrder, "source_intake_id" | "external_id"> | undefined,
 ): boolean {
   if (!row) return true;
-  if (row.archived_at) return true;
   // source_intake_id is the repository's durable imported-history marker, and
   // matches the exclusion the carry-forward trigger applies. work_orders.type
   // only ever holds inspection/repair/maintenance, so it cannot identify an
-  // import.
+  // import. Archival is a visibility state, not resolution -- it no longer
+  // excludes a recommendation from carry-forward, and must not exclude it
+  // here either.
   if (row.source_intake_id) return true;
   return String(row.external_id ?? "").startsWith("portal_quote:");
+}
+
+function findingKeyFor(quote: QuoteLine, rootId: string): string {
+  const metadata = asRecord(quote.metadata);
+  const identity = metadata?.inspection_finding_identity;
+  return typeof identity === "string" && identity.trim() ? identity : rootId;
+}
+
+function recommendationKey(rootId: string, quote: QuoteLine): string {
+  return `${rootId}::${findingKeyFor(quote, rootId)}`;
 }
 
 function originalQuoteForDisplay(
@@ -262,16 +271,13 @@ export async function GET(request: Request) {
   ];
 
   let workOrders: Array<
-    Pick<
-      WorkOrder,
-      "id" | "custom_id" | "source_intake_id" | "external_id" | "archived_at"
-    >
+    Pick<WorkOrder, "id" | "custom_id" | "source_intake_id" | "external_id">
   >;
   try {
     workOrders = await loadRowsForIdChunks(workOrderIds, (ids, from, to) =>
       admin
         .from("work_orders")
-        .select("id,custom_id,source_intake_id,external_id,archived_at")
+        .select("id,custom_id,source_intake_id,external_id")
         .eq("shop_id", access.profile.shop_id)
         .in("id", ids)
         .order("id", { ascending: true })
@@ -285,10 +291,17 @@ export async function GET(request: Request) {
   }
 
   const workOrderById = new Map(workOrders.map((row) => [row.id, row]));
-  const resolvedRoots = new Set<string>();
+  // A recommendation's identity is (root line, finding). Inspection imports
+  // give every finding from one inspection the same root (the inspection
+  // anchor line) but a distinct metadata->>'inspection_finding_identity', the
+  // same identity the carry-forward trigger groups and matches on. Keying
+  // this reduction on the root alone collapsed multiple findings from one
+  // inspection into whichever quote line sorted newest.
+  const resolvedKeys = new Set<string>();
   for (const quote of quotes) {
     const rootId = quote.source_work_order_line_id ?? quote.work_order_line_id;
     if (!rootId) continue;
+    const key = recommendationKey(rootId, quote);
 
     const sourceLine = lineById.get(rootId);
     if (
@@ -296,7 +309,7 @@ export async function GET(request: Request) {
       !sourceLine.voided_at &&
       RESOLVED_LINE_STATES.has(normalized(sourceLine.status))
     ) {
-      resolvedRoots.add(rootId);
+      resolvedKeys.add(key);
       continue;
     }
 
@@ -308,40 +321,43 @@ export async function GET(request: Request) {
       !currentLine.voided_at &&
       RESOLVED_LINE_STATES.has(normalized(currentLine.status))
     ) {
-      resolvedRoots.add(rootId);
+      resolvedKeys.add(key);
     }
   }
 
-  // Determine the newest state for every recommendation root first. Filtering
-  // to terminal decisions happens only after that reduction so a newer
-  // approve/requote cannot be hidden by an older decline farther down history.
-  const latestByRoot = new Map<string, QuoteLine>();
+  // Determine the newest state for every recommendation (root, finding) first.
+  // Filtering to terminal decisions happens only after that reduction so a
+  // newer approve/requote cannot be hidden by an older decline farther down
+  // history.
+  const latestByKey = new Map<string, { rootId: string; quote: QuoteLine }>();
   for (const quote of quotes) {
     const rootId = quote.source_work_order_line_id ?? quote.work_order_line_id;
-    if (!rootId || resolvedRoots.has(rootId)) continue;
+    if (!rootId) continue;
+    const key = recommendationKey(rootId, quote);
+    if (resolvedKeys.has(key)) continue;
 
     const sourceLine = lineById.get(rootId);
     const sourceWorkOrder = sourceLine?.work_order_id
       ? workOrderById.get(sourceLine.work_order_id)
       : undefined;
-    if (!sourceLine || sourceLine.voided_at || isArchivedSource(sourceWorkOrder)) {
+    if (!sourceLine || sourceLine.voided_at || isExcludedSource(sourceWorkOrder)) {
       continue;
     }
 
-    const existing = latestByRoot.get(rootId);
+    const existing = latestByKey.get(key);
     if (!existing) {
-      latestByRoot.set(rootId, quote);
+      latestByKey.set(key, { rootId, quote });
       continue;
     }
 
     const currentKey = `${quoteTimestamp(quote)}:${quote.id}`;
-    const existingKey = `${quoteTimestamp(existing)}:${existing.id}`;
-    if (currentKey > existingKey) latestByRoot.set(rootId, quote);
+    const existingKey = `${quoteTimestamp(existing.quote)}:${existing.quote.id}`;
+    if (currentKey > existingKey) latestByKey.set(key, { rootId, quote });
   }
 
-  const visibleQuotes = [...latestByRoot.entries()]
-    .filter(([, latest]) => quoteDecision(latest) !== null)
-    .map(([rootId, latest]) => ({
+  const visibleQuotes = [...latestByKey.values()]
+    .filter(({ quote }) => quoteDecision(quote) !== null)
+    .map(({ rootId, quote: latest }) => ({
       rootId,
       latest,
       original: originalQuoteForDisplay(latest, quoteById),

@@ -3,10 +3,18 @@
 -- so a work order with approved and ordinarily-declined lines (status =
 -- 'on_hold', line_status = 'declined') lost its 'partial' approval_state and
 -- could flip straight to 'approved' the next time any actionable line
--- reconciled. Passive carry-forward rows are always inserted with status =
--- 'deferred' (see carry_forward_deferred_work_for_work_order), so excluding on
--- status = 'deferred' alone still keeps them out of the rollup without also
--- excluding legitimate declined lines.
+-- reconciled.
+--
+-- Deferred context can be stamped on either field: passive carry-forward rows
+-- use status = 'deferred', while the shop-assistant manual-decision path
+-- leaves status = 'on_hold' and sets line_status = 'deferred'. Both are
+-- passive context per 20260909163400_preserve_parent_state_for_deferred_
+-- context.sql and must stay out of this rollup entirely -- excluding only on
+-- status = 'deferred' still let a line_status = 'deferred' row reach the
+-- line_status IN ('declined', 'deferred') branch and count toward declined.
+-- The count now excludes deferred context on either field and only counts a
+-- genuine line_status = 'declined' row (not 'deferred') alongside
+-- approval_state = 'declined'.
 
 begin;
 set local lock_timeout = '5s';
@@ -99,19 +107,19 @@ begin
     ),
     -- Count lines actually declined in THIS work order (status = 'on_hold',
     -- line_status = 'declined', approval_state = 'declined' on the canonical
-    -- customer-decline path). Passive carry-forward rows always carry
-    -- status = 'deferred' and must stay excluded from this rollup; voided/
+    -- customer-decline path). Deferred context on either field is passive and
+    -- must stay excluded from this rollup, whichever path stamped it; voided/
     -- cancelled lines are never counted either way.
     count(*) filter (
       where wol.voided_at is null
         and lower(coalesce(wol.line_type::text, '')) not in ('info', 'note')
         and lower(coalesce(wol.status::text, '')) <> 'deferred'
         and lower(coalesce(wol.line_status::text, '')) not in (
-          'voided', 'cancelled', 'canceled'
+          'deferred', 'voided', 'cancelled', 'canceled'
         )
         and (
           lower(coalesce(wol.approval_state::text, '')) = 'declined'
-          or lower(coalesce(wol.line_status::text, '')) in ('declined', 'deferred')
+          or lower(coalesce(wol.line_status::text, '')) = 'declined'
         )
     ),
     coalesce(bool_or(

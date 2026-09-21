@@ -776,9 +776,10 @@ begin
 end;
 $archived_source_still_carries$;
 
--- Finding: an acted-on carried line must keep its quote and evidence when the
--- work order's vehicle is corrected. Cleanup only ever touches quote, media,
--- and line together, and only while the carried line is still passive.
+-- Finding: correcting a work order's vehicle while one of its carried lines
+-- has already been acted on must be rejected outright, not silently leave
+-- that line, its quote, and its evidence on the old vehicle under a work
+-- order that now points at a different one.
 insert into public.vehicles (id, shop_id, unit_number, vin, year, make, model)
 values
   (
@@ -854,19 +855,42 @@ values (
 );
 
 -- Act on the carried line before the vehicle gets corrected: this is no
--- longer passive context, it is live work in progress.
+-- longer passive context, it is live work in progress. The BEFORE UPDATE
+-- normalizer trigger (trg_normalize_work_order_line_status) rewrites
+-- 'in_progress' to the canonical 'active' on write, so the stored value to
+-- assert against is 'active', not the value this statement sends.
 update public.work_order_lines
 set status = 'in_progress'
 where work_order_id = '73400000-0000-4000-8000-000000000061'
   and status = 'deferred';
 
--- Correct the work order's vehicle (data-entry fix), the scenario the
--- cleanup branch runs for.
-update public.work_orders
-set vehicle_id = '73300000-0000-4000-8000-000000000006'
-where id = '73400000-0000-4000-8000-000000000061';
+-- Correcting the work order's vehicle while a carried line has been acted on
+-- must be rejected outright, not silently leave that line, its quote, and its
+-- evidence pointing at the old vehicle under a work order that now points at
+-- a different one.
+do $blocked_acted_on_reassignment$
+declare
+  v_caught boolean := false;
+begin
+  begin
+    update public.work_orders
+    set vehicle_id = '73300000-0000-4000-8000-000000000006'
+    where id = '73400000-0000-4000-8000-000000000061';
+  exception
+    when others then
+      v_caught := true;
+      if position('already acted on' in sqlerrm) = 0 then
+        raise exception 'Unexpected error blocking vehicle reassignment over acted-on carried work: %', sqlerrm;
+      end if;
+  end;
 
-do $atomic_acted_on_cleanup$
+  if not v_caught then
+    raise exception 'Vehicle reassignment over an acted-on carried line was not rejected.';
+  end if;
+end;
+$blocked_acted_on_reassignment$;
+
+do $atomic_acted_on_guard_state$
 declare
   v_line_count integer;
   v_quote_count integer;
@@ -874,10 +898,11 @@ begin
   select count(*) into v_line_count
   from public.work_order_lines
   where work_order_id = '73400000-0000-4000-8000-000000000061'
-    and status = 'in_progress';
+    and status = 'active'
+    and vehicle_id = '73300000-0000-4000-8000-000000000005';
 
   if v_line_count <> 1 then
-    raise exception 'Acted-on carried line was deleted or altered by reassignment cleanup; expected 1 survivor, got %.', v_line_count;
+    raise exception 'Acted-on carried line changed despite the rejected reassignment; expected 1 survivor on the original vehicle, got %.', v_line_count;
   end if;
 
   select count(*) into v_quote_count
@@ -887,10 +912,18 @@ begin
     and lower(coalesce(metadata ->> 'carry_forward', 'false')) = 'true';
 
   if v_quote_count <> 1 then
-    raise exception 'Acted-on carried line lost its quote during reassignment cleanup; expected 1 survivor, got %.', v_quote_count;
+    raise exception 'Acted-on carried line lost its quote despite the rejected reassignment; expected 1 survivor, got %.', v_quote_count;
+  end if;
+
+  if exists (
+    select 1 from public.work_orders
+    where id = '73400000-0000-4000-8000-000000000061'
+      and vehicle_id is distinct from '73300000-0000-4000-8000-000000000005'::uuid
+  ) then
+    raise exception 'Work order vehicle_id changed despite the rejected reassignment.';
   end if;
 end;
-$atomic_acted_on_cleanup$;
+$atomic_acted_on_guard_state$;
 
 -- Finding: private.reconcile_work_order_state must count an ordinarily
 -- declined line (status = 'on_hold', line_status = 'declined', approval_state
@@ -955,5 +988,64 @@ begin
   end if;
 end;
 $reconciler_partial_approval$;
+
+-- Finding: the shop-assistant manual-decision path's canonical deferred shape
+-- (status = 'on_hold', line_status = 'deferred', approval_state = 'declined')
+-- is passive context, the same as a carry-forward row's status = 'deferred'.
+-- It must not count toward v_declined_count either, or a work order with an
+-- approved line and a shop-assistant-deferred line would resolve to
+-- 'partial'/'declined' instead of 'approved'.
+insert into public.work_orders (
+  id, shop_id, custom_id, vehicle_id, status, record_type, approval_state, advisor_id
+)
+values (
+  '73400000-0000-4000-8000-000000000071',
+  '73200000-0000-4000-8000-000000000001',
+  'DEF-RECONCILE-2',
+  '73300000-0000-4000-8000-000000000007',
+  'awaiting_approval', 'work_order', 'pending',
+  '73100000-0000-4000-8000-000000000001'
+);
+
+insert into public.work_order_lines (
+  id, shop_id, work_order_id, vehicle_id, line_type, status,
+  line_status, approval_state, job_type, complaint, description, user_id
+)
+values
+  (
+    '73500000-0000-4000-8000-000000000009',
+    '73200000-0000-4000-8000-000000000001',
+    '73400000-0000-4000-8000-000000000071',
+    '73300000-0000-4000-8000-000000000007',
+    'job', 'queued', null, 'approved', 'repair',
+    'Serpentine belt noise', 'Replace serpentine belt',
+    '73100000-0000-4000-8000-000000000002'
+  ),
+  (
+    '73500000-0000-4000-8000-000000000010',
+    '73200000-0000-4000-8000-000000000001',
+    '73400000-0000-4000-8000-000000000071',
+    '73300000-0000-4000-8000-000000000007',
+    'job', 'on_hold', 'deferred', 'declined', 'repair',
+    'Cabin air filter dirty', 'Replace cabin air filter',
+    '73100000-0000-4000-8000-000000000002'
+  );
+
+do $reconciler_ignores_shop_assistant_deferred$
+declare
+  v_work_order public.work_orders%rowtype;
+begin
+  perform private.reconcile_work_order_state('73400000-0000-4000-8000-000000000071');
+
+  select wo.* into v_work_order
+  from public.work_orders wo
+  where wo.id = '73400000-0000-4000-8000-000000000071';
+
+  if v_work_order.approval_state is distinct from 'approved' then
+    raise exception 'Work order with one approved line and one shop-assistant-deferred line resolved to approval_state = %, expected approved.',
+      v_work_order.approval_state;
+  end if;
+end;
+$reconciler_ignores_shop_assistant_deferred$;
 
 rollback;

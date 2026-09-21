@@ -28,7 +28,22 @@
 --    wrong vehicle. Cleanup is now atomic: evidence, quote, and line are only
 --    ever touched together, and only for carried lines still in the passive
 --    'deferred' state. A carried line that has been acted on is left fully
---    intact (quote, evidence, and line) rather than partially cleaned up.
+--    intact (quote, evidence, and line) rather than partially cleaned up --
+--    but leaving it intact under the *new* vehicle_id would itself mix one
+--    vehicle's acted-on repair, quote, and evidence into another vehicle's
+--    work order. Reassignment is rejected outright while any carried line on
+--    this work order has been acted on; the advisor must resolve that work
+--    (move it to its own work order, or complete/void it) before correcting
+--    the vehicle.
+--
+-- 4. The new line for a multi-finding inspection carry always took the
+--    inspection anchor line's own description ("Annual inspection") over the
+--    finding-specific quote description ("Replace front brake pads"), because
+--    the anchor's description is non-null and the coalesce chain preferred it
+--    unconditionally. Operational views and invoices read the work-order
+--    line's description, so every finding from one inspection displayed and
+--    billed under the same generic inspection-task text. Inspection-origin
+--    carries now prefer the finding's own quote description/title first.
 
 begin;
 set local lock_timeout = '5s';
@@ -53,6 +68,30 @@ declare
 begin
   if tg_op = 'UPDATE'
      and old.vehicle_id is distinct from new.vehicle_id then
+    -- Reject the reassignment outright if any carried line on this work order
+    -- has already been acted on (see note 3 above). Letting it through would
+    -- leave that line, its quote, and its evidence pointing at the old
+    -- vehicle's repair while the work order itself now points at a different
+    -- vehicle -- a silent, unrecoverable mix of two vehicles' commercial and
+    -- evidence records.
+    if exists (
+      select 1
+      from public.work_order_quote_lines quote_line
+      join public.work_order_lines carried_line
+        on carried_line.id = quote_line.work_order_line_id
+       and carried_line.shop_id = new.shop_id
+      where quote_line.shop_id = new.shop_id
+        and quote_line.work_order_id = new.id
+        and lower(coalesce(quote_line.metadata ->> 'carry_forward', 'false')) = 'true'
+        and carried_line.voided_at is null
+        and lower(coalesce(carried_line.status::text, '')) <> 'deferred'
+    ) then
+      raise exception
+        'Work order % has carried-forward recommendations already acted on; move that work to its own work order or resolve it before correcting the vehicle.',
+        new.id
+        using errcode = '23514';
+    end if;
+
     -- Evidence copied from inspection quote metadata must leave with the carried
     -- line. The canonical media FKs are SET NULL, so delete explicitly first.
     -- Scoped to still-passive carried lines only (see note 3 above): a carried
@@ -351,7 +390,12 @@ begin
       v_source_line.complaint,
       v_source_line.cause,
       v_source_line.correction,
-      coalesce(v_source_line.description, v_latest_quote.description, v_latest_quote.title),
+      case
+        when v_root_is_inspection then
+          coalesce(v_latest_quote.description, v_latest_quote.title, v_source_line.description)
+        else
+          coalesce(v_source_line.description, v_latest_quote.description, v_latest_quote.title)
+      end,
       v_source_line.notes,
       'deferred',
       'declined',
@@ -434,6 +478,6 @@ revoke all on function public.carry_forward_deferred_work_for_work_order()
   from public, anon, authenticated;
 
 comment on function public.carry_forward_deferred_work_for_work_order() is
-  'Carries unresolved declined/deferred vehicle repairs into operational work orders; excludes imported/portal records, preserves inspection-origin recommendations per finding identity, keeps carried evidence/quote/line cleanup atomic on vehicle reassignment, and reconciles estimate-to-work-order conversion. Archival no longer excludes a source work order.';
+  'Carries unresolved declined/deferred vehicle repairs into operational work orders; excludes imported/portal records, preserves inspection-origin recommendations per finding identity (using the finding-specific description/title), keeps carried evidence/quote/line cleanup atomic on vehicle reassignment, rejects reassignment outright once carried work has been acted on, and reconciles estimate-to-work-order conversion. Archival no longer excludes a source work order.';
 
 commit;

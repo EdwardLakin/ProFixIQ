@@ -245,16 +245,27 @@ describe("create-work-order deferred history", () => {
     expect(body.items).toEqual([]);
   });
 
-  it("excludes portal quote placeholders and archived source work orders", async () => {
+  it("excludes portal quote placeholders", async () => {
     const portal = baseTables();
     portal.work_orders = [workOrder({ external_id: "portal_quote:runtime-1" })];
     expect((await callRoute(portal)).body.items).toEqual([]);
+  });
 
+  it("still surfaces a still-unresolved recommendation from an archived source work order", async () => {
+    // Archival is a visibility state, not resolution -- matches the
+    // carry-forward trigger, which stopped excluding archived sources too.
     const archived = baseTables();
     archived.work_orders = [
       workOrder({ archived_at: "2026-08-05T00:00:00Z" }),
     ];
-    expect((await callRoute(archived)).body.items).toEqual([]);
+
+    const { body } = await callRoute(archived);
+
+    expect(body.items).toHaveLength(1);
+    expect(body.items?.[0]).toMatchObject({
+      rootLineId: "line-1",
+      decision: "declined",
+    });
   });
 
   it("treats a completed source repair as resolved and stops carrying it", async () => {
