@@ -18,6 +18,7 @@ const INACTIVE_LINE_STATUSES = new Set([
   "closed",
   "invoiced",
   "declined",
+  "deferred",
   "voided",
 ]);
 
