@@ -139,7 +139,6 @@ export default function CornerGrid(props: CornerGridProps) {
         className={inputCls()}
         type="text"
         inputMode="decimal"
-        step="any"
         placeholder={cell ? "Enter value" : "—"}
         value={String(cell?.item?.value ?? "")}
         onFocus={() => cell && onSpecHint?.(cell.metricLabel)}
