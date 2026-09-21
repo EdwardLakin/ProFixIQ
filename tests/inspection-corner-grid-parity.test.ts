@@ -12,6 +12,12 @@ const hydraulicBrakeGrid = read(
 const hydraulicTireGrid = read(
   "features/inspections/lib/inspection/ui/TireGridHydraulic.tsx",
 );
+const batteryGrid = read(
+  "features/inspections/lib/inspection/ui/BatteryGrid.tsx",
+);
+const tireCornerGrid = read(
+  "features/inspections/lib/inspection/ui/TireCornerGrid.tsx",
+);
 
 describe("inspection corner-grid parity", () => {
   it("uses the generic runner for every compact grid type", () => {
@@ -23,9 +29,21 @@ describe("inspection corner-grid parity", () => {
     expect(screen).toContain("showGridFindings");
   });
 
-  it("keeps hydraulic brake and tire measurement inputs on native keyboard tab behavior", () => {
-    expect(hydraulicBrakeGrid).not.toContain("tabIndex={0}");
-    expect(hydraulicTireGrid).not.toContain("tabIndex={0}");
+  it("uses native inputs for compact measurement grids, matching SectionDisplay tab behavior", () => {
+    const grids = [
+      hydraulicBrakeGrid,
+      hydraulicTireGrid,
+      batteryGrid,
+      tireCornerGrid,
+    ];
+
+    expect(sectionDisplay).toContain('type="number"');
+    for (const grid of grids) {
+      expect(grid).toContain("<input");
+      expect(grid).toContain("onChange=");
+      expect(grid).not.toContain("MeasurementInput");
+      expect(grid).not.toContain("tabIndex={0}");
+    }
   });
 
   it("renders canonical finding fields below compact measurements", () => {
