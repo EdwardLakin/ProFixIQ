@@ -42,7 +42,7 @@ describe("Ops AI usage observability", () => {
   });
 
   it("extends the canonical ledger for product and Agent run attribution without exposing private schema reads", () => {
-    const migration = read("supabase/migrations/20260920210000_ops_ai_usage_observability.sql");
+    const migration = read("supabase/migrations/20260921030500_ops_ai_usage_observability.sql");
     expect(migration).toContain("source_product");
     expect(migration).toContain("agent_run_id");
     expect(migration).toContain("external_request_id");
