@@ -128,7 +128,7 @@ export async function loadRoleShapedWorkOrderDetail(input: {
         .from("shops")
         .select("labor_rate")
         .eq("id", input.shopId)
-        .maybeSingle<{ labor_rate: number | null }>(),
+        .maybeSingle<{ labor_rate: number | string | null }>(),
       financial.access.canViewInvoice
         ? input.dataSupabase
             .from("work_order_invoice_reviews")
@@ -185,10 +185,15 @@ export async function loadRoleShapedWorkOrderDetail(input: {
       ]),
     ),
     lineContext,
-    shopLaborRate:
-      typeof shopResult.data?.labor_rate === "number"
-        ? shopResult.data.labor_rate
-        : null,
+    // Postgres `numeric` columns (like shops.labor_rate) are serialized as
+    // strings by PostgREST to avoid floating-point precision loss, so a
+    // strict `typeof === "number"` check would always discard a configured
+    // rate here.
+    shopLaborRate: (() => {
+      const raw = shopResult.data?.labor_rate;
+      const parsed = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : null;
+      return parsed != null && Number.isFinite(parsed) ? parsed : null;
+    })(),
     financialAccess: financial.access,
     latestInvoiceReview:
       (reviewResult.data as WorkOrderInvoiceReviewSummary | null) ?? null,
