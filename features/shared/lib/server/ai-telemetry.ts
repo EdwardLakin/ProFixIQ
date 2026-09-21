@@ -40,6 +40,10 @@ export type AITelemetryEvent = {
   provider_request_id?: string | null;
   quota_receipt_id?: string | null;
   occurred_at?: string | null;
+  source_product?: "profixiq_app" | "engineering_agent";
+  agent_run_id?: string | null;
+  external_request_id?: string | null;
+  operation?: string | null;
 };
 
 type LedgerRpcResult = {
@@ -198,6 +202,10 @@ export async function recordDurableAIUsage(
         provider_request_id: event.provider_request_id ?? null,
         quota_receipt_id: event.quota_receipt_id ?? null,
         occurred_at: event.occurred_at ?? null,
+        source_product: event.source_product ?? "profixiq_app",
+        agent_run_id: event.agent_run_id ?? null,
+        external_request_id: event.external_request_id ?? null,
+        operation: event.operation ?? null,
       },
     });
 
