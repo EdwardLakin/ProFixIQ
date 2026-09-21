@@ -608,7 +608,7 @@ export default function TireGrid(props: Props) {
             disabled={!cell}
             autoComplete="off"
             data-inspection-measurement-input="true"
-            onKeyDown={handleMeasurementGridKeyDown}
+            onKeyDownCapture={handleMeasurementGridKeyDown}
           />
           <span className={unitCls()}>{unit}</span>
         </div>

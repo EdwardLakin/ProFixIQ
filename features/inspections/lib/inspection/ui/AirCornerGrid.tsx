@@ -254,7 +254,7 @@ export default function AirCornerGrid({
                               disabled={!cell}
                               onBlur={(e) => cell && commit(cell.idx, e.currentTarget.value)}
                               data-inspection-measurement-input="true"
-                              onKeyDown={handleMeasurementGridKeyDown}
+                              onKeyDownCapture={handleMeasurementGridKeyDown}
                             />
                             {cell?.unit ? (
                               <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium text-[color:var(--theme-text-secondary)]">

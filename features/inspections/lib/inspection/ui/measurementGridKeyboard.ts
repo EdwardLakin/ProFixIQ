@@ -3,10 +3,26 @@ import type { KeyboardEvent } from "react";
 const MEASUREMENT_INPUT_SELECTOR =
   'input[data-inspection-measurement-input="true"]:not(:disabled)';
 
+function keyKind(event: KeyboardEvent<HTMLInputElement>): "tab" | "enter" | null {
+  const native = event.nativeEvent as KeyboardEvent["nativeEvent"] & {
+    keyCode?: number;
+    which?: number;
+  };
+
+  const key = event.key;
+  const code = event.code;
+  const legacyCode = native.keyCode ?? native.which;
+
+  if (key === "Tab" || code === "Tab" || legacyCode === 9) return "tab";
+  if (key === "Enter" || code === "Enter" || legacyCode === 13) return "enter";
+  return null;
+}
+
 export function handleMeasurementGridKeyDown(
   event: KeyboardEvent<HTMLInputElement>,
 ): void {
-  if (event.key !== "Tab" && event.key !== "Enter") return;
+  const kind = keyKind(event);
+  if (!kind) return;
 
   const grid = event.currentTarget.closest<HTMLElement>(
     "[data-inspection-measurement-grid]",
@@ -22,14 +38,15 @@ export function handleMeasurementGridKeyDown(
   const direction = event.shiftKey ? -1 : 1;
   const next = inputs[currentIndex + direction];
 
-  // At the first/last input, leave normal browser Tab behavior intact so
-  // keyboard users can enter/exit the grid naturally. Enter stays put.
+  // Keep normal browser Tab behavior only when leaving the grid. Enter never
+  // leaves the grid implicitly.
   if (!next) {
-    if (event.key === "Enter") event.preventDefault();
+    if (kind === "enter") event.preventDefault();
     return;
   }
 
   event.preventDefault();
-  next.focus();
+  event.stopPropagation();
+  next.focus({ preventScroll: true });
   next.select();
 }
