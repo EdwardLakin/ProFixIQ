@@ -160,7 +160,7 @@ export default function CornerGrid(props: CornerGridProps) {
             <div className="relative">
               <MeasurementInput
                 className={inputCls()}
-                type="number"
+                type="text"
                 inputMode="decimal"
                 placeholder={pads ? "Enter value" : "Not configured"}
                 value={String(pads?.item?.value ?? "")}
@@ -179,7 +179,7 @@ export default function CornerGrid(props: CornerGridProps) {
             <div className="relative">
               <MeasurementInput
                 className={inputCls()}
-                type="number"
+                type="text"
                 inputMode="decimal"
                 placeholder={rotor ? "Enter value" : "Not configured"}
                 value={String(rotor?.item?.value ?? "")}
