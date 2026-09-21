@@ -557,7 +557,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   const { data: linesRaw, error: linesError } = await supabase
     .from("work_order_lines")
     .select(
-      "id, line_no, description, complaint, cause, correction, labor_time, price_estimate, intake_json, status",
+      "id, line_no, description, complaint, cause, correction, labor_time, price_estimate, intake_json, status, line_status",
     )
     .eq("shop_id", workOrder.shop_id)
     .eq("work_order_id", workOrderId)
@@ -576,6 +576,7 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
           | "price_estimate"
           | "intake_json"
           | "status"
+          | "line_status"
         >
       >
     >();
@@ -587,11 +588,19 @@ export async function getInvoiceSnapshotForWorkOrder(args: {
   }
 
   const rawLines = Array.isArray(linesRaw) ? linesRaw : [];
+  // Deferred lines can carry either canonical state field: carry-forward rows
+  // use status = 'deferred', the shop-assistant decision path leaves status =
+  // 'on_hold' and sets line_status = 'deferred'. Both must exclude the line
+  // from invoicing, or a repair that only passed review because it was
+  // deferred can still be billed.
   const deferredInvoiceLineIds = new Set(
     rawLines
       .filter(
         (line) =>
           String(line.status ?? "")
+            .trim()
+            .toLowerCase() === "deferred" ||
+          String(line.line_status ?? "")
             .trim()
             .toLowerCase() === "deferred",
       )
