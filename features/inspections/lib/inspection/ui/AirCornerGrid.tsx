@@ -158,18 +158,17 @@ export default function AirCornerGrid({
   if (tables.length === 0) return null;
 
   return (
-    <div className="grid w-full gap-3">
-      {/* Header row: toggle + collapse */}
-      <div className="flex items-center justify-between gap-3 px-1">
-        <div className="flex items-center gap-2">
+    <div className="grid w-full gap-3" data-inspection-corner-grid="air">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
             onClick={() => setUnitMode("standard")}
             className={[
-              "rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
+              "rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]",
               unitMode === "standard"
-                ? "border-orange-500/70 bg-orange-500/10 text-orange-100"
-                : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:border-orange-500/50",
+                ? "border-orange-500/70 bg-orange-500/10 text-[color:var(--theme-text-primary)]"
+                : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]",
             ].join(" ")}
           >
             Standard
@@ -178,24 +177,23 @@ export default function AirCornerGrid({
             type="button"
             onClick={() => setUnitMode("metric")}
             className={[
-              "rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em]",
+              "rounded-full border px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.14em]",
               unitMode === "metric"
-                ? "border-orange-500/70 bg-orange-500/10 text-orange-100"
-                : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)] hover:border-orange-500/50",
+                ? "border-orange-500/70 bg-orange-500/10 text-[color:var(--theme-text-primary)]"
+                : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-secondary)]",
             ].join(" ")}
           >
             Metric
           </button>
-
-          <div className="hidden text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)] md:block">
+          <span className="hidden text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)] md:inline">
             {modeHint(unitMode)}
-          </div>
+          </span>
         </div>
 
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
-          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)] hover:border-orange-500/70 hover:bg-[color:var(--theme-surface-overlay)]"
+          className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)] hover:border-orange-500/70"
           aria-expanded={open}
           title={open ? "Collapse" : "Expand"}
           tabIndex={-1}
@@ -206,89 +204,78 @@ export default function AirCornerGrid({
 
       {onAddAxle ? <AddAxlePicker tables={tables} onAddAxle={onAddAxle} /> : null}
 
-      {tables.map((t) => (
-        <div
-          key={t.axle}
-          className="overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl"
-        >
-          <div className="flex items-center justify-between gap-3 px-4 py-3">
-            <div
-              className="text-base font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]"
-              style={{ fontFamily: "Black Ops One, system-ui, sans-serif" }}
+      {open ? (
+        <div className="grid gap-3">
+          {tables.map((t) => (
+            <section
+              key={t.axle}
+              className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
+              data-axle={t.axle}
             >
-              {t.axle}
-            </div>
-          </div>
-
-          {open ? (
-            <div className="overflow-x-visible">
-              <div className="min-w-0 align-middle">
-                <table className="w-full table-fixed border-separate border-spacing-y-1">
-                  <thead>
-                    <tr className="text-xs text-muted-foreground">
-                      <th className="px-3 py-2 text-left text-[11px] font-normal uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                        Item
-                      </th>
-                      <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]">
-                        Left
-                      </th>
-                      <th className="px-3 py-2 text-center text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-primary)]">
-                        Right
-                      </th>
-                    </tr>
-                  </thead>
-
-                  <tbody>
-                    {t.rows.map((row, rowIdx) => (
-                      <tr key={`${row.metric}-${rowIdx}`} className="align-middle">
-                        <td className="px-3 py-2 text-sm font-semibold text-foreground">
-                          <span className="line-clamp-2 md:line-clamp-none">
-                            {row.metric
-                              .replace("Brake Pad / Shoe Thickness", "Pad/Shoe")
-                              .replace("Brake Drum / Rotor Thickness", "Drum/Rotor")
-                              .replace("Push Rod Travel", "Push Rod")}
-                          </span>
-                        </td>
-
-                        {(["Left", "Right"] as const).map((side) => {
-                          const cell = side === "Left" ? row.left : row.right;
-                          if (!cell) {
-                            return (
-                              <td key={side} className="px-3 py-2">
-                                <div className="h-[32px]" />
-                              </td>
-                            );
-                          }
-
-                          return (
-                            <td key={side} className="px-3 py-2 text-center">
-                              <div className="relative w-full max-w-none">
-                                <input
-                                  defaultValue={cell.initial}
-                                  className="h-12 w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 pr-14 text-base text-foreground placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-400 focus:ring-2 focus:ring-orange-400"
-                                  placeholder="Value"
-                                  autoComplete="off"
-                                  inputMode="decimal"
-                                  onBlur={(e) => commit(cell.idx, e.currentTarget.value)}
-                                />
-                                {cell.unit ? (
-                                  <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-muted-foreground">
-                                    {cell.unit}
-                                  </span>
-                                ) : null}
-                              </div>
-                            </td>
-                          );
-                        })}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="flex items-center justify-between border-b border-[color:var(--theme-border-soft)] px-3 py-2">
+                <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                  {t.axle}
+                </div>
+                <div className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
+                  Brake measurements
+                </div>
               </div>
-            </div>
-          ) : null}
+
+              <div className="hidden grid-cols-[minmax(120px,0.75fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-[color:var(--theme-border-soft)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)] sm:grid">
+                <div>Measurement</div>
+                <div>Left</div>
+                <div>Right</div>
+              </div>
+
+              <div className="divide-y divide-[color:var(--theme-border-soft)]">
+                {t.rows.map((row, rowIdx) => (
+                  <div
+                    key={`${row.metric}-${rowIdx}`}
+                    className="grid gap-2 px-3 py-2 sm:grid-cols-[minmax(120px,0.75fr)_minmax(0,1fr)_minmax(0,1fr)] sm:items-center sm:gap-3"
+                  >
+                    <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">
+                      {row.metric
+                        .replace("Brake Pad / Shoe Thickness", "Pad / shoe")
+                        .replace("Brake Drum / Rotor Thickness", "Drum / rotor")
+                        .replace("Push Rod Travel", "Push rod travel")}
+                    </div>
+
+                    {(["Left", "Right"] as const).map((side) => {
+                      const cell = side === "Left" ? row.left : row.right;
+                      return (
+                        <label
+                          key={side}
+                          className="grid min-w-0 grid-cols-[52px_minmax(0,1fr)] items-center gap-2 sm:block"
+                        >
+                          <span className="text-[10px] font-medium text-[color:var(--theme-text-secondary)] sm:hidden">
+                            {side}
+                          </span>
+                          <div className="relative">
+                            <input
+                              defaultValue={cell?.initial ?? ""}
+                              className="h-10 w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] px-3 pr-12 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/40 disabled:cursor-not-allowed disabled:opacity-50"
+                              placeholder={cell ? "Enter value" : "—"}
+                              autoComplete="off"
+                              inputMode="decimal"
+                              disabled={!cell}
+                              onBlur={(e) => cell && commit(cell.idx, e.currentTarget.value)}
+                            />
+                            {cell?.unit ? (
+                              <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium text-[color:var(--theme-text-secondary)]">
+                                {cell.unit}
+                              </span>
+                            ) : null}
+                          </div>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </section>
+          ))}
         </div>
-      ))}
+      ) : null}
     </div>
   );
 }
