@@ -275,17 +275,6 @@ function unitCls() {
   return "pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[11px] text-[color:var(--theme-text-secondary)]";
 }
 
-function cornerShellCls() {
-  return "rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
-}
-
-function axleTitleCls() {
-  return "text-sm font-semibold uppercase tracking-[0.18em] text-[color:var(--accent-copper,#f97316)]";
-}
-
-function tinyLabelCls() {
-  return "mb-1 text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]";
-}
 
 export default function TireGridHydraulic(props: Props) {
   const {
