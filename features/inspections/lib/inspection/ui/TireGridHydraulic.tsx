@@ -460,8 +460,7 @@ export default function TireGridHydraulic(props: Props) {
           className={inputCls()}
           placeholder={cell ? "Value" : "—"}
           inputMode={isText ? "text" : "decimal"}
-          type={isText ? "text" : "number"}
-          step={isText ? undefined : "any"}
+          type="text"
           onChange={(event) => cell && commitValue(cell.idx, event.currentTarget.value)}
           disabled={!cell || locked}
           autoComplete="off"
