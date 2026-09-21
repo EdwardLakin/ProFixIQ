@@ -3212,6 +3212,7 @@ type SmartMatchRow = {
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
                             unitHint={(label: string) => unitHintGeneric(label, unit)}
+                            locked={isLocked}
                           />
                         ) : airSection ? (
                           <AirCornerGrid
@@ -3235,6 +3236,7 @@ type SmartMatchRow = {
                               sectionIndex={sectionIndex}
                               items={itemsWithHints}
                               unitHint={(label: string) => unitHintGeneric(label, unit)}
+                              locked={isLocked}
                               requireNoteForAI
                               onSubmitAI={(secIdx: number, itemIdx: number) => {
                                 void submitFindings([
@@ -3299,6 +3301,7 @@ type SmartMatchRow = {
                             sectionIndex={sectionIndex}
                             items={itemsWithHints}
                             unitHint={(label: string) => unitHintGeneric(label, unit)}
+                            locked={isLocked}
                             onSpecHint={(label: string) =>
                               props.onSpecHint?.({
                                 source: "corner",

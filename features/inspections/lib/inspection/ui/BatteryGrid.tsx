@@ -4,11 +4,13 @@
 import { useMemo, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
+import MeasurementInput from "@inspections/lib/inspection/ui/MeasurementInput";
 
 type Props = {
   sectionIndex: number;
   items: InspectionItem[];
   unitHint?: (label: string) => string;
+  locked?: boolean;
 };
 
 type BatteryKind = "rating" | "tested";
@@ -49,7 +51,7 @@ function readValue(it: InspectionItem): string {
   return typeof v === "string" || typeof v === "number" ? String(v) : "";
 }
 
-export default function BatteryGrid({ sectionIndex, items }: Props) {
+export default function BatteryGrid({ sectionIndex, items, locked }: Props) {
   // context may or may not include updateSection (depends how your Provider is wired)
   const ctx = useInspectionForm() as unknown as {
     updateItem: (sectionIndex: number, itemIndex: number, patch: Partial<InspectionItem>) => void;
@@ -202,14 +204,14 @@ export default function BatteryGrid({ sectionIndex, items }: Props) {
                         return (
                           <td key={n} className="px-3 py-1.5">
                             <div className="relative mx-auto w-full max-w-[7.75rem]">
-                              <input
+                              <MeasurementInput
                                 value={value}
                                 className="h-[34px] w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 pr-12 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
                                 placeholder={kind === "rating" ? "Rating" : "Tested"}
-                                autoComplete="off"
                                 inputMode="decimal"
                                 type="number"
-                                onChange={(e) => commit(cell.idx, e.currentTarget.value)}
+                                disabled={locked}
+                                onCommit={(next) => commit(cell.idx, next)}
                               />
                               <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 whitespace-nowrap text-[11px] text-[color:var(--theme-text-secondary)]">
                                 CCA
