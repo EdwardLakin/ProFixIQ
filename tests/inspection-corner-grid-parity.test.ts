@@ -78,11 +78,15 @@ describe("inspection corner-grid parity", () => {
       expect(grid).toContain('data-inspection-measurement-grid');
       expect(grid).toContain('data-inspection-measurement-input="true"');
       expect(grid).toContain("handleMeasurementGridKeyDown");
+      expect(grid).toContain("onKeyDownCapture={handleMeasurementGridKeyDown}");
     }
 
-    expect(measurementGridKeyboard).toContain('event.key !== "Tab"');
-    expect(measurementGridKeyboard).toContain('event.key !== "Enter"');
-    expect(measurementGridKeyboard).toContain("next.focus()");
+    expect(measurementGridKeyboard).toContain('key === "Tab"');
+    expect(measurementGridKeyboard).toContain('code === "Tab"');
+    expect(measurementGridKeyboard).toContain("legacyCode === 9");
+    expect(measurementGridKeyboard).toContain('key === "Enter"');
+    expect(measurementGridKeyboard).toContain("legacyCode === 13");
+    expect(measurementGridKeyboard).toContain("next.focus({ preventScroll: true })");
     expect(measurementGridKeyboard).toContain("next.select()");
   });
 
