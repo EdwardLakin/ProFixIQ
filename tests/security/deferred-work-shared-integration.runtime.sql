@@ -742,11 +742,15 @@ values (
   '2026-08-04T18:00:00Z', '2026-08-04T17:00:00Z', '2026-08-04T18:00:00Z'
 );
 
--- Archive the source visit. The canonical archive action is a visibility
--- change; it must not erase the still-unresolved recommendation.
-update public.work_orders
-set archived_at = '2026-08-05T00:00:00Z'
-where id = '73400000-0000-4000-8000-000000000050';
+-- Archive the source visit through the canonical action (direct writes to
+-- archived_at are rejected by enforce_work_order_archive_write_boundary).
+-- Archiving is a visibility change; it must not erase the still-unresolved
+-- recommendation.
+select public.archive_work_order_atomic(
+  '73200000-0000-4000-8000-000000000001',
+  '73400000-0000-4000-8000-000000000050',
+  '73100000-0000-4000-8000-000000000001'
+);
 
 insert into public.work_orders (
   id, shop_id, custom_id, vehicle_id, status, record_type, advisor_id
