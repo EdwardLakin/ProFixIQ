@@ -154,7 +154,7 @@ export default function CornerGrid(props: CornerGridProps) {
   );
 
   return (
-    <div className="grid w-full gap-3" data-inspection-corner-grid="hydraulic">
+    <div className="grid w-full gap-3" data-inspection-corner-grid="hydraulic" aria-label="Hydraulic brake measurements">
         <div data-inspection-measurement-grid className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
           <div className="hidden grid-cols-[minmax(130px,0.8fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-[color:var(--theme-border-soft)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)] sm:grid">
             <div>Position</div>
