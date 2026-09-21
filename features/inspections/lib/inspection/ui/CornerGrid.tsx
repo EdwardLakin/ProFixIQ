@@ -5,7 +5,6 @@
 import { useMemo, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
-import MeasurementInput from "@inspections/lib/inspection/ui/MeasurementInput";
 
 type CornerGridProps = {
   sectionIndex: number;
@@ -158,15 +157,17 @@ export default function CornerGrid(props: CornerGridProps) {
               Pad / shoe thickness
             </span>
             <div className="relative">
-              <MeasurementInput
+              <input
                 className={inputCls()}
-                type="text"
+                type="number"
                 inputMode="decimal"
+                step="any"
                 placeholder={pads ? "Enter value" : "Not configured"}
                 value={String(pads?.item?.value ?? "")}
                 onFocus={() => pads && onSpecHint?.(pads.metricLabel)}
-                onCommit={(value) => commit(pads, value)}
+                onChange={(event) => commit(pads, event.currentTarget.value)}
                 disabled={!pads || locked}
+                autoComplete="off"
               />
               <span className={unitCls()}>{pads?.unit ?? "mm"}</span>
             </div>
@@ -177,15 +178,17 @@ export default function CornerGrid(props: CornerGridProps) {
               Rotor / drum thickness
             </span>
             <div className="relative">
-              <MeasurementInput
+              <input
                 className={inputCls()}
-                type="text"
+                type="number"
                 inputMode="decimal"
+                step="any"
                 placeholder={rotor ? "Enter value" : "Not configured"}
                 value={String(rotor?.item?.value ?? "")}
                 onFocus={() => rotor && onSpecHint?.(rotor.metricLabel)}
-                onCommit={(value) => commit(rotor, value)}
+                onChange={(event) => commit(rotor, event.currentTarget.value)}
                 disabled={!rotor || locked}
+                autoComplete="off"
               />
               <span className={unitCls()}>{rotor?.unit ?? "mm"}</span>
             </div>
