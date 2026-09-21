@@ -112,6 +112,71 @@ describe("Agent pipeline diagnostics", () => {
     ]);
   });
 
+  it("keeps the internal dependency attached even when reporter questions are also pending", () => {
+    expect(diagnoseAgentPipelineRequest({
+      id: "request-4",
+      status: "in_progress",
+      createdAt: "2026-08-14T18:00:00.000Z",
+      updatedAt: "2026-08-14T18:01:00.000Z",
+      reporterQuestions: ["Which device and browser did you use?"],
+      team: {
+        caseStatus: "blocked",
+        currentStage: "architecture_guardian",
+        updatedAt: "2026-08-14T18:01:00.000Z",
+        internalDependency: "openai_quota",
+      },
+    }, NOW)).toMatchObject({
+      kind: "reporter_input",
+      title: "Reporter input required",
+      internalDependency: "openai_quota",
+    });
+  });
+
+  it("does not merge unrelated per-request specialist blockers into one outage", () => {
+    const requests = [
+      {
+        id: "specialist-1",
+        status: "in_progress",
+        createdAt: "2026-08-14T18:00:00.000Z",
+        updatedAt: "2026-08-14T18:01:00.000Z",
+        team: {
+          caseStatus: "blocked",
+          currentStage: "planning",
+          internalDependency: "specialist_conflict",
+          conflicts: [{ topic: "a", description: "Reviewers disagree on A" }],
+        },
+      },
+      {
+        id: "specialist-2",
+        status: "in_progress",
+        createdAt: "2026-08-14T18:00:00.000Z",
+        updatedAt: "2026-08-14T18:01:00.000Z",
+        team: {
+          caseStatus: "blocked",
+          currentStage: "planning",
+          internalDependency: "specialist_conflict",
+          conflicts: [{ topic: "b", description: "Reviewers disagree on B" }],
+        },
+      },
+      {
+        id: "quota-1",
+        status: "in_progress",
+        createdAt: "2026-08-14T18:00:00.000Z",
+        updatedAt: "2026-08-14T18:01:00.000Z",
+        team: { caseStatus: "blocked", currentStage: "architecture_guardian", internalDependency: "openai_quota" },
+      },
+    ];
+
+    expect(summarizeAgentPipeline(requests, NOW).dependencyOutages).toEqual([
+      {
+        dependency: "openai_quota",
+        label: "OpenAI quota exhausted",
+        count: 1,
+        requestIds: ["quota-1"],
+      },
+    ]);
+  });
+
   it("falls back to a humanized label for an unrecognized dependency", () => {
     expect(describeInternalDependency("mystery_new_dependency")).toBe("mystery new dependency");
   });

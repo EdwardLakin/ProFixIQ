@@ -755,10 +755,12 @@ export default function AgentConsolePage() {
               >
                 <p className="text-xs text-red-200">
                   <span className="font-semibold">
-                    {outage.count} request{outage.count === 1 ? "" : "s"} paused
+                    {outage.count} request{outage.count === 1 ? "" : "s"} last reported blocked
                   </span>
                   {" — "}
-                  {outage.label}. This is an internal Agent dependency, not a code or reporter issue.
+                  {outage.label}. This reflects each case&apos;s last synced status, not a live
+                  health check, so the dependency may already be resolved; inspect to confirm
+                  before escalating.
                 </p>
                 <Button
                   type="button"

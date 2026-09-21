@@ -75,6 +75,20 @@ export function describeInternalDependency(dependency: string): string {
   return DEPENDENCY_LABELS[dependency] ?? dependency.replace(/_/g, " ");
 }
 
+// Only these identify a genuinely shared, infrastructure-wide incident where
+// grouping requests together is meaningful. specialist_conflict and
+// specialist_evidence_gap are per-request specialist review outcomes -- two
+// requests can independently report the same label without sharing any
+// underlying cause, so they must not be merged into one "outage".
+const PIPELINE_WIDE_OUTAGE_DEPENDENCY_KEYS = new Set<string>([
+  "openai_quota",
+  "openai_rate_limit",
+  "agent_authentication",
+  "agent_network",
+  "profixiq_database_evidence",
+  "repository_evidence_retrieval",
+]);
+
 const STALE_ACTIVE_MINUTES = 30;
 const INTERNAL_REQUIREMENT_PATTERNS = [
   /\b(import|call)\s+chain\b/i,
@@ -168,7 +182,14 @@ export function diagnoseAgentPipelineRequest(
   }
 
   if (caseStatus === "blocked") {
+    const dependency = normalizedText(team?.internalDependency);
+
     if ((request.reporterQuestions?.length ?? 0) > 0) {
+      // A case can be blocked on both an internal dependency and reporter
+      // questions at once. Keep the dependency attached even though the
+      // reporter-facing title/action take priority here, so this case still
+      // counts toward the pipeline-wide outage aggregation instead of
+      // silently disappearing from it.
       return {
         kind: "reporter_input",
         severity: "warning",
@@ -176,11 +197,10 @@ export function diagnoseAgentPipelineRequest(
         explanation: `The ${stage} stage is paused for information only the reporter can provide. Engineering evidence tasks remain internal to the Agent.`,
         actionLabel: "Provide evidence",
         ageMinutes,
-        internalDependency: null,
+        internalDependency: dependency,
       };
     }
 
-    const dependency = normalizedText(team?.internalDependency);
     const conflictCount = team?.conflicts?.length ?? 0;
 
     // A specialist decision conflict gets its own explanation regardless of which
@@ -298,6 +318,7 @@ export function summarizeAgentPipeline(
   const outagesByDependency = new Map<string, string[]>();
   for (const { requestId, diagnostic } of diagnostics) {
     if (!diagnostic.internalDependency) continue;
+    if (!PIPELINE_WIDE_OUTAGE_DEPENDENCY_KEYS.has(diagnostic.internalDependency)) continue;
     const existing = outagesByDependency.get(diagnostic.internalDependency) ?? [];
     existing.push(requestId);
     outagesByDependency.set(diagnostic.internalDependency, existing);
