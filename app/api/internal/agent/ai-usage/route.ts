@@ -19,7 +19,7 @@ type AgentUsagePayload = {
   completion_tokens?: number | null;
   total_tokens?: number | null;
   estimated_cost_usd?: number | null;
-  latency_ms?: number;
+  latency_ms?: number | null;
   status?: string;
   error_code?: string | null;
   error_message?: string | null;
@@ -30,15 +30,29 @@ type AgentUsagePayload = {
   operation?: string | null;
 };
 
-function text(value: unknown, max: number): string | null {
-  const out = typeof value === "string" ? value.trim() : "";
-  return out ? out.slice(0, max) : null;
+function boundedText(value: unknown, max: number): string | null {
+  if (value == null) return null;
+  if (typeof value !== "string") throw new Error("invalid_text");
+  const out = value.trim();
+  if (!out) return null;
+  if (out.length > max) throw new Error("text_too_long");
+  return out;
 }
 
-function nonNegativeNumber(value: unknown): number | null {
+function optionalNonNegativeNumber(value: unknown): number | null {
   if (value == null) return null;
-  const parsed = Number(value);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+  const parsed = typeof value === "number" ? value : Number.NaN;
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error("invalid_metric");
+  return parsed;
+}
+
+function boundedOccurredAt(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value !== "string" || !value.trim()) throw new Error("invalid_occurred_at");
+  const parsed = new Date(value);
+  if (!Number.isFinite(parsed.getTime())) throw new Error("invalid_occurred_at");
+  if (parsed.getTime() > Date.now() + 5 * 60_000) throw new Error("future_occurred_at");
+  return parsed.toISOString();
 }
 
 export async function POST(request: Request) {
@@ -56,58 +70,61 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid payload" }, { status: 400 });
   }
 
-  const feature = text(body.feature, 120);
-  const endpoint = text(body.endpoint, 240);
-  const eventKey = text(body.event_key, 240);
-  const status = body.status === "error" ? "error" : body.status === "success" ? "success" : null;
+  try {
+    const eventKey = boundedText(body.event_key, 240);
+    const feature = boundedText(body.feature, 120);
+    const endpoint = boundedText(body.endpoint, 240);
+    const status = body.status === "error"
+      ? "error"
+      : body.status === "success"
+        ? "success"
+        : null;
 
-  if (!feature || !endpoint || !eventKey || !status) {
-    return NextResponse.json(
-      { error: "event_key, feature, endpoint and status are required" },
-      { status: 400 },
-    );
-  }
+    if (!eventKey || !feature || !endpoint || !status) {
+      return NextResponse.json(
+        { error: "event_key, feature, endpoint and status are required" },
+        { status: 400 },
+      );
+    }
 
-  const admin = createAdminSupabase() as unknown as {
-    rpc: (
-      name: "record_ai_usage_ledger",
-      args: Record<string, unknown>,
-    ) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
-  };
-
-  const result = await Promise.resolve(admin.rpc("record_ai_usage_ledger", {
-    p_shop_id: null,
-    p_user_id: null,
-    p_payload: {
+    const payload = {
       event_key: eventKey,
       feature,
       endpoint,
-      provider: text(body.provider, 40) ?? "openai",
-      model: text(body.model, 120),
-      modality: text(body.modality, 30) ?? "text",
+      provider: boundedText(body.provider, 40) ?? "openai",
+      model: boundedText(body.model, 120),
+      modality: boundedText(body.modality, 30) ?? "text",
       rate_card_version: AI_RATE_CARD_VERSION,
-      prompt_tokens: nonNegativeNumber(body.prompt_tokens),
-      cached_prompt_tokens: nonNegativeNumber(body.cached_prompt_tokens),
-      completion_tokens: nonNegativeNumber(body.completion_tokens),
-      total_tokens: nonNegativeNumber(body.total_tokens),
-      estimated_cost_usd: nonNegativeNumber(body.estimated_cost_usd),
-      latency_ms: Math.round(nonNegativeNumber(body.latency_ms) ?? 0),
+      prompt_tokens: optionalNonNegativeNumber(body.prompt_tokens),
+      cached_prompt_tokens: optionalNonNegativeNumber(body.cached_prompt_tokens),
+      completion_tokens: optionalNonNegativeNumber(body.completion_tokens),
+      total_tokens: optionalNonNegativeNumber(body.total_tokens),
+      estimated_cost_usd: optionalNonNegativeNumber(body.estimated_cost_usd),
+      latency_ms: Math.round(optionalNonNegativeNumber(body.latency_ms) ?? 0),
       status,
-      error_code: text(body.error_code, 120),
-      error_message: text(body.error_message, 500),
-      provider_request_id: text(body.provider_request_id, 240),
-      occurred_at: text(body.occurred_at, 80),
-      source_product: "engineering_agent",
-      agent_run_id: text(body.agent_run_id, 240),
-      external_request_id: text(body.external_request_id, 240),
-      operation: text(body.operation, 160),
-    },
-  }));
+      error_code: boundedText(body.error_code, 120),
+      error_message: boundedText(body.error_message, 500),
+      provider_request_id: boundedText(body.provider_request_id, 240),
+      occurred_at: boundedOccurredAt(body.occurred_at),
+      agent_run_id: boundedText(body.agent_run_id, 240),
+      external_request_id: boundedText(body.external_request_id, 240),
+      operation: boundedText(body.operation, 160),
+    };
 
-  if (result.error) {
-    console.error("[agent-ai-usage] ledger write failed", result.error);
-    return NextResponse.json({ error: "Usage write failed" }, { status: 500 });
+    const admin = createAdminSupabase();
+    const { data, error } = await admin.rpc(
+      "record_engineering_agent_ai_usage_ledger",
+      { p_payload: payload },
+    );
+
+    if (error) {
+      console.error("[agent-ai-usage] ledger write failed", error);
+      return NextResponse.json({ error: "Usage write failed" }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true, id: data });
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "invalid_payload";
+    return NextResponse.json({ error: code }, { status: 400 });
   }
-
-  return NextResponse.json({ ok: true, id: result.data });
 }
