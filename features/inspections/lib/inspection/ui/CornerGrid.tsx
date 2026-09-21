@@ -133,7 +133,7 @@ export default function CornerGrid(props: CornerGridProps) {
     updateItem(sectionIndex, cell.idx, { value });
   };
 
-  const CellInput = ({ cell }: { cell?: Cell }) => (
+  const renderCellInput = (cell?: Cell) => (
     <div className="relative min-w-0">
       <input
         className={inputCls()}
@@ -205,14 +205,14 @@ export default function CornerGrid(props: CornerGridProps) {
                     <span className="text-[10px] font-medium text-[color:var(--theme-text-secondary)] sm:hidden">
                       Pad / shoe
                     </span>
-                    <CellInput cell={bucket.pads} />
+                    {renderCellInput(bucket.pads)}
                   </label>
 
                   <label className="grid min-w-0 grid-cols-[92px_minmax(0,1fr)] items-center gap-2 sm:block">
                     <span className="text-[10px] font-medium text-[color:var(--theme-text-secondary)] sm:hidden">
                       Rotor / drum
                     </span>
-                    <CellInput cell={bucket.rotor} />
+                    {renderCellInput(bucket.rotor)}
                   </label>
                 </div>
               );
