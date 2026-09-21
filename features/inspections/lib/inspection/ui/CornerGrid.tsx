@@ -133,70 +133,23 @@ export default function CornerGrid(props: CornerGridProps) {
     updateItem(sectionIndex, cell.idx, { value });
   };
 
-  const Stack = (corner: Corner) => {
-    const bucket = parsed.byCorner[corner];
-    const pads = bucket.pads;
-    const rotor = bucket.rotor;
-
-    return (
-      <div className="min-w-0 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 shadow-sm">
-        <div className="mb-3 flex items-center justify-between gap-2 border-b border-[color:var(--theme-border-soft)] pb-2">
-          <div>
-            <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
-              {CORNER_LABEL[corner]}
-            </div>
-            <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
-              {corner}
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-3">
-          <label className="block min-w-0">
-            <span className="mb-1 block text-[11px] font-medium text-[color:var(--theme-text-secondary)]">
-              Pad / shoe thickness
-            </span>
-            <div className="relative">
-              <input
-                className={inputCls()}
-                type="number"
-                inputMode="decimal"
-                step="any"
-                placeholder={pads ? "Enter value" : "Not configured"}
-                value={String(pads?.item?.value ?? "")}
-                onFocus={() => pads && onSpecHint?.(pads.metricLabel)}
-                onChange={(event) => commit(pads, event.currentTarget.value)}
-                disabled={!pads || locked}
-                autoComplete="off"
-              />
-              <span className={unitCls()}>{pads?.unit ?? "mm"}</span>
-            </div>
-          </label>
-
-          <label className="block min-w-0">
-            <span className="mb-1 block text-[11px] font-medium text-[color:var(--theme-text-secondary)]">
-              Rotor / drum thickness
-            </span>
-            <div className="relative">
-              <input
-                className={inputCls()}
-                type="number"
-                inputMode="decimal"
-                step="any"
-                placeholder={rotor ? "Enter value" : "Not configured"}
-                value={String(rotor?.item?.value ?? "")}
-                onFocus={() => rotor && onSpecHint?.(rotor.metricLabel)}
-                onChange={(event) => commit(rotor, event.currentTarget.value)}
-                disabled={!rotor || locked}
-                autoComplete="off"
-              />
-              <span className={unitCls()}>{rotor?.unit ?? "mm"}</span>
-            </div>
-          </label>
-        </div>
-      </div>
-    );
-  };
+  const CellInput = ({ cell }: { cell?: Cell }) => (
+    <div className="relative min-w-0">
+      <input
+        className={inputCls()}
+        type="number"
+        inputMode="decimal"
+        step="any"
+        placeholder={cell ? "Enter value" : "—"}
+        value={String(cell?.item?.value ?? "")}
+        onFocus={() => cell && onSpecHint?.(cell.metricLabel)}
+        onChange={(event) => commit(cell, event.currentTarget.value)}
+        disabled={!cell || locked}
+        autoComplete="off"
+      />
+      <span className={unitCls()}>{cell?.unit ?? "mm"}</span>
+    </div>
+  );
 
   return (
     <div className="grid w-full gap-3" data-inspection-corner-grid="hydraulic">
@@ -223,10 +176,48 @@ export default function CornerGrid(props: CornerGridProps) {
       </div>
 
       {open ? (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-4">
-          {CORNERS.map((corner) => (
-            <div key={corner}>{Stack(corner)}</div>
-          ))}
+        <div className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
+          <div className="hidden grid-cols-[minmax(130px,0.8fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-[color:var(--theme-border-soft)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)] sm:grid">
+            <div>Position</div>
+            <div>Pad / shoe thickness</div>
+            <div>Rotor / drum thickness</div>
+          </div>
+
+          <div className="divide-y divide-[color:var(--theme-border-soft)]">
+            {CORNERS.map((corner) => {
+              const bucket = parsed.byCorner[corner];
+              return (
+                <div
+                  key={corner}
+                  className="grid gap-2 px-3 py-2.5 sm:grid-cols-[minmax(130px,0.8fr)_minmax(0,1fr)_minmax(0,1fr)] sm:items-center sm:gap-3"
+                  data-brake-position={corner}
+                >
+                  <div className="flex items-baseline justify-between gap-2 sm:block">
+                    <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                      {CORNER_LABEL[corner]}
+                    </div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
+                      {corner}
+                    </div>
+                  </div>
+
+                  <label className="grid min-w-0 grid-cols-[92px_minmax(0,1fr)] items-center gap-2 sm:block">
+                    <span className="text-[10px] font-medium text-[color:var(--theme-text-secondary)] sm:hidden">
+                      Pad / shoe
+                    </span>
+                    <CellInput cell={bucket.pads} />
+                  </label>
+
+                  <label className="grid min-w-0 grid-cols-[92px_minmax(0,1fr)] items-center gap-2 sm:block">
+                    <span className="text-[10px] font-medium text-[color:var(--theme-text-secondary)] sm:hidden">
+                      Rotor / drum
+                    </span>
+                    <CellInput cell={bucket.rotor} />
+                  </label>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : null}
     </div>
