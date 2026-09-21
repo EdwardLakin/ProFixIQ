@@ -46,6 +46,20 @@ describe("inspection corner-grid parity", () => {
     }
   });
 
+
+  it("keeps tire grids compact and ordered by physical axle position", () => {
+    for (const grid of [hydraulicTireGrid, tireCornerGrid]) {
+      expect(grid).toContain('data-axle={t.axle}');
+      expect(grid).toContain('"Left Outer"');
+      expect(grid).toContain('"Left Inner"');
+      expect(grid).toContain('"Right Inner"');
+      expect(grid).toContain('"Right Outer"');
+      expect(grid).toContain("Tread depth");
+      expect(grid).toContain("Pressure");
+      expect(grid).not.toContain("TP / TD capture only");
+    }
+  });
+
   it("renders canonical finding fields below compact measurements", () => {
     expect(sectionDisplay).toContain("showGridFindings?: boolean");
     expect(sectionDisplay).toContain("gridSection && !showGridFindings");
