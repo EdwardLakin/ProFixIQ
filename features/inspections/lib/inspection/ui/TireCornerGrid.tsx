@@ -6,7 +6,6 @@ import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionForm
 import type {
   InspectionItem,
 } from "@inspections/lib/inspection/types";
-import MeasurementInput from "@inspections/lib/inspection/ui/MeasurementInput";
 
 type PartLine = { description: string; qty: number };
 
@@ -624,14 +623,18 @@ export default function TireGrid(props: Props) {
               <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">{e.label}</div>
               <div>
                 <div className="relative">
-                  <MeasurementInput
+                  <input
                     value={e.cell?.initial ?? ""}
                     className={inputCls()}
                     placeholder={e.cell ? "Value" : "—"}
                     inputMode={isText(e.cell) ? "text" : "decimal"}
-                    type="text"
-                    onCommit={(next) => e.cell && commitValue(e.cell.idx, next)}
+                    type={isText(e.cell) ? "text" : "number"}
+                    step={isText(e.cell) ? undefined : "any"}
+                    onChange={(event) =>
+                      e.cell && commitValue(e.cell.idx, event.currentTarget.value)
+                    }
                     disabled={!e.cell}
+                    autoComplete="off"
                   />
                   <span className={unitCls()}>{U(e.cell)}</span>
                 </div>
