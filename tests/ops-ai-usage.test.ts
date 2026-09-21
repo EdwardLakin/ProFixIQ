@@ -50,6 +50,10 @@ describe("Ops AI usage observability", () => {
     expect(migration).toContain("abnormal_prompt");
     expect(migration).toContain("runaway_agent_run");
     expect(migration).toContain("high_request_frequency");
+    expect(migration).toContain("record_engineering_agent_ai_usage_ledger");
+    expect(migration).not.toContain("create or replace function rls_helpers.record_private_ai_usage_ledger");
+    expect(migration).toContain("generate_series");
+    expect(migration).toContain("coalesce(agent_run_id, external_request_id)");
     expect(migration).toContain("revoke all on function rls_helpers.get_ops_ai_usage_snapshot");
     expect(migration).toContain("to service_role");
   });
@@ -57,8 +61,9 @@ describe("Ops AI usage observability", () => {
   it("accepts authenticated Engineering Agent usage into the same canonical ledger", () => {
     const route = read("app/api/internal/agent/ai-usage/route.ts");
     expect(route).toContain("isAgentApiRequestAuthorized");
-    expect(route).toContain('"record_ai_usage_ledger"');
-    expect(route).toContain('source_product: "engineering_agent"');
+    expect(route).toContain('"record_engineering_agent_ai_usage_ledger"');
+    expect(route).toContain("future_occurred_at");
+    expect(route).toContain("invalid_metric");
     expect(route).toContain("agent_run_id");
     expect(route).toContain("external_request_id");
   });
