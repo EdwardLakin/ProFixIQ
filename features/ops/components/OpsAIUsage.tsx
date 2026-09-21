@@ -181,9 +181,11 @@ export default function OpsAIUsage({ snapshot }: { snapshot: OpsAIUsageSnapshot 
           {snapshot.trend.length ? snapshot.trend.map((row) => {
             const height = Math.max(4, Math.round((row.cost / maxTrendCost) * 100));
             return (
-              <div key={row.bucket} className="group flex min-w-7 flex-1 flex-col items-center justify-end" title={`${new Date(row.bucket).toLocaleDateString()}: ${usd(row.cost)} · ${compact(row.tokens)} tokens · ${row.requests} requests`}>
-                <div className="w-full max-w-10 rounded-t-md bg-orange-400/75 transition group-hover:bg-orange-400" style={{ height: `${height}%` }} />
-                <span className="mt-2 text-[9px] text-[color:var(--theme-text-muted)]">
+              <div key={row.bucket} className="group flex h-full min-w-7 flex-1 flex-col items-center" title={`${new Date(row.bucket).toLocaleDateString()}: ${usd(row.cost)} · ${compact(row.tokens)} tokens · ${row.requests} requests`}>
+                <div className="flex min-h-0 w-full flex-1 items-end justify-center">
+                  <div className="w-full max-w-10 rounded-t-md bg-orange-400/75 transition group-hover:bg-orange-400" style={{ height: `${height}%` }} />
+                </div>
+                <span className="mt-2 shrink-0 text-[9px] text-[color:var(--theme-text-muted)]">
                   {new Date(row.bucket).toLocaleDateString(undefined, { month: "numeric", day: "numeric" })}
                 </span>
               </div>
