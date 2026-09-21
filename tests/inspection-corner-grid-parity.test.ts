@@ -9,6 +9,9 @@ const sectionDisplay = read(
 const hydraulicBrakeGrid = read(
   "features/inspections/lib/inspection/ui/CornerGrid.tsx",
 );
+const airBrakeGrid = read(
+  "features/inspections/lib/inspection/ui/AirCornerGrid.tsx",
+);
 const hydraulicTireGrid = read(
   "features/inspections/lib/inspection/ui/TireGridHydraulic.tsx",
 );
@@ -51,7 +54,12 @@ describe("inspection corner-grid parity", () => {
 
 
   it("supports keyboard traversal across measurement inputs", () => {
-    for (const grid of [hydraulicBrakeGrid, hydraulicTireGrid, tireCornerGrid]) {
+    for (const grid of [
+      hydraulicBrakeGrid,
+      airBrakeGrid,
+      hydraulicTireGrid,
+      tireCornerGrid,
+    ]) {
       expect(grid).toContain('data-inspection-measurement-grid');
       expect(grid).toContain('data-inspection-measurement-input="true"');
       expect(grid).toContain("handleMeasurementGridKeyDown");
