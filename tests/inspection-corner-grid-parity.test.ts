@@ -50,10 +50,16 @@ describe("inspection corner-grid parity", () => {
   it("keeps tire grids compact and ordered by physical axle position", () => {
     for (const grid of [hydraulicTireGrid, tireCornerGrid]) {
       expect(grid).toContain('data-axle={t.axle}');
-      expect(grid).toContain('"Left Outer"');
-      expect(grid).toContain('"Left Inner"');
-      expect(grid).toContain('"Right Inner"');
-      expect(grid).toContain('"Right Outer"');
+      const leftOuter = grid.indexOf('"Left Outer"');
+      const leftInner = grid.indexOf('"Left Inner"');
+      const rightInner = grid.indexOf('"Right Inner"');
+      const rightOuter = grid.indexOf('"Right Outer"');
+
+      expect(leftOuter).toBeGreaterThanOrEqual(0);
+      expect(leftInner).toBeGreaterThan(leftOuter);
+      expect(rightInner).toBeGreaterThan(leftInner);
+      expect(rightOuter).toBeGreaterThan(rightInner);
+
       expect(grid).toContain("Tread depth");
       expect(grid).toContain("Pressure");
       expect(grid).not.toContain("TP / TD capture only");
