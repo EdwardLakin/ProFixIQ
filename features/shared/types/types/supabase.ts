@@ -29390,6 +29390,10 @@ export type Database = {
           unresolved_failure_count: number
         }[]
       }
+      get_ops_ai_usage_snapshot: {
+        Args: { p_event_limit?: number; p_since?: string }
+        Returns: Json
+      }
       get_work_order_assignments: {
         Args: { p_work_order_id: string }
         Returns: {
@@ -30354,6 +30358,10 @@ export type Database = {
       }
       record_ai_usage_ledger: {
         Args: { p_payload: Json; p_shop_id: string; p_user_id: string }
+        Returns: string
+      }
+      record_engineering_agent_ai_usage_ledger: {
+        Args: { p_payload: Json }
         Returns: string
       }
       record_fleet_portal_invitation_email_acceptance: {
