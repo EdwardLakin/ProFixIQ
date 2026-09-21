@@ -271,6 +271,17 @@ describe("ProFixIQ product package billing contract", () => {
     expect(checkout).not.toContain('"if_required"');
     expect(checkout).toContain("missing_payment_method");
     expect(checkout).toContain('"cancel"');
+    // USD is the acquisition catalog currency, but the Stripe account's own
+    // settlement currency is CAD; Adaptive Pricing is what lets non-US buyers
+    // still see a correctly converted local price instead of a flat USD quote.
+    // It must stay gated to the USD package catalog: buildCheckoutParams is
+    // shared with the legacy base_plus_seats_v2 starter/unlimited flow, whose
+    // CAD prices must not become location-dependent (Codex P1 on #1712).
+    expect(checkout).toContain("adaptive_pricing: { enabled: true }");
+    expect(checkout).toContain("usdPackageCheckout: boolean");
+    expect(checkout).toContain(
+      "usdPackageCheckout: selection.packageKey !== null",
+    );
     expect(migration).toContain("profixiq_shop_has_product_access");
     expect(migration).toContain("profixiq_fleet_has_product_access");
     expect(migration).toContain("mobile_profile_has_field_service_access");

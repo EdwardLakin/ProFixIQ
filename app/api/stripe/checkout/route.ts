@@ -31,6 +31,13 @@ import type { Database } from "@shared/types/types/supabase";
 type DB = Database;
 type CheckoutCreateParams = Stripe.Checkout.SessionCreateParams & {
   integration_identifier?: string;
+  // `stripe` is pinned to v12 for the in-flight SDK upgrade (see
+  // features/stripe/lib/stripe/client.ts), whose bundled types predate the
+  // adaptive_pricing param Stripe added at API version 2024-11-20. The
+  // account's own settlement currency is CAD (single CAD payout account), so
+  // Adaptive Pricing is what lets a USD catalog still convert correctly for
+  // non-US buyers instead of quoting everyone in USD.
+  adaptive_pricing?: { enabled: boolean };
 };
 
 const REQUEST_MAX_BYTES = 8 * 1024;
@@ -251,6 +258,12 @@ function buildCheckoutParams(input: {
   trialDays: number;
   metadata: Stripe.MetadataParam;
   identifierPrefix: string;
+  // Only the USD product-package catalog (PRODUCT_PACKAGE_BILLING_MODEL)
+  // wants Adaptive Pricing. The legacy base_plus_seats_v2 starter/unlimited
+  // catalog is a fixed CAD contract for existing customers; converting it to
+  // location-dependent currency would be an unapproved contract change (see
+  // AGENTS.md's Additive-First Change Control).
+  usdPackageCheckout: boolean;
 }): CheckoutCreateParams {
   return {
     mode: "subscription",
@@ -260,6 +273,9 @@ function buildCheckoutParams(input: {
     cancel_url: input.cancelUrl,
     allow_promotion_codes: true,
     payment_method_collection: "always",
+    ...(input.usdPackageCheckout
+      ? { adaptive_pricing: { enabled: true } }
+      : {}),
     ...(input.clientReferenceId
       ? { client_reference_id: input.clientReferenceId }
       : {}),
@@ -376,6 +392,7 @@ export async function POST(req: Request) {
           trialDays,
           metadata,
           identifierPrefix: "profixiq_acquisition",
+          usdPackageCheckout: selection.packageKey !== null,
         }),
         { idempotencyKey: `profixiq:acquisition:${intent.id}` },
       );
@@ -449,6 +466,7 @@ export async function POST(req: Request) {
         trialDays: enableTrial ? trialDays : 0,
         metadata,
         identifierPrefix: "profixiq_owner",
+        usdPackageCheckout: selection.packageKey !== null,
       }),
       { idempotencyKey: `profixiq:shop-checkout:${shop.id}:${attemptId}` },
     );
