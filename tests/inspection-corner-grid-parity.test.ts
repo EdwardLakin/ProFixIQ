@@ -18,6 +18,9 @@ const batteryGrid = read(
 const tireCornerGrid = read(
   "features/inspections/lib/inspection/ui/TireCornerGrid.tsx",
 );
+const measurementGridKeyboard = read(
+  "features/inspections/lib/inspection/ui/measurementGridKeyboard.ts",
+);
 
 describe("inspection corner-grid parity", () => {
   it("uses the generic runner for every compact grid type", () => {
@@ -46,6 +49,19 @@ describe("inspection corner-grid parity", () => {
     }
   });
 
+
+  it("supports keyboard traversal across measurement inputs", () => {
+    for (const grid of [hydraulicBrakeGrid, hydraulicTireGrid, tireCornerGrid]) {
+      expect(grid).toContain('data-inspection-measurement-grid');
+      expect(grid).toContain('data-inspection-measurement-input="true"');
+      expect(grid).toContain("handleMeasurementGridKeyDown");
+    }
+
+    expect(measurementGridKeyboard).toContain('event.key !== "Tab"');
+    expect(measurementGridKeyboard).toContain('event.key !== "Enter"');
+    expect(measurementGridKeyboard).toContain("next.focus()");
+    expect(measurementGridKeyboard).toContain("next.select()");
+  });
 
   it("keeps tire grids compact and ordered by physical axle position", () => {
     for (const grid of [hydraulicTireGrid, tireCornerGrid]) {
