@@ -125,7 +125,9 @@ export async function POST(
       p_quote_line_id: bodyResult.data.quoteLineId,
       p_authenticated_user_id: access.authUserId,
       p_actor_profile_id: access.profile.id,
-      p_note: bodyResult.data.note?.trim() || null,
+      // The RPC treats an empty string as no note (nullif(btrim(p_note),
+      // '')), so an empty string here is equivalent to SQL null.
+      p_note: bodyResult.data.note?.trim() ?? "",
     },
   );
 
