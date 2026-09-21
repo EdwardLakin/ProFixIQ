@@ -5,6 +5,7 @@
 import { useMemo, useState } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
+import { handleMeasurementGridKeyDown } from "./measurementGridKeyboard";
 
 type Props = {
   sectionIndex: number;
@@ -80,7 +81,6 @@ export default function AirCornerGrid({
   onAddAxle,
 }: Props) {
   const { updateItem } = useInspectionForm();
-  const [open, setOpen] = useState(true);
   const [unitMode, setUnitMode] = useState<UnitMode>("standard");
 
   const commit = (idx: number, value: string) => {
@@ -158,7 +158,11 @@ export default function AirCornerGrid({
   if (tables.length === 0) return null;
 
   return (
-    <div className="grid w-full gap-3" data-inspection-corner-grid="air">
+    <div
+      className="grid w-full gap-3"
+      data-inspection-corner-grid="air"
+      data-inspection-measurement-grid
+    >
       <div className="flex flex-wrap items-center justify-between gap-3 px-1">
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -190,22 +194,12 @@ export default function AirCornerGrid({
           </span>
         </div>
 
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)] hover:border-orange-500/70"
-          aria-expanded={open}
-          title={open ? "Collapse" : "Expand"}
-          tabIndex={-1}
-        >
-          {open ? "Collapse" : "Expand"}
-        </button>
+
       </div>
 
       {onAddAxle ? <AddAxlePicker tables={tables} onAddAxle={onAddAxle} /> : null}
 
-      {open ? (
-        <div className="grid gap-3">
+      <div className="grid gap-3">
           {tables.map((t) => (
             <section
               key={t.axle}
@@ -259,6 +253,8 @@ export default function AirCornerGrid({
                               inputMode="decimal"
                               disabled={!cell}
                               onBlur={(e) => cell && commit(cell.idx, e.currentTarget.value)}
+                              data-inspection-measurement-input="true"
+                              onKeyDown={handleMeasurementGridKeyDown}
                             />
                             {cell?.unit ? (
                               <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-[11px] font-medium text-[color:var(--theme-text-secondary)]">
@@ -274,8 +270,7 @@ export default function AirCornerGrid({
               </div>
             </section>
           ))}
-        </div>
-      ) : null}
+      </div>
     </div>
   );
 }
