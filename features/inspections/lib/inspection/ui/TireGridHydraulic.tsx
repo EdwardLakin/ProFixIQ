@@ -465,7 +465,7 @@ export default function TireGridHydraulic(props: Props) {
           disabled={!cell || locked}
           autoComplete="off"
           data-inspection-measurement-input="true"
-          onKeyDown={handleMeasurementGridKeyDown}
+          onKeyDownCapture={handleMeasurementGridKeyDown}
         />
         <span className={unitCls()}>{unit}</span>
       </div>
