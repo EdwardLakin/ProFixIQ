@@ -146,7 +146,7 @@ export default function CornerGrid(props: CornerGridProps) {
         disabled={!cell || locked}
         autoComplete="off"
         data-inspection-measurement-input="true"
-        onKeyDown={handleMeasurementGridKeyDown}
+        onKeyDownCapture={handleMeasurementGridKeyDown}
       />
       <span className={unitCls()}>{cell?.unit ?? "mm"}</span>
     </div>
