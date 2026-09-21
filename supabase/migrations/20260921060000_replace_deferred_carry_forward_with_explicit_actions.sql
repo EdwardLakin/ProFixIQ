@@ -55,6 +55,41 @@ create index if not exists idx_work_order_quote_lines_unresolved_elsewhere
   on public.work_order_quote_lines (shop_id, vehicle_id)
   where resolved_elsewhere_at is null;
 
+-- The pre-existing work_order_quote_lines_shop_update policy and default
+-- authenticated grants let any authenticated shop user update these two new
+-- columns directly, bypassing resolve_deferred_recommendation_elsewhere's
+-- role check and actor binding. Guard them the same way
+-- enforce_work_order_archive_write_boundary guards work_orders.archived_at:
+-- the guarded function sets a transaction-local flag; nothing else may move
+-- these columns.
+create function public.enforce_deferred_recommendation_resolution_write_boundary()
+returns trigger
+language plpgsql
+security definer
+set search_path = public, pg_temp
+as $boundary$
+begin
+  if new.resolved_elsewhere_at is distinct from old.resolved_elsewhere_at
+     or new.resolved_elsewhere_by_user_id is distinct from old.resolved_elsewhere_by_user_id
+  then
+    if coalesce(current_setting('app.deferred_recommendation_resolving', true), '0') <> '1' then
+      raise exception using
+        errcode = '42501',
+        message = 'DEFERRED_RECOMMENDATION_RESOLUTION_DIRECT_WRITE: this state changes only through resolve_deferred_recommendation_elsewhere.';
+    end if;
+  end if;
+
+  return new;
+end;
+$boundary$;
+
+drop trigger if exists work_order_quote_lines_enforce_deferred_resolution_boundary
+  on public.work_order_quote_lines;
+create trigger work_order_quote_lines_enforce_deferred_resolution_boundary
+  before update on public.work_order_quote_lines
+  for each row
+  execute function public.enforce_deferred_recommendation_resolution_write_boundary();
+
 -- ---------------------------------------------------------------------
 -- 3. Idempotency receipts shared by the Add/Decline actions below. Kept
 --    inaccessible to every role; only the SECURITY DEFINER functions in
@@ -186,7 +221,7 @@ begin
   from public.work_order_quote_lines quote_line
   where quote_line.id = p_quote_line_id
     and quote_line.shop_id = p_shop_id
-  for share;
+  for update;
 
   if not found then
     raise exception using
@@ -230,7 +265,14 @@ begin
     into v_root_line
   from public.work_order_lines line
   where line.id = v_root_line_id
-    and line.shop_id = p_shop_id;
+    and line.shop_id = p_shop_id
+  for update;
+
+  if not found or v_root_line.voided_at is not null then
+    raise exception using
+      errcode = '22023',
+      message = 'DEFERRED_RECOMMENDATION_MISSING_ROOT';
+  end if;
 
   v_finding_key := coalesce(
     v_source_quote.metadata ->> 'inspection_finding_identity',
@@ -248,6 +290,25 @@ begin
     extensions.digest(convert_to(v_request::text, 'UTF8'), 'sha256'),
     'hex'
   );
+
+  -- Defense in depth: a prior add for this exact recommendation already
+  -- landed on this work order (e.g. a retried click racing the receipt, or a
+  -- different client-generated line id for the same recommendation). Computed
+  -- before the receipt check below so a retry of an action id that lost this
+  -- race can also resolve to the line that actually exists.
+  select quote_line.work_order_line_id
+    into v_existing_carry_id
+  from public.work_order_quote_lines quote_line
+  where quote_line.shop_id = p_shop_id
+    and quote_line.work_order_id = p_work_order_id
+    and quote_line.source_work_order_line_id = v_root_line_id
+    and quote_line.id <> p_quote_line_id
+    and lower(coalesce(quote_line.metadata ->> 'carry_forward', 'false')) = 'true'
+    and coalesce(
+      quote_line.metadata ->> 'inspection_finding_identity',
+      quote_line.source_work_order_line_id::text
+    ) = v_finding_key
+  limit 1;
 
   insert into public.work_order_deferred_recommendation_receipts (
     action_id, shop_id, work_order_id, quote_line_id, action, request_sha256
@@ -276,27 +337,37 @@ begin
   end if;
 
   if not v_receipt_inserted then
+    -- This exact action id was already processed. Its work_order_lines row
+    -- is usually p_new_line_id itself, but if a concurrent add for the same
+    -- recommendation under a different client-generated id won the race, it
+    -- is the other line the defense-in-depth check above found instead.
+    if v_existing_carry_id is not null then
+      return jsonb_build_object('ok', true, 'line_id', v_existing_carry_id, 'idempotent', true);
+    end if;
     return jsonb_build_object('ok', true, 'line_id', p_new_line_id, 'idempotent', true);
   end if;
 
-  -- Defense in depth: a prior add for this exact recommendation already
-  -- landed on this work order (e.g. a retried click racing the receipt).
-  select quote_line.work_order_line_id
-    into v_existing_carry_id
-  from public.work_order_quote_lines quote_line
-  where quote_line.shop_id = p_shop_id
-    and quote_line.work_order_id = p_work_order_id
-    and quote_line.source_work_order_line_id = v_root_line_id
-    and quote_line.id <> p_quote_line_id
-    and lower(coalesce(quote_line.metadata ->> 'carry_forward', 'false')) = 'true'
-    and coalesce(
-      quote_line.metadata ->> 'inspection_finding_identity',
-      quote_line.source_work_order_line_id::text
-    ) = v_finding_key
-  limit 1;
-
   if v_existing_carry_id is not null then
     return jsonb_build_object('ok', true, 'line_id', v_existing_carry_id, 'idempotent', true);
+  end if;
+
+  -- Mutual exclusion: once this exact quote line has been consumed by any
+  -- prior Add or Decline (both chain their new row to it via source_row_id),
+  -- it can never be a valid action target again. Checked only on this fresh
+  -- (non-retry) path -- a genuine retry of this same action id is handled by
+  -- the receipt/existing-carry lookups above and must stay idempotent, not
+  -- trip over the row its own prior successful call created. Without this,
+  -- two stale tabs could Add and Decline the same recommendation and leave
+  -- both an actionable line and a contradictory terminal decision.
+  if exists (
+    select 1
+    from public.work_order_quote_lines existing
+    where existing.shop_id = p_shop_id
+      and existing.source_row_id = p_quote_line_id::text
+  ) then
+    raise exception using
+      errcode = '55000',
+      message = 'DEFERRED_RECOMMENDATION_ALREADY_ACTIONED';
   end if;
 
   insert into public.work_order_lines (
@@ -464,9 +535,14 @@ begin
       message = 'DEFERRED_RECOMMENDATION_ACTOR_FORBIDDEN';
   end if;
 
+  -- Decline is a customer decision (equivalent to declining a quote), the
+  -- same authorization boundary the canonical
+  -- /api/work-orders/quotes/[id]/decline route enforces via
+  -- canAuthorizeQuotes. lead_hand can manage work orders but is deliberately
+  -- excluded from quote authorization in that role matrix.
   v_actor_role := lower(btrim(coalesce(v_actor.role::text, '')));
   if v_actor_role not in (
-    'owner', 'admin', 'manager', 'advisor', 'service', 'lead_hand', 'foreman'
+    'owner', 'admin', 'manager', 'advisor', 'service', 'foreman'
   ) then
     raise exception using
       errcode = '42501',
@@ -500,7 +576,7 @@ begin
   from public.work_order_quote_lines quote_line
   where quote_line.id = p_quote_line_id
     and quote_line.shop_id = p_shop_id
-  for share;
+  for update;
 
   if not found then
     raise exception using
@@ -535,6 +611,18 @@ begin
     v_source_quote.work_order_line_id
   );
   if v_root_line_id is null then
+    raise exception using
+      errcode = '22023',
+      message = 'DEFERRED_RECOMMENDATION_MISSING_ROOT';
+  end if;
+
+  if not exists (
+    select 1
+    from public.work_order_lines line
+    where line.id = v_root_line_id
+      and line.shop_id = p_shop_id
+      and line.voided_at is null
+  ) then
     raise exception using
       errcode = '22023',
       message = 'DEFERRED_RECOMMENDATION_MISSING_ROOT';
@@ -593,6 +681,22 @@ begin
       'quote_line_id', coalesce(v_existing_quote_line_id, p_quote_line_id),
       'idempotent', true
     );
+  end if;
+
+  -- Mutual exclusion: once this exact quote line has been consumed by any
+  -- prior Add or Decline (both chain their new row to it via source_row_id),
+  -- it can never be a valid action target again. Checked only on this fresh
+  -- (non-retry) path -- a genuine retry of this same action id is handled by
+  -- the receipt/existing-row lookup above and must stay idempotent.
+  if exists (
+    select 1
+    from public.work_order_quote_lines existing
+    where existing.shop_id = p_shop_id
+      and existing.source_row_id = p_quote_line_id::text
+  ) then
+    raise exception using
+      errcode = '55000',
+      message = 'DEFERRED_RECOMMENDATION_ALREADY_ACTIONED';
   end if;
 
   insert into public.work_order_quote_lines (
@@ -727,9 +831,12 @@ begin
       message = 'DEFERRED_RECOMMENDATION_ACTOR_FORBIDDEN';
   end if;
 
+  -- Completed elsewhere permanently records a customer outcome, the same
+  -- authorization boundary as Decline: lead_hand can manage work orders but
+  -- is deliberately excluded from quote/customer-decision authorization.
   v_actor_role := lower(btrim(coalesce(v_actor.role::text, '')));
   if v_actor_role not in (
-    'owner', 'admin', 'manager', 'advisor', 'service', 'lead_hand', 'foreman'
+    'owner', 'admin', 'manager', 'advisor', 'service', 'foreman'
   ) then
     raise exception using
       errcode = '42501',
@@ -773,6 +880,36 @@ begin
     return jsonb_build_object('ok', true, 'quote_line_id', v_source_quote.id, 'idempotent', true);
   end if;
 
+  -- Only an unresolved declined/deferred recommendation can be closed out
+  -- this way -- the same predicate Add and Decline enforce. Without this, any
+  -- draft/approved/sent quote line for the shop and vehicle could be marked
+  -- permanently resolved, silently suppressing a legitimate recommendation.
+  if not (
+    lower(coalesce(v_source_quote.status::text, '')) in ('declined', 'deferred')
+    or lower(coalesce(v_source_quote.stage::text, '')) in ('customer_declined', 'customer_deferred')
+    or lower(coalesce(v_source_quote.decision::text, '')) in ('declined', 'deferred')
+  ) then
+    raise exception using
+      errcode = '22023',
+      message = 'DEFERRED_RECOMMENDATION_NOT_UNRESOLVED';
+  end if;
+
+  -- Mutual exclusion: once this exact quote line has been consumed by a
+  -- prior Add or Decline (both chain their new row to it via source_row_id),
+  -- it can never also be closed out as completed elsewhere.
+  if exists (
+    select 1
+    from public.work_order_quote_lines existing
+    where existing.shop_id = p_shop_id
+      and existing.source_row_id = p_quote_line_id::text
+  ) then
+    raise exception using
+      errcode = '55000',
+      message = 'DEFERRED_RECOMMENDATION_ALREADY_ACTIONED';
+  end if;
+
+  perform set_config('app.deferred_recommendation_resolving', '1', true);
+
   update public.work_order_quote_lines
   set resolved_elsewhere_at = now(),
       resolved_elsewhere_by_user_id = p_authenticated_user_id,
@@ -783,6 +920,8 @@ begin
       updated_at = now()
   where id = p_quote_line_id
     and shop_id = p_shop_id;
+
+  perform set_config('app.deferred_recommendation_resolving', '0', true);
 
   return jsonb_build_object('ok', true, 'quote_line_id', p_quote_line_id, 'idempotent', false);
 end;

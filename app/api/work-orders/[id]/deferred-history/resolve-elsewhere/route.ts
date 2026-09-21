@@ -54,6 +54,14 @@ const RPC_FAILURES = {
     status: 409,
     message: "That recommendation belongs to a different vehicle.",
   },
+  DEFERRED_RECOMMENDATION_NOT_UNRESOLVED: {
+    status: 409,
+    message: "That recommendation is no longer unresolved.",
+  },
+  DEFERRED_RECOMMENDATION_ALREADY_ACTIONED: {
+    status: 409,
+    message: "That recommendation was already acted on.",
+  },
 } as const;
 
 type RpcFailureMarker = keyof typeof RPC_FAILURES;
@@ -90,8 +98,12 @@ export async function POST(
   const access = await requireShopScopedApiAccess();
   if (!access.ok) return access.response;
 
+  // Completed elsewhere permanently records a customer outcome, the same
+  // authorization boundary as Decline: canAuthorizeQuotes, not
+  // canManageWorkOrders. lead_hand can manage work orders but is
+  // deliberately excluded from quote/customer-decision authorization.
   const actor = getActorCapabilities({ role: access.profile.role });
-  if (!actor.canManageWorkOrders) {
+  if (!actor.canAuthorizeQuotes) {
     return NextResponse.json(
       { ok: false, error: "You do not have permission to resolve this recommendation." },
       { status: 403 },

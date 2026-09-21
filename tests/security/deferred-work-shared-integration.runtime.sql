@@ -350,6 +350,107 @@ begin
 end;
 $add_closed_work_order$;
 
+-- Mutual exclusion: the quote line the first, successful add consumed
+-- (source_row_id chains to it) can never be independently acted on again --
+-- not even by a different action. Without this, two stale tabs could Add and
+-- Decline the same recommendation and leave both an actionable line and a
+-- contradictory terminal decision.
+do $add_then_decline_same_quote_line_rejected$
+declare
+  v_denied boolean := false;
+begin
+  begin
+    perform public.decline_deferred_recommendation(
+      '74200000-0000-4000-8000-000000000001',
+      '74400000-0000-4000-8000-000000000010',
+      '74600000-0000-4000-8000-000000000001',
+      '74800000-0000-4000-8000-000000000099',
+      '74100000-0000-4000-8000-000000000001',
+      '74100000-0000-4000-8000-000000000001',
+      null
+    );
+  exception
+    when others then
+      if sqlerrm = 'DEFERRED_RECOMMENDATION_ALREADY_ACTIONED' then
+        v_denied := true;
+      else
+        raise exception 'Unexpected error rejecting decline of an already-added quote line: %', sqlerrm;
+      end if;
+  end;
+
+  if not v_denied then
+    raise exception 'A recommendation already added was also allowed to be declined.';
+  end if;
+end;
+$add_then_decline_same_quote_line_rejected$;
+
+-- A voided root repair can no longer be resurrected as a new actionable line.
+insert into public.work_order_lines (
+  id, shop_id, work_order_id, vehicle_id, line_type, status,
+  approval_state, job_type, complaint, description, notes, user_id, voided_at
+)
+values (
+  '74500000-0000-4000-8000-000000000090',
+  '74200000-0000-4000-8000-000000000001',
+  '74400000-0000-4000-8000-000000000001',
+  '74300000-0000-4000-8000-000000000001',
+  'job', 'on_hold', 'declined', 'repair',
+  'Exhaust rattle', 'Replace exhaust hanger',
+  'Customer declined at time of visit.',
+  '74100000-0000-4000-8000-000000000002',
+  now()
+);
+
+insert into public.work_order_quote_lines (
+  id, shop_id, work_order_id, work_order_line_id,
+  source_work_order_line_id, vehicle_id, title, description,
+  line_type, job_type, status, stage, decision,
+  labor_hours, est_labor_hours, labor_rate, labor_total, parts_total,
+  subtotal, discount_total, tax_total, grand_total, metadata,
+  declined_at, created_at, updated_at
+)
+values (
+  '74600000-0000-4000-8000-000000000090',
+  '74200000-0000-4000-8000-000000000001',
+  '74400000-0000-4000-8000-000000000001',
+  null, '74500000-0000-4000-8000-000000000090',
+  '74300000-0000-4000-8000-000000000001',
+  'Exhaust hanger', 'Replace exhaust hanger',
+  'job', 'repair', 'declined', 'customer_declined', 'declined',
+  0.5, 0.5, 150.00, 75.00, 20.00,
+  95.00, 0, 4.75, 99.75,
+  '{}'::jsonb,
+  '2026-08-04T18:00:00Z', '2026-08-04T17:00:00Z', '2026-08-04T18:00:00Z'
+);
+
+do $add_voided_root_rejected$
+declare
+  v_denied boolean := false;
+begin
+  begin
+    perform public.add_deferred_recommendation_to_work_order(
+      '74200000-0000-4000-8000-000000000001',
+      '74400000-0000-4000-8000-000000000010',
+      '74600000-0000-4000-8000-000000000090',
+      '74700000-0000-4000-8000-000000000090',
+      '74100000-0000-4000-8000-000000000001',
+      '74100000-0000-4000-8000-000000000001'
+    );
+  exception
+    when others then
+      if sqlerrm = 'DEFERRED_RECOMMENDATION_MISSING_ROOT' then
+        v_denied := true;
+      else
+        raise exception 'Unexpected error rejecting a voided root repair: %', sqlerrm;
+      end if;
+  end;
+
+  if not v_denied then
+    raise exception 'A voided root repair was resurrected as a new actionable line.';
+  end if;
+end;
+$add_voided_root_rejected$;
+
 -- ---------------------------------------------------------------------
 -- Decline: a second, independent recommendation (still unresolved) is
 -- declined again at a new visit. Quote-only; no work order line.
@@ -633,8 +734,289 @@ begin
 end;
 $resolve_elsewhere$;
 
+-- A lead_hand can manage work orders but is deliberately excluded from
+-- quote/customer-decision authorization elsewhere in the app (the canonical
+-- /api/work-orders/quotes/[id]/decline route requires canAuthorizeQuotes).
+-- Decline and Completed-elsewhere are the same kind of decision and must
+-- enforce the same boundary.
+insert into auth.users (id, email, raw_user_meta_data)
+values ('74100000-0000-4000-8000-000000000003', 'deferred-lead-hand@example.com', '{"full_name":"Deferred Lead Hand"}'::jsonb)
+on conflict (id) do nothing;
+
+insert into public.profiles (id, user_id, role, full_name, shop_id)
+values (
+  '74100000-0000-4000-8000-000000000003',
+  '74100000-0000-4000-8000-000000000003',
+  'lead_hand', 'Deferred Lead Hand',
+  '74200000-0000-4000-8000-000000000001'
+)
+on conflict (id) do update
+set user_id = excluded.user_id,
+    role = excluded.role,
+    full_name = excluded.full_name,
+    shop_id = excluded.shop_id;
+
+do $decline_forbidden_for_lead_hand$
+declare
+  v_denied boolean := false;
+begin
+  begin
+    perform public.decline_deferred_recommendation(
+      '74200000-0000-4000-8000-000000000001',
+      '74400000-0000-4000-8000-000000000020',
+      '74600000-0000-4000-8000-000000000002',
+      '74800000-0000-4000-8000-000000000098',
+      '74100000-0000-4000-8000-000000000003',
+      '74100000-0000-4000-8000-000000000003',
+      null
+    );
+  exception
+    when others then
+      if sqlerrm = 'DEFERRED_RECOMMENDATION_ACTOR_FORBIDDEN' then
+        v_denied := true;
+      else
+        raise exception 'Unexpected error rejecting lead_hand decline: %', sqlerrm;
+      end if;
+  end;
+
+  if not v_denied then
+    raise exception 'A lead_hand was allowed to decline a deferred recommendation.';
+  end if;
+end;
+$decline_forbidden_for_lead_hand$;
+
+do $resolve_elsewhere_forbidden_for_lead_hand$
+declare
+  v_denied boolean := false;
+begin
+  begin
+    perform public.resolve_deferred_recommendation_elsewhere(
+      '74200000-0000-4000-8000-000000000001',
+      '74400000-0000-4000-8000-000000000030',
+      '74600000-0000-4000-8000-000000000003',
+      '74100000-0000-4000-8000-000000000003',
+      '74100000-0000-4000-8000-000000000003',
+      null
+    );
+  exception
+    when others then
+      if sqlerrm = 'DEFERRED_RECOMMENDATION_ACTOR_FORBIDDEN' then
+        v_denied := true;
+      else
+        raise exception 'Unexpected error rejecting lead_hand resolve-elsewhere: %', sqlerrm;
+      end if;
+  end;
+
+  if not v_denied then
+    raise exception 'A lead_hand was allowed to mark a recommendation completed elsewhere.';
+  end if;
+end;
+$resolve_elsewhere_forbidden_for_lead_hand$;
+
+-- A quote line that is not declined/deferred (still draft, never sent to the
+-- customer) cannot be closed out as "completed elsewhere" -- that predicate
+-- is the same one Add and Decline enforce.
+insert into public.work_order_quote_lines (
+  id, shop_id, work_order_id, work_order_line_id,
+  source_work_order_line_id, vehicle_id, title, description,
+  line_type, job_type, status,
+  labor_hours, est_labor_hours, labor_rate, labor_total, parts_total,
+  subtotal, discount_total, tax_total, grand_total, metadata,
+  created_at, updated_at
+)
+values (
+  '74600000-0000-4000-8000-000000000091',
+  '74200000-0000-4000-8000-000000000001',
+  '74400000-0000-4000-8000-000000000030',
+  null, '74500000-0000-4000-8000-000000000003',
+  '74300000-0000-4000-8000-000000000001',
+  'Draft quote line', 'Not yet sent to the customer',
+  'job', 'repair', 'draft',
+  1.0, 1.0, 150.00, 150.00, 0,
+  150.00, 0, 7.50, 157.50,
+  '{}'::jsonb,
+  '2026-08-05T17:00:00Z', '2026-08-05T17:00:00Z'
+);
+
+do $resolve_elsewhere_rejects_non_deferred_quote$
+declare
+  v_denied boolean := false;
+begin
+  begin
+    perform public.resolve_deferred_recommendation_elsewhere(
+      '74200000-0000-4000-8000-000000000001',
+      '74400000-0000-4000-8000-000000000030',
+      '74600000-0000-4000-8000-000000000091',
+      '74100000-0000-4000-8000-000000000001',
+      '74100000-0000-4000-8000-000000000001',
+      null
+    );
+  exception
+    when others then
+      if sqlerrm = 'DEFERRED_RECOMMENDATION_NOT_UNRESOLVED' then
+        v_denied := true;
+      else
+        raise exception 'Unexpected error rejecting a non-deferred quote line: %', sqlerrm;
+      end if;
+  end;
+
+  if not v_denied then
+    raise exception 'A draft quote line was permanently resolved elsewhere.';
+  end if;
+end;
+$resolve_elsewhere_rejects_non_deferred_quote$;
+
+-- resolved_elsewhere_at/resolved_elsewhere_by_user_id can only change through
+-- resolve_deferred_recommendation_elsewhere -- not even service_role may
+-- write them directly, per enforce_deferred_recommendation_resolution_write_boundary.
+do $direct_write_to_resolution_columns_rejected$
+declare
+  v_denied boolean := false;
+begin
+  begin
+    update public.work_order_quote_lines
+    set resolved_elsewhere_at = now()
+    where id = '74600000-0000-4000-8000-000000000091';
+  exception
+    when others then
+      if sqlerrm like 'DEFERRED_RECOMMENDATION_RESOLUTION_DIRECT_WRITE%' then
+        v_denied := true;
+      else
+        raise exception 'Unexpected error rejecting a direct write to resolved_elsewhere_at: %', sqlerrm;
+      end if;
+  end;
+
+  if not v_denied then
+    raise exception 'A direct UPDATE was allowed to set resolved_elsewhere_at outside the RPC.';
+  end if;
+end;
+$direct_write_to_resolution_columns_rejected$;
+
 reset role;
 select set_config('request.jwt.claims', '', true);
 select set_config('request.jwt.claim.role', '', true);
+
+-- ---------------------------------------------------------------------
+-- Preserved-flow regression: private.reconcile_work_order_state is
+-- unrelated to the trigger this file's rewrite retired, but its coverage
+-- was dropped along with the old trigger-behavior assertions during that
+-- rewrite. Restored here unchanged (from PR #1637's review-finding
+-- coverage) since the function itself was not touched by this PR.
+--
+-- Finding: private.reconcile_work_order_state must count an ordinarily
+-- declined line (status = 'on_hold', line_status = 'declined', approval_state
+-- = 'declined') toward v_declined_count so a work order with both approved
+-- and declined lines resolves to approval_state = 'partial', not 'approved'.
+insert into public.work_orders (
+  id, shop_id, custom_id, vehicle_id, status, record_type, approval_state, advisor_id
+)
+values (
+  '74400000-0000-4000-8000-000000000070',
+  '74200000-0000-4000-8000-000000000001',
+  'DEF-RECONCILE-1',
+  '74300000-0000-4000-8000-000000000001',
+  'awaiting_approval', 'work_order', 'pending',
+  '74100000-0000-4000-8000-000000000001'
+);
+
+insert into public.work_order_lines (
+  id, shop_id, work_order_id, vehicle_id, line_type, status,
+  line_status, approval_state, job_type, complaint, description, user_id
+)
+values
+  (
+    '74500000-0000-4000-8000-000000000070',
+    '74200000-0000-4000-8000-000000000001',
+    '74400000-0000-4000-8000-000000000070',
+    '74300000-0000-4000-8000-000000000001',
+    'job', 'queued', null, 'approved', 'repair',
+    'Oil leak', 'Replace valve cover gasket',
+    '74100000-0000-4000-8000-000000000002'
+  ),
+  (
+    '74500000-0000-4000-8000-000000000071',
+    '74200000-0000-4000-8000-000000000001',
+    '74400000-0000-4000-8000-000000000070',
+    '74300000-0000-4000-8000-000000000001',
+    'job', 'on_hold', 'declined', 'declined', 'repair',
+    'Cabin air filter dirty', 'Replace cabin air filter',
+    '74100000-0000-4000-8000-000000000002'
+  );
+
+do $reconciler_partial_approval$
+declare
+  v_work_order public.work_orders%rowtype;
+begin
+  perform private.reconcile_work_order_state('74400000-0000-4000-8000-000000000070');
+
+  select wo.* into v_work_order
+  from public.work_orders wo
+  where wo.id = '74400000-0000-4000-8000-000000000070';
+
+  if v_work_order.approval_state is distinct from 'partial' then
+    raise exception 'Work order with one approved and one declined line resolved to approval_state = %, expected partial.',
+      v_work_order.approval_state;
+  end if;
+end;
+$reconciler_partial_approval$;
+
+-- Finding: the shop-assistant manual-decision path's canonical deferred shape
+-- (status = 'on_hold', line_status = 'deferred', approval_state = 'declined')
+-- is passive context, the same as a carry-forward row's status = 'deferred'.
+-- It must not count toward v_declined_count either, or a work order with an
+-- approved line and a shop-assistant-deferred line would resolve to
+-- 'partial'/'declined' instead of 'approved'.
+insert into public.work_orders (
+  id, shop_id, custom_id, vehicle_id, status, record_type, approval_state, advisor_id
+)
+values (
+  '74400000-0000-4000-8000-000000000071',
+  '74200000-0000-4000-8000-000000000001',
+  'DEF-RECONCILE-2',
+  '74300000-0000-4000-8000-000000000001',
+  'awaiting_approval', 'work_order', 'pending',
+  '74100000-0000-4000-8000-000000000001'
+);
+
+insert into public.work_order_lines (
+  id, shop_id, work_order_id, vehicle_id, line_type, status,
+  line_status, approval_state, job_type, complaint, description, user_id
+)
+values
+  (
+    '74500000-0000-4000-8000-000000000072',
+    '74200000-0000-4000-8000-000000000001',
+    '74400000-0000-4000-8000-000000000071',
+    '74300000-0000-4000-8000-000000000001',
+    'job', 'queued', null, 'approved', 'repair',
+    'Serpentine belt noise', 'Replace serpentine belt',
+    '74100000-0000-4000-8000-000000000002'
+  ),
+  (
+    '74500000-0000-4000-8000-000000000073',
+    '74200000-0000-4000-8000-000000000001',
+    '74400000-0000-4000-8000-000000000071',
+    '74300000-0000-4000-8000-000000000001',
+    'job', 'on_hold', 'deferred', 'declined', 'repair',
+    'Cabin air filter dirty', 'Replace cabin air filter',
+    '74100000-0000-4000-8000-000000000002'
+  );
+
+do $reconciler_ignores_shop_assistant_deferred$
+declare
+  v_work_order public.work_orders%rowtype;
+begin
+  perform private.reconcile_work_order_state('74400000-0000-4000-8000-000000000071');
+
+  select wo.* into v_work_order
+  from public.work_orders wo
+  where wo.id = '74400000-0000-4000-8000-000000000071';
+
+  if v_work_order.approval_state is distinct from 'approved' then
+    raise exception 'Work order with one approved line and one shop-assistant-deferred line resolved to approval_state = %, expected approved.',
+      v_work_order.approval_state;
+  end if;
+end;
+$reconciler_ignores_shop_assistant_deferred$;
 
 rollback;

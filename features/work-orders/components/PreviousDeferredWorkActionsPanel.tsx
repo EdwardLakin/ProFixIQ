@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 
 type DeferredItem = {
@@ -57,20 +57,37 @@ export default function PreviousDeferredWorkActionsPanel({
   const [items, setItems] = useState<DeferredItem[]>([]);
   const [canViewPricing, setCanViewPricing] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [pending, setPending] = useState<Record<string, PendingAction>>({});
+  const [reloadNonce, setReloadNonce] = useState(0);
+  // One idempotency key per recommendation, generated lazily and reused
+  // across retries so a lost response (network error, server 5xx) can be
+  // safely retried without inserting a second decline/receipt. Cleared once
+  // the action actually succeeds and the item leaves the list.
+  const actionIdsRef = useRef<Map<string, string>>(new Map());
+
+  function actionIdFor(key: string): string {
+    const existing = actionIdsRef.current.get(key);
+    if (existing) return existing;
+    const generated = crypto.randomUUID();
+    actionIdsRef.current.set(key, generated);
+    return generated;
+  }
 
   useEffect(() => {
     if (!vehicleId) {
       setItems([]);
       setCanViewPricing(false);
+      setLoadError(null);
       return;
     }
 
     const controller = new AbortController();
     setLoading(true);
+    setLoadError(null);
 
     void fetch(
-      `/api/work-orders/deferred-history?vehicleId=${encodeURIComponent(vehicleId)}`,
+      `/api/work-orders/deferred-history?vehicleId=${encodeURIComponent(vehicleId)}&excludeWorkOrderId=${encodeURIComponent(workOrderId)}`,
       { cache: "no-store", signal: controller.signal },
     )
       .then(async (response) => {
@@ -87,20 +104,35 @@ export default function PreviousDeferredWorkActionsPanel({
       })
       .catch((error: unknown) => {
         if (error instanceof DOMException && error.name === "AbortError") return;
-        setCanViewPricing(false);
-        setItems([]);
+        // Keep whatever was last successfully loaded rather than clearing it:
+        // this panel is the sole advisor-facing replacement for automatic
+        // carry-forward, so a failed refresh must not look identical to "no
+        // unresolved recommendations."
+        setLoadError(
+          error instanceof Error
+            ? error.message
+            : "Previous deferred work could not be loaded.",
+        );
       })
       .finally(() => {
         if (!controller.signal.aborted) setLoading(false);
       });
 
     return () => controller.abort();
-  }, [vehicleId, workOrderId]);
+  }, [vehicleId, workOrderId, reloadNonce]);
+
+  const retryLoad = useCallback(() => setReloadNonce((n) => n + 1), []);
+
+  function removeItem(key: string) {
+    actionIdsRef.current.delete(key);
+    setItems((prev) => prev.filter((row) => row.actionQuoteLineId !== key));
+  }
 
   async function handleAdd(item: DeferredItem) {
-    setPending((prev) => ({ ...prev, [item.rootLineId]: "add" }));
+    const key = item.actionQuoteLineId;
+    setPending((prev) => ({ ...prev, [key]: "add" }));
     try {
-      const newLineId = crypto.randomUUID();
+      const newLineId = actionIdFor(key);
       const response = await fetch(
         `/api/work-orders/${workOrderId}/deferred-history/add`,
         {
@@ -126,22 +158,23 @@ export default function PreviousDeferredWorkActionsPanel({
       }
 
       toast.success(`Added "${item.title}" to this work order.`);
-      setItems((prev) => prev.filter((row) => row.rootLineId !== item.rootLineId));
+      removeItem(key);
     } catch {
       toast.error("Could not add this recommendation.");
     } finally {
       setPending((prev) => {
         const next = { ...prev };
-        delete next[item.rootLineId];
+        delete next[key];
         return next;
       });
     }
   }
 
   async function handleDecline(item: DeferredItem) {
-    setPending((prev) => ({ ...prev, [item.rootLineId]: "decline" }));
+    const key = item.actionQuoteLineId;
+    setPending((prev) => ({ ...prev, [key]: "decline" }));
     try {
-      const actionId = crypto.randomUUID();
+      const actionId = actionIdFor(key);
       const response = await fetch(
         `/api/work-orders/${workOrderId}/deferred-history/decline`,
         {
@@ -167,20 +200,21 @@ export default function PreviousDeferredWorkActionsPanel({
       }
 
       toast.success(`Recorded a decline for "${item.title}".`);
-      setItems((prev) => prev.filter((row) => row.rootLineId !== item.rootLineId));
+      removeItem(key);
     } catch {
       toast.error("Could not record the decline.");
     } finally {
       setPending((prev) => {
         const next = { ...prev };
-        delete next[item.rootLineId];
+        delete next[key];
         return next;
       });
     }
   }
 
   async function handleResolveElsewhere(item: DeferredItem) {
-    setPending((prev) => ({ ...prev, [item.rootLineId]: "resolve" }));
+    const key = item.actionQuoteLineId;
+    setPending((prev) => ({ ...prev, [key]: "resolve" }));
     try {
       const response = await fetch(
         `/api/work-orders/${workOrderId}/deferred-history/resolve-elsewhere`,
@@ -201,19 +235,20 @@ export default function PreviousDeferredWorkActionsPanel({
       }
 
       toast.success(`Marked "${item.title}" completed elsewhere.`);
-      setItems((prev) => prev.filter((row) => row.rootLineId !== item.rootLineId));
+      removeItem(key);
     } catch {
       toast.error("Could not resolve this recommendation.");
     } finally {
       setPending((prev) => {
         const next = { ...prev };
-        delete next[item.rootLineId];
+        delete next[key];
         return next;
       });
     }
   }
 
-  if (!vehicleId || (!loading && items.length === 0)) return null;
+  if (!vehicleId) return null;
+  if (!loading && items.length === 0 && !loadError) return null;
 
   return (
     <section
@@ -237,19 +272,31 @@ export default function PreviousDeferredWorkActionsPanel({
         ) : null}
       </div>
 
-      {loading && items.length === 0 ? (
+      {loadError ? (
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-sm text-red-700 dark:text-red-100">
+          <span>{loadError}</span>
+          <button
+            type="button"
+            onClick={retryLoad}
+            className="rounded-lg border border-red-500/45 px-3 py-1 text-xs font-semibold transition hover:bg-red-500/15"
+          >
+            Retry
+          </button>
+        </div>
+      ) : loading && items.length === 0 ? (
         <div className="mt-3 text-sm text-[color:var(--theme-text-muted)]">
           Checking previous recommendations…
         </div>
       ) : (
         <div className="mt-3 grid gap-2 lg:grid-cols-2">
           {items.map((item) => {
-            const itemPending = pending[item.rootLineId] ?? null;
+            const key = item.actionQuoteLineId;
+            const itemPending = pending[key] ?? null;
             const busy = itemPending !== null;
 
             return (
               <article
-                key={item.rootLineId}
+                key={key}
                 className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] p-3"
               >
                 <div className="flex items-start justify-between gap-3">

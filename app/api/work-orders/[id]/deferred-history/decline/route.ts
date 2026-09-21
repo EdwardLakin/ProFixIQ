@@ -74,6 +74,10 @@ const RPC_FAILURES = {
     status: 409,
     message: "That recommendation is missing its source repair.",
   },
+  DEFERRED_RECOMMENDATION_ALREADY_ACTIONED: {
+    status: 409,
+    message: "That recommendation was already acted on.",
+  },
   DEFERRED_RECOMMENDATION_ID_CONFLICT: {
     status: 409,
     message: "The request intent conflicts with existing data.",
@@ -114,8 +118,12 @@ export async function POST(
   const access = await requireShopScopedApiAccess();
   if (!access.ok) return access.response;
 
+  // Decline is a customer decision, the same authorization boundary as the
+  // canonical /api/work-orders/quotes/[id]/decline route: canAuthorizeQuotes,
+  // not canManageWorkOrders. lead_hand can manage work orders but is
+  // deliberately excluded from quote authorization in that role matrix.
   const actor = getActorCapabilities({ role: access.profile.role });
-  if (!actor.canManageWorkOrders) {
+  if (!actor.canAuthorizeQuotes) {
     return NextResponse.json(
       { ok: false, error: "You do not have permission to decline this recommendation." },
       { status: 403 },

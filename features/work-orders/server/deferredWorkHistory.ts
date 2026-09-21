@@ -338,10 +338,15 @@ export async function loadDeferredWorkHistoryForVehicle(input: {
         complaint: sourceLine?.complaint ?? null,
         decision,
         decisionAt: quoteTimestamp(original),
-        laborTotal: canViewPricing ? Number(original.labor_total ?? 0) : null,
-        partsTotal: canViewPricing ? Number(original.parts_total ?? 0) : null,
-        taxTotal: canViewPricing ? Number(original.tax_total ?? 0) : null,
-        grandTotal: canViewPricing ? Number(original.grand_total ?? 0) : null,
+        // Sourced from `latest`, not `original`: Add carries actionQuoteLineId
+        // (latest.id)'s current pricing forward, so the displayed total must
+        // match what Add will actually materialize, not the (possibly
+        // superseded) original quote's pricing shown for display continuity
+        // elsewhere on this item.
+        laborTotal: canViewPricing ? Number(latest.labor_total ?? 0) : null,
+        partsTotal: canViewPricing ? Number(latest.parts_total ?? 0) : null,
+        taxTotal: canViewPricing ? Number(latest.tax_total ?? 0) : null,
+        grandTotal: canViewPricing ? Number(latest.grand_total ?? 0) : null,
       };
     })
     .sort((left, right) => right.decisionAt.localeCompare(left.decisionAt));

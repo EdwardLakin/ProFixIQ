@@ -77,6 +77,10 @@ const RPC_FAILURES = {
     status: 409,
     message: "That recommendation is missing its source repair.",
   },
+  DEFERRED_RECOMMENDATION_ALREADY_ACTIONED: {
+    status: 409,
+    message: "That recommendation was already acted on.",
+  },
   DEFERRED_RECOMMENDATION_ID_CONFLICT: {
     status: 409,
     message: "The request intent conflicts with existing data.",

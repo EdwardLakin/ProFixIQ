@@ -187,6 +187,35 @@ describe("deferred-history decline route", () => {
       }),
     );
   });
+
+  // lead_hand can manage work orders but is deliberately excluded from quote
+  // authorization (the canonical /api/work-orders/quotes/[id]/decline route
+  // requires canAuthorizeQuotes). Decline is the same kind of decision.
+  it("rejects a lead_hand (canManageWorkOrders but not canAuthorizeQuotes) before calling the RPC", async () => {
+    mockAccess("lead_hand");
+    const rpc = mockRpc({
+      data: { ok: true, quote_line_id: "73600000-0000-4000-8000-000000000009", idempotent: false },
+      error: null,
+    });
+
+    const response = await declinePOST(
+      new Request(
+        `http://localhost/api/work-orders/${WORK_ORDER}/deferred-history/decline`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": ACTION_ID,
+          },
+          body: JSON.stringify({ quoteLineId: QUOTE_LINE, actionId: ACTION_ID }),
+        },
+      ),
+      ctx,
+    );
+
+    expect(response.status).toBe(403);
+    expect(rpc).not.toHaveBeenCalled();
+  });
 });
 
 describe("deferred-history resolve-elsewhere route", () => {
@@ -247,5 +276,30 @@ describe("deferred-history resolve-elsewhere route", () => {
     const body = (await response.json()) as { idempotent: boolean };
 
     expect(body.idempotent).toBe(true);
+  });
+
+  // Completed elsewhere permanently records a customer outcome, the same
+  // authorization boundary as Decline.
+  it("rejects a lead_hand (canManageWorkOrders but not canAuthorizeQuotes) before calling the RPC", async () => {
+    mockAccess("lead_hand");
+    const rpc = mockRpc({
+      data: { ok: true, quote_line_id: QUOTE_LINE, idempotent: false },
+      error: null,
+    });
+
+    const response = await resolvePOST(
+      new Request(
+        `http://localhost/api/work-orders/${WORK_ORDER}/deferred-history/resolve-elsewhere`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quoteLineId: QUOTE_LINE }),
+        },
+      ),
+      ctx,
+    );
+
+    expect(response.status).toBe(403);
+    expect(rpc).not.toHaveBeenCalled();
   });
 });
