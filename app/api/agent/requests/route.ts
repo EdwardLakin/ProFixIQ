@@ -180,26 +180,61 @@ type CreateAgentRequestBody = {
   attachmentIds?: string[];
 };
 
+const ACTIVE_REQUEST_STATUSES: AgentRequestStatus[] = [
+  "submitted",
+  "in_progress",
+  "awaiting_approval",
+  "approved",
+];
+
 export async function GET() {
   const access = await requireOpsOperatorApiAccess();
   if (!access.ok) return access.response;
   const { supabase } = access;
 
-  const { data, error } = await supabase
-    .from("agent_requests")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(100);
+  // The pipeline-wide dependency-outage banner needs every active/blocked
+  // request, not just whichever happen to land in the newest page -- a
+  // .limit(100) on created_at alone would silently drop older blocked
+  // requests once the table has more than 100 rows, undercounting outages.
+  // Fetch the full active set separately from the recent-history window and
+  // merge them.
+  const [activeResult, recentResult] = await Promise.all([
+    supabase
+      .from("agent_requests")
+      .select("*")
+      .in("status", ACTIVE_REQUEST_STATUSES)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("agent_requests")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(100),
+  ]);
 
-  if (error) {
-    console.error("agent_requests GET error", error);
+  if (activeResult.error) {
+    console.error("agent_requests GET error", activeResult.error);
+    return NextResponse.json(
+      { error: "Failed to load agent requests" },
+      { status: 500 },
+    );
+  }
+  if (recentResult.error) {
+    console.error("agent_requests GET error", recentResult.error);
     return NextResponse.json(
       { error: "Failed to load agent requests" },
       { status: 500 },
     );
   }
 
-  const requests = await Promise.all((data ?? []).map(syncAgentRequestRow));
+  const byId = new Map<string, AgentRequestRow>();
+  for (const row of [...(activeResult.data ?? []), ...(recentResult.data ?? [])]) {
+    byId.set(row.id, row);
+  }
+  const data = [...byId.values()].sort(
+    (a, b) => Date.parse(b.created_at) - Date.parse(a.created_at),
+  );
+
+  const requests = await Promise.all(data.map(syncAgentRequestRow));
   return NextResponse.json({ requests });
 }
 

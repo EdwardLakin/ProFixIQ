@@ -51,7 +51,43 @@ export type AgentPipelineDiagnostic = {
   explanation: string;
   actionLabel: string | null;
   ageMinutes: number | null;
+  /**
+   * The internal engineering dependency the Agent reported this stage is blocked
+   * on (e.g. "openai_quota"), when known. Lets callers group/aggregate requests
+   * blocked by the same underlying outage instead of treating each one as an
+   * unrelated failure.
+   */
+  internalDependency: string | null;
 };
+
+const DEPENDENCY_LABELS: Record<string, string> = {
+  openai_quota: "OpenAI quota exhausted",
+  openai_rate_limit: "OpenAI rate limited",
+  agent_authentication: "Agent authentication failing",
+  agent_network: "Agent network dependency down",
+  profixiq_database_evidence: "Database evidence provider unavailable",
+  repository_evidence_retrieval: "Repository evidence retrieval failing",
+  specialist_conflict: "Specialist review conflict",
+  specialist_evidence_gap: "Specialist evidence gap",
+};
+
+export function describeInternalDependency(dependency: string): string {
+  return DEPENDENCY_LABELS[dependency] ?? dependency.replace(/_/g, " ");
+}
+
+// Only these identify a genuinely shared, infrastructure-wide incident where
+// grouping requests together is meaningful. specialist_conflict and
+// specialist_evidence_gap are per-request specialist review outcomes -- two
+// requests can independently report the same label without sharing any
+// underlying cause, so they must not be merged into one "outage".
+const PIPELINE_WIDE_OUTAGE_DEPENDENCY_KEYS = new Set<string>([
+  "openai_quota",
+  "openai_rate_limit",
+  "agent_authentication",
+  "agent_network",
+  "profixiq_database_evidence",
+  "repository_evidence_retrieval",
+]);
 
 const STALE_ACTIVE_MINUTES = 30;
 const INTERNAL_REQUIREMENT_PATTERNS = [
@@ -129,6 +165,7 @@ export function diagnoseAgentPipelineRequest(
       explanation: "The request reached the Agent boundary but its bridge or API credential was rejected. Validate the protected Agent readiness path before replaying it.",
       actionLabel: "Retry dispatch",
       ageMinutes,
+      internalDependency: null,
     };
   }
 
@@ -140,11 +177,19 @@ export function diagnoseAgentPipelineRequest(
       explanation: "The request did not complete its current pipeline transition. Inspect the recorded error before retrying the durable request.",
       actionLabel: "Retry request",
       ageMinutes,
+      internalDependency: null,
     };
   }
 
   if (caseStatus === "blocked") {
+    const dependency = normalizedText(team?.internalDependency);
+
     if ((request.reporterQuestions?.length ?? 0) > 0) {
+      // A case can be blocked on both an internal dependency and reporter
+      // questions at once. Keep the dependency attached even though the
+      // reporter-facing title/action take priority here, so this case still
+      // counts toward the pipeline-wide outage aggregation instead of
+      // silently disappearing from it.
       return {
         kind: "reporter_input",
         severity: "warning",
@@ -152,19 +197,47 @@ export function diagnoseAgentPipelineRequest(
         explanation: `The ${stage} stage is paused for information only the reporter can provide. Engineering evidence tasks remain internal to the Agent.`,
         actionLabel: "Provide evidence",
         ageMinutes,
+        internalDependency: dependency,
       };
     }
 
     const conflictCount = team?.conflicts?.length ?? 0;
+
+    // A specialist decision conflict gets its own explanation regardless of which
+    // internal dependency label came back with it; the dependency is still
+    // attached below so it can be aggregated into a pipeline-wide outage signal.
+    if (conflictCount > 0) {
+      return {
+        kind: "internal_blocker",
+        severity: "error",
+        title: "Specialist review blocked",
+        explanation: `${conflictCount} specialist decision conflict${conflictCount === 1 ? "" : "s"} must be resolved inside engineering; the reporter is not responsible for producing code evidence.`,
+        actionLabel: "Restart from stage",
+        ageMinutes,
+        internalDependency: dependency,
+      };
+    }
+
+    if (dependency) {
+      return {
+        kind: "internal_blocker",
+        severity: "error",
+        title: describeInternalDependency(dependency),
+        explanation: `The ${stage} stage is paused on an internal Agent dependency (${describeInternalDependency(dependency).toLowerCase()}), not a code or reporter issue. Resolve the dependency, then retry.`,
+        actionLabel: "Restart from stage",
+        ageMinutes,
+        internalDependency: dependency,
+      };
+    }
+
     return {
       kind: "internal_blocker",
       severity: "error",
-      title: conflictCount > 0 ? "Specialist review blocked" : "Internal Agent dependency blocked",
-      explanation: conflictCount > 0
-        ? `${conflictCount} specialist decision conflict${conflictCount === 1 ? "" : "s"} must be resolved inside engineering; the reporter is not responsible for producing code evidence.`
-        : `The ${stage} stage is blocked on internal engineering work${team?.internalDependency ? ` (${team.internalDependency.replace(/_/g, " ")})` : ""}.`,
+      title: "Internal Agent dependency blocked",
+      explanation: `The ${stage} stage is blocked on internal engineering work.`,
       actionLabel: "Restart from stage",
       ageMinutes,
+      internalDependency: null,
     };
   }
 
@@ -179,6 +252,7 @@ export function diagnoseAgentPipelineRequest(
       explanation: "The automated review completed and the pipeline is intentionally waiting for a human approval decision.",
       actionLabel: "Review approval package",
       ageMinutes,
+      internalDependency: null,
     };
   }
 
@@ -192,6 +266,7 @@ export function diagnoseAgentPipelineRequest(
       explanation: `No Agent stage progress has been recorded for ${ageMinutes} minutes while the request remains ${status.replace(/_/g, " ")}.`,
       actionLabel: "Inspect run",
       ageMinutes,
+      internalDependency: null,
     };
   }
 
@@ -203,6 +278,7 @@ export function diagnoseAgentPipelineRequest(
       explanation: `The request is active in ${stage}.`,
       actionLabel: "Inspect run",
       ageMinutes,
+      internalDependency: null,
     };
   }
 
@@ -213,8 +289,16 @@ export function diagnoseAgentPipelineRequest(
     explanation: `The request is ${status.replace(/_/g, " ")}.`,
     actionLabel: "View evidence",
     ageMinutes,
+    internalDependency: null,
   };
 }
+
+export type AgentPipelineDependencyOutage = {
+  dependency: string;
+  label: string;
+  count: number;
+  requestIds: string[];
+};
 
 export function summarizeAgentPipeline(
   requests: AgentPipelineRequestSnapshot[],
@@ -228,6 +312,26 @@ export function summarizeAgentPipeline(
     diagnostic.severity === "warning" || diagnostic.severity === "error",
   );
 
+  // Group requests blocked on the same internal Agent dependency (e.g. an OpenAI
+  // quota outage) so operators see one actionable signal ("N requests paused —
+  // OpenAI quota exhausted") instead of N unrelated-looking blocked rows.
+  const outagesByDependency = new Map<string, string[]>();
+  for (const { requestId, diagnostic } of diagnostics) {
+    if (!diagnostic.internalDependency) continue;
+    if (!PIPELINE_WIDE_OUTAGE_DEPENDENCY_KEYS.has(diagnostic.internalDependency)) continue;
+    const existing = outagesByDependency.get(diagnostic.internalDependency) ?? [];
+    existing.push(requestId);
+    outagesByDependency.set(diagnostic.internalDependency, existing);
+  }
+  const dependencyOutages: AgentPipelineDependencyOutage[] = [...outagesByDependency.entries()]
+    .map(([dependency, requestIds]) => ({
+      dependency,
+      label: describeInternalDependency(dependency),
+      count: requestIds.length,
+      requestIds,
+    }))
+    .sort((a, b) => b.count - a.count);
+
   return {
     state: attention.length > 0 ? "needs_attention" as const : "healthy" as const,
     issueCount: attention.length,
@@ -240,5 +344,6 @@ export function summarizeAgentPipeline(
     ).length,
     staleCount: diagnostics.filter(({ diagnostic }) => diagnostic.kind === "stalled").length,
     approvalCount: diagnostics.filter(({ diagnostic }) => diagnostic.kind === "awaiting_approval").length,
+    dependencyOutages,
   };
 }

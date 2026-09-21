@@ -354,13 +354,16 @@ export default function AgentConsolePage() {
         : "Retry Request";
   const actionBusy = isPending || retryingRequestId === selected?.id;
 
-  function inspectFirstPipelineIssue() {
-    const requestId = pipelineSummary.issueIds[0];
+  function inspectRequestById(requestId: string | undefined) {
     if (!requestId) return;
     const request = requests.find((item) => item.id === requestId);
     if (!request) return;
     setSelected(request);
     setInspectionMode("explain");
+  }
+
+  function inspectFirstPipelineIssue() {
+    inspectRequestById(pipelineSummary.issueIds[0]);
   }
 
   async function loadRequests() {
@@ -742,6 +745,36 @@ export default function AgentConsolePage() {
             )}
           </div>
         </div>
+
+        {pipelineSummary.dependencyOutages.length > 0 && (
+          <div className="mt-3 space-y-2 border-t border-[color:var(--theme-border-soft)] pt-3">
+            {pipelineSummary.dependencyOutages.map((outage) => (
+              <div
+                key={outage.dependency}
+                className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-red-500/40 bg-red-500/5 px-3 py-2"
+              >
+                <p className="text-xs text-red-200">
+                  <span className="font-semibold">
+                    {outage.count} request{outage.count === 1 ? "" : "s"} last reported blocked
+                  </span>
+                  {" — "}
+                  {outage.label}. This reflects each case&apos;s last synced status, not a live
+                  health check, so the dependency may already be resolved; inspect to confirm
+                  before escalating.
+                </p>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="border-red-500/60 text-[0.7rem] font-semibold text-red-200 hover:bg-red-600 hover:text-[color:var(--theme-text-on-accent)]"
+                  onClick={() => inspectRequestById(outage.requestIds[0])}
+                >
+                  Inspect
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
       </Card>
 
       <div className="grid gap-6 md:grid-cols-[minmax(0,1.1fr)_minmax(0,1.4fr)]">
