@@ -209,7 +209,7 @@ export default function BatteryGrid({ sectionIndex, items, locked }: Props) {
                                 className="h-[34px] w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 pr-12 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-orange-500 focus:outline-none focus:ring-2 focus:ring-orange-500/70"
                                 placeholder={kind === "rating" ? "Rating" : "Tested"}
                                 inputMode="decimal"
-                                type="number"
+                                type="text"
                                 disabled={locked}
                                 onCommit={(next) => commit(cell.idx, next)}
                               />

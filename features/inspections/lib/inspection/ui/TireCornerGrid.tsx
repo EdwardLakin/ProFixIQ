@@ -628,7 +628,7 @@ export default function TireGrid(props: Props) {
                     className={inputCls()}
                     placeholder={e.cell ? "Value" : "—"}
                     inputMode={isText(e.cell) ? "text" : "decimal"}
-                    type={isText(e.cell) ? "text" : "number"}
+                    type="text"
                     onBlur={(ev) => e.cell && commitValue(e.cell.idx, ev.currentTarget.value)}
                     disabled={!e.cell}
                   />
