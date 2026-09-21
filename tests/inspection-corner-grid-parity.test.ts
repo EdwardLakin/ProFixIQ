@@ -53,6 +53,21 @@ describe("inspection corner-grid parity", () => {
   });
 
 
+  it("keeps Safari measurement inputs natively tabbable", () => {
+    for (const grid of [hydraulicBrakeGrid, hydraulicTireGrid, tireCornerGrid]) {
+      const measurementInputIndex = grid.indexOf('data-inspection-measurement-input="true"');
+      expect(measurementInputIndex).toBeGreaterThanOrEqual(0);
+
+      const nearbyInput = grid.slice(
+        Math.max(0, measurementInputIndex - 500),
+        measurementInputIndex + 120,
+      );
+      expect(nearbyInput).toContain('type="text"');
+      expect(nearbyInput).not.toContain('type="number"');
+      expect(nearbyInput).toContain('inputMode=');
+    }
+  });
+
   it("supports keyboard traversal across measurement inputs", () => {
     for (const grid of [
       hydraulicBrakeGrid,
