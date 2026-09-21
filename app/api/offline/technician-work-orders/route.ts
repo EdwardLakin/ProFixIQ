@@ -276,7 +276,7 @@ export async function GET() {
     .from("shops")
     .select("labor_rate")
     .eq("id", profile.shop_id)
-    .maybeSingle<{ labor_rate: number | string | null }>();
+    .maybeSingle<{ labor_rate: number | null }>();
   let lines: WorkOrderLine[];
   let quoteLines: QuoteLine[];
   let vehicles: Vehicle[];
@@ -409,22 +409,10 @@ export async function GET() {
     ]),
   );
 
-  const rawShopLaborRate = shopResult.data?.labor_rate;
-  const parsedShopLaborRate =
-    typeof rawShopLaborRate === "number"
-      ? rawShopLaborRate
-      : typeof rawShopLaborRate === "string"
-        ? Number(rawShopLaborRate)
-        : null;
-  // Postgres `numeric` columns (like shops.labor_rate) are serialized as
-  // strings by PostgREST to avoid floating-point precision loss, so a
-  // strict `typeof === "number"` check would always discard a configured
-  // rate here.
   const shopLaborRate =
     financial.access.canViewSellPricing &&
-    parsedShopLaborRate != null &&
-    Number.isFinite(parsedShopLaborRate)
-      ? parsedShopLaborRate
+    typeof shopResult.data?.labor_rate === "number"
+      ? shopResult.data.labor_rate
       : null;
 
   const bundle: TechnicianOfflineBundle = {
