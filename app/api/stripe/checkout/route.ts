@@ -258,6 +258,12 @@ function buildCheckoutParams(input: {
   trialDays: number;
   metadata: Stripe.MetadataParam;
   identifierPrefix: string;
+  // Only the USD product-package catalog (PRODUCT_PACKAGE_BILLING_MODEL)
+  // wants Adaptive Pricing. The legacy base_plus_seats_v2 starter/unlimited
+  // catalog is a fixed CAD contract for existing customers; converting it to
+  // location-dependent currency would be an unapproved contract change (see
+  // AGENTS.md's Additive-First Change Control).
+  usdPackageCheckout: boolean;
 }): CheckoutCreateParams {
   return {
     mode: "subscription",
@@ -267,7 +273,9 @@ function buildCheckoutParams(input: {
     cancel_url: input.cancelUrl,
     allow_promotion_codes: true,
     payment_method_collection: "always",
-    adaptive_pricing: { enabled: true },
+    ...(input.usdPackageCheckout
+      ? { adaptive_pricing: { enabled: true } }
+      : {}),
     ...(input.clientReferenceId
       ? { client_reference_id: input.clientReferenceId }
       : {}),
@@ -384,6 +392,7 @@ export async function POST(req: Request) {
           trialDays,
           metadata,
           identifierPrefix: "profixiq_acquisition",
+          usdPackageCheckout: selection.packageKey !== null,
         }),
         { idempotencyKey: `profixiq:acquisition:${intent.id}` },
       );
@@ -457,6 +466,7 @@ export async function POST(req: Request) {
         trialDays: enableTrial ? trialDays : 0,
         metadata,
         identifierPrefix: "profixiq_owner",
+        usdPackageCheckout: selection.packageKey !== null,
       }),
       { idempotencyKey: `profixiq:shop-checkout:${shop.id}:${attemptId}` },
     );
