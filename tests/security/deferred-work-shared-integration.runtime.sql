@@ -12,16 +12,22 @@
 -- Decline, and Completed elsewhere.
 begin;
 
+-- auth.users is only writable by the unrestricted connection role this
+-- script starts under -- every auth.users insert must happen here, before
+-- "Establish the service_role execution context" below drops to a role that
+-- cannot write it.
 insert into auth.users (id, email, raw_user_meta_data)
 values
   ('74100000-0000-4000-8000-000000000001', 'deferred-owner@example.com', '{"full_name":"Deferred Owner"}'::jsonb),
-  ('74100000-0000-4000-8000-000000000002', 'deferred-mechanic@example.com', '{"full_name":"Deferred Mechanic"}'::jsonb)
+  ('74100000-0000-4000-8000-000000000002', 'deferred-mechanic@example.com', '{"full_name":"Deferred Mechanic"}'::jsonb),
+  ('74100000-0000-4000-8000-000000000003', 'deferred-lead-hand@example.com', '{"full_name":"Deferred Lead Hand"}'::jsonb)
 on conflict (id) do nothing;
 
 insert into public.profiles (id, user_id, role, full_name)
 values
   ('74100000-0000-4000-8000-000000000001', '74100000-0000-4000-8000-000000000001', 'owner', 'Deferred Owner'),
-  ('74100000-0000-4000-8000-000000000002', '74100000-0000-4000-8000-000000000002', 'mechanic', 'Deferred Mechanic')
+  ('74100000-0000-4000-8000-000000000002', '74100000-0000-4000-8000-000000000002', 'mechanic', 'Deferred Mechanic'),
+  ('74100000-0000-4000-8000-000000000003', '74100000-0000-4000-8000-000000000003', 'lead_hand', 'Deferred Lead Hand')
 on conflict (id) do update
 set user_id = excluded.user_id,
     role = excluded.role,
@@ -39,7 +45,8 @@ update public.profiles
 set shop_id = '74200000-0000-4000-8000-000000000001'
 where id in (
   '74100000-0000-4000-8000-000000000001',
-  '74100000-0000-4000-8000-000000000002'
+  '74100000-0000-4000-8000-000000000002',
+  '74100000-0000-4000-8000-000000000003'
 );
 
 insert into public.vehicles (id, shop_id, unit_number, vin, year, make, model)
@@ -734,28 +741,12 @@ begin
 end;
 $resolve_elsewhere$;
 
--- A lead_hand can manage work orders but is deliberately excluded from
--- quote/customer-decision authorization elsewhere in the app (the canonical
+-- A lead_hand (profile 74100000-...003, created at the top of this file) can
+-- manage work orders but is deliberately excluded from quote/customer-
+-- decision authorization elsewhere in the app (the canonical
 -- /api/work-orders/quotes/[id]/decline route requires canAuthorizeQuotes).
 -- Decline and Completed-elsewhere are the same kind of decision and must
 -- enforce the same boundary.
-insert into auth.users (id, email, raw_user_meta_data)
-values ('74100000-0000-4000-8000-000000000003', 'deferred-lead-hand@example.com', '{"full_name":"Deferred Lead Hand"}'::jsonb)
-on conflict (id) do nothing;
-
-insert into public.profiles (id, user_id, role, full_name, shop_id)
-values (
-  '74100000-0000-4000-8000-000000000003',
-  '74100000-0000-4000-8000-000000000003',
-  'lead_hand', 'Deferred Lead Hand',
-  '74200000-0000-4000-8000-000000000001'
-)
-on conflict (id) do update
-set user_id = excluded.user_id,
-    role = excluded.role,
-    full_name = excluded.full_name,
-    shop_id = excluded.shop_id;
-
 do $decline_forbidden_for_lead_hand$
 declare
   v_denied boolean := false;
