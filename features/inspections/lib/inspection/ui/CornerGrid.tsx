@@ -137,7 +137,7 @@ export default function CornerGrid(props: CornerGridProps) {
     <div className="relative min-w-0">
       <input
         className={inputCls()}
-        type="number"
+        type="text"
         inputMode="decimal"
         step="any"
         placeholder={cell ? "Enter value" : "—"}
