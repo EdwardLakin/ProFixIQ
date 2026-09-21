@@ -31,6 +31,7 @@ import PartsDrawer from "@/features/parts/components/PartsDrawer";
 import { JobCard } from "@/features/work-orders/components/JobCard";
 import WorkOrderAiOperationalRecommendations from "@/features/work-orders/components/WorkOrderAiOperationalRecommendations";
 import WorkOrderAiFreshnessBadge from "@/features/work-orders/components/WorkOrderAiFreshnessBadge";
+import PreviousDeferredWorkActionsPanel from "@/features/work-orders/components/PreviousDeferredWorkActionsPanel";
 import WorkOrderMediaGallery from "@/features/work-orders/components/workorders/extras/WorkOrderMediaGallery";
 import type { WorkOrderEvidenceItem } from "@/features/work-orders/lib/evidence/workOrderEvidence";
 import StatusBadge from "@/features/shared/components/ui/StatusBadge";
@@ -1986,6 +1987,13 @@ export default function WorkOrderIdClient(): JSX.Element {
               <div className="rounded-lg border border-[color:var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs text-muted-foreground">
                 Refreshing work order data…
               </div>
+            ) : null}
+
+            {vehicle?.id ? (
+              <PreviousDeferredWorkActionsPanel
+                workOrderId={wo.id}
+                vehicleId={vehicle.id}
+              />
             ) : null}
             <section className={cn(PANEL_VARIANTS.secondary, showWoContext ? "p-2" : "hidden")}>
               <button

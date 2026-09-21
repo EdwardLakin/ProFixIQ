@@ -25860,6 +25860,8 @@ export type Database = {
           notes: string | null
           parts_total: number | null
           qty: number | null
+          resolved_elsewhere_at: string | null
+          resolved_elsewhere_by_user_id: string | null
           sent_at: string | null
           sent_by: string | null
           sent_to_customer_at: string | null
@@ -25910,6 +25912,8 @@ export type Database = {
           notes?: string | null
           parts_total?: number | null
           qty?: number | null
+          resolved_elsewhere_at?: string | null
+          resolved_elsewhere_by_user_id?: string | null
           sent_at?: string | null
           sent_by?: string | null
           sent_to_customer_at?: string | null
@@ -25960,6 +25964,8 @@ export type Database = {
           notes?: string | null
           parts_total?: number | null
           qty?: number | null
+          resolved_elsewhere_at?: string | null
+          resolved_elsewhere_by_user_id?: string | null
           sent_at?: string | null
           sent_by?: string | null
           sent_to_customer_at?: string | null
@@ -28728,6 +28734,40 @@ export type Database = {
           fleet_name: string
           invite_id: string
         }[]
+      }
+      add_deferred_recommendation_to_work_order: {
+        Args: {
+          p_actor_profile_id: string
+          p_authenticated_user_id: string
+          p_new_line_id: string
+          p_quote_line_id: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
+      decline_deferred_recommendation: {
+        Args: {
+          p_action_id: string
+          p_actor_profile_id: string
+          p_authenticated_user_id: string
+          p_note: string | null
+          p_quote_line_id: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
+      resolve_deferred_recommendation_elsewhere: {
+        Args: {
+          p_actor_profile_id: string
+          p_authenticated_user_id: string
+          p_note: string | null
+          p_quote_line_id: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
       }
       create_manual_work_order_line_atomic: {
         Args: {

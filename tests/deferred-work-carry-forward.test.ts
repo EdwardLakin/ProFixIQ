@@ -318,4 +318,38 @@ describe("create-work-order deferred history", () => {
       decisionAt: "2026-08-09T18:00:00Z",
     });
   });
+
+  it("exposes actionQuoteLineId as the latest quote line, distinct from the display quoteLineId", async () => {
+    const tables = baseTables();
+    tables.work_order_quote_lines = [
+      quote(),
+      quote({
+        id: "quote-2",
+        source_row_id: "quote-1",
+        metadata: { carry_forward: true },
+        decline_reason: "Customer deferred again",
+        declined_at: "2026-08-09T18:00:00Z",
+        updated_at: "2026-08-09T18:00:00Z",
+      }),
+    ];
+
+    const { body } = await callRoute(tables);
+
+    expect(body.items).toHaveLength(1);
+    expect(body.items?.[0]).toMatchObject({
+      quoteLineId: "quote-1",
+      actionQuoteLineId: "quote-2",
+    });
+  });
+
+  it("excludes a recommendation the advisor marked completed elsewhere", async () => {
+    const tables = baseTables();
+    tables.work_order_quote_lines = [
+      quote({ resolved_elsewhere_at: "2026-08-10T12:00:00Z" }),
+    ];
+
+    const { body } = await callRoute(tables);
+
+    expect(body.items).toEqual([]);
+  });
 });
