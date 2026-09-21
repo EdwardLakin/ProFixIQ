@@ -30,4 +30,34 @@ describe("filterDeferredInvoiceLines", () => {
       { id: "three" },
     ]);
   });
+
+  it("excludes lines deferred via line_status even when status is on_hold, and strips it", () => {
+    // The shop-assistant decision path leaves status = 'on_hold' and sets
+    // line_status = 'deferred', distinct from the carry-forward path's
+    // status = 'deferred'. Both must exclude the line from invoicing.
+    const result = filterDeferredInvoiceLines([
+      {
+        id: "assistant-deferred",
+        status: "on_hold",
+        line_status: "deferred",
+        description: "shop-assistant deferred repair",
+      },
+      {
+        id: "carry-forward-deferred",
+        status: "deferred",
+        line_status: null,
+        description: "carry-forward deferred repair",
+      },
+      {
+        id: "active",
+        status: "on_hold",
+        line_status: "pending",
+        description: "active on-hold repair",
+      },
+    ]);
+
+    expect(result).toEqual([
+      { id: "active", description: "active on-hold repair" },
+    ]);
+  });
 });

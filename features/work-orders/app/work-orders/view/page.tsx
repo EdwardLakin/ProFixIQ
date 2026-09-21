@@ -97,6 +97,7 @@ const ACTIVE_LINE_EXCLUDED = new Set([
   "closed",
   "cancelled",
   "declined",
+  "deferred",
 ]);
 
 const INPUT_DARK =

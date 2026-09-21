@@ -490,4 +490,566 @@ begin
 end;
 $descendant_completion$;
 
+-- ---------------------------------------------------------------------------
+-- Regression coverage for PR #1637 review findings fixed after the fact
+-- (#1637 shipped with 6 unresolved P1 threads; this section exercises each).
+-- ---------------------------------------------------------------------------
+
+-- Finding: two deferred findings from ONE inspection must carry as two
+-- separate lineages, not collapse into one shared root.
+insert into public.vehicles (id, shop_id, unit_number, vin, year, make, model)
+values (
+  '73300000-0000-4000-8000-000000000003',
+  '73200000-0000-4000-8000-000000000001',
+  'DEF-03', '1DEFERRED00000003', 2023, 'Ram', '5500'
+);
+
+insert into public.work_orders (
+  id, shop_id, custom_id, vehicle_id, status, record_type, advisor_id
+)
+values (
+  '73400000-0000-4000-8000-000000000040',
+  '73200000-0000-4000-8000-000000000001',
+  'DEF-SOURCE-MULTI-INSPECTION',
+  '73300000-0000-4000-8000-000000000003',
+  'in_progress', 'work_order',
+  '73100000-0000-4000-8000-000000000001'
+);
+
+insert into public.work_order_lines (
+  id, shop_id, work_order_id, vehicle_id, line_type, status,
+  approval_state, job_type, complaint, description, notes, user_id
+)
+values (
+  '73500000-0000-4000-8000-000000000004',
+  '73200000-0000-4000-8000-000000000001',
+  '73400000-0000-4000-8000-000000000040',
+  '73300000-0000-4000-8000-000000000003',
+  'job', 'completed', 'approved', 'inspection',
+  'Annual inspection', 'Annual inspection',
+  'Inspection completed; two findings remain unresolved.',
+  '73100000-0000-4000-8000-000000000002'
+);
+
+insert into public.inspections (
+  id, shop_id, work_order_id, work_order_line_id, vehicle_id, user_id,
+  inspection_type, status, completed, is_draft, locked, is_canonical,
+  sync_revision, signing_cycle, started_at, finalized_at, finalized_by,
+  summary, notes, created_at, updated_at
+)
+values (
+  '73700000-0000-4000-8000-000000000002',
+  '73200000-0000-4000-8000-000000000001',
+  '73400000-0000-4000-8000-000000000040',
+  '73500000-0000-4000-8000-000000000004',
+  '73300000-0000-4000-8000-000000000003',
+  '73100000-0000-4000-8000-000000000002',
+  'annual', 'completed', true, false, true, true,
+  1, 1,
+  '2026-08-03T16:00:00Z', '2026-08-03T17:00:00Z',
+  '73100000-0000-4000-8000-000000000002',
+  '{"items":[{"item":"Front brake pads","status":"fail"},{"item":"Rear shocks","status":"fail"}]}'::jsonb,
+  'Two-finding inspection fixture',
+  '2026-08-03T16:00:00Z', '2026-08-03T17:00:00Z'
+);
+
+-- Both quote lines share the same inspection anchor as source_work_order_line_id
+-- but carry distinct inspection_finding_identity values, matching the real
+-- inspection-import shape (20260715060100_phase5_atomic_inspection_quote_import.sql).
+insert into public.work_order_quote_lines (
+  id, shop_id, work_order_id, work_order_line_id,
+  source_work_order_line_id, vehicle_id, title, description,
+  line_type, job_type, status, stage, decision,
+  labor_hours, est_labor_hours, labor_rate, labor_total, parts_total,
+  subtotal, discount_total, tax_total, grand_total, metadata,
+  declined_at, created_at, updated_at
+)
+values
+  (
+    '73600000-0000-4000-8000-000000000003',
+    '73200000-0000-4000-8000-000000000001',
+    '73400000-0000-4000-8000-000000000040',
+    null, '73500000-0000-4000-8000-000000000004',
+    '73300000-0000-4000-8000-000000000003',
+    'Front brake pads', 'Replace front brake pads',
+    'job', 'repair', 'declined', 'customer_declined', 'declined',
+    1.0, 1.0, 150.00, 150.00, 200.00,
+    350.00, 0, 17.50, 367.50,
+    '{"source":"inspection","inspection_finding_identity":"finding-brake-pads"}'::jsonb,
+    '2026-08-03T18:00:00Z', '2026-08-03T17:00:00Z', '2026-08-03T18:00:00Z'
+  ),
+  (
+    '73600000-0000-4000-8000-000000000004',
+    '73200000-0000-4000-8000-000000000001',
+    '73400000-0000-4000-8000-000000000040',
+    null, '73500000-0000-4000-8000-000000000004',
+    '73300000-0000-4000-8000-000000000003',
+    'Rear shocks', 'Replace rear shocks',
+    'job', 'repair', 'declined', 'customer_declined', 'declined',
+    2.0, 2.0, 150.00, 300.00, 400.00,
+    700.00, 0, 35.00, 735.00,
+    '{"source":"inspection","inspection_finding_identity":"finding-rear-shocks"}'::jsonb,
+    '2026-08-03T18:05:00Z', '2026-08-03T17:05:00Z', '2026-08-03T18:05:00Z'
+  );
+
+insert into public.work_orders (
+  id, shop_id, custom_id, vehicle_id, status, record_type, advisor_id
+)
+values (
+  '73400000-0000-4000-8000-000000000041',
+  '73200000-0000-4000-8000-000000000001',
+  'DEF-DEST-MULTI-1',
+  '73300000-0000-4000-8000-000000000003',
+  'in_progress', 'work_order',
+  '73100000-0000-4000-8000-000000000001'
+);
+
+do $multi_finding_carry$
+declare
+  v_count integer;
+begin
+  select count(*) into v_count
+  from public.work_order_lines line
+  where line.work_order_id = '73400000-0000-4000-8000-000000000041';
+
+  if v_count <> 2 then
+    raise exception 'Two-finding inspection carried % lines; expected 2 (one per finding).', v_count;
+  end if;
+
+  if not exists (
+    select 1 from public.work_order_quote_lines
+    where work_order_id = '73400000-0000-4000-8000-000000000041'
+      and metadata ->> 'inspection_finding_identity' = 'finding-brake-pads'
+  ) or not exists (
+    select 1 from public.work_order_quote_lines
+    where work_order_id = '73400000-0000-4000-8000-000000000041'
+      and metadata ->> 'inspection_finding_identity' = 'finding-rear-shocks'
+  ) then
+    raise exception 'Both inspection findings were not independently carried forward.';
+  end if;
+end;
+$multi_finding_carry$;
+
+-- Completing ONE finding's carried descendant must resolve only that finding,
+-- not the whole shared inspection anchor.
+update public.work_order_lines
+set status = 'completed'
+where work_order_id = '73400000-0000-4000-8000-000000000041'
+  and id in (
+    select work_order_line_id
+    from public.work_order_quote_lines
+    where work_order_id = '73400000-0000-4000-8000-000000000041'
+      and metadata ->> 'inspection_finding_identity' = 'finding-brake-pads'
+  );
+
+insert into public.work_orders (
+  id, shop_id, custom_id, vehicle_id, status, record_type, advisor_id
+)
+values (
+  '73400000-0000-4000-8000-000000000042',
+  '73200000-0000-4000-8000-000000000001',
+  'DEF-DEST-MULTI-2',
+  '73300000-0000-4000-8000-000000000003',
+  'in_progress', 'work_order',
+  '73100000-0000-4000-8000-000000000001'
+);
+
+do $multi_finding_partial_resolution$
+declare
+  v_count integer;
+begin
+  select count(*) into v_count
+  from public.work_order_lines line
+  where line.work_order_id = '73400000-0000-4000-8000-000000000042';
+
+  if v_count <> 1 then
+    raise exception 'Expected only the unresolved rear-shocks finding to carry; got % lines.', v_count;
+  end if;
+
+  if not exists (
+    select 1 from public.work_order_quote_lines
+    where work_order_id = '73400000-0000-4000-8000-000000000042'
+      and metadata ->> 'inspection_finding_identity' = 'finding-rear-shocks'
+  ) then
+    raise exception 'The still-unresolved rear-shocks finding did not carry forward.';
+  end if;
+
+  if exists (
+    select 1 from public.work_order_quote_lines
+    where work_order_id = '73400000-0000-4000-8000-000000000042'
+      and metadata ->> 'inspection_finding_identity' = 'finding-brake-pads'
+  ) then
+    raise exception 'The already-resolved brake-pads finding carried forward again.';
+  end if;
+end;
+$multi_finding_partial_resolution$;
+
+-- Finding: archival is a visibility state, not resolution. A declined
+-- recommendation whose source work order was archived must still carry.
+insert into public.vehicles (id, shop_id, unit_number, vin, year, make, model)
+values (
+  '73300000-0000-4000-8000-000000000004',
+  '73200000-0000-4000-8000-000000000001',
+  'DEF-04', '1DEFERRED00000004', 2020, 'Chevrolet', 'Silverado'
+);
+
+insert into public.work_orders (
+  id, shop_id, custom_id, vehicle_id, status, record_type, advisor_id
+)
+values (
+  '73400000-0000-4000-8000-000000000050',
+  '73200000-0000-4000-8000-000000000001',
+  'DEF-SOURCE-ARCHIVED',
+  '73300000-0000-4000-8000-000000000004',
+  'completed', 'work_order',
+  '73100000-0000-4000-8000-000000000001'
+);
+
+insert into public.work_order_lines (
+  id, shop_id, work_order_id, vehicle_id, line_type, status,
+  approval_state, job_type, complaint, description, notes, user_id
+)
+values (
+  '73500000-0000-4000-8000-000000000005',
+  '73200000-0000-4000-8000-000000000001',
+  '73400000-0000-4000-8000-000000000050',
+  '73300000-0000-4000-8000-000000000004',
+  'job', 'on_hold', 'declined', 'repair',
+  'Alignment out of spec', 'Perform four-wheel alignment',
+  'Customer declined at time of visit.',
+  '73100000-0000-4000-8000-000000000002'
+);
+
+insert into public.work_order_quote_lines (
+  id, shop_id, work_order_id, work_order_line_id,
+  source_work_order_line_id, vehicle_id, title, description,
+  line_type, job_type, status, stage, decision,
+  labor_hours, est_labor_hours, labor_rate, labor_total, parts_total,
+  subtotal, discount_total, tax_total, grand_total, metadata,
+  declined_at, created_at, updated_at
+)
+values (
+  '73600000-0000-4000-8000-000000000005',
+  '73200000-0000-4000-8000-000000000001',
+  '73400000-0000-4000-8000-000000000050',
+  null, '73500000-0000-4000-8000-000000000005',
+  '73300000-0000-4000-8000-000000000004',
+  'Four-wheel alignment', 'Perform four-wheel alignment',
+  'job', 'repair', 'declined', 'customer_declined', 'declined',
+  1.0, 1.0, 150.00, 150.00, 0,
+  150.00, 0, 7.50, 157.50,
+  '{}'::jsonb,
+  '2026-08-04T18:00:00Z', '2026-08-04T17:00:00Z', '2026-08-04T18:00:00Z'
+);
+
+-- Archive the source visit through the canonical action (direct writes to
+-- archived_at are rejected by enforce_work_order_archive_write_boundary).
+-- Archiving is a visibility change; it must not erase the still-unresolved
+-- recommendation.
+select public.archive_work_order_atomic(
+  '73200000-0000-4000-8000-000000000001',
+  '73400000-0000-4000-8000-000000000050',
+  '73100000-0000-4000-8000-000000000001'
+);
+
+insert into public.work_orders (
+  id, shop_id, custom_id, vehicle_id, status, record_type, advisor_id
+)
+values (
+  '73400000-0000-4000-8000-000000000051',
+  '73200000-0000-4000-8000-000000000001',
+  'DEF-DEST-ARCHIVED-1',
+  '73300000-0000-4000-8000-000000000004',
+  'in_progress', 'work_order',
+  '73100000-0000-4000-8000-000000000001'
+);
+
+do $archived_source_still_carries$
+begin
+  if not exists (
+    select 1
+    from public.work_order_lines line
+    join public.work_order_quote_lines quote_line
+      on quote_line.work_order_line_id = line.id
+    where line.work_order_id = '73400000-0000-4000-8000-000000000051'
+      and line.status = 'deferred'
+      and quote_line.source_work_order_line_id = '73500000-0000-4000-8000-000000000005'
+  ) then
+    raise exception 'Archiving the source visit erased its still-unresolved recommendation.';
+  end if;
+end;
+$archived_source_still_carries$;
+
+-- Finding: correcting a work order's vehicle while one of its carried lines
+-- has already been acted on must be rejected outright, not silently leave
+-- that line, its quote, and its evidence on the old vehicle under a work
+-- order that now points at a different one.
+insert into public.vehicles (id, shop_id, unit_number, vin, year, make, model)
+values
+  (
+    '73300000-0000-4000-8000-000000000005',
+    '73200000-0000-4000-8000-000000000001',
+    'DEF-05', '1DEFERRED00000005', 2019, 'GMC', 'Sierra'
+  ),
+  (
+    '73300000-0000-4000-8000-000000000006',
+    '73200000-0000-4000-8000-000000000001',
+    'DEF-06', '1DEFERRED00000006', 2018, 'GMC', 'Sierra'
+  );
+
+insert into public.work_orders (
+  id, shop_id, custom_id, vehicle_id, status, record_type, advisor_id
+)
+values (
+  '73400000-0000-4000-8000-000000000060',
+  '73200000-0000-4000-8000-000000000001',
+  'DEF-SOURCE-ACTEDON',
+  '73300000-0000-4000-8000-000000000005',
+  'in_progress', 'work_order',
+  '73100000-0000-4000-8000-000000000001'
+);
+
+insert into public.work_order_lines (
+  id, shop_id, work_order_id, vehicle_id, line_type, status,
+  approval_state, job_type, complaint, description, notes, user_id
+)
+values (
+  '73500000-0000-4000-8000-000000000006',
+  '73200000-0000-4000-8000-000000000001',
+  '73400000-0000-4000-8000-000000000060',
+  '73300000-0000-4000-8000-000000000005',
+  'job', 'on_hold', 'declined', 'repair',
+  'Serpentine belt cracked', 'Replace serpentine belt',
+  'Customer declined at time of visit.',
+  '73100000-0000-4000-8000-000000000002'
+);
+
+insert into public.work_order_quote_lines (
+  id, shop_id, work_order_id, work_order_line_id,
+  source_work_order_line_id, vehicle_id, title, description,
+  line_type, job_type, status, stage, decision,
+  labor_hours, est_labor_hours, labor_rate, labor_total, parts_total,
+  subtotal, discount_total, tax_total, grand_total, metadata,
+  declined_at, created_at, updated_at
+)
+values (
+  '73600000-0000-4000-8000-000000000006',
+  '73200000-0000-4000-8000-000000000001',
+  '73400000-0000-4000-8000-000000000060',
+  null, '73500000-0000-4000-8000-000000000006',
+  '73300000-0000-4000-8000-000000000005',
+  'Serpentine belt', 'Replace serpentine belt',
+  'job', 'repair', 'declined', 'customer_declined', 'declined',
+  0.5, 0.5, 150.00, 75.00, 60.00,
+  135.00, 0, 6.75, 141.75,
+  '{}'::jsonb,
+  '2026-08-06T18:00:00Z', '2026-08-06T17:00:00Z', '2026-08-06T18:00:00Z'
+);
+
+insert into public.work_orders (
+  id, shop_id, custom_id, vehicle_id, status, record_type, advisor_id
+)
+values (
+  '73400000-0000-4000-8000-000000000061',
+  '73200000-0000-4000-8000-000000000001',
+  'DEF-DEST-ACTEDON-1',
+  '73300000-0000-4000-8000-000000000005',
+  'in_progress', 'work_order',
+  '73100000-0000-4000-8000-000000000001'
+);
+
+-- Act on the carried line before the vehicle gets corrected: this is no
+-- longer passive context, it is live work in progress. The BEFORE UPDATE
+-- normalizer trigger (trg_normalize_work_order_line_status) rewrites
+-- 'in_progress' to the canonical 'active' on write, so the stored value to
+-- assert against is 'active', not the value this statement sends.
+update public.work_order_lines
+set status = 'in_progress'
+where work_order_id = '73400000-0000-4000-8000-000000000061'
+  and status = 'deferred';
+
+-- Correcting the work order's vehicle while a carried line has been acted on
+-- must be rejected outright, not silently leave that line, its quote, and its
+-- evidence pointing at the old vehicle under a work order that now points at
+-- a different one.
+do $blocked_acted_on_reassignment$
+declare
+  v_caught boolean := false;
+begin
+  begin
+    update public.work_orders
+    set vehicle_id = '73300000-0000-4000-8000-000000000006'
+    where id = '73400000-0000-4000-8000-000000000061';
+  exception
+    when others then
+      v_caught := true;
+      if position('already acted on' in sqlerrm) = 0 then
+        raise exception 'Unexpected error blocking vehicle reassignment over acted-on carried work: %', sqlerrm;
+      end if;
+  end;
+
+  if not v_caught then
+    raise exception 'Vehicle reassignment over an acted-on carried line was not rejected.';
+  end if;
+end;
+$blocked_acted_on_reassignment$;
+
+do $atomic_acted_on_guard_state$
+declare
+  v_line_count integer;
+  v_quote_count integer;
+begin
+  select count(*) into v_line_count
+  from public.work_order_lines
+  where work_order_id = '73400000-0000-4000-8000-000000000061'
+    and status = 'active'
+    and vehicle_id = '73300000-0000-4000-8000-000000000005';
+
+  if v_line_count <> 1 then
+    raise exception 'Acted-on carried line changed despite the rejected reassignment; expected 1 survivor on the original vehicle, got %.', v_line_count;
+  end if;
+
+  select count(*) into v_quote_count
+  from public.work_order_quote_lines
+  where work_order_id = '73400000-0000-4000-8000-000000000061'
+    and source_work_order_line_id = '73500000-0000-4000-8000-000000000006'
+    and lower(coalesce(metadata ->> 'carry_forward', 'false')) = 'true';
+
+  if v_quote_count <> 1 then
+    raise exception 'Acted-on carried line lost its quote despite the rejected reassignment; expected 1 survivor, got %.', v_quote_count;
+  end if;
+
+  if exists (
+    select 1 from public.work_orders
+    where id = '73400000-0000-4000-8000-000000000061'
+      and vehicle_id is distinct from '73300000-0000-4000-8000-000000000005'::uuid
+  ) then
+    raise exception 'Work order vehicle_id changed despite the rejected reassignment.';
+  end if;
+end;
+$atomic_acted_on_guard_state$;
+
+-- Finding: private.reconcile_work_order_state must count an ordinarily
+-- declined line (status = 'on_hold', line_status = 'declined', approval_state
+-- = 'declined') toward v_declined_count so a work order with both approved
+-- and declined lines resolves to approval_state = 'partial', not 'approved'.
+insert into public.vehicles (id, shop_id, unit_number, vin, year, make, model)
+values (
+  '73300000-0000-4000-8000-000000000007',
+  '73200000-0000-4000-8000-000000000001',
+  'DEF-07', '1DEFERRED00000007', 2024, 'Toyota', 'Tundra'
+);
+
+insert into public.work_orders (
+  id, shop_id, custom_id, vehicle_id, status, record_type, approval_state, advisor_id
+)
+values (
+  '73400000-0000-4000-8000-000000000070',
+  '73200000-0000-4000-8000-000000000001',
+  'DEF-RECONCILE-1',
+  '73300000-0000-4000-8000-000000000007',
+  'awaiting_approval', 'work_order', 'pending',
+  '73100000-0000-4000-8000-000000000001'
+);
+
+insert into public.work_order_lines (
+  id, shop_id, work_order_id, vehicle_id, line_type, status,
+  line_status, approval_state, job_type, complaint, description, user_id
+)
+values
+  (
+    '73500000-0000-4000-8000-000000000007',
+    '73200000-0000-4000-8000-000000000001',
+    '73400000-0000-4000-8000-000000000070',
+    '73300000-0000-4000-8000-000000000007',
+    'job', 'queued', null, 'approved', 'repair',
+    'Oil leak', 'Replace valve cover gasket',
+    '73100000-0000-4000-8000-000000000002'
+  ),
+  (
+    '73500000-0000-4000-8000-000000000008',
+    '73200000-0000-4000-8000-000000000001',
+    '73400000-0000-4000-8000-000000000070',
+    '73300000-0000-4000-8000-000000000007',
+    'job', 'on_hold', 'declined', 'declined', 'repair',
+    'Cabin air filter dirty', 'Replace cabin air filter',
+    '73100000-0000-4000-8000-000000000002'
+  );
+
+do $reconciler_partial_approval$
+declare
+  v_work_order public.work_orders%rowtype;
+begin
+  perform private.reconcile_work_order_state('73400000-0000-4000-8000-000000000070');
+
+  select wo.* into v_work_order
+  from public.work_orders wo
+  where wo.id = '73400000-0000-4000-8000-000000000070';
+
+  if v_work_order.approval_state is distinct from 'partial' then
+    raise exception 'Work order with one approved and one declined line resolved to approval_state = %, expected partial.',
+      v_work_order.approval_state;
+  end if;
+end;
+$reconciler_partial_approval$;
+
+-- Finding: the shop-assistant manual-decision path's canonical deferred shape
+-- (status = 'on_hold', line_status = 'deferred', approval_state = 'declined')
+-- is passive context, the same as a carry-forward row's status = 'deferred'.
+-- It must not count toward v_declined_count either, or a work order with an
+-- approved line and a shop-assistant-deferred line would resolve to
+-- 'partial'/'declined' instead of 'approved'.
+insert into public.work_orders (
+  id, shop_id, custom_id, vehicle_id, status, record_type, approval_state, advisor_id
+)
+values (
+  '73400000-0000-4000-8000-000000000071',
+  '73200000-0000-4000-8000-000000000001',
+  'DEF-RECONCILE-2',
+  '73300000-0000-4000-8000-000000000007',
+  'awaiting_approval', 'work_order', 'pending',
+  '73100000-0000-4000-8000-000000000001'
+);
+
+insert into public.work_order_lines (
+  id, shop_id, work_order_id, vehicle_id, line_type, status,
+  line_status, approval_state, job_type, complaint, description, user_id
+)
+values
+  (
+    '73500000-0000-4000-8000-000000000009',
+    '73200000-0000-4000-8000-000000000001',
+    '73400000-0000-4000-8000-000000000071',
+    '73300000-0000-4000-8000-000000000007',
+    'job', 'queued', null, 'approved', 'repair',
+    'Serpentine belt noise', 'Replace serpentine belt',
+    '73100000-0000-4000-8000-000000000002'
+  ),
+  (
+    '73500000-0000-4000-8000-000000000010',
+    '73200000-0000-4000-8000-000000000001',
+    '73400000-0000-4000-8000-000000000071',
+    '73300000-0000-4000-8000-000000000007',
+    'job', 'on_hold', 'deferred', 'declined', 'repair',
+    'Cabin air filter dirty', 'Replace cabin air filter',
+    '73100000-0000-4000-8000-000000000002'
+  );
+
+do $reconciler_ignores_shop_assistant_deferred$
+declare
+  v_work_order public.work_orders%rowtype;
+begin
+  perform private.reconcile_work_order_state('73400000-0000-4000-8000-000000000071');
+
+  select wo.* into v_work_order
+  from public.work_orders wo
+  where wo.id = '73400000-0000-4000-8000-000000000071';
+
+  if v_work_order.approval_state is distinct from 'approved' then
+    raise exception 'Work order with one approved line and one shop-assistant-deferred line resolved to approval_state = %, expected approved.',
+      v_work_order.approval_state;
+  end if;
+end;
+$reconciler_ignores_shop_assistant_deferred$;
+
 rollback;
