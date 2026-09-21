@@ -139,6 +139,24 @@ describe("Phase 5 — first deterministic GREEN command (prepare_appointment_par
     expect(migration).not.toMatch(/drop\s+column|drop\s+table/i);
   });
 
+  it("reconciles the settings constraint without dropping technician-copilot capability values", () => {
+    const reconciliation = readFileSync(
+      "supabase/migrations/20260921022000_reconcile_appointment_parts_capability_constraint.sql",
+      "utf8",
+    );
+    for (const capability of [
+      "technician_copilot_text",
+      "technician_copilot_documentation",
+      "technician_copilot_voice",
+      "appointment_parts_preparation",
+    ]) {
+      expect(reconciliation).toContain(`'${capability}'`);
+    }
+    expect(reconciliation).toContain(
+      "^technician_copilot_(text|documentation|voice):",
+    );
+  });
+
   it("is authenticated as an internal cron route, not a user-facing one", () => {
     expect(cronRoute).toContain("requireInternalApiSecret");
     expect(cronRoute).toContain("INTERNAL_CRON_SECRET");
