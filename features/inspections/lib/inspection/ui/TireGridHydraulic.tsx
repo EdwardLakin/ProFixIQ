@@ -584,7 +584,7 @@ export default function TireGridHydraulic(props: Props) {
                   className="grid items-center gap-1.5 border-b border-[color:var(--theme-border-soft)] px-2.5 py-2"
                   style={{ gridTemplateColumns: columns }}
                 >
-                  <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">Tread</div>
+                  <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">Tread depth</div>
                   {positions.map((position, index) => (
                     <div
                       key={`${position.label}-tread`}
