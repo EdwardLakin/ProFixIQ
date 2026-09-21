@@ -303,17 +303,23 @@ begin
 end;
 $add_vehicle_mismatch$;
 
--- A closed (invoiced) work order cannot receive a new add.
+-- A closed (archived) work order cannot receive a new add.
+-- work_orders_status_check only permits 'new', 'awaiting',
+-- 'awaiting_approval', 'queued', 'in_progress', 'on_hold', 'planned', and
+-- 'completed', so a closed work order is represented by archived_at rather
+-- than a non-existent status value.
 insert into public.work_orders (
-  id, shop_id, custom_id, vehicle_id, status, record_type, advisor_id
+  id, shop_id, custom_id, vehicle_id, status, record_type, advisor_id,
+  archived_at
 )
 values (
   '74400000-0000-4000-8000-000000000012',
   '74200000-0000-4000-8000-000000000001',
   'DEF-DEST-CLOSED',
   '74300000-0000-4000-8000-000000000001',
-  'invoiced', 'work_order',
-  '74100000-0000-4000-8000-000000000001'
+  'completed', 'work_order',
+  '74100000-0000-4000-8000-000000000001',
+  now()
 );
 
 do $add_closed_work_order$
