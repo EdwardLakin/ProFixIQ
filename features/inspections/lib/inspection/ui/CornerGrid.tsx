@@ -2,9 +2,10 @@
 
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type { InspectionItem } from "@inspections/lib/inspection/types";
+import { handleMeasurementGridKeyDown } from "./measurementGridKeyboard";
 
 type CornerGridProps = {
   sectionIndex: number;
@@ -71,7 +72,6 @@ function unitCls() {
 export default function CornerGrid(props: CornerGridProps) {
   const { sectionIndex, items, unitHint, onSpecHint, locked } = props;
   const { updateItem } = useInspectionForm();
-  const [open, setOpen] = useState(true);
 
   const parsed = useMemo(() => {
     const byCorner: Record<Corner, { pads?: Cell; rotor?: Cell }> = {
@@ -137,46 +137,24 @@ export default function CornerGrid(props: CornerGridProps) {
     <div className="relative min-w-0">
       <input
         className={inputCls()}
-        type="number"
+        type="text"
         inputMode="decimal"
-        step="any"
         placeholder={cell ? "Enter value" : "—"}
         value={String(cell?.item?.value ?? "")}
         onFocus={() => cell && onSpecHint?.(cell.metricLabel)}
         onChange={(event) => commit(cell, event.currentTarget.value)}
         disabled={!cell || locked}
         autoComplete="off"
+        data-inspection-measurement-input="true"
+        onKeyDown={handleMeasurementGridKeyDown}
       />
       <span className={unitCls()}>{cell?.unit ?? "mm"}</span>
     </div>
   );
 
   return (
-    <div className="grid w-full gap-3" data-inspection-corner-grid="hydraulic">
-      <div className="flex flex-wrap items-center justify-between gap-3 px-1">
-        <div>
-          <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
-            Hydraulic brake measurements
-          </div>
-          <div className="mt-0.5 text-[11px] text-[color:var(--theme-text-secondary)]">
-            Enter pad/shoe and rotor/drum measurements by wheel position.
-          </div>
-        </div>
-
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)] hover:border-orange-500/70 hover:bg-[color:var(--theme-surface-overlay)]"
-          aria-expanded={open}
-          title={open ? "Collapse" : "Expand"}
-          tabIndex={-1}
-        >
-          {open ? "Collapse" : "Expand"}
-        </button>
-      </div>
-
-      {open ? (
-        <div className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
+    <div className="grid w-full gap-3" data-inspection-corner-grid="hydraulic" aria-label="Hydraulic brake measurements">
+        <div data-inspection-measurement-grid className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]">
           <div className="hidden grid-cols-[minmax(130px,0.8fr)_minmax(0,1fr)_minmax(0,1fr)] gap-3 border-b border-[color:var(--theme-border-soft)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)] sm:grid">
             <div>Position</div>
             <div>Pad / shoe thickness</div>
@@ -219,7 +197,6 @@ export default function CornerGrid(props: CornerGridProps) {
             })}
           </div>
         </div>
-      ) : null}
     </div>
   );
 }

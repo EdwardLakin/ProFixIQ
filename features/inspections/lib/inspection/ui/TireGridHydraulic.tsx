@@ -1,11 +1,12 @@
 // features/inspections/lib/inspection/ui/TireGridHydraulic.tsx
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { useInspectionForm } from "@inspections/lib/inspection/ui/InspectionFormContext";
 import type {
   InspectionItem,
 } from "@inspections/lib/inspection/types";
+import { handleMeasurementGridKeyDown } from "./measurementGridKeyboard";
 
 type PartLine = { description: string; qty: number };
 
@@ -285,7 +286,6 @@ export default function TireGridHydraulic(props: Props) {
   } = props;
 
   const { updateItem } = useInspectionForm();
-  const [open, setOpen] = useState(true);
 
   const commitValue = (idx: number, value: string) => {
     updateItem(sectionIndex, idx, { value });
@@ -460,11 +460,12 @@ export default function TireGridHydraulic(props: Props) {
           className={inputCls()}
           placeholder={cell ? "Value" : "—"}
           inputMode={isText ? "text" : "decimal"}
-          type={isText ? "text" : "number"}
-          step={isText ? undefined : "any"}
+          type="text"
           onChange={(event) => cell && commitValue(cell.idx, event.currentTarget.value)}
           disabled={!cell || locked}
           autoComplete="off"
+          data-inspection-measurement-input="true"
+          onKeyDown={handleMeasurementGridKeyDown}
         />
         <span className={unitCls()}>{unit}</span>
       </div>
@@ -477,123 +478,144 @@ export default function TireGridHydraulic(props: Props) {
   };
 
   return (
-    <div className="grid w-full gap-3" data-inspection-tire-grid="hydraulic">
-      <div className="flex items-center justify-between gap-3 px-1">
-        <div className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
-          Tire Grid – Hydraulic
-        </div>
+    <div
+      className="grid w-full gap-3"
+      data-inspection-tire-grid="hydraulic"
+      data-inspection-measurement-grid
+    >
+      {tables.map((t) => {
+        const isDual = t.isDual;
 
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-primary)] hover:border-orange-500/70"
-          aria-expanded={open}
-          title={open ? "Collapse" : "Expand"}
-          tabIndex={-1}
-        >
-          {open ? "Collapse" : "Expand"}
-        </button>
-      </div>
+        const leftTD = isDual
+          ? { outer: t.dual.left.treadOuter ?? t.dual.left.tread, inner: t.dual.left.treadInner }
+          : { single: t.single.left.tread };
+        const rightTD = isDual
+          ? { outer: t.dual.right.treadOuter ?? t.dual.right.tread, inner: t.dual.right.treadInner }
+          : { single: t.single.right.tread };
+        const leftTP = isDual
+          ? {
+              pressure: t.dual.left.pressure,
+              pressureOuter: t.dual.left.pressureOuter,
+              pressureInner: t.dual.left.pressureInner,
+            }
+          : { pressure: t.single.left.pressure };
+        const rightTP = isDual
+          ? {
+              pressure: t.dual.right.pressure,
+              pressureOuter: t.dual.right.pressureOuter,
+              pressureInner: t.dual.right.pressureInner,
+            }
+          : { pressure: t.single.right.pressure };
 
-      {open ? (
-        <div className="grid gap-3">
-          {tables.map((t) => {
-            const isDual = t.isDual;
+        const positions = isDual
+          ? [
+              { label: "Left Outer", shortLabel: "Outer", side: "left", tread: leftTD.outer, pressure: leftTP.pressureOuter ?? leftTP.pressure },
+              { label: "Left Inner", shortLabel: "Inner", side: "left", tread: leftTD.inner, pressure: leftTP.pressureInner },
+              { label: "Right Inner", shortLabel: "Inner", side: "right", tread: rightTD.inner, pressure: rightTP.pressureInner },
+              { label: "Right Outer", shortLabel: "Outer", side: "right", tread: rightTD.outer, pressure: rightTP.pressureOuter ?? rightTP.pressure },
+            ]
+          : [
+              { label: "Left", shortLabel: "Left", side: "left", tread: leftTD.single, pressure: leftTP.pressure },
+              { label: "Right", shortLabel: "Right", side: "right", tread: rightTD.single, pressure: rightTP.pressure },
+            ];
 
-            const leftTD = isDual
-              ? { outer: t.dual.left.treadOuter ?? t.dual.left.tread, inner: t.dual.left.treadInner }
-              : { single: t.single.left.tread };
-            const rightTD = isDual
-              ? { outer: t.dual.right.treadOuter ?? t.dual.right.tread, inner: t.dual.right.treadInner }
-              : { single: t.single.right.tread };
-            const leftTP = isDual
-              ? {
-                  pressure: t.dual.left.pressure,
-                  pressureOuter: t.dual.left.pressureOuter,
-                  pressureInner: t.dual.left.pressureInner,
-                }
-              : { pressure: t.single.left.pressure };
-            const rightTP = isDual
-              ? {
-                  pressure: t.dual.right.pressure,
-                  pressureOuter: t.dual.right.pressureOuter,
-                  pressureInner: t.dual.right.pressureInner,
-                }
-              : { pressure: t.single.right.pressure };
+        const columns = isDual
+          ? "82px repeat(4, minmax(84px, 1fr))"
+          : "82px repeat(2, minmax(110px, 1fr))";
 
-            const positions = isDual
-              ? [
-                  { label: "Left Outer", tread: leftTD.outer, pressure: leftTP.pressureOuter ?? leftTP.pressure },
-                  { label: "Left Inner", tread: leftTD.inner, pressure: leftTP.pressureInner },
-                  { label: "Right Inner", tread: rightTD.inner, pressure: rightTP.pressureInner },
-                  { label: "Right Outer", tread: rightTD.outer, pressure: rightTP.pressureOuter ?? rightTP.pressure },
-                ]
-              : [
-                  { label: "Left", tread: leftTD.single, pressure: leftTP.pressure },
-                  { label: "Right", tread: rightTD.single, pressure: rightTP.pressure },
-                ];
+        return (
+          <section
+            key={t.axle}
+            className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
+            data-axle={t.axle}
+          >
+            <div className="flex items-center justify-between border-b border-[color:var(--theme-border-soft)] px-3 py-2">
+              <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                {t.axle}
+              </div>
+              <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
+                {isDual ? "Dual" : "Single"} tire axle
+              </div>
+            </div>
 
-            return (
-              <section
-                key={t.axle}
-                className="overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
-                data-axle={t.axle}
-              >
-                <div className="flex items-center justify-between border-b border-[color:var(--theme-border-soft)] px-3 py-2">
-                  <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                    {t.axle}
+            <div className="overflow-x-auto">
+              <div className={isDual ? "min-w-[500px]" : "min-w-[360px]"}>
+                {isDual ? (
+                  <>
+                    <div
+                      className="grid items-center gap-1.5 border-b border-[color:var(--theme-border-soft)] px-2.5 pt-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]"
+                      style={{ gridTemplateColumns: columns }}
+                    >
+                      <div className="pb-2">Measurement</div>
+                      <div className="col-span-2 border-b border-[color:var(--theme-border-soft)] pb-1 text-center">Left</div>
+                      <div className="col-span-2 border-b border-[color:var(--theme-border-soft)] pb-1 text-center">Right</div>
+                    </div>
+                    <div
+                      className="grid gap-1.5 border-b border-[color:var(--theme-border-soft)] px-2.5 py-1.5 text-[9px] font-semibold uppercase tracking-[0.1em] text-[color:var(--theme-text-muted)]"
+                      style={{ gridTemplateColumns: columns }}
+                    >
+                      <div />
+                      {positions.map((position, index) => (
+                        <div
+                          key={position.label}
+                          className={`text-center ${index === 2 ? "border-l border-[color:var(--theme-border-soft)]" : ""}`}
+                        >
+                          {position.shortLabel}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                ) : (
+                  <div
+                    className="grid gap-1.5 border-b border-[color:var(--theme-border-soft)] px-2.5 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]"
+                    style={{ gridTemplateColumns: columns }}
+                  >
+                    <div>Measurement</div>
+                    {positions.map((position) => (
+                      <div key={position.label} className="text-center">
+                        {position.label}
+                      </div>
+                    ))}
                   </div>
-                  <div className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
-                    {isDual ? "Dual tire axle" : "Single tire axle"}
-                  </div>
+                )}
+
+                <div
+                  className="grid items-center gap-1.5 border-b border-[color:var(--theme-border-soft)] px-2.5 py-2"
+                  style={{ gridTemplateColumns: columns }}
+                >
+                  <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">Tread depth</div>
+                  {positions.map((position, index) => (
+                    <div
+                      key={`${position.label}-tread`}
+                      className={index === 2 && isDual ? "border-l border-[color:var(--theme-border-soft)] pl-1.5" : ""}
+                    >
+                      {renderCell(position.tread, "mm")}
+                    </div>
+                  ))}
                 </div>
 
-                <div className="overflow-x-auto">
-                  <div className={isDual ? "min-w-[620px]" : "min-w-[390px]"}>
+                <div
+                  className="grid items-center gap-1.5 px-2.5 py-2"
+                  style={{ gridTemplateColumns: columns }}
+                >
+                  <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">Pressure</div>
+                  {positions.map((position, index) => (
                     <div
-                      className="grid gap-2 border-b border-[color:var(--theme-border-soft)] px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]"
-                      style={{ gridTemplateColumns: `110px repeat(${positions.length}, minmax(0, 1fr))` }}
+                      key={`${position.label}-pressure`}
+                      className={index === 2 && isDual ? "border-l border-[color:var(--theme-border-soft)] pl-1.5" : ""}
                     >
-                      <div>Measurement</div>
-                      {positions.map((position) => (
-                        <div key={position.label} className="text-center">
-                          {position.label}
-                        </div>
-                      ))}
+                      {renderCell(position.pressure, "psi")}
                     </div>
-
-                    <div
-                      className="grid items-center gap-2 border-b border-[color:var(--theme-border-soft)] px-3 py-2"
-                      style={{ gridTemplateColumns: `110px repeat(${positions.length}, minmax(0, 1fr))` }}
-                    >
-                      <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">Tread depth</div>
-                      {positions.map((position) => (
-                        <div key={`${position.label}-tread`}>
-                          {renderCell(position.tread, "mm")}
-                        </div>
-                      ))}
-                    </div>
-
-                    <div
-                      className="grid items-center gap-2 px-3 py-2"
-                      style={{ gridTemplateColumns: `110px repeat(${positions.length}, minmax(0, 1fr))` }}
-                    >
-                      <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">Pressure</div>
-                      {positions.map((position) => (
-                        <div key={`${position.label}-pressure`}>
-                          {renderCell(position.pressure, "psi")}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
+                  ))}
                 </div>
+              </div>
+            </div>
 
-                {StatusOrConditions(t)}
-              </section>
-            );
-          })}
-        </div>
-      ) : null}
+            {StatusOrConditions(t)}
+          </section>
+        );
+      })}
     </div>
   );
+
 }

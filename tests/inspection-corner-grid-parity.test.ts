@@ -9,6 +9,9 @@ const sectionDisplay = read(
 const hydraulicBrakeGrid = read(
   "features/inspections/lib/inspection/ui/CornerGrid.tsx",
 );
+const airBrakeGrid = read(
+  "features/inspections/lib/inspection/ui/AirCornerGrid.tsx",
+);
 const hydraulicTireGrid = read(
   "features/inspections/lib/inspection/ui/TireGridHydraulic.tsx",
 );
@@ -17,6 +20,9 @@ const batteryGrid = read(
 );
 const tireCornerGrid = read(
   "features/inspections/lib/inspection/ui/TireCornerGrid.tsx",
+);
+const measurementGridKeyboard = read(
+  "features/inspections/lib/inspection/ui/measurementGridKeyboard.ts",
 );
 
 describe("inspection corner-grid parity", () => {
@@ -46,6 +52,39 @@ describe("inspection corner-grid parity", () => {
     }
   });
 
+
+  it("keeps Safari measurement inputs natively tabbable", () => {
+    for (const grid of [hydraulicBrakeGrid, hydraulicTireGrid, tireCornerGrid]) {
+      const measurementInputIndex = grid.indexOf('data-inspection-measurement-input="true"');
+      expect(measurementInputIndex).toBeGreaterThanOrEqual(0);
+
+      const nearbyInput = grid.slice(
+        Math.max(0, measurementInputIndex - 500),
+        measurementInputIndex + 120,
+      );
+      expect(nearbyInput).toContain('type="text"');
+      expect(nearbyInput).not.toContain('type="number"');
+      expect(nearbyInput).toContain('inputMode=');
+    }
+  });
+
+  it("supports keyboard traversal across measurement inputs", () => {
+    for (const grid of [
+      hydraulicBrakeGrid,
+      airBrakeGrid,
+      hydraulicTireGrid,
+      tireCornerGrid,
+    ]) {
+      expect(grid).toContain('data-inspection-measurement-grid');
+      expect(grid).toContain('data-inspection-measurement-input="true"');
+      expect(grid).toContain("handleMeasurementGridKeyDown");
+    }
+
+    expect(measurementGridKeyboard).toContain('event.key !== "Tab"');
+    expect(measurementGridKeyboard).toContain('event.key !== "Enter"');
+    expect(measurementGridKeyboard).toContain("next.focus()");
+    expect(measurementGridKeyboard).toContain("next.select()");
+  });
 
   it("keeps tire grids compact and ordered by physical axle position", () => {
     for (const grid of [hydraulicTireGrid, tireCornerGrid]) {
