@@ -67,11 +67,6 @@ export type OpsAIUsageSnapshot = {
   warnings: OpsAIUsageWarning[];
 };
 
-type RpcResult = {
-  data: unknown;
-  error: { message: string } | null;
-};
-
 function numberValue(value: unknown): number {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
@@ -136,24 +131,16 @@ function normalizeSnapshot(raw: unknown): OpsAIUsageSnapshot {
 export async function getOpsAIUsage(): Promise<OpsAIUsageSnapshot> {
   await requireOpsOperatorPageAccess();
 
-  const admin = createAdminSupabase() as unknown as {
-    rpc: (
-      name: "get_ops_ai_usage_snapshot",
-      args: { p_since: string; p_event_limit: number },
-    ) => PromiseLike<RpcResult>;
-  };
-
+  const admin = createAdminSupabase();
   const since = new Date(Date.now() - 30 * 86400000).toISOString();
-  const result = await Promise.resolve(
-    admin.rpc("get_ops_ai_usage_snapshot", {
-      p_since: since,
-      p_event_limit: 50,
-    }),
-  );
+  const { data, error } = await admin.rpc("get_ops_ai_usage_snapshot", {
+    p_since: since,
+    p_event_limit: 50,
+  });
 
-  if (result.error) {
-    throw new Error(`Unable to load AI usage: ${result.error.message}`);
+  if (error) {
+    throw new Error(`Unable to load AI usage: ${error.message}`);
   }
 
-  return normalizeSnapshot(result.data);
+  return normalizeSnapshot(data);
 }
