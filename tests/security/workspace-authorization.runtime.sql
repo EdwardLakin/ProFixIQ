@@ -743,7 +743,13 @@ begin
   from public.work_order_line_technicians assignment
   where assignment.work_order_line_id = '71500000-0000-4000-8000-000000000002';
 
-  if v_shop_work_orders <> 0 or v_shop_lines <> 0 or v_shop_assignments <> 1 then
+  -- The mechanic role now carries work_order.financial.sell.view (see
+  -- 20260921023000_grant_mechanic_labor_sell_pricing_view.sql, matching the
+  -- parts-sell-pricing exception already granted to every role), so a
+  -- mechanic delegated work_order.assignment.manage now also clears the
+  -- work_orders/work_order_lines RESTRICTIVE financial-capability policy
+  -- for their own shop's rows reachable through that assignment grant.
+  if v_shop_work_orders <> 1 or v_shop_lines <> 1 or v_shop_assignments <> 1 then
     raise exception 'Delegated mechanic financial read boundary resolved incorrectly: %, %, %',
       v_shop_work_orders,
       v_shop_lines,
