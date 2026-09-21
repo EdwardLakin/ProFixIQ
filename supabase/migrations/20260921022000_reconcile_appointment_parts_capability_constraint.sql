@@ -25,19 +25,5 @@ alter table public.ai_automation_capability_settings
     or capability ~ '^technician_copilot_(text|documentation|voice):[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$'
   );
 
-alter table public.ai_automation_evidence
-  drop constraint if exists ai_automation_evidence_capability_chk;
-
-alter table public.ai_automation_evidence
-  add constraint ai_automation_evidence_capability_chk check (
-    capability in (
-      'appointment_intake', 'customer_status_updates',
-      'work_order_line_creation', 'quote_preparation',
-      'approval_request_delivery', 'parts_ordering',
-      'appointment_reminders', 'advisor_follow_up',
-      'invoice_preparation', 'payment_collection',
-      'appointment_parts_preparation'
-    )
-  );
 
 commit;
