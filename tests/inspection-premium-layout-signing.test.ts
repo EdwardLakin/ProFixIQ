@@ -18,8 +18,10 @@ const signingRepair = read(
 describe("premium inspection layout and signing repair", () => {
   it("renders the hydraulic corner grid without decorative empty cells or sketch copy", () => {
     expect(cornerGrid).toContain("Hydraulic brake measurements");
-    expect(cornerGrid).toContain("sm:grid-cols-2");
-    expect(cornerGrid).toContain("2xl:grid-cols-4");
+    expect(cornerGrid).toContain("data-brake-position={corner}");
+    expect(cornerGrid).toContain("Pad / shoe thickness");
+    expect(cornerGrid).toContain("Rotor / drum thickness");
+    expect(cornerGrid).toContain("sm:grid-cols-[minmax(130px,0.8fr)_minmax(0,1fr)_minmax(0,1fr)]");
     expect(cornerGrid).not.toContain("spacer(body)");
     expect(cornerGrid).not.toContain("matches sketch");
     expect(cornerGrid).not.toContain('h-[110px]');
