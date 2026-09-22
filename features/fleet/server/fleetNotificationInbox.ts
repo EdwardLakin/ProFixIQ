@@ -5,6 +5,15 @@ import type { AssistantNotificationPageRow } from "@/features/agent/server/syncA
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const LOOKUP_CHUNK_SIZE = 100;
+
+function chunks<T>(values: T[]): T[][] {
+  const result: T[][] = [];
+  for (let index = 0; index < values.length; index += LOOKUP_CHUNK_SIZE) {
+    result.push(values.slice(index, index + LOOKUP_CHUNK_SIZE));
+  }
+  return result;
+}
 
 function isMissedPretrip(row: AssistantNotificationPageRow): boolean {
   return (
@@ -21,16 +30,19 @@ export async function projectFleetNotificationRows(params: {
 
   const db = params.supabase;
   const notificationIds = params.rows.map((row) => row.id);
-  const { data: dismissals, error: dismissalError } = await db
-    .from("fleet_notification_dismissals")
-    .select("notification_id")
-    .in("notification_id", notificationIds);
+  const dismissedIds = new Set<string>();
 
-  if (dismissalError) throw new Error(dismissalError.message);
+  for (const notificationIdChunk of chunks(notificationIds)) {
+    const { data: dismissals, error: dismissalError } = await db
+      .from("fleet_notification_dismissals")
+      .select("notification_id")
+      .in("notification_id", notificationIdChunk);
 
-  const dismissedIds = new Set(
-    (dismissals ?? []).map((row) => row.notification_id),
-  );
+    if (dismissalError) throw new Error(dismissalError.message);
+    for (const row of dismissals ?? []) {
+      dismissedIds.add(row.notification_id);
+    }
+  }
 
   const assignmentIds = Array.from(
     new Set(
@@ -42,11 +54,11 @@ export async function projectFleetNotificationRows(params: {
   );
 
   const activeAssignmentIds = new Set<string>();
-  if (assignmentIds.length > 0) {
+  for (const assignmentIdChunk of chunks(assignmentIds)) {
     const { data: assignments, error: assignmentError } = await db
       .from("fleet_dispatch_assignments")
       .select("id")
-      .in("id", assignmentIds)
+      .in("id", assignmentIdChunk)
       .eq("active", true)
       .eq("pretrip_required", true);
 

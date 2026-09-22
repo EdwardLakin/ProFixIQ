@@ -56,7 +56,7 @@ export default function FleetSummaryCards({
   return (
     <div className="grid gap-4 md:grid-cols-4">
       {/* Out of service */}
-      <div className="metal-card rounded-2xl p-4">
+      <div className="metal-card rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-sm">
         <div className="flex items-center justify-between gap-2">
           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
             Out of service
@@ -72,7 +72,7 @@ export default function FleetSummaryCards({
       </div>
 
       {/* Limited use */}
-      <div className="metal-card rounded-2xl p-4">
+      <div className="metal-card rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
           Limited use
         </p>
@@ -89,9 +89,9 @@ export default function FleetSummaryCards({
         type="button"
         onClick={onClickInspectionWindow}
         disabled={!onClickInspectionWindow}
-        className={`metal-card rounded-2xl p-4 text-left transition
-          ${onClickInspectionWindow ? "hover:ring-2 hover:ring-sky-400/40" : ""}
-          ${inspectionWindowActive ? "ring-2 ring-sky-400/60" : ""}
+        className={`metal-card rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 text-left shadow-sm transition
+          ${onClickInspectionWindow ? "hover:-translate-y-0.5 hover:border-sky-400/35 hover:shadow-md" : ""}
+          ${inspectionWindowActive ? "border-sky-400/45 ring-2 ring-sky-400/30" : ""}
         `}
       >
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
@@ -106,7 +106,7 @@ export default function FleetSummaryCards({
       </button>
 
       {/* Safety & pre-trip */}
-      <div className="metal-card rounded-2xl p-4">
+      <div className="metal-card rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-sm">
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
           Safety & pre-trip
         </p>

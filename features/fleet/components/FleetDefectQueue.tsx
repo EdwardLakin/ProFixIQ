@@ -9,6 +9,7 @@ import {
   ClipboardPlus,
   Clock3,
   Eye,
+  X,
   XCircle,
 } from "lucide-react";
 
@@ -38,6 +39,7 @@ type Defect = {
 };
 type Missed = {
   id: string;
+  notificationId: string;
   unitLabel: string;
   driverName: string;
   serviceDate: string;
@@ -94,6 +96,9 @@ export default function FleetDefectQueue({
   const [visibleMissedCount, setVisibleMissedCount] = useState(
     MISSED_PRETRIP_PAGE_SIZE,
   );
+  const [dismissingMissedId, setDismissingMissedId] = useState<string | null>(
+    null,
+  );
 
   const load = useCallback(async () => {
     setError(null);
@@ -111,6 +116,55 @@ export default function FleetDefectQueue({
     setPayload(body);
     setVisibleMissedCount(MISSED_PRETRIP_PAGE_SIZE);
   }, [fleetId]);
+
+  const dismissMissedPretrip = useCallback(
+    async (item: Missed) => {
+      setDismissingMissedId(item.id);
+      setError(null);
+      try {
+        const response = await fetch("/api/fleet/notifications", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "dismiss",
+            notificationId: item.notificationId,
+            fleetId: fleetId ?? null,
+          }),
+          cache: "no-store",
+        });
+        const body = (await response.json().catch(() => ({}))) as {
+          error?: string;
+        };
+        if (!response.ok) {
+          throw new Error(body.error || "Unable to dismiss missed pre-trip");
+        }
+
+        setPayload((current) => {
+          if (!current) return current;
+          const missed = current.missed.filter(
+            (missedItem) => missedItem.id !== item.id,
+          );
+          return {
+            ...current,
+            summary: {
+              ...current.summary,
+              missedPretrips: missed.length,
+            },
+            missed,
+          };
+        });
+      } catch (cause) {
+        setError(
+          cause instanceof Error
+            ? cause.message
+            : "Unable to dismiss missed pre-trip",
+        );
+      } finally {
+        setDismissingMissedId(null);
+      }
+    },
+    [fleetId],
+  );
 
   useEffect(() => {
     let active = true;
@@ -237,7 +291,7 @@ export default function FleetDefectQueue({
             {activeCount} active
           </span>
           <span className="rounded-full bg-amber-400/10 px-3 py-1.5 text-amber-100">
-            {payload?.summary.missedPretrips ?? 0} missed today
+            {payload?.summary.missedPretrips ?? 0} missed pre-trips
           </span>
         </div>
       </div>
@@ -253,14 +307,26 @@ export default function FleetDefectQueue({
           {visibleMissed.map((item) => (
             <div
               key={item.id}
-              className="rounded-xl border border-red-500/25 bg-red-500/10 p-3 text-xs"
+              className="flex items-start gap-2 rounded-xl border border-red-500/25 bg-red-500/10 p-3 text-xs"
             >
-              <div className="flex items-center gap-2 font-semibold text-red-100">
-                <Clock3 className="h-4 w-4" /> Missed daily pre-trip
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2 font-semibold text-red-100">
+                  <Clock3 className="h-4 w-4" /> Missed daily pre-trip
+                </div>
+                <div className="mt-1 text-[color:var(--theme-text-secondary)]">
+                  {item.unitLabel} • {item.driverName} • {item.serviceDate}
+                </div>
               </div>
-              <div className="mt-1 text-[color:var(--theme-text-secondary)]">
-                {item.unitLabel} • {item.driverName} • {item.serviceDate}
-              </div>
+              <button
+                type="button"
+                disabled={dismissingMissedId === item.id}
+                onClick={() => void dismissMissedPretrip(item)}
+                aria-label={`Dismiss missed pre-trip for ${item.unitLabel}`}
+                title="Dismiss missed pre-trip"
+                className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-red-700/70 transition hover:bg-red-500/10 hover:text-red-800 disabled:opacity-50 dark:text-red-200/70 dark:hover:text-red-100"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
             </div>
           ))}
           {visibleMissed.length < (payload?.missed.length ?? 0) ? (
