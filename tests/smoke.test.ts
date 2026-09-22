@@ -106,5 +106,21 @@ describe("smoke", () => {
     expect(markup).toContain("Today&#x27;s pulse");
     expect(markup).toContain("Action rail");
     expect(markup).toContain("Work in motion");
+    expect(markup).toContain('data-testid="work-in-motion-rail"');
+
+    for (const [label, stage] of [
+      ["Intake", "intake"],
+      ["Estimate", "estimate"],
+      ["Awaiting approval", "awaiting_approval"],
+      ["Authorized", "authorized"],
+      ["Waiting", "waiting"],
+      ["In progress", "in_progress"],
+      ["Quality check", "quality_check"],
+      ["Ready", "ready"],
+      ["Closed", "closed"],
+    ] as const) {
+      expect(markup).toContain(label);
+      expect(markup).toContain(`/work-orders/board?stage=${stage}`);
+    }
   });
 });
