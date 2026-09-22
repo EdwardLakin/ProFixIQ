@@ -100,7 +100,7 @@ describe("estimate builder review follow-ups", () => {
       "Boolean(workOrder.estimate_number) || lineCount > 1",
     );
     expect(portalListData).toContain("key: `work-order:${workOrder.id}`");
-    expect(portalList).toContain("cards.map((card)");
+    expect(portalList).toContain("items.map(renderCard)");
     expect(portalList).toContain('"Review estimate"');
   });
 
