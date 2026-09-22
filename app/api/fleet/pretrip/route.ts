@@ -542,7 +542,7 @@ export async function POST(req: NextRequest) {
     // shop predicate and external access is split by each Fleet membership's
     // role. A user can manage one Fleet while remaining driver-only in another.
     const select =
-      "id,shop_id,fleet_id,vehicle_id,driver_profile_id,driver_name,has_defects,inspection_date,created_at,status,vehicles!inner(unit_number,license_plate,vin)";
+      "id,shop_id,fleet_id,vehicle_id,driver_profile_id,driver_name,has_defects,inspection_date,created_at,status,vehicles!fleet_pretrip_reports_vehicle_id_fkey!inner(unit_number,license_plate,vin)";
     let reportRows: PretripJoinedRow[] = [];
 
     if (actor.isInternal) {
