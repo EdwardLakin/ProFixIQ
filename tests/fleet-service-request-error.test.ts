@@ -3,12 +3,10 @@ import { mapFleetServiceRequestError } from "@/features/fleet/lib/fleetServiceRe
 
 describe("Fleet service-request error mapping", () => {
   it.each([
-    "PFX_FLEET_HANDOFF_UNAVAILABLE",
     "PFX_FLEET_UNIT_OWNERSHIP_MISMATCH",
-    "PFX_FLEET_REQUEST_SCOPE_MISMATCH",
     "PFX_WORK_ORDER_CUSTOMER_VEHICLE_MISMATCH",
     "work_order 11111111-1111-4111-8111-111111111111 customer_id 22222222-2222-4222-8222-222222222222 does not match vehicle 33333333-3333-4333-8333-333333333333 customer_id 44444444-4444-4444-8444-444444444444",
-  ])("sanitizes ownership conflicts without returning identifiers", (message) => {
+  ])("classifies confirmed ownership conflicts without returning identifiers", (message) => {
     expect(
       mapFleetServiceRequestError(
         { message },
@@ -18,6 +16,24 @@ describe("Fleet service-request error mapping", () => {
       error:
         "This unit's billing ownership must be reviewed before service can continue.",
       status: 409,
+      reason: "ownership_conflict",
+    });
+  });
+
+  it.each([
+    "PFX_FLEET_HANDOFF_UNAVAILABLE",
+    "PFX_FLEET_REQUEST_SCOPE_MISMATCH",
+  ])("keeps ambiguous handoff failures out of ownership recovery", (message) => {
+    expect(
+      mapFleetServiceRequestError(
+        { message },
+        "Failed to process this service request.",
+      ),
+    ).toEqual({
+      error:
+        "This unit's billing ownership must be reviewed before service can continue.",
+      status: 409,
+      reason: "handoff_unavailable",
     });
   });
 
@@ -30,6 +46,7 @@ describe("Fleet service-request error mapping", () => {
     ).toEqual({
       error: "Fleet service request not found.",
       status: 404,
+      reason: "not_found",
     });
   });
 
@@ -42,6 +59,7 @@ describe("Fleet service-request error mapping", () => {
     ).toEqual({
       error: "Failed to process this service request.",
       status: 500,
+      reason: "unexpected",
     });
   });
 
@@ -58,6 +76,7 @@ describe("Fleet service-request error mapping", () => {
       error:
         "This request was already submitted with different details. Refresh and try again.",
       status: 409,
+      reason: "replay_conflict",
     });
   });
 });
