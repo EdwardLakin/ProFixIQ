@@ -234,36 +234,88 @@ export default async function OperationsDashboardView() {
           </section>
 
           <section className={panelClass("p-4")}>
-            <h2 className="text-lg font-bold text-[color:var(--theme-text-primary)]">
-              Work in motion
-            </h2>
-            <p className="text-sm text-[color:var(--theme-text-secondary)]">
-              Jobs by current stage
-            </p>
-            <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-9">
-              {flow.map(([label, value, stage], index) => (
-                <Link
-                  key={label}
-                  href={`/work-orders/board?stage=${stage}`}
-                  className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3 transition hover:border-[var(--brand-accent,#E39A6E)]/55"
-                >
-                  <div className="flex items-center justify-between text-sm text-[color:var(--theme-text-secondary)]">
-                    <span>{label}</span>
-                    {index < flow.length - 1 ? (
-                      <ChevronRight className="h-4 w-4" />
-                    ) : null}
-                  </div>
-                  <div className="mt-2 text-2xl font-bold text-[color:var(--theme-text-primary)]">
-                    {value}
-                  </div>
-                  <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[color:var(--theme-surface-inset)]">
-                    <div
-                      className="h-full rounded-full bg-[var(--brand-primary,#C1663B)]"
-                      style={{ width: `${Math.min(100, Number(value) * 20)}%` }}
-                    />
-                  </div>
-                </Link>
-              ))}
+            <div className="flex items-end justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-bold text-[color:var(--theme-text-primary)]">
+                  Work in motion
+                </h2>
+                <p className="text-sm text-[color:var(--theme-text-secondary)]">
+                  Jobs by current stage
+                </p>
+              </div>
+              <span className="hidden text-xs text-[color:var(--theme-text-muted)] sm:block">
+                Select a stage to open the filtered board
+              </span>
+            </div>
+
+            <div className="mt-3 overflow-x-auto pb-1">
+              <div
+                data-testid="work-in-motion-rail"
+                className="flex min-w-max items-stretch gap-2"
+              >
+                {flow.map(([label, value, stage], index) => {
+                  const numericValue = Number(value);
+                  const hasWork = numericValue > 0;
+                  const needsAttention =
+                    label === "Awaiting approval" || label === "Waiting";
+                  const inProgress = label === "In progress";
+                  const ready = label === "Ready";
+
+                  return (
+                    <div key={label} className="flex items-center gap-2">
+                      <Link
+                        href={`/work-orders/board?stage=${stage}`}
+                        aria-label={`${label}: ${value} jobs`}
+                        className={`group flex w-[138px] shrink-0 flex-col justify-between rounded-xl border p-3 transition hover:-translate-y-0.5 hover:shadow-sm ${
+                          !hasWork
+                            ? "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] opacity-55"
+                            : needsAttention
+                              ? "border-amber-500/35 bg-amber-500/[0.06]"
+                              : inProgress
+                                ? "border-blue-500/35 bg-blue-500/[0.05]"
+                                : ready
+                                  ? "border-emerald-500/35 bg-emerald-500/[0.05]"
+                                  : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]"
+                        }`}
+                      >
+                        <div className="flex min-h-9 items-start justify-between gap-2">
+                          <span className="text-xs font-medium leading-4 text-[color:var(--theme-text-secondary)]">
+                            {label}
+                          </span>
+                          <span
+                            className={`mt-1 h-2 w-2 shrink-0 rounded-full ${
+                              !hasWork
+                                ? "bg-[color:var(--theme-border-soft)]"
+                                : needsAttention
+                                  ? "bg-amber-500"
+                                  : inProgress
+                                    ? "bg-blue-500"
+                                    : ready
+                                      ? "bg-emerald-500"
+                                      : "bg-[var(--brand-primary,#C1663B)]"
+                            }`}
+                            aria-hidden
+                          />
+                        </div>
+
+                        <div className="mt-3 flex items-end justify-between">
+                          <strong className="text-3xl font-bold leading-none text-[color:var(--theme-text-primary)]">
+                            {value}
+                          </strong>
+                          <ChevronRight className="h-4 w-4 text-[color:var(--theme-text-muted)] transition group-hover:translate-x-0.5" />
+                        </div>
+                      </Link>
+
+                      {index < flow.length - 1 ? (
+                        <ChevronRight
+                          className="h-4 w-4 shrink-0 text-[color:var(--theme-text-muted)] opacity-45"
+                          aria-hidden
+                        />
+                      ) : null}
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </section>
         </div>
