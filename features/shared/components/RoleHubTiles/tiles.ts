@@ -246,26 +246,6 @@ export const TILES: Tile[] = [
     scopes: ["settings", "all"],
   },
 
-  // --- Property ---
-  {
-    href: "/property",
-    title: "Property Maintenance",
-    subtitle: "Requests, assets & repair history",
-    roles: ["owner", "admin", "manager"],
-    scopes: ["management", "work_orders", "all"],
-    section: "Property",
-    allowedEmails: ["edwardlakin35@gmail.com"],
-  },
-  {
-    href: "/property/setup",
-    title: "Property Setup",
-    subtitle: "Seed internal demo data",
-    roles: ["owner", "admin"],
-    scopes: ["management", "all"],
-    section: "Property",
-    allowedEmails: ["edwardlakin35@gmail.com"],
-  },
-
   // --- AI & Tech ---
   {
     href: "/tech/queue",
