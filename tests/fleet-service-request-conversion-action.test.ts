@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { convertFleetServiceRequest } from "@/features/fleet/lib/convertFleetServiceRequest";
+import {
+  convertFleetServiceRequest,
+  FleetServiceRequestConversionError,
+} from "@/features/fleet/lib/convertFleetServiceRequest";
 
 const routeMocks = vi.hoisted(() => ({
   requireShopScopedApiAccess: vi.fn(),
@@ -90,7 +93,32 @@ describe("fleet service-request conversion action", () => {
 
     await expect(
       convertFleetServiceRequest("service-request-1", fetchMock as never),
-    ).rejects.toThrow("Request is not convertible");
+    ).rejects.toMatchObject({
+      message: "Request is not convertible",
+      reason: null,
+      name: "FleetServiceRequestConversionError",
+    });
+  });
+
+  it("preserves a structured reason for ownership-specific UI recovery", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({
+        error:
+          "This unit's billing ownership must be reviewed before service can continue.",
+        reason: "ownership_conflict",
+      }),
+    });
+
+    try {
+      await convertFleetServiceRequest("service-request-1", fetchMock as never);
+      throw new Error("expected conversion failure");
+    } catch (error) {
+      expect(error).toBeInstanceOf(FleetServiceRequestConversionError);
+      expect(error).toMatchObject({
+        reason: "ownership_conflict",
+      });
+    }
   });
 
   it("returns a safe conflict for a legacy ownership mismatch", async () => {
@@ -126,6 +154,7 @@ describe("fleet service-request conversion action", () => {
     await expect(response.json()).resolves.toEqual({
       error:
         "This unit's billing ownership must be reviewed before service can continue.",
+      reason: "ownership_conflict",
     });
     consoleError.mockRestore();
   });
@@ -155,6 +184,7 @@ describe("fleet service-request conversion action", () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({
       error: "Failed to create a structured work order from this request.",
+      reason: "unexpected",
     });
     consoleError.mockRestore();
   });
