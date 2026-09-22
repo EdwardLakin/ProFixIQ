@@ -35,6 +35,7 @@ type PortalDirectWorkOrderLineRow = {
 type PortalQuoteWorkOrderRow = {
   id: string;
   custom_id: string | null;
+  status: string | null;
   vehicle_id: string | null;
   vehicle_year: string | number | null;
   vehicle_make: string | null;
@@ -64,6 +65,8 @@ export type PortalQuoteCard = {
   partsOnly: boolean;
   sent: boolean;
   approved: boolean;
+  pending: boolean;
+  fulfilled: boolean;
   status: string;
   aggregate: boolean;
 };
@@ -90,24 +93,50 @@ function workOrderReference(workOrder: PortalQuoteWorkOrderRow): string {
   return customId || `#${workOrder.id.slice(0, 8).toUpperCase()}`;
 }
 
-function vehiclePresentation(workOrder: PortalQuoteWorkOrderRow): {
+type PortalVehicleRow = {
+  id: string;
+  year: string | number | null;
+  make: string | null;
+  model: string | null;
+  unit_number: string | null;
+  license_plate: string | null;
+};
+
+function vehiclePresentation(
+  workOrder: PortalQuoteWorkOrderRow,
+  vehicle?: PortalVehicleRow,
+): {
   label: string;
   detail: string | null;
 } {
   const label =
     [
-      workOrder.vehicle_year != null ? String(workOrder.vehicle_year) : "",
-      clean(workOrder.vehicle_make),
-      clean(workOrder.vehicle_model),
+      vehicle?.year ?? workOrder.vehicle_year,
+      clean(vehicle?.make ?? workOrder.vehicle_make),
+      clean(vehicle?.model ?? workOrder.vehicle_model),
     ]
       .filter(Boolean)
+      .map(String)
       .join(" ") || "Your vehicle";
-  const unit = clean(workOrder.vehicle_unit_number);
-  const plate = clean(workOrder.vehicle_license_plate);
+  const unit = clean(vehicle?.unit_number ?? workOrder.vehicle_unit_number);
+  const plate = clean(
+    vehicle?.license_plate ?? workOrder.vehicle_license_plate,
+  );
   const detail = [unit ? `Unit ${unit}` : "", plate ? `Plate ${plate}` : ""]
     .filter(Boolean)
     .join(" • ");
   return { label, detail: detail || null };
+}
+
+function isFulfilledWorkOrder(status: string | null): boolean {
+  return [
+    "archived",
+    "closed",
+    "completed",
+    "invoiced",
+    "paid",
+    "ready_to_invoice",
+  ].includes(normalized(status));
 }
 
 function isPortalOriginQuote(workOrder: PortalQuoteWorkOrderRow): boolean {
@@ -210,6 +239,7 @@ function cardStatus(params: {
 
 export function buildPortalQuoteCards(
   workOrders: PortalQuoteWorkOrderRow[],
+  vehiclesById: Map<string, PortalVehicleRow> = new Map(),
 ): PortalQuoteCard[] {
   return workOrders.flatMap<PortalQuoteCard>((workOrder) => {
     const quoteLines = linesVisibleOnQuoteList(workOrder);
@@ -246,7 +276,10 @@ export function buildPortalQuoteCards(
       );
     const aggregate = Boolean(workOrder.estimate_number) || lineCount > 1;
     const portalOrigin = isPortalOriginQuote(workOrder);
-    const vehicle = vehiclePresentation(workOrder);
+    const vehicle = vehiclePresentation(
+      workOrder,
+      workOrder.vehicle_id ? vehiclesById.get(workOrder.vehicle_id) : undefined,
+    );
     const title =
       lineCount === 1
         ? descriptions[0] || (partsOnly ? "Parts quote" : "Repair quote")
@@ -278,6 +311,8 @@ export function buildPortalQuoteCards(
         partsOnly,
         sent,
         approved,
+        pending,
+        fulfilled: isFulfilledWorkOrder(workOrder.status),
         status: cardStatus({
           approved,
           approvedCount,
@@ -312,7 +347,7 @@ export async function listPortalQuotesForCustomer({
     const { data, error } = await supabase
       .from("work_orders")
       .select(
-        "id,custom_id,vehicle_id,vehicle_year,vehicle_make,vehicle_model,vehicle_unit_number,vehicle_license_plate,created_at,scheduled_at,invoice_sent_at,estimate_number,external_id,work_order_quote_lines(id,description,status,stage,approved_at,declined_at,work_order_line_id,sent_to_customer_at,metadata),work_order_lines(id,description,status,line_status,approval_state,approval_at,quoted_at,voided_at)",
+        "id,custom_id,status,vehicle_id,vehicle_year,vehicle_make,vehicle_model,vehicle_unit_number,vehicle_license_plate,created_at,scheduled_at,invoice_sent_at,estimate_number,external_id,work_order_quote_lines(id,description,status,stage,approved_at,declined_at,work_order_line_id,sent_to_customer_at,metadata),work_order_lines(id,description,status,line_status,approval_state,approval_at,quoted_at,voided_at)",
       )
       .eq("shop_id", shopId)
       .eq("customer_id", customerId)
@@ -323,7 +358,27 @@ export async function listPortalQuotesForCustomer({
 
     if (error) throw new Error(error.message);
     const page = (data ?? []) as unknown as PortalQuoteWorkOrderRow[];
-    cards.push(...buildPortalQuoteCards(page));
+    const vehicleIds = Array.from(
+      new Set(
+        page
+          .map((workOrder) => workOrder.vehicle_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    );
+    const vehicleResult = vehicleIds.length
+      ? await supabase
+          .from("vehicles")
+          .select("id,year,make,model,unit_number,license_plate")
+          .eq("shop_id", shopId)
+          .eq("customer_id", customerId)
+          .in("id", vehicleIds)
+          .returns<PortalVehicleRow[]>()
+      : { data: [] as PortalVehicleRow[], error: null };
+    if (vehicleResult.error) throw new Error(vehicleResult.error.message);
+    const vehiclesById = new Map(
+      (vehicleResult.data ?? []).map((vehicle) => [vehicle.id, vehicle]),
+    );
+    cards.push(...buildPortalQuoteCards(page, vehiclesById));
 
     if (page.length < PAGE_SIZE) break;
     offset += PAGE_SIZE;
