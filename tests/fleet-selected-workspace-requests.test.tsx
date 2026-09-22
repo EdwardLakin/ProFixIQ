@@ -177,6 +177,7 @@ describe("selected Fleet workspace requests", () => {
   it("bounds missed pre-trip rendering while keeping every row reachable", async () => {
     const missed = Array.from({ length: 30 }, (_, index) => ({
       id: `missed-${index}`,
+      notificationId: `00000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`,
       unitLabel: `Unit ${index}`,
       driverName: `Driver ${index}`,
       serviceDate: "2026-09-01",
@@ -210,5 +211,63 @@ describe("selected Fleet workspace requests", () => {
       screen.getByRole("button", { name: "Load more missed pre-trips" }),
     );
     expect(screen.getAllByText("Missed daily pre-trip")).toHaveLength(30);
+  });
+
+  it("dismisses a missed pre-trip through the shared Fleet alert action", async () => {
+    const notificationId = "00000000-0000-4000-8000-000000000099";
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            canManage: true,
+            summary: {
+              open: 0,
+              acknowledged: 0,
+              deferred: 0,
+              converted: 0,
+              missedPretrips: 1,
+            },
+            items: [],
+            missed: [
+              {
+                id: "10000000-0000-4000-8000-000000000099",
+                notificationId,
+                unitLabel: "Unit 99",
+                driverName: "Driver 99",
+                serviceDate: "2026-09-22",
+                dueAt: "2026-09-22T12:00:00.000Z",
+              },
+            ],
+          }),
+          { status: 200 },
+        ),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true }), { status: 200 }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(<FleetDefectQueue fleetId={FLEET_B} />);
+
+    await waitFor(() =>
+      expect(screen.getByText("Missed daily pre-trip")).toBeTruthy(),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Dismiss missed pre-trip for Unit 99",
+      }),
+    );
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(fetchMock.mock.calls[1]?.[0]).toBe("/api/fleet/notifications");
+    expect(JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body))).toEqual({
+      action: "dismiss",
+      notificationId,
+      fleetId: FLEET_B,
+    });
+    await waitFor(() =>
+      expect(screen.queryByText("Missed daily pre-trip")).toBeNull(),
+    );
   });
 });
