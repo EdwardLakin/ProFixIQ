@@ -4,6 +4,8 @@ import {
   canManageFleetForActor,
   resolveFleetActorContext,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
+import { projectFleetNotificationRows } from "@/features/fleet/server/fleetNotificationInbox";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +30,107 @@ type Body = {
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+type MissedPayloadRow = Record<string, unknown> & {
+  id?: unknown;
+  serviceDate?: unknown;
+};
+
+async function actionableMissedPretrips(
+  supabase: ReturnType<typeof createServerSupabaseRoute>,
+  missed: MissedPayloadRow[],
+) {
+  const complianceIds = missed
+    .map((item) => String(item.id ?? ""))
+    .filter((id) => UUID.test(id));
+
+  if (complianceIds.length === 0) return [];
+
+  const { data: complianceRows, error: complianceError } = await supabase
+    .from("fleet_pretrip_compliance")
+    .select("id,shop_id,assignment_id,service_date")
+    .in("id", complianceIds);
+
+  if (complianceError) throw new Error(complianceError.message);
+
+  const byFingerprint = new Map<
+    string,
+    { complianceId: string; serviceDate: string }
+  >();
+  for (const row of complianceRows ?? []) {
+    const fingerprint = `fleet-pretrip-missed:${row.assignment_id}:${row.service_date}`;
+    byFingerprint.set(`${row.shop_id}::${fingerprint}`, {
+      complianceId: row.id,
+      serviceDate: row.service_date,
+    });
+  }
+
+  const shopIds = Array.from(
+    new Set((complianceRows ?? []).map((row) => row.shop_id)),
+  );
+  const fingerprints = Array.from(
+    new Set(
+      (complianceRows ?? []).map(
+        (row) =>
+          `fleet-pretrip-missed:${row.assignment_id}:${row.service_date}`,
+      ),
+    ),
+  );
+
+  if (shopIds.length === 0 || fingerprints.length === 0) return [];
+
+  const { data: notifications, error: notificationError } = await supabaseAdmin
+    .from("assistant_notifications")
+    .select(
+      "id,level,code,title,message,href,entity_type,entity_id,status,metadata,last_seen_at,shop_id,fingerprint",
+    )
+    .eq("source", "fleet")
+    .eq("code", "fleet_pretrip_missed")
+    .eq("status", "active")
+    .in("shop_id", shopIds)
+    .in("fingerprint", fingerprints);
+
+  if (notificationError) throw new Error(notificationError.message);
+
+  const projected = await projectFleetNotificationRows({
+    supabase: supabaseAdmin,
+    rows: (notifications ?? []).map((row) => ({
+      id: row.id,
+      level: row.level,
+      code: row.code,
+      title: row.title,
+      message: row.message,
+      href: row.href,
+      entity_type: row.entity_type,
+      entity_id: row.entity_id,
+      status: row.status,
+      metadata:
+        row.metadata && typeof row.metadata === "object"
+          ? (row.metadata as Record<string, unknown>)
+          : null,
+      last_seen_at: row.last_seen_at,
+    })),
+  });
+
+  const projectedIds = new Set(projected.map((row) => row.id));
+  const notificationByComplianceId = new Map<string, string>();
+
+  for (const row of notifications ?? []) {
+    if (!projectedIds.has(row.id)) continue;
+    const match = byFingerprint.get(`${row.shop_id}::${row.fingerprint}`);
+    if (match) notificationByComplianceId.set(match.complianceId, row.id);
+  }
+
+  return missed
+    .map((item) => {
+      const complianceId = String(item.id ?? "");
+      const notificationId = notificationByComplianceId.get(complianceId);
+      return notificationId ? { ...item, notificationId } : null;
+    })
+    .filter((item): item is MissedPayloadRow & { notificationId: string } =>
+      Boolean(item),
+    );
+}
 
 export async function POST(request: Request) {
   try {
@@ -65,11 +168,33 @@ export async function POST(request: Request) {
       const items = Array.isArray(payload.items)
         ? (payload.items as Array<Record<string, unknown>>)
         : [];
+      const missed = Array.isArray(payload.missed)
+        ? (payload.missed as MissedPayloadRow[])
+        : [];
+      const actionableMissed = await actionableMissedPretrips(
+        supabase,
+        missed,
+      );
+      const summary =
+        payload.summary &&
+        typeof payload.summary === "object" &&
+        !Array.isArray(payload.summary)
+          ? {
+              ...(payload.summary as Record<string, unknown>),
+              missedPretrips: actionableMissed.length,
+            }
+          : payload.summary;
       const defectIds = items
         .map((item) => String(item.id ?? ""))
         .filter((id) => UUID.test(id));
 
-      if (!defectIds.length) return NextResponse.json(payload);
+      if (!defectIds.length) {
+        return NextResponse.json({
+          ...payload,
+          summary,
+          missed: actionableMissed,
+        });
+      }
 
       const { data: clarifications, error: clarificationError } = await supabase
         .from("fleet_defect_clarifications")
@@ -114,6 +239,8 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         ...payload,
+        summary,
+        missed: actionableMissed,
         items: items.map((item) => {
           const clarification = latestByDefect.get(String(item.id));
           return {
