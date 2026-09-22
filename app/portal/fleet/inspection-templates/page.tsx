@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { getFleetPortalActorContext } from "../_lib/requireFleetPortalActor";
-import FleetPretripTemplateBuilder from "@/features/fleet/components/FleetPretripTemplateBuilder";
+import FleetInspectionTemplateBuilder from "@/features/fleet/components/FleetInspectionTemplateBuilder";
 import { getFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 import { canAdministerFleetForActor } from "@/features/fleet/lib/resolveFleetActorContext";
 
@@ -21,5 +21,5 @@ export default async function FleetInspectionTemplatesPage({
     redirect("/portal/fleet");
   }
 
-  return <FleetPretripTemplateBuilder fleetId={actor.primaryFleetId} />;
+  return <FleetInspectionTemplateBuilder fleetId={actor.primaryFleetId} />;
 }
