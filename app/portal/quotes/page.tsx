@@ -33,6 +33,10 @@ function formatPortalDate(value: string | null): string | null {
 }
 
 function isQuoteHistory(card: PortalQuoteCard): boolean {
+  if (card.fulfilled) return true;
+  if (!card.pending && !card.approved && card.status === "Partially approved") {
+    return true;
+  }
   return ["Deferred", "Declined", "Decision recorded"].includes(card.status);
 }
 
@@ -61,12 +65,14 @@ export default async function PortalQuotesPage() {
   );
 
   const needsAttention = cards.filter(
-    (card) => card.sent && !card.approved && !isQuoteHistory(card),
+    (card) => card.sent && card.pending && !card.approved && !isQuoteHistory(card),
   );
   const waitingOnShop = cards.filter(
     (card) => !card.sent && !card.approved && !isQuoteHistory(card),
   );
-  const approved = cards.filter((card) => card.approved);
+  const approved = cards.filter(
+    (card) => card.approved && !card.fulfilled && !isQuoteHistory(card),
+  );
   const history = cards.filter(isQuoteHistory);
 
   const renderCard = (card: PortalQuoteCard) => {
