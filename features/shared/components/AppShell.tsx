@@ -125,7 +125,7 @@ export default function AppShell({
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [incomingConvoId, setIncomingConvoId] = useState<string | null>(null);
   const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const punchRef = useRef<HTMLDivElement | null>(null);
 
@@ -481,6 +481,8 @@ export default function AppShell({
         )}
       >
         <aside
+          inert={!sidebarOpen}
+          aria-hidden={!sidebarOpen}
           className={cn(
             "hidden shrink-0 overflow-hidden border-r backdrop-blur-xl transition-all duration-300 md:flex md:flex-col",
             HEADER_OFFSET_DESKTOP,
