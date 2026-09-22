@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   Camera,
@@ -10,6 +10,7 @@ import {
   Mic,
   Plus,
   Save,
+  Search,
   Trash2,
 } from "lucide-react";
 
@@ -18,6 +19,7 @@ import type {
   FleetPretripTemplateItem,
   FleetPretripTemplateSection,
 } from "@/features/fleet/types/driverPortal";
+import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
 
 type TemplateHistoryRow = {
   id: string;
@@ -33,6 +35,21 @@ type TemplateHistoryRow = {
 function key(prefix: string): string {
   return `${prefix}_${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}`;
 }
+function masterItemId(sectionTitle: string, itemName: string): string {
+  const source = `${sectionTitle}::${itemName}`;
+  let hash = 2166136261;
+  for (let index = 0; index < source.length; index += 1) {
+    hash ^= source.charCodeAt(index);
+    hash = Math.imul(hash, 16777619);
+  }
+  const slug = itemName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 44);
+  return `master_${slug || "item"}_${(hash >>> 0).toString(36)}`;
+}
+
 
 function failureActions(): FleetPretripTemplateItem["failureActions"] {
   return {
@@ -84,8 +101,10 @@ function templateRow(value: TemplateHistoryRow["inspection_templates"]) {
 
 export default function FleetPretripTemplateBuilder({
   fleetId,
+  showPageHeader = true,
 }: {
   fleetId: string;
+  showPageHeader?: boolean;
 }) {
   const router = useRouter();
   const [templates, setTemplates] = useState<TemplateHistoryRow[]>([]);
@@ -97,6 +116,7 @@ export default function FleetPretripTemplateBuilder({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [masterQuery, setMasterQuery] = useState("");
 
   const load = useCallback(async () => {
     const response = await fetch(
@@ -184,6 +204,70 @@ export default function FleetPretripTemplateBuilder({
     }));
   }
 
+  function addMasterItem(
+    sectionTitle: string,
+    masterItem: {
+      item: string;
+      unit?: string | null;
+      required?: boolean;
+    },
+  ) {
+    const id = masterItemId(sectionTitle, masterItem.item);
+    setSections((current) => {
+      if (current.some((section) => section.items.some((item) => item.id === id))) {
+        return current;
+      }
+
+      const nextItem: FleetPretripTemplateItem = {
+        id,
+        item: masterItem.item,
+        label: masterItem.item,
+        type: "pass_fail",
+        required: Boolean(masterItem.required),
+        unit: masterItem.unit ?? null,
+        severity: "maintenance",
+        failureActions: failureActions(),
+      };
+
+      const existingSectionIndex = current.findIndex(
+        (section) => section.title === sectionTitle,
+      );
+      if (existingSectionIndex < 0) {
+        return [
+          ...current,
+          {
+            id: key("section"),
+            title: sectionTitle,
+            items: [nextItem],
+          },
+        ];
+      }
+
+      return current.map((section, index) =>
+        index === existingSectionIndex
+          ? { ...section, items: [...section.items, nextItem] }
+          : section,
+      );
+    });
+  }
+
+  const visibleMasterSections = useMemo(() => {
+    const query = masterQuery.trim().toLowerCase();
+    if (!query) return masterInspectionList;
+    return masterInspectionList
+      .map((section) => ({
+        ...section,
+        items: section.items.filter((item) =>
+          [section.title, item.item, item.unit]
+            .filter(Boolean)
+            .join(" ")
+            .toLowerCase()
+            .includes(query),
+        ),
+      }))
+      .filter((section) => section.items.length > 0);
+  }, [masterQuery]);
+
   async function publish() {
     setSaving(true);
     setError(null);
@@ -235,30 +319,51 @@ export default function FleetPretripTemplateBuilder({
 
   return (
     <main className="space-y-6">
-      <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-500 dark:text-sky-300">
-            Fleet configuration
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight">
-            Pre-trip Template Builder
-          </h1>
-          <p className="mt-2 max-w-2xl text-sm text-[color:var(--theme-text-secondary)]">
-            Build the questions drivers see by asset type. Publishing creates a
-            new version, so completed inspections keep the exact form used that
-            day.
-          </p>
-        </div>
-        <button
-          type="button"
-          disabled={saving}
-          onClick={() => void publish()}
-          className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-sky-300 px-4 py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-60"
-        >
-          <Save className="h-4 w-4" />{" "}
-          {saving ? "Publishing…" : "Publish template"}
-        </button>
-      </header>
+      {showPageHeader ? (
+        <header className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-500 dark:text-sky-300">
+              Fleet configuration
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight">
+              Pre-trip Template Builder
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm text-[color:var(--theme-text-secondary)]">
+              Build the questions drivers see by asset type. Publishing creates
+              a new version, so completed inspections keep the exact form used
+              that day.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void publish()}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-sky-300 px-4 py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-60"
+          >
+            <Save className="h-4 w-4" />{" "}
+            {saving ? "Publishing…" : "Publish template"}
+          </button>
+        </header>
+      ) : (
+        <section className="flex flex-col gap-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-[var(--theme-shadow-medium)] lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <h2 className="text-xl font-semibold">Driver pre-trip template</h2>
+            <p className="mt-1 max-w-3xl text-sm text-[color:var(--theme-text-secondary)]">
+              Add inspection points from the Shop master list, then tune the
+              driver field type and Fleet-specific failure actions as needed.
+            </p>
+          </div>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => void publish()}
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-sky-300 px-4 py-2.5 text-sm font-semibold text-slate-950 disabled:opacity-60"
+          >
+            <Save className="h-4 w-4" />{" "}
+            {saving ? "Publishing…" : "Publish pre-trip"}
+          </button>
+        </section>
+      )}
 
       {error ? (
         <div
@@ -310,6 +415,78 @@ export default function FleetPretripTemplateBuilder({
             you publish one.
           </div>
         ) : null}
+      </section>
+
+      <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-[var(--theme-shadow-medium)] sm:p-5">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-sky-500 dark:text-sky-300">
+              Master inspection list
+            </p>
+            <h2 className="mt-1 text-lg font-semibold">
+              Add canonical inspection points
+            </h2>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+              The source item names come from the same list used by the Shop
+              inspection builder. Fleet-specific driver behavior is configured
+              after the item is added.
+            </p>
+          </div>
+          <label className="relative w-full md:max-w-sm">
+            <Search className="pointer-events-none absolute left-3 top-3 h-4 w-4 text-[color:var(--theme-text-muted)]" />
+            <input
+              value={masterQuery}
+              onChange={(event) => setMasterQuery(event.target.value)}
+              placeholder="Search brakes, tires, steering…"
+              className="w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] py-2.5 pl-9 pr-3 text-sm"
+            />
+          </label>
+        </div>
+
+        <div className="mt-5 space-y-4">
+          {visibleMasterSections.map((masterSection) => (
+            <div
+              key={masterSection.title}
+              className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-3 sm:p-4"
+            >
+              <div className="font-semibold">{masterSection.title}</div>
+              <div className="mt-3 grid gap-2 md:grid-cols-2">
+                {masterSection.items.map((masterItem) => {
+                  const id = masterItemId(
+                    masterSection.title,
+                    masterItem.item,
+                  );
+                  const added = sections.some((section) =>
+                    section.items.some((item) => item.id === id),
+                  );
+                  return (
+                    <button
+                      key={masterItem.item}
+                      type="button"
+                      disabled={added}
+                      onClick={() =>
+                        addMasterItem(masterSection.title, masterItem)
+                      }
+                      className="flex min-h-12 items-center justify-between gap-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3 text-left text-sm disabled:opacity-55"
+                    >
+                      <span className="min-w-0">
+                        <span className="font-medium">{masterItem.item}</span>
+                        {masterItem.unit ? (
+                          <span className="ml-2 text-xs text-[color:var(--theme-text-muted)]">
+                            {masterItem.unit}
+                          </span>
+                        ) : null}
+                      </span>
+                      <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-600 dark:text-sky-300">
+                        {added ? "Added" : "Add"}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-[var(--theme-shadow-medium)] sm:p-5">
