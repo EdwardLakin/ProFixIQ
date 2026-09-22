@@ -34,7 +34,13 @@ type PortalDirectWorkOrderLineRow = {
 
 type PortalQuoteWorkOrderRow = {
   id: string;
+  custom_id: string | null;
   vehicle_id: string | null;
+  vehicle_year: string | number | null;
+  vehicle_make: string | null;
+  vehicle_model: string | null;
+  vehicle_unit_number: string | null;
+  vehicle_license_plate: string | null;
   created_at: string | null;
   scheduled_at: string | null;
   invoice_sent_at: string | null;
@@ -47,6 +53,12 @@ type PortalQuoteWorkOrderRow = {
 export type PortalQuoteCard = {
   key: string;
   workOrderId: string;
+  workOrderReference: string;
+  estimateReference: string | null;
+  vehicleLabel: string;
+  vehicleDetail: string | null;
+  createdAt: string | null;
+  originLabel: string;
   title: string;
   detail: string;
   partsOnly: boolean;
@@ -71,6 +83,31 @@ function metadata(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function workOrderReference(workOrder: PortalQuoteWorkOrderRow): string {
+  const customId = clean(workOrder.custom_id);
+  return customId || `#${workOrder.id.slice(0, 8).toUpperCase()}`;
+}
+
+function vehiclePresentation(workOrder: PortalQuoteWorkOrderRow): {
+  label: string;
+  detail: string | null;
+} {
+  const label =
+    [
+      workOrder.vehicle_year != null ? String(workOrder.vehicle_year) : "",
+      clean(workOrder.vehicle_make),
+      clean(workOrder.vehicle_model),
+    ]
+      .filter(Boolean)
+      .join(" ") || "Your vehicle";
+  const unit = clean(workOrder.vehicle_unit_number);
+  const plate = clean(workOrder.vehicle_license_plate);
+  const detail = [unit ? `Unit ${unit}` : "", plate ? `Plate ${plate}` : ""]
+    .filter(Boolean)
+    .join(" • ");
+  return { label, detail: detail || null };
 }
 
 function isPortalOriginQuote(workOrder: PortalQuoteWorkOrderRow): boolean {
@@ -208,13 +245,14 @@ export function buildPortalQuoteCards(
         (line) => clean(metadata(line.metadata).request_kind) === "parts_only",
       );
     const aggregate = Boolean(workOrder.estimate_number) || lineCount > 1;
+    const portalOrigin = isPortalOriginQuote(workOrder);
+    const vehicle = vehiclePresentation(workOrder);
     const title =
-      clean(workOrder.estimate_number) ||
-      (lineCount === 1
-        ? descriptions[0] || "Quote request"
+      lineCount === 1
+        ? descriptions[0] || (partsOnly ? "Parts quote" : "Repair quote")
         : partsOnly
           ? "Parts quote"
-          : "Repair quote");
+          : "Repair quote";
     const detail = aggregate
       ? `${lineCount} repair ${lineCount === 1 ? "line" : "lines"}${
           descriptions.length > 0
@@ -229,6 +267,12 @@ export function buildPortalQuoteCards(
       {
         key: `work-order:${workOrder.id}`,
         workOrderId: workOrder.id,
+        workOrderReference: workOrderReference(workOrder),
+        estimateReference: clean(workOrder.estimate_number) || null,
+        vehicleLabel: vehicle.label,
+        vehicleDetail: vehicle.detail,
+        createdAt: workOrder.created_at,
+        originLabel: portalOrigin ? "Quote request" : "Shop estimate",
         title,
         detail,
         partsOnly,
@@ -268,7 +312,7 @@ export async function listPortalQuotesForCustomer({
     const { data, error } = await supabase
       .from("work_orders")
       .select(
-        "id,vehicle_id,created_at,scheduled_at,invoice_sent_at,estimate_number,external_id,work_order_quote_lines(id,description,status,stage,approved_at,declined_at,work_order_line_id,sent_to_customer_at,metadata),work_order_lines(id,description,status,line_status,approval_state,approval_at,quoted_at,voided_at)",
+        "id,custom_id,vehicle_id,vehicle_year,vehicle_make,vehicle_model,vehicle_unit_number,vehicle_license_plate,created_at,scheduled_at,invoice_sent_at,estimate_number,external_id,work_order_quote_lines(id,description,status,stage,approved_at,declined_at,work_order_line_id,sent_to_customer_at,metadata),work_order_lines(id,description,status,line_status,approval_state,approval_at,quoted_at,voided_at)",
       )
       .eq("shop_id", shopId)
       .eq("customer_id", customerId)
