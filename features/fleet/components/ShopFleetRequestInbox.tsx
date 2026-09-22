@@ -107,6 +107,7 @@ export default function ShopFleetRequestInbox({
   async function acceptRequest(item: FleetServiceRequestItem) {
     setConvertingId(item.id);
     setError(null);
+    setErrorActionHref(null);
     try {
       const workOrderId = await convertFleetServiceRequest(item.id);
       router.push(`${workOrderBasePath}/${encodeURIComponent(workOrderId)}`);
