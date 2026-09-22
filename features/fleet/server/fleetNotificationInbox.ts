@@ -93,15 +93,29 @@ export async function projectFleetNotificationRows(params: {
     }
   }
 
+  return coalesceFleetNotificationRows({
+    rows: params.rows,
+    dismissedIds,
+    activeAssignmentIds,
+  });
+}
+
+export function coalesceFleetNotificationRows(params: {
+  rows: AssistantNotificationPageRow[];
+  dismissedIds: ReadonlySet<string>;
+  activeAssignmentIds: ReadonlySet<string>;
+}): AssistantNotificationPageRow[] {
   const seenMissedAssignments = new Set<string>();
   const projected: AssistantNotificationPageRow[] = [];
 
   for (const row of params.rows) {
-    if (dismissedIds.has(row.id)) continue;
+    if (params.dismissedIds.has(row.id)) continue;
 
     if (isMissedPretrip(row)) {
       const assignmentId = row.entity_id;
-      if (!assignmentId || !activeAssignmentIds.has(assignmentId)) continue;
+      if (!assignmentId || !params.activeAssignmentIds.has(assignmentId)) {
+        continue;
+      }
       if (seenMissedAssignments.has(assignmentId)) continue;
       seenMissedAssignments.add(assignmentId);
     }
