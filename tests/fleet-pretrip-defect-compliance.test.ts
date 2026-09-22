@@ -157,14 +157,11 @@ describe("fleet pre-trip, defects, and compliance", () => {
       "supabase/migrations/20260922155000_fleet_pretrip_alert_lifecycle.sql",
     );
     expect(alertLifecycle).toContain(
-      "when public.assistant_notifications.status = 'acknowledged'",
+      "create table if not exists public.fleet_notification_dismissals",
     );
-    expect(alertLifecycle).toContain("v_keep_fingerprint");
-    expect(alertLifecycle).toContain(
-      "and n.fingerprint <> v_keep_fingerprint",
-    );
-    expect(alertLifecycle).toContain(
-      "and a.active\n      and a.pretrip_required",
+    expect(alertLifecycle).toContain("dismissed_by uuid not null");
+    expect(alertLifecycle).not.toContain(
+      "create or replace function public.evaluate_fleet_pretrip_compliance",
     );
   });
 
