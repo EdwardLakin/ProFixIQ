@@ -21,6 +21,7 @@ import {
   type OwnerPinPurpose,
   requireOwnerPinVerified,
 } from "@/features/shared/lib/server/owner-pin";
+import { isDemoAccessExpired } from "@/features/shared/lib/server/demo-shop";
 import type { WorkspaceCapabilityKey } from "@/features/workspace/authorization/capabilities";
 import { resolveCurrentWorkspaceCapabilities } from "@/features/workspace/authorization/server/resolveWorkspaceCapabilities";
 
@@ -135,7 +136,8 @@ export async function requireShopPageAccess(
     !allowedRoleOrWorkspaceCapability ||
     !allowedCapability ||
     !allowedCapabilities ||
-    !allowedWorkspaceCapability
+    !allowedWorkspaceCapability ||
+    isDemoAccessExpired(profile.demo_access_expires_at)
   ) {
     redirect(options.redirectTo ?? "/dashboard");
   }
@@ -206,6 +208,13 @@ export async function requireShopScopedApiAccess(
         { error: "Profile for current user not found" },
         { status: 403 },
       ),
+    };
+  }
+
+  if (isDemoAccessExpired(profile.demo_access_expires_at)) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
     };
   }
 

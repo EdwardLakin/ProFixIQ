@@ -13,6 +13,7 @@ export type AuthenticatedStaffProfile = Pick<
   | "must_change_password"
   | "email"
   | "full_name"
+  | "demo_access_expires_at"
 >;
 
 type ProfileClient = SupabaseClient<Database>;
@@ -23,7 +24,7 @@ type CanonicalProfileOptions = {
 };
 
 const PROFILE_SELECT =
-  "id, role, shop_id, completed_onboarding, must_change_password, email, full_name";
+  "id, role, shop_id, completed_onboarding, must_change_password, email, full_name, demo_access_expires_at";
 
 /**
  * Resolve the canonical profiles.id row for a verified Supabase auth subject.

@@ -61,6 +61,7 @@ function actor(
       completed_onboarding: true,
       full_name: "Test Technician",
       must_change_password: false,
+      demo_access_expires_at: null,
       user_id: "auth-1",
     },
     supabase: db as never,

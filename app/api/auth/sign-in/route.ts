@@ -294,6 +294,7 @@ export async function POST(req: Request) {
           must_change_password: profile.must_change_password,
           email: profile.email,
           full_name: profile.full_name,
+          demo_access_expires_at: profile.demo_access_expires_at,
         },
         canonicalRole: capabilities.canonicalRole,
         authUserId: signedInUser.id,
