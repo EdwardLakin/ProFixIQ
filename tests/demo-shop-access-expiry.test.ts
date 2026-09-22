@@ -161,24 +161,29 @@ describe("demo access expiry enforcement in admin-access gates", () => {
       expect(redirectMock).not.toHaveBeenCalled();
     });
 
-    it("redirects a demo profile with a past expiry, mid-session, to /sign-in", async () => {
+    it("redirects a demo profile with a past expiry, mid-session, through sign-out", async () => {
+      // Not directly to /sign-in: the Supabase session is still valid, and
+      // middleware bounces an authenticated user who picks a product's
+      // sign-in page straight back to /dashboard, recreating the loop.
+      // Routing through the existing sign-out handler first actually clears
+      // the session before the user lands anywhere.
       mockProfile(new Date(Date.now() - 60 * 60 * 1000).toISOString());
 
       await expect(requireShopPageAccess({})).rejects.toThrow(
-        "redirect:/sign-in",
+        "redirect:/auth/signout",
       );
     });
 
     it("ignores a custom redirectTo for an expired demo profile", async () => {
-      // /sign-in is used unconditionally for expiry, never options.redirectTo:
-      // a caller-supplied destination could itself be a gated page that
-      // bounces the user straight back here, recreating the loop this
-      // exists to avoid.
+      // /auth/signout is used unconditionally for expiry, never
+      // options.redirectTo: a caller-supplied destination could itself be a
+      // gated page that bounces the user straight back here, recreating the
+      // loop this exists to avoid.
       mockProfile(new Date(Date.now() - 60 * 60 * 1000).toISOString());
 
       await expect(
         requireShopPageAccess({ redirectTo: "/dashboard/performance" }),
-      ).rejects.toThrow("redirect:/sign-in");
+      ).rejects.toThrow("redirect:/auth/signout");
     });
 
     it("still redirects a non-expired, disallowed-role profile to the normal default destination", async () => {

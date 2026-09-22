@@ -85,13 +85,17 @@ export async function requireShopPageAccess(
   const { profile } = await resolveAuthenticatedStaffProfile(supabase, user.id);
 
   if (profile && isDemoAccessExpired(profile.demo_access_expires_at)) {
-    // Redirecting to options.redirectTo (default "/dashboard") here would
-    // risk a loop: /dashboard's client-side role/last-view routing has no
-    // expiry check of its own and can send the user straight back into this
-    // same gated page. Exit through the same unauthenticated destination
-    // used above instead, since an expired demo profile is no longer
-    // entitled to any shop-scoped page regardless of options.redirectTo.
-    redirect("/sign-in");
+    // A Server Component can't clear the auth cookie itself, and the
+    // Supabase session stays valid even though app-layer access has
+    // expired. Redirecting straight to /sign-in would only surface a new
+    // loop one hop later: middleware treats a still-authenticated user who
+    // picks a product's sign-in page as already signed in and bounces them
+    // straight back to /dashboard, landing back on this same gated page.
+    // Route through the existing sign-out handler (app/auth/signout/route.ts)
+    // instead: it clears the session and lands the user on "/" fully signed
+    // out, so any product's sign-in page shows a real credential form
+    // instead of bouncing an already-authenticated session onward.
+    redirect("/auth/signout");
   }
 
   const actor = getActorCapabilities({ role: profile?.role });

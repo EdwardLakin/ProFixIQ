@@ -11,6 +11,7 @@ import {
   resolveFleetRoleTier,
 } from "@/features/shared/lib/rbac";
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
+import { isDemoAccessExpired } from "@/features/shared/lib/server/demo-shop";
 import { toSafeDatabaseError } from "@/features/shared/lib/server/safeDatabaseError";
 import {
   createAdminSupabase,
@@ -56,6 +57,9 @@ export async function requireShopAssistantActor(
 
   if (profileError || !profile?.shop_id) {
     throw new ShopAssistantHttpError(403, "A shop staff profile is required");
+  }
+  if (isDemoAccessExpired(profile.demo_access_expires_at)) {
+    throw new ShopAssistantHttpError(403, "Forbidden");
   }
 
   const canonicalRole = canonicalizeRole(profile.role);
