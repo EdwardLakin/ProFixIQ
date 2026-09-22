@@ -97,9 +97,8 @@ describe("RoleSidebar canonical identity", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("updates email-restricted navigation from controlled identity props", async () => {
-    mocks.pathname = "/property/setup";
-    const view = render(
+  it("does not expose retired property navigation", async () => {
+    render(
       <RoleSidebar
         initialRole="owner"
         initialEmail="edwardlakin35@gmail.com"
@@ -108,14 +107,14 @@ describe("RoleSidebar canonical identity", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("link", { name: "Property Setup" }),
+        screen.getByRole("link", { name: "Shop Overview" }),
       ).toBeInTheDocument();
     });
 
-    view.rerender(
-      <RoleSidebar initialRole="owner" initialEmail="owner@example.com" />,
-    );
-
+    expect(screen.queryByText("Property")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: "Property Maintenance" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("link", { name: "Property Setup" }),
     ).not.toBeInTheDocument();
