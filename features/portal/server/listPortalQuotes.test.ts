@@ -7,7 +7,13 @@ import {
 function workOrder(overrides: Record<string, unknown> = {}) {
   return {
     id: "work-order-1",
+    custom_id: "WO-000015",
     vehicle_id: "vehicle-1",
+    vehicle_year: 2024,
+    vehicle_make: "Ford",
+    vehicle_model: "F-350",
+    vehicle_unit_number: null,
+    vehicle_license_plate: "ABC123",
     created_at: "2026-08-22T12:00:00.000Z",
     scheduled_at: null,
     invoice_sent_at: null,
@@ -57,6 +63,12 @@ describe("portal quote cards", () => {
     expect(cards).toHaveLength(1);
     expect(cards[0]).toMatchObject({
       workOrderId: "work-order-1",
+      workOrderReference: "WO-000015",
+      vehicleLabel: "2024 Ford F-350",
+      vehicleDetail: "Plate ABC123",
+      createdAt: "2026-08-22T12:00:00.000Z",
+      originLabel: "Shop estimate",
+      title: "Brake service",
       sent: true,
       status: "Ready for your review",
     });
@@ -79,6 +91,7 @@ describe("portal quote cards", () => {
     expect(cards).toHaveLength(1);
     expect(cards[0]).toMatchObject({
       sent: false,
+      originLabel: "Quote request",
       status: "Shop is preparing your quote",
     });
   });
@@ -114,6 +127,7 @@ describe("portal quote cards", () => {
     expect(cards).toHaveLength(1);
     expect(cards[0]).toMatchObject({
       aggregate: true,
+      title: "Repair quote",
       detail: "2 repair lines • Brakes, Steering",
     });
   });
@@ -144,6 +158,29 @@ describe("portal quote cards", () => {
       status: "Ready for your review",
     });
     expect(cards[1]?.detail).toBe("Repair quote • Appointment after approval");
+  });
+
+  it("falls back to a stable work-order reference and readable vehicle label", () => {
+    const cards = buildPortalQuoteCards([
+      workOrder({
+        id: "abcdef12-3456-7890-abcd-ef1234567890",
+        custom_id: null,
+        vehicle_year: null,
+        vehicle_make: null,
+        vehicle_model: null,
+        vehicle_unit_number: "17",
+        vehicle_license_plate: null,
+        estimate_number: "EST-42",
+        work_order_quote_lines: [quoteLine()],
+      }),
+    ]);
+
+    expect(cards[0]).toMatchObject({
+      workOrderReference: "#ABCDEF12",
+      estimateReference: "EST-42",
+      vehicleLabel: "Your vehicle",
+      vehicleDetail: "Unit 17",
+    });
   });
 
   it("paginates past non-quote work orders before applying the card cap", async () => {
