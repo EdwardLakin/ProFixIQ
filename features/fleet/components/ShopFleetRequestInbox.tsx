@@ -6,7 +6,10 @@ import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, ClipboardCheck, RefreshCw, Truck } from "lucide-react";
 
 import { formatFleetDate } from "@/features/fleet/lib/fleetDate";
-import { convertFleetServiceRequest } from "@/features/fleet/lib/convertFleetServiceRequest";
+import {
+  convertFleetServiceRequest,
+  FleetServiceRequestConversionError,
+} from "@/features/fleet/lib/convertFleetServiceRequest";
 import type {
   FleetServiceRequestItem,
   FleetServiceRequestsPayload,
@@ -117,7 +120,10 @@ export default function ShopFleetRequestInbox({
           ? cause.message
           : "Unable to create the work order";
       setError(message);
-      if (/billing ownership must be reviewed/i.test(message)) {
+      if (
+        cause instanceof FleetServiceRequestConversionError &&
+        cause.reason === "ownership_conflict"
+      ) {
         setErrorActionHref(
           `/vehicles/${encodeURIComponent(item.vehicleId)}`,
         );
