@@ -1,3 +1,4 @@
+import { readFileSync, readdirSync } from "node:fs";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const createServerSupabaseRSCMock = vi.hoisted(() => vi.fn());
@@ -160,11 +161,168 @@ describe("demo access expiry enforcement in admin-access gates", () => {
       expect(redirectMock).not.toHaveBeenCalled();
     });
 
-    it("redirects a demo profile with a past expiry, mid-session", async () => {
+    it("redirects a demo profile with a past expiry, mid-session, to /sign-in", async () => {
       mockProfile(new Date(Date.now() - 60 * 60 * 1000).toISOString());
 
       await expect(requireShopPageAccess({})).rejects.toThrow(
-        "redirect:/dashboard",
+        "redirect:/sign-in",
+      );
+    });
+
+    it("ignores a custom redirectTo for an expired demo profile", async () => {
+      // /sign-in is used unconditionally for expiry, never options.redirectTo:
+      // a caller-supplied destination could itself be a gated page that
+      // bounces the user straight back here, recreating the loop this
+      // exists to avoid.
+      mockProfile(new Date(Date.now() - 60 * 60 * 1000).toISOString());
+
+      await expect(
+        requireShopPageAccess({ redirectTo: "/dashboard/performance" }),
+      ).rejects.toThrow("redirect:/sign-in");
+    });
+
+    it("still redirects a non-expired, disallowed-role profile to the normal default destination", async () => {
+      // Regression guard: the expiry fix must not change ordinary
+      // authorization behavior for non-expiry denials.
+      mockProfile(null);
+
+      await expect(
+        requireShopPageAccess({ allowRoles: ["admin"] }),
+      ).rejects.toThrow("redirect:/dashboard");
+    });
+
+    it("still honors a custom redirectTo for a non-expiry denial", async () => {
+      mockProfile(null);
+
+      await expect(
+        requireShopPageAccess({
+          allowRoles: ["admin"],
+          redirectTo: "/dashboard/performance",
+        }),
+      ).rejects.toThrow("redirect:/dashboard/performance");
+    });
+  });
+});
+
+function extractFunctionBody(sql: string, functionSignature: string): string {
+  const start = sql.indexOf(functionSignature);
+  if (start === -1) {
+    throw new Error(`Function signature not found: ${functionSignature}`);
+  }
+  const nextFunctionIndex = sql.indexOf(
+    "CREATE OR REPLACE FUNCTION",
+    start + functionSignature.length,
+  );
+  return nextFunctionIndex === -1
+    ? sql.slice(start)
+    : sql.slice(start, nextFunctionIndex);
+}
+
+const migrationFileName = readdirSync("supabase/migrations").find((name) =>
+  name.endsWith("_demo_shop_access_expiry.sql"),
+);
+if (!migrationFileName) {
+  throw new Error("demo_shop_access_expiry migration not found");
+}
+const migration = readFileSync(
+  `supabase/migrations/${migrationFileName}`,
+  "utf8",
+);
+const delegationMigration = readFileSync(
+  "supabase/migrations/20260725190200_p0_008_reconcile_runtime_behavior.sql",
+  "utf8",
+);
+
+const isShopMemberBody = extractFunctionBody(
+  migration,
+  'CREATE OR REPLACE FUNCTION "public"."is_shop_member"',
+);
+const shopRoleBody = extractFunctionBody(
+  migration,
+  "CREATE OR REPLACE FUNCTION public.shop_role(shop_id uuid)",
+);
+const isStaffForShopBody = extractFunctionBody(
+  migration,
+  'CREATE OR REPLACE FUNCTION "public"."is_staff_for_shop"',
+);
+
+describe("demo access expiry — SQL contract", () => {
+  it("adds the nullable expiry column on the canonical profiles table only", () => {
+    expect(migration).toContain(
+      "ALTER TABLE public.profiles\n  ADD COLUMN IF NOT EXISTS demo_access_expires_at timestamptz;",
+    );
+    expect(migration).not.toMatch(/shop_users/i);
+  });
+
+  describe("is_shop_member()", () => {
+    it("keeps its existing profiles membership check and adds only the expiry condition", () => {
+      expect(isShopMemberBody).toContain("pr.user_id = auth.uid()");
+      expect(isShopMemberBody).toContain("pr.shop_id = p_shop");
+      expect(isShopMemberBody).toContain(
+        "AND (pr.demo_access_expires_at IS NULL OR pr.demo_access_expires_at > now())",
+      );
+    });
+
+    it("preserves its function/security/search-path characteristics", () => {
+      expect(isShopMemberBody).toContain('LANGUAGE "sql" STABLE');
+      expect(isShopMemberBody).not.toContain("SECURITY DEFINER");
+      expect(isShopMemberBody).toContain(
+        "SET search_path TO 'public, extensions, pg_temp'",
+      );
+    });
+  });
+
+  describe("shop_role()", () => {
+    it("keeps reading shop_members for role and adds only an expiry join back to profiles", () => {
+      expect(shopRoleBody).toContain("select sm.role");
+      expect(shopRoleBody).toContain("from public.shop_members sm");
+      expect(shopRoleBody).toContain("join public.profiles pr");
+      expect(shopRoleBody).toContain(
+        "and (pr.demo_access_expires_at is null or pr.demo_access_expires_at > now())",
+      );
+    });
+
+    it("preserves its function/security/search-path characteristics", () => {
+      expect(shopRoleBody).toContain("STABLE SECURITY DEFINER");
+      expect(shopRoleBody).toContain("SET search_path TO 'public', 'pg_temp'");
+    });
+  });
+
+  describe("is_staff_for_shop()", () => {
+    it("preserves its existing role allowlist and id-based membership check, adding only the expiry condition", () => {
+      expect(isStaffForShopBody).toContain("p.id   = auth.uid()");
+      expect(isStaffForShopBody).toContain("p.shop_id = _shop");
+      expect(isStaffForShopBody).toContain(
+        "p.role in ('owner','admin','manager','advisor','parts','mechanic')",
+      );
+      expect(isStaffForShopBody).toContain(
+        "and (p.demo_access_expires_at is null or p.demo_access_expires_at > now())",
+      );
+    });
+
+    it("preserves its function/security/search-path characteristics and is not turned into a delegate", () => {
+      expect(isStaffForShopBody).toContain('LANGUAGE "sql" STABLE');
+      expect(isStaffForShopBody).not.toContain("SECURITY DEFINER");
+      expect(isStaffForShopBody).toContain(
+        "SET search_path TO 'public, extensions, pg_temp'",
+      );
+      expect(isStaffForShopBody).not.toContain("is_shop_member");
+      expect(isStaffForShopBody).not.toContain("shop_role");
+    });
+  });
+
+  describe("is_shop_member_v2()/shop_role_v2() inheritance", () => {
+    it("is not redefined by this migration, so it keeps delegating to the now-expiry-aware helpers", () => {
+      expect(migration).not.toContain("is_shop_member_v2");
+      expect(migration).not.toContain("shop_role_v2");
+    });
+
+    it("their existing definitions are pure delegations to is_shop_member()/shop_role()", () => {
+      expect(delegationMigration).toMatch(
+        /CREATE OR REPLACE FUNCTION public\.is_shop_member_v2\(shop_id uuid\)[\s\S]{0,200}select public\.is_shop_member\(\$1\);/,
+      );
+      expect(delegationMigration).toMatch(
+        /CREATE OR REPLACE FUNCTION public\.shop_role_v2\(shop_id uuid\)[\s\S]{0,200}select public\.shop_role\(\$1\);/,
       );
     });
   });

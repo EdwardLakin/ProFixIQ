@@ -84,6 +84,16 @@ export async function requireShopPageAccess(
 
   const { profile } = await resolveAuthenticatedStaffProfile(supabase, user.id);
 
+  if (profile && isDemoAccessExpired(profile.demo_access_expires_at)) {
+    // Redirecting to options.redirectTo (default "/dashboard") here would
+    // risk a loop: /dashboard's client-side role/last-view routing has no
+    // expiry check of its own and can send the user straight back into this
+    // same gated page. Exit through the same unauthenticated destination
+    // used above instead, since an expired demo profile is no longer
+    // entitled to any shop-scoped page regardless of options.redirectTo.
+    redirect("/sign-in");
+  }
+
   const actor = getActorCapabilities({ role: profile?.role });
   const role = actor.canonicalRole;
   const allowedRole = !options.allowRoles || options.allowRoles.includes(role);
@@ -136,8 +146,7 @@ export async function requireShopPageAccess(
     !allowedRoleOrWorkspaceCapability ||
     !allowedCapability ||
     !allowedCapabilities ||
-    !allowedWorkspaceCapability ||
-    isDemoAccessExpired(profile.demo_access_expires_at)
+    !allowedWorkspaceCapability
   ) {
     redirect(options.redirectTo ?? "/dashboard");
   }

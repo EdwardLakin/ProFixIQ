@@ -1,17 +1,17 @@
 -- Demo Shop access foundation (PR 1 of the Demo Shop project).
 --
 -- Adds a nullable expiry marker to the canonical membership table
--- (public.profiles) and teaches the two SQL helpers that every other
--- membership check delegates through to treat an expired profile as not a
--- member. Null = normal (non-demo) user, entirely unaffected.
+-- (public.profiles) and teaches the SQL helpers that other membership
+-- checks delegate through, or that are used independently by RLS
+-- policies and DB mutation guards, to treat an expired profile as not a
+-- member/not staff. Null = normal (non-demo) user, entirely unaffected.
 --
--- Follow-up required before demo access is fully expiry-safe at the DB
--- layer: public.is_staff_for_shop(uuid) is a separate profiles-reading
--- helper (used by RLS policies independent of is_shop_member/shop_role)
--- that this migration intentionally does not touch. An expired demo
--- profile would still pass it today. Out of scope here per the additive
--- boundary for this PR; track as a follow-up before relying on demo
--- expiry as a full RLS-layer guarantee.
+-- public.is_staff_for_shop(uuid) is a separate profiles-reading helper
+-- from is_shop_member()/shop_role() (used independently by existing RLS
+-- policies and DB mutation guards, not by delegation from either of
+-- them), so it gets the same expiry condition added directly below,
+-- with its existing role semantics and function/security/search-path
+-- characteristics otherwise unchanged.
 
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS demo_access_expires_at timestamptz;
@@ -46,3 +46,17 @@ AS $function$
   limit 1;
 $function$
 ;
+
+CREATE OR REPLACE FUNCTION "public"."is_staff_for_shop"("_shop" "uuid") RETURNS boolean
+    LANGUAGE "sql" STABLE
+    SET search_path TO 'public, extensions, pg_temp'
+    AS $$
+  select exists (
+    select 1
+    from public.profiles p
+    where p.id   = auth.uid()
+      and p.shop_id = _shop
+      and p.role in ('owner','admin','manager','advisor','parts','mechanic')
+      and (p.demo_access_expires_at is null or p.demo_access_expires_at > now())
+  );
+$$;
