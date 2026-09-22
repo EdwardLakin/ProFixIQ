@@ -157,7 +157,7 @@ async function loadVehicleQuoteHistory(input: {
     const { data, error } = await input.admin
       .from("work_order_quote_lines")
       .select(
-        "id,shop_id,work_order_id,work_order_line_id,source_work_order_line_id,source_row_id,vehicle_id,title,description,status,stage,decision,decline_reason,defer_reason,labor_total,parts_total,subtotal,tax_total,grand_total,metadata,declined_at,deferred_at,created_at,updated_at",
+        "id,shop_id,work_order_id,work_order_line_id,source_work_order_line_id,source_row_id,vehicle_id,title,description,status,stage,decision,decline_reason,defer_reason,labor_total,parts_total,subtotal,tax_total,grand_total,metadata,declined_at,deferred_at,resolved_elsewhere_at,created_at,updated_at",
       )
       .eq("shop_id", input.shopId)
       .eq("vehicle_id", input.vehicleId)
@@ -199,6 +199,10 @@ export async function GET(request: Request) {
     shopId: access.profile.shop_id,
     url,
   });
+  const rawExcludeWorkOrderId = url.searchParams.get("excludeWorkOrderId")?.trim() ?? "";
+  const excludeWorkOrderId = UUID_PATTERN.test(rawExcludeWorkOrderId)
+    ? rawExcludeWorkOrderId
+    : null;
 
   if (!vehicleId) {
     return NextResponse.json(
@@ -303,6 +307,13 @@ export async function GET(request: Request) {
     if (!rootId) continue;
     const key = recommendationKey(rootId, quote);
 
+    // The advisor explicitly closed this recommendation out ("completed
+    // elsewhere"): it never surfaces again, regardless of line state.
+    if (quote.resolved_elsewhere_at) {
+      resolvedKeys.add(key);
+      continue;
+    }
+
     const sourceLine = lineById.get(rootId);
     if (
       sourceLine &&
@@ -357,6 +368,15 @@ export async function GET(request: Request) {
 
   const visibleQuotes = [...latestByKey.values()]
     .filter(({ quote }) => quoteDecision(quote) !== null)
+    // A decision recorded on the current work order (e.g. a just-submitted
+    // Decline) is this visit's own decision, not "previous" work -- without
+    // this, refreshing the panel on the work order that just recorded it
+    // would offer the same action again, disagreeing with the optimistic
+    // client-side removal.
+    .filter(
+      ({ quote }) =>
+        !excludeWorkOrderId || quote.work_order_id !== excludeWorkOrderId,
+    )
     .map(({ rootId, quote: latest }) => ({
       rootId,
       latest,
@@ -374,6 +394,7 @@ export async function GET(request: Request) {
       return {
         rootLineId: rootId,
         quoteLineId: original.id,
+        actionQuoteLineId: latest.id,
         workOrderId: original.work_order_id,
         workOrderNumber: originalWorkOrder?.custom_id ?? null,
         title:
@@ -385,10 +406,15 @@ export async function GET(request: Request) {
         complaint: sourceLine?.complaint ?? null,
         decision,
         decisionAt: quoteTimestamp(original),
-        laborTotal: canViewPricing ? Number(original.labor_total ?? 0) : null,
-        partsTotal: canViewPricing ? Number(original.parts_total ?? 0) : null,
-        taxTotal: canViewPricing ? Number(original.tax_total ?? 0) : null,
-        grandTotal: canViewPricing ? Number(original.grand_total ?? 0) : null,
+        // Sourced from `latest`, not `original`: Add carries actionQuoteLineId
+        // (latest.id)'s current pricing forward, so the displayed total must
+        // match what Add will actually materialize, not the (possibly
+        // superseded) original quote's pricing shown for display continuity
+        // elsewhere on this item.
+        laborTotal: canViewPricing ? Number(latest.labor_total ?? 0) : null,
+        partsTotal: canViewPricing ? Number(latest.parts_total ?? 0) : null,
+        taxTotal: canViewPricing ? Number(latest.tax_total ?? 0) : null,
+        grandTotal: canViewPricing ? Number(latest.grand_total ?? 0) : null,
       };
     })
     .sort((left, right) => right.decisionAt.localeCompare(left.decisionAt));

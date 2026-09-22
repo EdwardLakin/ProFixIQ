@@ -24019,6 +24019,36 @@ export type Database = {
           },
         ]
       }
+      work_order_deferred_recommendation_receipts: {
+        Row: {
+          action: string
+          action_id: string
+          created_at: string
+          quote_line_id: string
+          request_sha256: string
+          shop_id: string
+          work_order_id: string
+        }
+        Insert: {
+          action: string
+          action_id: string
+          created_at?: string
+          quote_line_id: string
+          request_sha256: string
+          shop_id: string
+          work_order_id: string
+        }
+        Update: {
+          action?: string
+          action_id?: string
+          created_at?: string
+          quote_line_id?: string
+          request_sha256?: string
+          shop_id?: string
+          work_order_id?: string
+        }
+        Relationships: []
+      }
       work_order_intelligence: {
         Row: {
           cause: string | null
@@ -25860,6 +25890,8 @@ export type Database = {
           notes: string | null
           parts_total: number | null
           qty: number | null
+          resolved_elsewhere_at: string | null
+          resolved_elsewhere_by_user_id: string | null
           sent_at: string | null
           sent_by: string | null
           sent_to_customer_at: string | null
@@ -25910,6 +25942,8 @@ export type Database = {
           notes?: string | null
           parts_total?: number | null
           qty?: number | null
+          resolved_elsewhere_at?: string | null
+          resolved_elsewhere_by_user_id?: string | null
           sent_at?: string | null
           sent_by?: string | null
           sent_to_customer_at?: string | null
@@ -25960,6 +25994,8 @@ export type Database = {
           notes?: string | null
           parts_total?: number | null
           qty?: number | null
+          resolved_elsewhere_at?: string | null
+          resolved_elsewhere_by_user_id?: string | null
           sent_at?: string | null
           sent_by?: string | null
           sent_to_customer_at?: string | null
@@ -27726,6 +27762,17 @@ export type Database = {
         }
         Returns: Json
       }
+      add_deferred_recommendation_to_work_order: {
+        Args: {
+          p_actor_profile_id: string
+          p_authenticated_user_id: string
+          p_new_line_id: string
+          p_quote_line_id: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       add_portal_diagnostic_line_atomic: {
         Args: {
           p_actor_user_id: string
@@ -28908,6 +28955,18 @@ export type Database = {
         }
       }
       current_shop_id: { Args: never; Returns: string }
+      decline_deferred_recommendation: {
+        Args: {
+          p_action_id: string
+          p_actor_profile_id: string
+          p_authenticated_user_id: string
+          p_note: string
+          p_quote_line_id: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       delete_menu_item_with_parts_intake: {
         Args: {
           p_actor_auth_user_id: string
@@ -30519,6 +30578,17 @@ export type Database = {
           p_idempotency_key: string
           p_quote_line_ids: string[]
           p_revision: number
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
+      resolve_deferred_recommendation_elsewhere: {
+        Args: {
+          p_actor_profile_id: string
+          p_authenticated_user_id: string
+          p_note: string
+          p_quote_line_id: string
           p_shop_id: string
           p_work_order_id: string
         }

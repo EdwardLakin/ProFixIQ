@@ -141,7 +141,7 @@ function workOrder(overrides: Row = {}): Row {
 
 async function callRoute(
   tables: Record<string, Row[]>,
-  options: { canViewSellPricing?: boolean } = {},
+  options: { canViewSellPricing?: boolean; excludeWorkOrderId?: string } = {},
 ) {
   mocks.requireShopScopedApiAccess.mockResolvedValue({
     ok: true,
@@ -154,9 +154,12 @@ async function callRoute(
   });
   mocks.createAdminSupabase.mockReturnValue(createAdmin(tables));
 
+  const excludeParam = options.excludeWorkOrderId
+    ? `&excludeWorkOrderId=${options.excludeWorkOrderId}`
+    : "";
   const response = await GET(
     new Request(
-      `http://localhost/api/work-orders/deferred-history?vehicleId=${VEHICLE}`,
+      `http://localhost/api/work-orders/deferred-history?vehicleId=${VEHICLE}${excludeParam}`,
     ),
   );
 
@@ -317,5 +320,100 @@ describe("create-work-order deferred history", () => {
       quoteLineId: "quote-2",
       decisionAt: "2026-08-09T18:00:00Z",
     });
+  });
+
+  it("exposes actionQuoteLineId as the latest quote line, distinct from the display quoteLineId", async () => {
+    const tables = baseTables();
+    tables.work_order_quote_lines = [
+      quote(),
+      quote({
+        id: "quote-2",
+        source_row_id: "quote-1",
+        metadata: { carry_forward: true },
+        decline_reason: "Customer deferred again",
+        declined_at: "2026-08-09T18:00:00Z",
+        updated_at: "2026-08-09T18:00:00Z",
+      }),
+    ];
+
+    const { body } = await callRoute(tables);
+
+    expect(body.items).toHaveLength(1);
+    expect(body.items?.[0]).toMatchObject({
+      quoteLineId: "quote-1",
+      actionQuoteLineId: "quote-2",
+    });
+  });
+
+  it("displays pricing from the latest (action) quote line, not the original display quote line", async () => {
+    // Add carries actionQuoteLineId (latest.id)'s current pricing forward, so
+    // the displayed total must match what Add will actually materialize, not
+    // the original quote's (possibly superseded) pricing.
+    const tables = baseTables();
+    tables.work_order_quote_lines = [
+      quote(),
+      quote({
+        id: "quote-2",
+        source_row_id: "quote-1",
+        metadata: { carry_forward: true },
+        decline_reason: "Customer deferred again, repriced",
+        declined_at: "2026-08-09T18:00:00Z",
+        updated_at: "2026-08-09T18:00:00Z",
+        labor_total: 500,
+        parts_total: 900,
+        tax_total: 70,
+        grand_total: 1470,
+      }),
+    ];
+
+    const { body } = await callRoute(tables, { canViewSellPricing: true });
+
+    expect(body.items).toHaveLength(1);
+    expect(body.items?.[0]).toMatchObject({
+      quoteLineId: "quote-1",
+      actionQuoteLineId: "quote-2",
+      laborTotal: 500,
+      partsTotal: 900,
+      taxTotal: 70,
+      grandTotal: 1470,
+    });
+  });
+
+  it("excludes a decision recorded on the current work order from its own refresh", async () => {
+    // A decline just recorded on the current work order is this visit's own
+    // decision, not "previous" work -- without this, refreshing the panel on
+    // the work order that just recorded it would offer the same action again.
+    const CURRENT_WO = "73400000-0000-4000-8000-000000000099";
+    const tables = baseTables();
+    tables.work_orders = [workOrder(), workOrder({ id: CURRENT_WO })];
+    tables.work_order_quote_lines = [
+      quote(),
+      quote({
+        id: "quote-2",
+        work_order_id: CURRENT_WO,
+        source_row_id: "quote-1",
+        metadata: { carry_forward: true },
+        decline_reason: "Customer declined again at this visit",
+        declined_at: "2026-08-09T18:00:00Z",
+        updated_at: "2026-08-09T18:00:00Z",
+      }),
+    ];
+
+    const { body } = await callRoute(tables, {
+      excludeWorkOrderId: CURRENT_WO,
+    });
+
+    expect(body.items).toEqual([]);
+  });
+
+  it("excludes a recommendation the advisor marked completed elsewhere", async () => {
+    const tables = baseTables();
+    tables.work_order_quote_lines = [
+      quote({ resolved_elsewhere_at: "2026-08-10T12:00:00Z" }),
+    ];
+
+    const { body } = await callRoute(tables);
+
+    expect(body.items).toEqual([]);
   });
 });
