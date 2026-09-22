@@ -19,7 +19,7 @@ export async function projectFleetNotificationRows(params: {
 }): Promise<AssistantNotificationPageRow[]> {
   if (params.rows.length === 0) return [];
 
-  const db = client(params.supabase);
+  const db = params.supabase;
   const notificationIds = params.rows.map((row) => row.id);
   const { data: dismissals, error: dismissalError } = await db
     .from("fleet_notification_dismissals")
@@ -96,7 +96,7 @@ export async function recordFleetNotificationDismissal(params: {
   fleetId: string | null;
   dismissedBy: string;
 }): Promise<void> {
-  const db = client(params.supabase);
+  const db = params.supabase;
   const { error } = await db.from("fleet_notification_dismissals").insert({
     notification_id: params.notificationId,
     shop_id: params.shopId,
