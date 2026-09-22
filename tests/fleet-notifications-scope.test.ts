@@ -119,7 +119,7 @@ describe("Fleet alert feed scope", () => {
     expect(state.reads[0]).toMatchObject({
       scopes: [{ shopId: SHOP_A, fleetIds: [FLEET_A] }],
       source: "fleet",
-      statuses: ["active", "acknowledged"],
+      statuses: ["active"],
     });
   });
 
