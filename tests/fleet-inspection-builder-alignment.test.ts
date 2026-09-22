@@ -54,7 +54,8 @@ describe("Fleet inspection builder alignment", () => {
     expect(route).not.toContain("convert_owned_fleet_service_request_to_work_order_atomic");
 
     expect(builder).toContain("work-order capabilities");
-    expect(builder).toContain("A subscribed Shop accepts the request");
+    expect(builder).toContain("A subscribed Shop accepts the");
+    expect(builder).toContain("request before technicians run it");
 
     expect(shopConverter).toContain(
       '"Work orders are created in ProFixIQ Shop."',
