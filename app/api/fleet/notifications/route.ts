@@ -22,6 +22,8 @@ const PAGE_SIZE = 50;
 const INTERNAL_FLEET_ALERT_ROLES = new Set(["owner", "admin", "manager"]);
 
 const BodySchema = z.object({
+  action: z.enum(["list", "dismiss"]).default("list"),
+  notificationId: z.string().uuid().nullable().optional(),
   fleetId: z.string().uuid().nullable().optional(),
   cursor: z
     .object({
@@ -156,7 +158,77 @@ export async function POST(req: Request) {
     scopes.length === 0 ||
     (actor.isInternal && !actor.capabilities.canSeeFleetWideUnits)
   ) {
-    return NextResponse.json(emptyPage());
+    return NextResponse.json(
+      parsed.data.action === "dismiss" ? { ok: false } : emptyPage(),
+      { status: parsed.data.action === "dismiss" ? 404 : 200 },
+    );
+  }
+
+  if (parsed.data.action === "dismiss") {
+    const notificationId = parsed.data.notificationId;
+    if (!notificationId) {
+      return NextResponse.json(
+        { error: "Notification id is required." },
+        { status: 400 },
+      );
+    }
+
+    const { data: notification, error: notificationError } = await supabaseAdmin
+      .from("assistant_notifications")
+      .select("id,shop_id,source,status,metadata")
+      .eq("id", notificationId)
+      .eq("source", "fleet")
+      .maybeSingle();
+
+    if (notificationError) {
+      console.error("[fleet/notifications] dismiss lookup error", notificationError);
+      return NextResponse.json(
+        { error: "Fleet alert could not be dismissed." },
+        { status: 500 },
+      );
+    }
+    if (!notification) {
+      return NextResponse.json({ error: "Fleet alert not found." }, { status: 404 });
+    }
+
+    const rowFleetId =
+      notification.metadata &&
+      typeof notification.metadata === "object" &&
+      !Array.isArray(notification.metadata) &&
+      typeof (notification.metadata as Record<string, unknown>).fleet_id === "string"
+        ? String((notification.metadata as Record<string, unknown>).fleet_id)
+        : null;
+
+    const authorized = scopes.some(
+      (scope) =>
+        scope.shopId === notification.shop_id &&
+        (scope.fleetIds === null ||
+          (rowFleetId !== null && scope.fleetIds.includes(rowFleetId))),
+    );
+    if (!authorized) {
+      return NextResponse.json({ error: "Fleet alert not found." }, { status: 404 });
+    }
+
+    const now = new Date().toISOString();
+    const { error: dismissError } = await supabaseAdmin
+      .from("assistant_notifications")
+      .update({
+        status: "acknowledged",
+        acknowledged_at: now,
+        updated_at: now,
+      })
+      .eq("id", notificationId)
+      .eq("source", "fleet");
+
+    if (dismissError) {
+      console.error("[fleet/notifications] dismiss update error", dismissError);
+      return NextResponse.json(
+        { error: "Fleet alert could not be dismissed." },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({ ok: true });
   }
 
   let page;
@@ -165,7 +237,7 @@ export async function POST(req: Request) {
       supabase: supabaseAdmin,
       scopes,
       source: "fleet",
-      statuses: ["active", "acknowledged"],
+      statuses: ["active"],
       cursor: parsed.data.cursor ?? null,
       pageSize: PAGE_SIZE,
     });
