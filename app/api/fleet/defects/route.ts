@@ -36,6 +36,39 @@ type MissedPayloadRow = Record<string, unknown> & {
   serviceDate?: unknown;
 };
 
+const LOOKUP_CHUNK_SIZE = 100;
+
+function chunks<T>(values: T[], size = LOOKUP_CHUNK_SIZE): T[][] {
+  const result: T[][] = [];
+  for (let index = 0; index < values.length; index += size) {
+    result.push(values.slice(index, index + size));
+  }
+  return result;
+}
+
+type ComplianceLookupRow = {
+  id: string;
+  shop_id: string;
+  assignment_id: string;
+  service_date: string;
+};
+
+type NotificationLookupRow = {
+  id: string;
+  level: "info" | "warning" | "critical";
+  code: string;
+  title: string;
+  message: string;
+  href: string | null;
+  entity_type: string | null;
+  entity_id: string | null;
+  status: "active" | "acknowledged" | "resolved";
+  metadata: unknown;
+  last_seen_at: string;
+  shop_id: string;
+  fingerprint: string;
+};
+
 async function actionableMissedPretrips(
   supabase: ReturnType<typeof createServerSupabaseRoute>,
   missed: MissedPayloadRow[],
@@ -46,12 +79,16 @@ async function actionableMissedPretrips(
 
   if (complianceIds.length === 0) return [];
 
-  const { data: complianceRows, error: complianceError } = await supabase
-    .from("fleet_pretrip_compliance")
-    .select("id,shop_id,assignment_id,service_date")
-    .in("id", complianceIds);
+  const complianceRows: ComplianceLookupRow[] = [];
+  for (const idChunk of chunks(complianceIds)) {
+    const { data, error } = await supabase
+      .from("fleet_pretrip_compliance")
+      .select("id,shop_id,assignment_id,service_date")
+      .in("id", idChunk);
 
-  if (complianceError) throw new Error(complianceError.message);
+    if (error) throw new Error(error.message);
+    complianceRows.push(...(data ?? []));
+  }
 
   const byFingerprint = new Map<
     string,
@@ -66,11 +103,11 @@ async function actionableMissedPretrips(
   }
 
   const shopIds = Array.from(
-    new Set((complianceRows ?? []).map((row) => row.shop_id)),
+    new Set(complianceRows.map((row) => row.shop_id)),
   );
   const fingerprints = Array.from(
     new Set(
-      (complianceRows ?? []).map(
+      complianceRows.map(
         (row) =>
           `fleet-pretrip-missed:${row.assignment_id}:${row.service_date}`,
       ),
@@ -79,22 +116,31 @@ async function actionableMissedPretrips(
 
   if (shopIds.length === 0 || fingerprints.length === 0) return [];
 
-  const { data: notifications, error: notificationError } = await supabaseAdmin
-    .from("assistant_notifications")
-    .select(
-      "id,level,code,title,message,href,entity_type,entity_id,status,metadata,last_seen_at,shop_id,fingerprint",
-    )
-    .eq("source", "fleet")
-    .eq("code", "fleet_pretrip_missed")
-    .eq("status", "active")
-    .in("shop_id", shopIds)
-    .in("fingerprint", fingerprints);
+  const notifications: NotificationLookupRow[] = [];
+  for (const fingerprintChunk of chunks(fingerprints)) {
+    const { data, error } = await supabaseAdmin
+      .from("assistant_notifications")
+      .select(
+        "id,level,code,title,message,href,entity_type,entity_id,status,metadata,last_seen_at,shop_id,fingerprint",
+      )
+      .eq("source", "fleet")
+      .eq("code", "fleet_pretrip_missed")
+      .eq("status", "active")
+      .in("shop_id", shopIds)
+      .in("fingerprint", fingerprintChunk);
 
-  if (notificationError) throw new Error(notificationError.message);
+    if (error) throw new Error(error.message);
+    notifications.push(...((data ?? []) as NotificationLookupRow[]));
+  }
+
+  notifications.sort((left, right) => {
+    const seen = right.last_seen_at.localeCompare(left.last_seen_at);
+    return seen || right.id.localeCompare(left.id);
+  });
 
   const projected = await projectFleetNotificationRows({
     supabase: supabaseAdmin,
-    rows: (notifications ?? []).map((row) => ({
+    rows: notifications.map((row) => ({
       id: row.id,
       level: row.level,
       code: row.code,
