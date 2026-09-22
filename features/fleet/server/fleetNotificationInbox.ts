@@ -3,45 +3,8 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import type { AssistantNotificationPageRow } from "@/features/agent/server/syncAssistantNotifications";
 
-type FleetNotificationDismissalRow = {
-  notification_id: string;
-  shop_id: string;
-  fleet_id: string | null;
-  dismissed_by: string;
-  dismissed_at: string;
-  created_at: string;
-};
-
-type FleetNotificationDismissalInsert = {
-  notification_id: string;
-  shop_id: string;
-  fleet_id?: string | null;
-  dismissed_by: string;
-  dismissed_at?: string;
-  created_at?: string;
-};
-
-type FleetNotificationsDatabase = Database & {
-  public: Database["public"] & {
-    Tables: Database["public"]["Tables"] & {
-      fleet_notification_dismissals: {
-        Row: FleetNotificationDismissalRow;
-        Insert: FleetNotificationDismissalInsert;
-        Update: Partial<FleetNotificationDismissalInsert>;
-        Relationships: [];
-      };
-    };
-  };
-};
-
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-
-function client(
-  supabase: SupabaseClient<Database>,
-): SupabaseClient<FleetNotificationsDatabase> {
-  return supabase as unknown as SupabaseClient<FleetNotificationsDatabase>;
-}
 
 function isMissedPretrip(row: AssistantNotificationPageRow): boolean {
   return (
