@@ -33,6 +33,11 @@ vi.mock("@/features/shared/lib/supabase/admin", () => ({
   supabaseAdmin: {},
 }));
 
+vi.mock("@/features/fleet/server/fleetNotificationInbox", () => ({
+  projectFleetNotificationRows: vi.fn(async ({ rows }) => rows),
+  recordFleetNotificationDismissal: vi.fn(async () => undefined),
+}));
+
 vi.mock("@/features/agent/server/syncAssistantNotifications", () => ({
   readAssistantNotificationPage: vi.fn(
     async (input: Record<string, unknown>) => {
@@ -119,7 +124,7 @@ describe("Fleet alert feed scope", () => {
     expect(state.reads[0]).toMatchObject({
       scopes: [{ shopId: SHOP_A, fleetIds: [FLEET_A] }],
       source: "fleet",
-      statuses: ["active", "acknowledged"],
+      statuses: ["active"],
     });
   });
 
@@ -297,7 +302,7 @@ describe("Fleet alert feed scope", () => {
       nextCursor: { lastSeenAt: string; id: string } | null;
     };
 
-    expect(state.reads[0]).toMatchObject({ cursor, pageSize: 50 });
+    expect(state.reads[0]).toMatchObject({ cursor, pageSize: 250 });
     expect(body.notifications).toHaveLength(3);
     expect(body.total).toBeNull();
     expect(body.nextCursor).toBeNull();

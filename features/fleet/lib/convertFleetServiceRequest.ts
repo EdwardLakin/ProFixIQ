@@ -1,3 +1,15 @@
+import type { FleetServiceRequestFailureReason } from "@/features/fleet/lib/fleetServiceRequestError";
+
+export class FleetServiceRequestConversionError extends Error {
+  readonly reason: FleetServiceRequestFailureReason | null;
+
+  constructor(message: string, reason?: FleetServiceRequestFailureReason | null) {
+    super(message);
+    this.name = "FleetServiceRequestConversionError";
+    this.reason = reason ?? null;
+  }
+}
+
 export async function convertFleetServiceRequest(
   serviceRequestId: string,
   fetchImpl: typeof fetch = fetch,
@@ -13,9 +25,13 @@ export async function convertFleetServiceRequest(
   const body = (await response.json().catch(() => ({}))) as {
     workOrderId?: string;
     error?: string;
+    reason?: FleetServiceRequestFailureReason;
   };
   if (!response.ok || !body.workOrderId) {
-    throw new Error(body.error || "Unable to create work order");
+    throw new FleetServiceRequestConversionError(
+      body.error || "Unable to create work order",
+      body.reason,
+    );
   }
   return body.workOrderId;
 }

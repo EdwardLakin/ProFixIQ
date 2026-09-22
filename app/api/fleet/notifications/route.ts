@@ -17,11 +17,18 @@ import {
 } from "@/features/agent/server/syncAssistantNotifications";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
+import {
+  projectFleetNotificationRows,
+  recordFleetNotificationDismissal,
+} from "@/features/fleet/server/fleetNotificationInbox";
 
-const PAGE_SIZE = 50;
+const SOURCE_PAGE_SIZE = 250;
+const MAX_SOURCE_PAGES = 8;
 const INTERNAL_FLEET_ALERT_ROLES = new Set(["owner", "admin", "manager"]);
 
 const BodySchema = z.object({
+  action: z.enum(["list", "dismiss"]).default("list"),
+  notificationId: z.string().uuid().nullable().optional(),
   fleetId: z.string().uuid().nullable().optional(),
   cursor: z
     .object({
@@ -124,6 +131,20 @@ function metadataFleetId(row: NotificationRow): string | undefined {
   return typeof value === "string" ? value : undefined;
 }
 
+async function resolveActorProfileId(
+  supabase: ReturnType<typeof createServerSupabaseRoute>,
+  userId: string,
+): Promise<string | null> {
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id")
+    .or(`id.eq.${userId},user_id.eq.${userId}`)
+    .limit(2);
+
+  if (error) return null;
+  return data?.find((row) => row.id === userId)?.id ?? data?.[0]?.id ?? null;
+}
+
 /**
  * Fleet-scoped alert feed.
  *
@@ -156,19 +177,117 @@ export async function POST(req: Request) {
     scopes.length === 0 ||
     (actor.isInternal && !actor.capabilities.canSeeFleetWideUnits)
   ) {
-    return NextResponse.json(emptyPage());
+    return NextResponse.json(
+      parsed.data.action === "dismiss" ? { ok: false } : emptyPage(),
+      { status: parsed.data.action === "dismiss" ? 404 : 200 },
+    );
   }
 
-  let page;
+  if (parsed.data.action === "dismiss") {
+    const notificationId = parsed.data.notificationId;
+    if (!notificationId) {
+      return NextResponse.json(
+        { error: "Notification id is required." },
+        { status: 400 },
+      );
+    }
+
+    const { data: notification, error: notificationError } = await supabaseAdmin
+      .from("assistant_notifications")
+      .select("id,shop_id,source,status,metadata")
+      .eq("id", notificationId)
+      .eq("source", "fleet")
+      .eq("status", "active")
+      .maybeSingle();
+
+    if (notificationError) {
+      console.error(
+        "[fleet/notifications] dismiss lookup error",
+        notificationError,
+      );
+      return NextResponse.json(
+        { error: "Fleet alert could not be dismissed." },
+        { status: 500 },
+      );
+    }
+    if (!notification) {
+      return NextResponse.json(
+        { error: "Fleet alert is no longer active." },
+        { status: 409 },
+      );
+    }
+
+    const rowFleetId =
+      notification.metadata &&
+      typeof notification.metadata === "object" &&
+      !Array.isArray(notification.metadata) &&
+      typeof (notification.metadata as Record<string, unknown>).fleet_id ===
+        "string"
+        ? String((notification.metadata as Record<string, unknown>).fleet_id)
+        : null;
+
+    const authorized = scopes.some(
+      (scope) =>
+        scope.shopId === notification.shop_id &&
+        (scope.fleetIds === null ||
+          (rowFleetId !== null && scope.fleetIds.includes(rowFleetId))),
+    );
+    if (!authorized) {
+      return NextResponse.json(
+        { error: "Fleet alert not found." },
+        { status: 404 },
+      );
+    }
+
+    const profileId = await resolveActorProfileId(supabase, actor.userId);
+    if (!profileId) {
+      return NextResponse.json(
+        { error: "Fleet alert could not be dismissed." },
+        { status: 403 },
+      );
+    }
+
+    try {
+      await recordFleetNotificationDismissal({
+        supabase: supabaseAdmin,
+        notificationId,
+        shopId: notification.shop_id,
+        fleetId: rowFleetId,
+        dismissedBy: profileId,
+      });
+    } catch (error) {
+      console.error("[fleet/notifications] dismiss insert error", error);
+      return NextResponse.json(
+        { error: "Fleet alert could not be dismissed." },
+        { status: 500 },
+      );
+    }
+
+    return NextResponse.json({ ok: true });
+  }
+
+  const sourceRows: NotificationRow[] = [];
+  let nextCursor = parsed.data.cursor ?? null;
+  let pageCount = 0;
+  let available = true;
+
   try {
-    page = await readAssistantNotificationPage({
-      supabase: supabaseAdmin,
-      scopes,
-      source: "fleet",
-      statuses: ["active", "acknowledged"],
-      cursor: parsed.data.cursor ?? null,
-      pageSize: PAGE_SIZE,
-    });
+    do {
+      const page = await readAssistantNotificationPage({
+        supabase: supabaseAdmin,
+        scopes,
+        source: "fleet",
+        statuses: ["active"],
+        cursor: nextCursor,
+        pageSize: SOURCE_PAGE_SIZE,
+      });
+      available = page.available;
+      if (!available) break;
+
+      sourceRows.push(...(page.rows as NotificationRow[]));
+      nextCursor = page.nextCursor;
+      pageCount += 1;
+    } while (nextCursor && pageCount < MAX_SOURCE_PAGES);
   } catch (error) {
     console.error("[fleet/notifications] query error", error);
     return NextResponse.json(
@@ -177,14 +296,26 @@ export async function POST(req: Request) {
     );
   }
 
-  if (!page.available) {
+  if (!available) {
     return NextResponse.json(
       { error: "Fleet alerts are not available in this environment." },
       { status: 503 },
     );
   }
 
-  const rows = page.rows as NotificationRow[];
+  let rows: NotificationRow[];
+  try {
+    rows = (await projectFleetNotificationRows({
+      supabase: supabaseAdmin,
+      rows: sourceRows,
+    })) as NotificationRow[];
+  } catch (error) {
+    console.error("[fleet/notifications] projection error", error);
+    return NextResponse.json(
+      { error: "Fleet alerts could not be loaded." },
+      { status: 500 },
+    );
+  }
 
   return NextResponse.json({
     notifications: rows.map((row) => ({
@@ -200,7 +331,7 @@ export async function POST(req: Request) {
       createdAt: row.last_seen_at,
       status: row.status,
     })) satisfies FleetNotification[],
-    total: page.total,
-    nextCursor: page.nextCursor,
+    total: parsed.data.cursor ? null : rows.length,
+    nextCursor,
   } satisfies FleetNotificationPage);
 }

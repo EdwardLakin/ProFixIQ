@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, Bell, Info, ShieldAlert } from "lucide-react";
+import { AlertTriangle, Bell, Info, ShieldAlert, X } from "lucide-react";
 
 import type {
   FleetNotification,
@@ -61,6 +61,7 @@ export default function FleetNotificationsBell({
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [dismissingId, setDismissingId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const loadedItemCountRef = useRef(0);
 
@@ -170,6 +171,39 @@ export default function FleetNotificationsBell({
     };
   }, [open]);
 
+  const dismissAlert = useCallback(
+    async (notificationId: string) => {
+      setDismissingId(notificationId);
+      try {
+        const response = await fetch("/api/fleet/notifications", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "dismiss",
+            notificationId,
+            fleetId: fleetId ?? null,
+          }),
+          cache: "no-store",
+        });
+        if (!response.ok) throw new Error("Fleet alert could not be dismissed");
+
+        setItems((current) =>
+          current.filter((item) => item.id !== notificationId),
+        );
+        loadedItemCountRef.current = Math.max(
+          0,
+          loadedItemCountRef.current - 1,
+        );
+        setTotal((current) => Math.max(0, current - 1));
+      } catch {
+        setFailed(true);
+      } finally {
+        setDismissingId(null);
+      }
+    },
+    [fleetId],
+  );
+
   const criticalCount = useMemo(
     () => items.filter((item) => item.level === "critical").length,
     [items],
@@ -246,22 +280,34 @@ export default function FleetNotificationsBell({
                 </div>
               );
               return (
-                <li key={item.id}>
-                  {item.href ? (
-                    <Link
-                      href={buildFleetNotificationHref({
-                        href: item.href,
-                        fleetId: item.fleetId,
-                        routePrefix,
-                      })}
-                      onClick={() => setOpen(false)}
-                      className="block hover:bg-white/[0.03]"
-                    >
-                      {body}
-                    </Link>
-                  ) : (
-                    body
-                  )}
+                <li key={item.id} className="flex items-stretch">
+                  <div className="min-w-0 flex-1">
+                    {item.href ? (
+                      <Link
+                        href={buildFleetNotificationHref({
+                          href: item.href,
+                          fleetId: item.fleetId,
+                          routePrefix,
+                        })}
+                        onClick={() => setOpen(false)}
+                        className="block hover:bg-white/[0.03]"
+                      >
+                        {body}
+                      </Link>
+                    ) : (
+                      body
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    disabled={dismissingId === item.id}
+                    onClick={() => void dismissAlert(item.id)}
+                    aria-label={`Dismiss ${item.title}`}
+                    title="Dismiss alert"
+                    className="m-2 ml-0 inline-flex w-8 shrink-0 items-center justify-center rounded-lg text-[color:var(--theme-text-muted)] hover:bg-white/[0.05] hover:text-[color:var(--theme-text-primary)] disabled:opacity-50"
+                  >
+                    <X className="h-4 w-4" aria-hidden="true" />
+                  </button>
                 </li>
               );
             })}

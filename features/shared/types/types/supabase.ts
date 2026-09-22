@@ -5376,6 +5376,69 @@ export type Database = {
           },
         ]
       }
+      fleet_notification_dismissals: {
+        Row: {
+          created_at: string
+          dismissed_at: string
+          dismissed_by: string
+          fleet_id: string | null
+          notification_id: string
+          shop_id: string
+        }
+        Insert: {
+          created_at?: string
+          dismissed_at?: string
+          dismissed_by: string
+          fleet_id?: string | null
+          notification_id: string
+          shop_id: string
+        }
+        Update: {
+          created_at?: string
+          dismissed_at?: string
+          dismissed_by?: string
+          fleet_id?: string | null
+          notification_id?: string
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_notification_dismissals_dismissed_by_fkey"
+            columns: ["dismissed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_notification_dismissals_fleet_id_fkey"
+            columns: ["fleet_id"]
+            isOneToOne: false
+            referencedRelation: "fleets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_notification_dismissals_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: true
+            referencedRelation: "assistant_notifications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_notification_dismissals_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_notification_dismissals_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fleet_pm_due_events: {
         Row: {
           completed_at: string | null

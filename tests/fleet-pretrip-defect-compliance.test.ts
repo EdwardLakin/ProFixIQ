@@ -105,6 +105,9 @@ describe("fleet pre-trip, defects, and compliance", () => {
     expect(pretripLoader).toContain('.eq("driver_profile_id", args.userId)');
     expect(pretripLoader).toContain('.eq("active", true)');
     expect(route).toContain('"submit_fleet_pretrip_report"');
+    expect(route).toContain(
+      "vehicles!fleet_pretrip_reports_vehicle_id_fkey!inner",
+    );
     expect(driverMigration).toContain(
       "v_inspection_date := (now() at time zone v_timezone)::date",
     );
@@ -148,6 +151,17 @@ describe("fleet pre-trip, defects, and compliance", () => {
     );
     expect(assignmentBoundary).toContain(
       "to_regclass('public.assistant_notifications')",
+    );
+
+    const alertLifecycle = read(
+      "supabase/migrations/20260922155000_fleet_pretrip_alert_lifecycle.sql",
+    );
+    expect(alertLifecycle).toContain(
+      "create table if not exists public.fleet_notification_dismissals",
+    );
+    expect(alertLifecycle).toContain("dismissed_by uuid not null");
+    expect(alertLifecycle).not.toContain(
+      "create or replace function public.evaluate_fleet_pretrip_compliance",
     );
   });
 

@@ -82,7 +82,7 @@ export async function POST(req: NextRequest) {
         "Failed to create a structured work order from this request.",
       );
       return NextResponse.json(
-        { error: failure.error },
+        { error: failure.error, reason: failure.reason },
         { status: failure.status },
       );
     }

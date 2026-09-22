@@ -6,7 +6,10 @@ import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, ClipboardCheck, RefreshCw, Truck } from "lucide-react";
 
 import { formatFleetDate } from "@/features/fleet/lib/fleetDate";
-import { convertFleetServiceRequest } from "@/features/fleet/lib/convertFleetServiceRequest";
+import {
+  convertFleetServiceRequest,
+  FleetServiceRequestConversionError,
+} from "@/features/fleet/lib/convertFleetServiceRequest";
 import type {
   FleetServiceRequestItem,
   FleetServiceRequestsPayload,
@@ -51,10 +54,12 @@ export default function ShopFleetRequestInbox({
   const [loading, setLoading] = useState(true);
   const [convertingId, setConvertingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [errorActionHref, setErrorActionHref] = useState<string | null>(null);
 
   async function load(signal?: AbortSignal) {
     setLoading(true);
     setError(null);
+    setErrorActionHref(null);
     try {
       const response = await fetch("/api/fleet/service-requests", {
         method: "POST",
@@ -105,15 +110,24 @@ export default function ShopFleetRequestInbox({
   async function acceptRequest(item: FleetServiceRequestItem) {
     setConvertingId(item.id);
     setError(null);
+    setErrorActionHref(null);
     try {
       const workOrderId = await convertFleetServiceRequest(item.id);
       router.push(`${workOrderBasePath}/${encodeURIComponent(workOrderId)}`);
     } catch (cause) {
-      setError(
+      const message =
         cause instanceof Error
           ? cause.message
-          : "Unable to create the work order",
-      );
+          : "Unable to create the work order";
+      setError(message);
+      if (
+        cause instanceof FleetServiceRequestConversionError &&
+        cause.reason === "ownership_conflict"
+      ) {
+        setErrorActionHref(
+          `/vehicles/${encodeURIComponent(item.vehicleId)}`,
+        );
+      }
       setConvertingId(null);
     }
   }
@@ -185,9 +199,17 @@ export default function ShopFleetRequestInbox({
         </div>
 
         {error ? (
-          <p className="border-b border-red-400/20 bg-red-400/10 p-4 text-sm text-red-700 dark:text-red-200">
-            {error}
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-red-400/20 bg-red-400/10 p-4 text-sm text-red-700 dark:text-red-200">
+            <p>{error}</p>
+            {errorActionHref ? (
+              <Link
+                href={errorActionHref}
+                className="inline-flex min-h-9 items-center rounded-lg border border-red-400/30 bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
+              >
+                Review vehicle ownership
+              </Link>
+            ) : null}
+          </div>
         ) : null}
 
         {loading && !payload ? (
