@@ -16,7 +16,7 @@ with ranked as (
   from public.assistant_notifications n
   join public.fleet_dispatch_assignments a
     on n.entity_type = 'fleet_dispatch_assignment'
-   and n.entity_id = a.id
+   and n.entity_id = a.id::text
   where n.source = 'fleet'
     and n.code = 'fleet_pretrip_missed'
     and n.status in ('active', 'acknowledged')
@@ -42,7 +42,7 @@ where n.source = 'fleet'
   and not exists (
     select 1
     from public.fleet_dispatch_assignments a
-    where a.id = n.entity_id
+    where a.id::text = n.entity_id
       and a.active
       and a.pretrip_required
   );
@@ -167,7 +167,7 @@ begin
       where n.source = 'fleet'
         and n.code = 'fleet_pretrip_missed'
         and n.entity_type = 'fleet_dispatch_assignment'
-        and n.entity_id = v_assignment.id
+        and n.entity_id = v_assignment.id::text
         and n.fingerprint <> v_keep_fingerprint
         and n.status in ('active', 'acknowledged');
     end if;
@@ -194,7 +194,7 @@ begin
     and not exists (
       select 1
       from public.fleet_dispatch_assignments a
-      where a.id = n.entity_id
+      where a.id::text = n.entity_id
         and a.active
         and a.pretrip_required
     );
