@@ -18,7 +18,6 @@ import {
 import { runWithProviderTimeout } from "@/features/shared/lib/server/provider-timeout";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
-type Variant = "marketing" | "full";
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
 
 type OpsUsageSnapshot = {
