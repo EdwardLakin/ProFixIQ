@@ -107,7 +107,7 @@ begin
       pg_catalog.greatest(
         1,
         pg_catalog.ceil(
-          pg_catalog.extract(epoch from (v_oldest + v_window - v_now))
+          extract(epoch from (v_oldest + v_window - v_now))
         )::integer
       ),
       null::uuid;
@@ -133,7 +133,7 @@ begin
       pg_catalog.greatest(
         1,
         pg_catalog.ceil(
-          pg_catalog.extract(epoch from (v_oldest + v_window - v_now))
+          extract(epoch from (v_oldest + v_window - v_now))
         )::integer
       ),
       null::uuid;
