@@ -17,9 +17,9 @@ const DEMO_USERS = [
   ["manager@demo.profixiq.local", "Manager Demo", "manager"],
   ["advisor1@demo.profixiq.local", "Advisor One", "advisor"],
   ["advisor2@demo.profixiq.local", "Advisor Two", "advisor"],
-  ["leadtech@demo.profixiq.local", "Lead Tech", "tech"],
-  ["tech1@demo.profixiq.local", "Tech One", "tech"],
-  ["tech2@demo.profixiq.local", "Tech Two", "tech"],
+  ["leadtech@demo.profixiq.local", "Lead Tech", "mechanic"],
+  ["tech1@demo.profixiq.local", "Tech One", "mechanic"],
+  ["tech2@demo.profixiq.local", "Tech Two", "mechanic"],
   ["parts@demo.profixiq.local", "Parts Coordinator", "parts"],
   ["payroll@demo.profixiq.local", "Payroll Coordinator", "manager"],
 ];
