@@ -7,6 +7,7 @@ import {
 } from "@/features/shared/lib/supabase/server";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
+import { isDemoAccessExpired } from "@/features/shared/lib/server/demo-shop";
 import type { Database } from "@shared/types/types/supabase";
 import type {
   TechnicianOfflineBundle,
@@ -65,6 +66,9 @@ export async function GET() {
     await resolveAuthenticatedStaffProfile(authClient, user.id);
   if (profileError || !profile?.shop_id) {
     return NextResponse.json({ error: "Missing shop" }, { status: 403 });
+  }
+  if (isDemoAccessExpired(profile.demo_access_expires_at)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
   if (!getActorCapabilities({ role: profile.role }).canPerformAssignedWork) {
     return NextResponse.json(

@@ -14714,6 +14714,7 @@ export type Database = {
           completed_onboarding: boolean
           created_at: string | null
           created_by: string | null
+          demo_access_expires_at: string | null
           email: string | null
           full_name: string | null
           id: string
@@ -14747,6 +14748,7 @@ export type Database = {
           completed_onboarding?: boolean
           created_at?: string | null
           created_by?: string | null
+          demo_access_expires_at?: string | null
           email?: string | null
           full_name?: string | null
           id: string
@@ -14780,6 +14782,7 @@ export type Database = {
           completed_onboarding?: boolean
           created_at?: string | null
           created_by?: string | null
+          demo_access_expires_at?: string | null
           email?: string | null
           full_name?: string | null
           id?: string

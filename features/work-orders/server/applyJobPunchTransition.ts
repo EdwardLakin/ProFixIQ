@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@shared/types/types/supabase";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
+import { isDemoAccessExpired } from "@/features/shared/lib/server/demo-shop";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { resolveWorkOrderCommandProductAccess } from "@/features/work-orders/server/authorizeWorkOrderCommandProduct";
 
@@ -202,6 +203,9 @@ export async function applyJobPunchTransition({
         status: 403,
         error: "Staff profile is not linked to a shop.",
       };
+    }
+    if (isDemoAccessExpired(profile.demo_access_expires_at)) {
+      return { ok: false, status: 403, error: "Forbidden" };
     }
 
     const capabilities = getActorCapabilities({ role: profile.role });

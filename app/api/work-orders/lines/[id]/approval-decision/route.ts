@@ -4,6 +4,7 @@ import {
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
+import { isDemoAccessExpired } from "@/features/shared/lib/server/demo-shop";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
 import { PortalAccessError } from "@/features/portal/server/portalAuth";
@@ -143,6 +144,16 @@ export async function POST(req: NextRequest, ctx: RouteContext) {
     if (actorSurface === "staff" && !profile?.shop_id) {
       return NextResponse.json(
         { ok: false, error: "A shop-linked staff profile is required." },
+        { status: 403 },
+      );
+    }
+    if (
+      actorSurface === "staff" &&
+      profile &&
+      isDemoAccessExpired(profile.demo_access_expires_at)
+    ) {
+      return NextResponse.json(
+        { ok: false, error: "Forbidden" },
         { status: 403 },
       );
     }

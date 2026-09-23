@@ -8,6 +8,7 @@ import {
   type CanonicalRole,
 } from "@/features/shared/lib/rbac";
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
+import { isDemoAccessExpired } from "@/features/shared/lib/server/demo-shop";
 import {
   createAdminSupabase,
   createServerSupabaseRSC,
@@ -301,7 +302,8 @@ export async function loadCurrentWorkOrderWorkspaceSnapshot(input: {
       !actor.isKnownRole ||
       !(WORK_ORDER_WORKSPACE_READER_ROLES as readonly CanonicalRole[]).includes(
         actor.canonicalRole,
-      )
+      ) ||
+      isDemoAccessExpired(profile.demo_access_expires_at)
     ) {
       return null;
     }

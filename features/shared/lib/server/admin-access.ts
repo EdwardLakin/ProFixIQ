@@ -21,6 +21,7 @@ import {
   type OwnerPinPurpose,
   requireOwnerPinVerified,
 } from "@/features/shared/lib/server/owner-pin";
+import { isDemoAccessExpired } from "@/features/shared/lib/server/demo-shop";
 import type { WorkspaceCapabilityKey } from "@/features/workspace/authorization/capabilities";
 import { resolveCurrentWorkspaceCapabilities } from "@/features/workspace/authorization/server/resolveWorkspaceCapabilities";
 
@@ -82,6 +83,20 @@ export async function requireShopPageAccess(
   }
 
   const { profile } = await resolveAuthenticatedStaffProfile(supabase, user.id);
+
+  if (profile && isDemoAccessExpired(profile.demo_access_expires_at)) {
+    // A Server Component can't clear the auth cookie itself, and the
+    // Supabase session stays valid even though app-layer access has
+    // expired. Redirecting straight to /sign-in would only surface a new
+    // loop one hop later: middleware treats a still-authenticated user who
+    // picks a product's sign-in page as already signed in and bounces them
+    // straight back to /dashboard, landing back on this same gated page.
+    // Route through the existing sign-out handler (app/auth/signout/route.ts)
+    // instead: it clears the session and lands the user on "/" fully signed
+    // out, so any product's sign-in page shows a real credential form
+    // instead of bouncing an already-authenticated session onward.
+    redirect("/auth/signout");
+  }
 
   const actor = getActorCapabilities({ role: profile?.role });
   const role = actor.canonicalRole;
@@ -206,6 +221,13 @@ export async function requireShopScopedApiAccess(
         { error: "Profile for current user not found" },
         { status: 403 },
       ),
+    };
+  }
+
+  if (isDemoAccessExpired(profile.demo_access_expires_at)) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
     };
   }
 
