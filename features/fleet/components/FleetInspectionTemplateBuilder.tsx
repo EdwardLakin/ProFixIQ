@@ -76,11 +76,12 @@ export default function FleetInspectionTemplateBuilder({
         </div>
       </header>
 
-      {purpose === "pretrip" ? (
+      <div hidden={purpose !== "pretrip"}>
         <FleetPretripTemplateBuilder fleetId={fleetId} showPageHeader={false} />
-      ) : (
+      </div>
+      <div hidden={purpose !== "maintenance"}>
         <FleetMaintenanceInspectionBuilder fleetId={fleetId} />
-      )}
+      </div>
     </main>
   );
 }

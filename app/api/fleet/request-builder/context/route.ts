@@ -4,6 +4,7 @@ import {
   resolveFleetActorContext,
 } from "@/features/fleet/lib/resolveFleetActorContext";
 import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
+import { isInspectionTemplateAvailableToFleet } from "@/features/fleet/lib/fleetInspectionTemplateScope";
 
 export async function GET(req: NextRequest) {
   const supabase = createServerSupabaseRoute();
@@ -140,12 +141,16 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const inspections = (inspectionResult.data ?? []).filter((template) =>
+    isInspectionTemplateAvailableToFleet(template.tags, scope.fleetId),
+  );
+
   return NextResponse.json({
     fleetId: scope.fleetId,
     shopId: scope.shopId,
     units: unitResult.data ?? [],
     menuItems: menuResult.data ?? [],
-    inspections: inspectionResult.data ?? [],
+    inspections,
     pmPackages: (programResult.data ?? []).map((program) => ({
       ...program,
       tasks: (taskResult.data ?? []).filter(

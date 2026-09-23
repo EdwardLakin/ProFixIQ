@@ -181,6 +181,13 @@ export async function POST(request: Request) {
     const templateId = body.templateId?.trim() ?? "";
     const name = body.name?.trim() ?? "";
     const vehicleType = body.vehicleType?.trim() ?? "";
+    const rawItemCount = Array.isArray(body.sections)
+      ? body.sections.reduce((total, section) => {
+          if (!section || typeof section !== "object") return total;
+          const items = (section as Record<string, unknown>).items;
+          return total + (Array.isArray(items) ? items.length : 0);
+        }, 0)
+      : 0;
     const sections = cleanSections(body.sections);
 
     if (!UUID.test(templateId)) {
@@ -198,6 +205,12 @@ export async function POST(request: Request) {
     if (!vehicleType || vehicleType.length > 80) {
       return NextResponse.json(
         { error: "Vehicle type is required" },
+        { status: 400 },
+      );
+    }
+    if (rawItemCount > MAX_ITEMS) {
+      return NextResponse.json(
+        { error: `Inspection templates support up to ${MAX_ITEMS} items` },
         { status: 400 },
       );
     }
@@ -223,7 +236,7 @@ export async function POST(request: Request) {
 
     const { data: existing, error: existingError } = await admin
       .from("inspection_templates")
-      .select("id,shop_id,tags")
+      .select("id,shop_id,tags,template_name,vehicle_type,sections")
       .eq("id", templateId)
       .maybeSingle();
 
@@ -237,6 +250,19 @@ export async function POST(request: Request) {
       if (!replay) {
         return NextResponse.json(
           { error: "Template id is already in use" },
+          { status: 409 },
+        );
+      }
+      const samePayload =
+        existing.template_name === name &&
+        existing.vehicle_type === vehicleType &&
+        JSON.stringify(existing.sections) === JSON.stringify(sections);
+      if (!samePayload) {
+        return NextResponse.json(
+          {
+            error:
+              "This Fleet inspection draft was already published with different content. Refresh before publishing again.",
+          },
           { status: 409 },
         );
       }

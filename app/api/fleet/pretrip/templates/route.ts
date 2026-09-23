@@ -141,7 +141,13 @@ export async function POST(request: Request) {
     const itemIds = body.sections.flatMap((section) =>
       section.items.map((item) => item.id),
     );
-    if (new Set(itemIds).size !== itemIds.length || itemIds.length > 200) {
+    if (itemIds.length > 200) {
+      return NextResponse.json(
+        { error: "Pre-trip templates support up to 200 items" },
+        { status: 400 },
+      );
+    }
+    if (new Set(itemIds).size !== itemIds.length) {
       return NextResponse.json(
         { error: "Inspection item ids must be unique" },
         { status: 400 },

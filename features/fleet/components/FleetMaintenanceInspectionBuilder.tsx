@@ -19,15 +19,21 @@ type SavedTemplate = {
   created_at: string | null;
 };
 
+const MAX_TEMPLATE_ITEMS = 200;
 const VEHICLE_TYPES = [
-  "All fleet assets",
-  "Highway tractor",
-  "Dump truck",
-  "Service truck",
-  "Trailer",
-  "Bus",
-  "Pickup",
-];
+  { value: "truck", label: "Heavy truck / highway tractor / service truck" },
+  { value: "trailer", label: "Trailer" },
+  { value: "bus", label: "Bus / coach" },
+  { value: "car", label: "Light duty / pickup / SUV" },
+] as const;
+
+function vehicleTypeLabel(value: string | null): string {
+  return (
+    VEHICLE_TYPES.find((option) => option.value === value)?.label ??
+    value ??
+    "Not specified"
+  );
+}
 
 export default function FleetMaintenanceInspectionBuilder({
   fleetId,
@@ -36,7 +42,8 @@ export default function FleetMaintenanceInspectionBuilder({
 }) {
   const [templates, setTemplates] = useState<SavedTemplate[]>([]);
   const [name, setName] = useState("90-Day PM Inspection");
-  const [vehicleType, setVehicleType] = useState("Highway tractor");
+  const [vehicleType, setVehicleType] = useState("truck");
+  const [templateId, setTemplateId] = useState(() => crypto.randomUUID());
   const [selections, setSelections] = useState<Record<string, string[]>>({});
   const [query, setQuery] = useState("");
   const [loading, setLoading] = useState(true);
@@ -109,6 +116,17 @@ export default function FleetMaintenanceInspectionBuilder({
     setSelections((current) => {
       const existing = current[sectionTitle] ?? [];
       const selected = existing.includes(itemName);
+      const currentCount = Object.values(current).reduce(
+        (total, items) => total + items.length,
+        0,
+      );
+      if (!selected && currentCount >= MAX_TEMPLATE_ITEMS) {
+        setError(
+          `Inspection templates support up to ${MAX_TEMPLATE_ITEMS} items. Remove an item before adding another.`,
+        );
+        return current;
+      }
+
       const nextItems = selected
         ? existing.filter((item) => item !== itemName)
         : [...existing, itemName];
@@ -142,7 +160,7 @@ export default function FleetMaintenanceInspectionBuilder({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fleetId,
-          templateId: crypto.randomUUID(),
+          templateId,
           name: name.trim(),
           vehicleType: vehicleType.trim(),
           sections,
@@ -162,6 +180,7 @@ export default function FleetMaintenanceInspectionBuilder({
         `${name.trim()} is available for Fleet PM/service requests and will run through the Shop inspection engine after a Shop accepts the request.`,
       );
       setSelections({});
+      setTemplateId(crypto.randomUUID());
       await load();
     } catch (cause) {
       setError(
@@ -227,18 +246,17 @@ export default function FleetMaintenanceInspectionBuilder({
           </label>
           <label className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">
             Applies to
-            <input
+            <select
               value={vehicleType}
               onChange={(event) => setVehicleType(event.target.value)}
-              list="fleet-maintenance-vehicle-types"
-              maxLength={80}
               className="mt-1.5 w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3 py-2.5 text-sm"
-            />
-            <datalist id="fleet-maintenance-vehicle-types">
-              {VEHICLE_TYPES.map((type) => (
-                <option key={type} value={type} />
+            >
+              {VEHICLE_TYPES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
               ))}
-            </datalist>
+            </select>
           </label>
         </div>
       </section>
@@ -253,7 +271,7 @@ export default function FleetMaintenanceInspectionBuilder({
               Select inspection points
             </h3>
             <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-              {selectedCount} item{selectedCount === 1 ? "" : "s"} selected.
+              {selectedCount} / {MAX_TEMPLATE_ITEMS} items selected.
               These rows are stored in the canonical Shop inspection section
               format.
             </p>
@@ -289,6 +307,7 @@ export default function FleetMaintenanceInspectionBuilder({
                       <input
                         type="checkbox"
                         checked={checked}
+                        disabled={!checked && selectedCount >= MAX_TEMPLATE_ITEMS}
                         onChange={() => toggleItem(section.title, item.item)}
                         className="mt-0.5"
                       />
@@ -340,7 +359,7 @@ export default function FleetMaintenanceInspectionBuilder({
                 </div>
                 <h4 className="mt-3 font-semibold">{template.template_name}</h4>
                 <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                  {template.vehicle_type || "All fleet assets"} · {itemCount} items
+                  {vehicleTypeLabel(template.vehicle_type)} · {itemCount} items
                 </p>
               </article>
             );
