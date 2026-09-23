@@ -35,6 +35,31 @@ describe("Fleet request submission safety", () => {
     mocks.resolveFleetActorContext.mockResolvedValue({
       userId: "user-1",
       actorType: "fleet_manager",
+      canonicalRole: "unknown",
+      profileRole: null,
+      profileShopId: null,
+      shopId: "shop-1",
+      fleetIds: [body.fleetId],
+      fleetMemberships: [
+        {
+          fleetId: body.fleetId,
+          shopId: "shop-1",
+          role: "fleet_manager",
+        },
+      ],
+      primaryFleetId: body.fleetId,
+      membershipRole: "fleet_manager",
+      isInternal: false,
+      isFleetActor: true,
+      capabilities: {
+        canSeeFleetWideUnits: true,
+        canCreatePretripReports: false,
+        canConvertPretripToServiceRequest: true,
+        canAccessFleetIntake: true,
+        canAccessPortalFleetWrappers: true,
+        canRunFleetDispatchActions: true,
+        canOverrideShopScope: false,
+      },
     });
   });
 
