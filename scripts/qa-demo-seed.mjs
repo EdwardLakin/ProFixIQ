@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 
-const DEFAULT_SHOP_SLUG = "prairie-fleet-diesel-demo";
-const DEFAULT_OWNER_EMAIL = "edwardlakin35@gmail.com";
+const DEFAULT_SHOP_SLUG = "ProFixIQ Demo Shop";
+const DEFAULT_OWNER_EMAIL = "edwardlakin35+demo@gmail.com";
 const DEMO_DOMAIN_SUFFIX = ".demo.profixiq.local";
 
 // Keep this in sync with current `work_order_lines` schema: QA intentionally avoids
@@ -56,6 +56,7 @@ async function main() {
 
   const url = requireEnv("NEXT_PUBLIC_SUPABASE_URL");
   const serviceRole = requireEnv("SUPABASE_SERVICE_ROLE_KEY");
+  const configuredShopId = process.env.DEMO_SHOP_ID?.trim() || null;
   const shopSlug = (process.env.DEMO_SHOP_SLUG || DEFAULT_SHOP_SLUG).trim();
   const ownerEmail = (process.env.DEMO_OWNER_EMAIL || DEFAULT_OWNER_EMAIL).trim().toLowerCase();
 
@@ -64,15 +65,19 @@ async function main() {
   const checks = [];
   const failures = [];
 
-  const { data: shops, error: shopError } = await supabase
-    .from("shops")
-    .select("id, slug, name, owner_id")
-    .or(`slug.eq.${shopSlug},name.eq.${shopSlug}`)
-    .limit(5);
+  // Prefer the same DEMO_SHOP_ID pointer /ops/demo-access and the seed
+  // script use; fall back to slug/name lookup only when it isn't set.
+  const shopQuery = configuredShopId
+    ? supabase.from("shops").select("id, slug, name, owner_id").eq("id", configuredShopId).limit(5)
+    : supabase.from("shops").select("id, slug, name, owner_id").or(`slug.eq.${shopSlug},name.eq.${shopSlug}`).limit(5);
+  const { data: shops, error: shopError } = await shopQuery;
 
   if (shopError) throw new Error(`Shop lookup failed: ${shopError.message}`);
 
-  addCheck(checks, failures, "exactly_one_demo_shop_found", (shops?.length ?? 0) === 1, { found: shops?.length ?? 0, shopSlug });
+  addCheck(checks, failures, "exactly_one_demo_shop_found", (shops?.length ?? 0) === 1, {
+    found: shops?.length ?? 0,
+    lookup: configuredShopId ? { DEMO_SHOP_ID: configuredShopId } : { shopSlug },
+  });
 
   const shop = shops?.[0];
   const shopId = shop?.id ?? null;
