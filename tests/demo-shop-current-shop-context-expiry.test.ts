@@ -138,7 +138,14 @@ const FUTURE_EXPIRY_PROFILE_ID = "22222222-2222-2222-2222-222222222222";
 const EXPIRED_PROFILE_ID = "33333333-3333-3333-3333-333333333333";
 const WORK_ORDER_ID = "44444444-4444-4444-4444-444444444444";
 
-const fixtureSql = `
+// Split so the migration under test (which defines current_shop_id()/
+// set_current_shop_id()) is applied strictly between the two: the policy
+// and grants below reference those functions, so Postgres must be able to
+// resolve them at CREATE POLICY/GRANT time, which only the migration
+// provides. Applying the migration first against a genuinely blank
+// database — not one already contaminated by a prior run — is what makes
+// this a real test of the migration file rather than of leftover state.
+const fixtureSqlBeforeMigration = `
 create extension if not exists pgcrypto;
 create schema if not exists auth;
 create or replace function auth.uid() returns uuid language sql stable as $$
@@ -157,7 +164,9 @@ create table if not exists public.work_orders(
   id uuid primary key,
   shop_id uuid not null
 );
+`;
 
+const fixtureSqlAfterMigration = `
 alter table public.work_orders enable row level security;
 alter table public.work_orders force row level security;
 drop policy if exists wo_test_select on public.work_orders;
@@ -172,7 +181,8 @@ grant execute on function public.set_current_shop_id(uuid) to authenticated;
 
 describeDb("current_shop_id()/set_current_shop_id() — runtime database contract", () => {
   beforeEach(() => {
-    psql(fixtureSql);
+    psql(fixtureSqlBeforeMigration);
+
     // Apply the real migration file itself (not a re-typed copy).
     const result = spawnSync(
       "psql",
@@ -182,6 +192,8 @@ describeDb("current_shop_id()/set_current_shop_id() — runtime database contrac
     if (result.status !== 0) {
       throw new Error(`Applying migration failed\n${result.stdout}\n${result.stderr}`);
     }
+
+    psql(fixtureSqlAfterMigration);
 
     psql(`
       delete from public.work_orders where shop_id = '${SHOP_ID}';

@@ -67,13 +67,17 @@ type ShopPageAccessOptions = {
   redirectTo?: string;
 };
 
-export async function requireShopPageAccess(
-  options: ShopPageAccessOptions,
-): Promise<{
-  profile: ShopScopedProfile;
-  canonicalRole: CanonicalRole;
-}> {
-  const supabase = createServerSupabaseRSC();
+/**
+ * Authenticates the request and enforces demo access expiry only — no
+ * role, shop_id, or capability gating. Shared by requireShopPageAccess()
+ * and by routes (like /mobile) whose own fallback UI must stay reachable
+ * for a profile with a missing shop_id or an unrecognized role, so they
+ * cannot use the full role-gated redirect without changing that route's
+ * existing tolerant behavior.
+ */
+async function requireAuthenticatedDemoAccess(
+  supabase: ServerSupabase,
+): Promise<ProfileScope | null> {
   const {
     data: { user },
   } = await supabase.auth.getUser();
@@ -97,6 +101,30 @@ export async function requireShopPageAccess(
     // instead of bouncing an already-authenticated session onward.
     redirect("/auth/signout");
   }
+
+  return profile;
+}
+
+/**
+ * The expiry-only half of requireShopPageAccess(), for a page that must
+ * keep rendering its own fallback UI for a profile that lacks a shop_id
+ * or has a role requireShopPageAccess() would otherwise redirect away
+ * (e.g. /mobile's "role not configured" state, which middleware
+ * deliberately keeps reachable instead of bouncing to desktop).
+ */
+export async function requireActiveDemoAccessForPage(): Promise<ProfileScope | null> {
+  const supabase = createServerSupabaseRSC();
+  return requireAuthenticatedDemoAccess(supabase);
+}
+
+export async function requireShopPageAccess(
+  options: ShopPageAccessOptions,
+): Promise<{
+  profile: ShopScopedProfile;
+  canonicalRole: CanonicalRole;
+}> {
+  const supabase = createServerSupabaseRSC();
+  const profile = await requireAuthenticatedDemoAccess(supabase);
 
   const actor = getActorCapabilities({ role: profile?.role });
   const role = actor.canonicalRole;
