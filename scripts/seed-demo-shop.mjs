@@ -313,31 +313,50 @@ async function main() {
   logStep(`Seeding into existing shop: ${shopDisplayName} (${configuredShopId})`);
   logStep("shop identity/address/plan fields are not modified by this script");
 
+  let realOwnerProfileModified = false;
+  if (!dryRun) {
+    // The owner is not provisioned from DEMO_USERS below -- bind/verify it
+    // against the target shop explicitly, here, so a resolved owner from a
+    // different tenant (e.g. a stale DEMO_OWNER_EMAIL) can never seed work
+    // orders/lines/inspections with cross-tenant actor references. Missing
+    // personas fall back to this same owner profile id, so this check has
+    // to hold before any of that seeding runs.
+    const { data: ownerProfile, error: ownerProfileError } = await supabase
+      .from("profiles")
+      .select("id, shop_id")
+      .eq("id", ownerResolution.ownerProfileId)
+      .maybeSingle();
+    if (ownerProfileError) {
+      throw opError("owner_shop_binding_lookup", `profiles.id=${ownerResolution.ownerProfileId}`, ownerProfileError);
+    }
+    if (!ownerProfile) {
+      throw new Error(`Resolved owner profile ${ownerResolution.ownerProfileId} does not exist.`);
+    }
+    if (ownerProfile.shop_id && ownerProfile.shop_id !== shopId) {
+      throw new Error(
+        `Refusing to seed: resolved owner profile ${ownerResolution.ownerProfileId} belongs to shop ${ownerProfile.shop_id}, not the configured DEMO_SHOP_ID ${shopId}. ` +
+          "This script never reassigns an owner's shop across tenants.",
+      );
+    }
+    if (!ownerProfile.shop_id) {
+      const { error: bindError } = await supabase
+        .from("profiles")
+        .update({ shop_id: shopId })
+        .eq("id", ownerResolution.ownerProfileId);
+      if (bindError) throw opError("owner_shop_binding", `profiles.id=${ownerResolution.ownerProfileId}`, bindError);
+      realOwnerProfileModified = true;
+      logStep(`Linked previously unlinked owner profile ${ownerResolution.ownerProfileId} to shop ${shopId}`);
+    }
+  }
+
   const profileActions = [];
   const profileIds = {};
   const skippedPersonas = [];
   const assignmentFallbacks = [];
   const intendedPersonaCount = DEMO_USERS.length;
   let createdOrUpdatedProfileCount = 0;
-  let realOwnerProfileModified = false;
   for (const [email, full_name, role] of DEMO_USERS) {
-    const isResolvedRealOwner = ownerResolution.resolvedOwnerEmail?.toLowerCase() === email.toLowerCase();
-    const userId = isResolvedRealOwner ? ownerResolution.ownerUserId : fakeUserIdForEmail(email);
-    const profileId = isResolvedRealOwner ? ownerResolution.ownerProfileId : userId;
-
-    if (isResolvedRealOwner) {
-      const profile = await upsertByNaturalKey({
-        supabase,
-        table: "profiles",
-        match: { id: profileId },
-        payload: { shop_id: shopId },
-      });
-      profileIds[email] = profile.id ?? profileId;
-      profileActions.push(`${profile.action}:real-owner-shop-link-only`);
-      createdOrUpdatedProfileCount += 1;
-      if (profile.action === "updated" || profile.action === "inserted") realOwnerProfileModified = true;
-      continue;
-    }
+    const profileId = fakeUserIdForEmail(email);
 
     if (dryRun) {
       profileIds[email] = profileId;
