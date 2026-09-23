@@ -30,7 +30,28 @@ function logStep(msg) {
 }
 
 function randomPassword() {
-  return randomBytes(24).toString("base64url");
+  // base64url output isn't guaranteed to contain a character from every
+  // category Supabase Auth's complexity check requires (lower/upper/digit/
+  // special) -- it happens to for most draws but isn't certain, and failed
+  // in practice. Build one explicitly-compliant category character each,
+  // pad with random characters from the full set, then shuffle.
+  const categories = [
+    "abcdefghijklmnopqrstuvwxyz",
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+    "0123456789",
+    "!@#$%^&*()_+-=[]{}|<>?,.",
+  ];
+  const all = categories.join("");
+  const pick = (chars) => chars[randomBytes(1)[0] % chars.length];
+
+  const chars = categories.map(pick);
+  for (let i = 0; i < 20; i += 1) chars.push(pick(all));
+
+  for (let i = chars.length - 1; i > 0; i -= 1) {
+    const j = randomBytes(1)[0] % (i + 1);
+    [chars[i], chars[j]] = [chars[j], chars[i]];
+  }
+  return chars.join("");
 }
 
 async function main() {
