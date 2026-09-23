@@ -50,10 +50,23 @@ describe("public marketing chatbot route", () => {
       allowed: true,
       retryAfterSeconds: 0,
     });
-    mocks.rpc.mockResolvedValue({
-      data: { features: [] },
-      error: null,
-    });
+    mocks.rpc.mockImplementation((name: string) =>
+      Promise.resolve(
+        name === "consume_public_ai_route_quota"
+          ? {
+              data: [
+                {
+                  allowed: true,
+                  denial_reason: null,
+                  retry_after_seconds: 0,
+                  receipt_id: "receipt_test",
+                },
+              ],
+              error: null,
+            }
+          : { data: true, error: null },
+      ),
+    );
     mocks.runWithProviderTimeout.mockImplementation(
       async (_timeoutMs: number, operation: (signal: AbortSignal) => Promise<unknown>) =>
         operation(new AbortController().signal),
@@ -165,18 +178,41 @@ describe("public marketing chatbot route", () => {
     expect(mocks.createCompletion).not.toHaveBeenCalled();
   });
 
-  it("returns 429 before the provider when the durable monthly budget is exhausted", async () => {
-    mocks.rpc.mockResolvedValue({
-      data: {
-        features: [
-          {
-            key: "public_marketing_chatbot",
-            cost: 25,
-          },
-        ],
+  it("rejects malformed JSON before durable quota or provider telemetry", async () => {
+    const request = new Request("https://profixiq.com/api/chatbot", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-for": "203.0.113.11",
       },
-      error: null,
+      body: "{not-json",
     });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.createCompletion).not.toHaveBeenCalled();
+    expect(mocks.recordDurableAIUsage).not.toHaveBeenCalled();
+  });
+
+  it("returns 429 before the provider when the atomic durable budget reservation is denied", async () => {
+    mocks.rpc.mockImplementation((name: string) =>
+      Promise.resolve(
+        name === "consume_public_ai_route_quota"
+          ? {
+              data: [
+                {
+                  allowed: false,
+                  denial_reason: "hard_budget_exceeded",
+                  retry_after_seconds: 3600,
+                  receipt_id: null,
+                },
+              ],
+              error: null,
+            }
+          : { data: true, error: null },
+      ),
+    );
 
     const request = new Request("https://profixiq.com/api/chatbot", {
       method: "POST",
