@@ -112,6 +112,24 @@ describe("acquisition auth handoff", () => {
     );
   });
 
+  it("creates the canonical pre-shop profile inside the acquisition claim", () => {
+    const migration = read(
+      "supabase/migrations/20260923141000_allow_acquisition_claim_to_create_profile.sql",
+    );
+
+    expect(migration).toContain(
+      "insert into public.profiles",
+    );
+    expect(migration).toContain("id,");
+    expect(migration).toContain("user_id,");
+    expect(migration).toContain("stripe_checkout_complete");
+    expect(migration).toContain("on conflict (id) do nothing");
+    expect(migration).toContain("v_auth_email <> lower(trim(p_checkout_email))");
+    expect(migration.indexOf("v_auth_email <> lower(trim(p_checkout_email))")).toBeLessThan(
+      migration.indexOf("insert into public.profiles"),
+    );
+  });
+
   it("preserves a verified acquisition password session before staff profile creation", () => {
     const signInRoute = read("app/api/auth/sign-in/route.ts");
 
