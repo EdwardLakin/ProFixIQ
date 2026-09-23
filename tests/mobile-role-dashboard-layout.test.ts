@@ -29,7 +29,7 @@ describe("mobile role dashboard layout", () => {
   });
 
   it("gives advisor, service and lead hand roles compact mobile dashboards", () => {
-    const home = read("app/mobile/page.tsx");
+    const home = read("features/mobile/dashboard/MobileHome.tsx");
     const tiles = read("features/mobile/config/mobile-tiles.ts");
     const advisor = read("features/mobile/dashboard/MobileAdvisorHome.tsx");
     const lead = read("features/mobile/dashboard/MobileLeadHandHome.tsx");

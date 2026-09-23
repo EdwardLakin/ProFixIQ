@@ -155,7 +155,7 @@ describe("authentication and portal hardening", () => {
   it("allows every known non-customer shop role to stay on mobile", () => {
     const signInRoute = read("app/api/auth/sign-in/route.ts");
     const middleware = read("middleware.ts");
-    const mobileHome = read("app/mobile/page.tsx");
+    const mobileHome = read("features/mobile/dashboard/MobileHome.tsx");
     const tiles = read("features/mobile/config/mobile-tiles.ts");
 
     for (const source of [signInRoute, middleware]) {
