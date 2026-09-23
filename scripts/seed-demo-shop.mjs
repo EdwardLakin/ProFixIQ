@@ -662,7 +662,11 @@ async function main() {
       shop_id: shopId,
       work_order_id: workOrderIds[woNumber],
       user_id: managerId,
-      assigned_to: techId,
+      // assigned_tech_id is the canonical primary technician; work_order_line_technicians
+      // is the canonical multi-technician set the DB's assignment-contract trigger
+      // requires it to appear in. assigned_to is legacy-only and the same trigger
+      // rejects it coexisting with a canonical assignment, so it's intentionally
+      // left unset here.
       assigned_tech_id: techId,
       description,
       complaint,
@@ -682,12 +686,21 @@ async function main() {
     validateSeededWorkOrderLineFields(linePayload);
     validateWorkOrderLineCompletedConstraint(linePayload);
 
-    await upsertByNaturalKey({
+    const lineResult = await upsertByNaturalKey({
       supabase,
       table: "work_order_lines",
       match: { shop_id: shopId, work_order_id: workOrderIds[woNumber], description },
       payload: linePayload,
     });
+
+    if (techId && lineResult.id) {
+      await upsertByNaturalKey({
+        supabase,
+        table: "work_order_line_technicians",
+        match: { work_order_line_id: lineResult.id, technician_id: techId },
+        payload: { work_order_line_id: lineResult.id, technician_id: techId, assigned_by: managerId },
+      });
+    }
   }
 
   const inspections = [
