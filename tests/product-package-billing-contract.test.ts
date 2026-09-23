@@ -9,6 +9,10 @@ import {
   LEGACY_ADDITIONAL_FLEET_ASSET_LOOKUP_KEY,
   LEGACY_ADDITIONAL_SERVICE_TRUCK_LOOKUP_KEY,
   LEGACY_PRODUCT_PACKAGE_LOOKUP_KEYS,
+  LIVE_ADDITIONAL_FLEET_ASSET_PRICE_ID,
+  LIVE_ADDITIONAL_SERVICE_TRUCK_PRICE_ID,
+  LIVE_ADDITIONAL_USER_PRICE_ID,
+  LIVE_PRODUCT_PACKAGE_PRICE_IDS,
   PRODUCT_PACKAGE_BILLING_MODEL,
   PRODUCT_PACKAGE_CURRENCY,
   PRODUCT_PACKAGE_INCLUDED_USERS,
@@ -173,6 +177,21 @@ describe("ProFixIQ product package billing contract", () => {
     );
     expect(PRODUCT_PACKAGE_PRICING.additionalServiceTruckCents).toBe(4_900);
     expect(PRODUCT_PACKAGE_PRICING.additionalFleetAssetCents).toBe(250);
+    expect(LIVE_PRODUCT_PACKAGE_PRICE_IDS).toEqual({
+      shop_operations: "price_1UIgbsITYwJQigUIQYY1VZh3",
+      field_service: "price_1UIgbuITYwJQigUI3Nfl8FqC",
+      fleet_maintenance: "price_1UIgbvITYwJQigUIq0RhgFkL",
+      complete_operations: "price_1UIgbxITYwJQigUIZvVBxp9Q",
+    });
+    expect(LIVE_ADDITIONAL_USER_PRICE_ID).toBe(
+      "price_1UIgbyITYwJQigUImzzsschG",
+    );
+    expect(LIVE_ADDITIONAL_SERVICE_TRUCK_PRICE_ID).toBe(
+      "price_1UIgbzITYwJQigUIF9So4ngq",
+    );
+    expect(LIVE_ADDITIONAL_FLEET_ASSET_PRICE_ID).toBe(
+      "price_1UIgc1ITYwJQigUIxUo1aZga",
+    );
   });
 
   it("keeps product capabilities separate and makes Complete the explicit union", () => {
