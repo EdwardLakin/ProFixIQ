@@ -28607,6 +28607,16 @@ export type Database = {
         }
         Returns: boolean
       }
+      complete_public_ai_route_quota: {
+        Args: {
+          p_actual_cost_usd: number
+          p_client_key: string
+          p_feature: string
+          p_receipt_id: string
+          p_succeeded: boolean
+        }
+        Returns: boolean
+      }
       complete_canonical_shift: {
         Args: {
           p_profile_id: string
@@ -28673,6 +28683,23 @@ export type Database = {
           p_reservation_cost_usd: number
           p_shop_id: string
           p_shop_max: number
+          p_window_seconds: number
+        }
+        Returns: {
+          allowed: boolean
+          denial_reason: string
+          receipt_id: string
+          retry_after_seconds: number
+        }[]
+      }
+      consume_public_ai_route_quota: {
+        Args: {
+          p_client_key: string
+          p_client_max: number
+          p_feature: string
+          p_global_max: number
+          p_hard_budget_usd: number
+          p_reservation_cost_usd: number
           p_window_seconds: number
         }
         Returns: {
