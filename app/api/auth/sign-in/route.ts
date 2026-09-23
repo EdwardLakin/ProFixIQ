@@ -6,6 +6,14 @@ import { NextResponse } from "next/server";
 import { enforceAuthRateLimit } from "@/features/auth/server/authRateLimit";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import { getMobileFieldServiceAccess } from "@/features/mobile/service/server/access";
+import { createStripeClient } from "@/features/stripe/lib/stripe/client";
+import { isStripeSubscriptionAccessBearing } from "@/features/stripe/lib/stripe/subscriptionStatus";
+import {
+  getStripeCheckoutEmail,
+  getStripeCheckoutSubscription,
+  isCompletedStripeAcquisitionSession,
+  readStripeAcquisitionMetadata,
+} from "@/features/stripe/lib/server/stripe-acquisition-intent";
 import {
   ACCOUNT_BILLING_RECOVERY_HREF,
   resolveShopProductAccess,
@@ -120,6 +128,39 @@ function enforceSignInRateLimits(
   return null;
 }
 
+async function isVerifiedAcquisitionSignIn(input: {
+  sessionId: string;
+  userEmail: string | null | undefined;
+}): Promise<boolean> {
+  const secretKey = String(process.env.STRIPE_SECRET_KEY ?? "").trim();
+  const normalizedUserEmail = String(input.userEmail ?? "").trim().toLowerCase();
+  if (!secretKey || !normalizedUserEmail.includes("@")) return false;
+
+  try {
+    const stripe = createStripeClient(secretKey);
+    const session = await stripe.checkout.sessions.retrieve(input.sessionId, {
+      expand: ["subscription", "customer"],
+    });
+    const metadata = readStripeAcquisitionMetadata(session.metadata);
+    if (!metadata || !isCompletedStripeAcquisitionSession(session)) return false;
+
+    const [checkoutEmail, subscription] = await Promise.all([
+      getStripeCheckoutEmail(stripe, session),
+      getStripeCheckoutSubscription(stripe, session),
+    ]);
+    return (
+      checkoutEmail?.trim().toLowerCase() === normalizedUserEmail &&
+      Boolean(subscription) &&
+      isStripeSubscriptionAccessBearing(subscription!.status)
+    );
+  } catch (error) {
+    console.warn("acquisition_signin_verification_failed", {
+      name: error instanceof Error ? error.name : "UnknownError",
+    });
+    return false;
+  }
+}
+
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => null)) as Body | null;
   const identifier = String(body?.identifier ?? "").trim();
@@ -200,6 +241,19 @@ export async function POST(req: Request) {
     !hasAcquisitionContext
   ) {
     return deny();
+  }
+
+  if (
+    hasAcquisitionContext &&
+    (await isVerifiedAcquisitionSignIn({
+      sessionId: acquisitionSessionId,
+      userEmail: signedInUser.email,
+    }))
+  ) {
+    // A completed acquisition can legitimately authenticate before the owner
+    // profile/shop exists. Preserve the authenticated session so the client can
+    // immediately claim the checkout, which creates/links the onboarding state.
+    return NextResponse.json({ ok: true, destination: "/onboarding" });
   }
 
   if (surface === "customer") {
