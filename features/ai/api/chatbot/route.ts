@@ -6,6 +6,7 @@ import {
   PRODUCT_PACKAGE_CATALOG,
   PRODUCT_PACKAGE_PRICING,
 } from "@/features/stripe/lib/stripe/product-packages";
+import { estimateMaxOpenAITextCostUsd } from "@/features/shared/lib/server/ai-cost";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { registerAIUsageEvent } from "@/features/shared/lib/server/ai-ops-guard";
 import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
@@ -18,19 +19,6 @@ import { runWithProviderTimeout } from "@/features/shared/lib/server/provider-ti
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
-type QuotaRow = {
-  allowed: boolean;
-  denial_reason: string | null;
-  retry_after_seconds: number;
-  receipt_id: string | null;
-};
-type RpcResult<T> = {
-  data: T;
-  error: { message: string; code?: string | null } | null;
-};
-type AbortableRpc<T> = PromiseLike<RpcResult<T>> & {
-  abortSignal?: (signal: AbortSignal) => PromiseLike<RpcResult<T>>;
-};
 
 const FEATURE = "public_marketing_chatbot" as const;
 const ENDPOINT = "/api/chatbot";
@@ -39,8 +27,8 @@ const MAX_MESSAGE_CHARS = 2_000;
 const CLIENT_RATE_LIMIT_MAX = 10;
 const CLIENT_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
 const QUOTA_RPC_TIMEOUT_MS = 2_000;
-const DEFAULT_RESERVATION_COST_USD = 0.02;
 const DEFAULT_GLOBAL_RATE_LIMIT_MAX = 240;
+const UTF8_TOKEN_UPPER_BOUND_PER_UTF16_CODE_UNIT = 4;
 
 function envNum(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -94,10 +82,10 @@ function asSafeMessages(messages: unknown): ChatMessage[] {
   if (!Array.isArray(messages)) return [];
 
   const out: ChatMessage[] = [];
-  for (const m of messages) {
-    if (!m || typeof m !== "object") continue;
-    const role = (m as { role?: unknown }).role;
-    const content = (m as { content?: unknown }).content;
+  for (const message of messages) {
+    if (!message || typeof message !== "object") continue;
+    const role = (message as { role?: unknown }).role;
+    const content = (message as { content?: unknown }).content;
 
     if (
       (role === "system" || role === "user" || role === "assistant") &&
@@ -110,48 +98,54 @@ function asSafeMessages(messages: unknown): ChatMessage[] {
       });
     }
   }
+
   return out.slice(-MAX_HISTORY_MESSAGES);
 }
 
-async function awaitRpcWithTimeout<T>(
+async function runQuotaRpcWithTimeout<T>(
   label: string,
-  rpc: AbortableRpc<T>,
-): Promise<RpcResult<T>> {
+  operation: (signal: AbortSignal) => PromiseLike<T>,
+): Promise<T> {
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), QUOTA_RPC_TIMEOUT_MS);
+  let timer: ReturnType<typeof setTimeout> | null = null;
+
   try {
-    const request =
-      typeof rpc.abortSignal === "function"
-        ? rpc.abortSignal(controller.signal)
-        : rpc;
-    const result = await request;
-    if (controller.signal.aborted) {
-      throw new Error(`${label} timed out`);
-    }
-    return result;
-  } catch (error) {
-    if (controller.signal.aborted) {
-      throw new Error(`${label} timed out`, { cause: error });
-    }
-    throw error;
+    return await Promise.race([
+      Promise.resolve(operation(controller.signal)),
+      new Promise<never>((_resolve, reject) => {
+        timer = setTimeout(() => {
+          controller.abort();
+          reject(new Error(`${label} timed out`));
+        }, QUOTA_RPC_TIMEOUT_MS);
+      }),
+    ]);
   } finally {
-    clearTimeout(timeout);
+    if (timer) clearTimeout(timer);
   }
 }
 
-function quotaAdmin() {
-  return createAdminSupabase() as unknown as {
-    rpc: (
-      name:
-        | "consume_public_ai_route_quota"
-        | "complete_public_ai_route_quota",
-      args: Record<string, unknown>,
-    ) => AbortableRpc<unknown>;
-  };
+function maximumReservationCostUsd(
+  model: string,
+  safeMessages: ChatMessage[],
+  maxCompletionTokens: number,
+): number | null {
+  const promptCodeUnits = safeMessages.reduce(
+    (sum, message) => sum + message.content.length,
+    0,
+  );
+  const maxPromptTokens =
+    promptCodeUnits * UTF8_TOKEN_UPPER_BOUND_PER_UTF16_CODE_UNIT;
+
+  return estimateMaxOpenAITextCostUsd({
+    model,
+    maxPromptTokens,
+    maxCompletionTokens,
+  });
 }
 
 async function claimPublicQuota(
   clientKey: string,
+  reservationCostUsd: number,
 ): Promise<
   | { allowed: true; receiptId: string; reservationCostUsd: number }
   | { allowed: false; retryAfterSeconds: number; reason: string }
@@ -187,31 +181,29 @@ async function claimPublicQuota(
     0.01,
     envNum("AI_BUDGET_HARD_USD_PUBLIC_MARKETING_CHATBOT", 25),
   );
-  const reservationCostUsd = Math.max(
-    0.000001,
-    envNum(
-      "AI_RESERVATION_COST_USD_PUBLIC_MARKETING_CHATBOT",
-      DEFAULT_RESERVATION_COST_USD,
-    ),
+
+  const admin = createAdminSupabase();
+  const result = await runQuotaRpcWithTimeout(
+    "public chatbot quota reservation",
+    (signal) =>
+      admin
+        .rpc("consume_public_ai_route_quota", {
+          p_client_key: clientKey,
+          p_feature: FEATURE,
+          p_client_max: clientMax,
+          p_global_max: globalMax,
+          p_window_seconds: windowSeconds,
+          p_hard_budget_usd: hardBudgetUsd,
+          p_reservation_cost_usd: reservationCostUsd,
+        })
+        .abortSignal(signal),
   );
 
-  const result = await awaitRpcWithTimeout(
-    "public chatbot quota reservation",
-    quotaAdmin().rpc("consume_public_ai_route_quota", {
-      p_client_key: clientKey,
-      p_feature: FEATURE,
-      p_client_max: clientMax,
-      p_global_max: globalMax,
-      p_window_seconds: windowSeconds,
-      p_hard_budget_usd: hardBudgetUsd,
-      p_reservation_cost_usd: reservationCostUsd,
-    }) as AbortableRpc<QuotaRow[]>,
-  );
   if (result.error) {
     throw new Error("Public AI quota is unavailable");
   }
 
-  const row = Array.isArray(result.data) ? result.data[0] : null;
+  const row = result.data?.[0];
   if (row?.allowed && row.receipt_id) {
     return {
       allowed: true,
@@ -234,16 +226,21 @@ async function settlePublicQuota(input: {
   succeeded: boolean;
 }): Promise<void> {
   try {
-    const result = await awaitRpcWithTimeout(
+    const admin = createAdminSupabase();
+    const result = await runQuotaRpcWithTimeout(
       "public chatbot quota settlement",
-      quotaAdmin().rpc("complete_public_ai_route_quota", {
-        p_receipt_id: input.receiptId,
-        p_client_key: input.clientKey,
-        p_feature: FEATURE,
-        p_actual_cost_usd: Math.max(0, input.actualCostUsd),
-        p_succeeded: input.succeeded,
-      }) as AbortableRpc<boolean>,
+      (signal) =>
+        admin
+          .rpc("complete_public_ai_route_quota", {
+            p_receipt_id: input.receiptId,
+            p_client_key: input.clientKey,
+            p_feature: FEATURE,
+            p_actual_cost_usd: Math.max(0, input.actualCostUsd),
+            p_succeeded: input.succeeded,
+          })
+          .abortSignal(signal),
     );
+
     if (result.error || result.data !== true) {
       console.error("public_chatbot_quota_settlement_failed");
     }
@@ -312,15 +309,37 @@ export async function POST(req: Request) {
     );
   }
 
+  const incoming = asSafeMessages(body.messages);
+  const safeMessages: ChatMessage[] = [
+    { role: "system", content: guardrailSystem() },
+    ...incoming.filter((message) => message.role !== "system"),
+  ];
+  const policy = getAIPolicy(FEATURE);
+  const model = getOpenAIModelForPurpose(policy.modelPurpose);
+  const reservationCostUsd = maximumReservationCostUsd(
+    model,
+    safeMessages,
+    policy.maxTokens,
+  );
+
+  if (reservationCostUsd == null || reservationCostUsd <= 0) {
+    console.error("public_chatbot_unknown_model_rate", { model });
+    return json(
+      { error: "TechBot is temporarily unavailable. Please try again shortly." },
+      503,
+    );
+  }
+
   let claim: Awaited<ReturnType<typeof claimPublicQuota>>;
   try {
-    claim = await claimPublicQuota(clientKey);
+    claim = await claimPublicQuota(clientKey, reservationCostUsd);
   } catch {
     return json(
       { error: "TechBot is temporarily unavailable. Please try again shortly." },
       503,
     );
   }
+
   if (!claim.allowed) {
     return json(
       {
@@ -335,25 +354,14 @@ export async function POST(req: Request) {
     );
   }
 
-  let providerAttempted = false;
+  const openai = getOpenAIClient();
 
   try {
-    const incoming = asSafeMessages(body.messages);
-    const safeMsgs: ChatMessage[] = [
-      { role: "system", content: guardrailSystem() },
-      ...incoming.filter((m) => m.role !== "system"),
-    ];
-
-    const policy = getAIPolicy(FEATURE);
-    const model = getOpenAIModelForPurpose(policy.modelPurpose);
-    const openai = getOpenAIClient();
-
-    providerAttempted = true;
     const completion = await runWithProviderTimeout(policy.timeoutMs, (signal) =>
       openai.chat.completions.create(
         {
           model,
-          messages: safeMsgs,
+          messages: safeMessages,
           ...openAITemperatureParam(model, 0.4),
           max_completion_tokens: policy.maxTokens,
         },
@@ -366,6 +374,8 @@ export async function POST(req: Request) {
       "Sorry, I couldn't generate a response.";
     const totalTokens = completion.usage?.total_tokens ?? null;
     const telemetry = await recordDurableAIUsage({
+      event_key: `quota:${claim.receiptId}`,
+      quota_receipt_id: claim.receiptId,
       feature: FEATURE,
       endpoint: ENDPOINT,
       shop_id: null,
@@ -386,6 +396,7 @@ export async function POST(req: Request) {
     });
     const actualCostUsd =
       telemetry.estimatedCostUsd ?? claim.reservationCostUsd;
+
     await settlePublicQuota({
       receiptId: claim.receiptId,
       clientKey,
@@ -404,49 +415,49 @@ export async function POST(req: Request) {
     });
 
     return json({ reply });
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "unknown_error";
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "unknown_error";
     const timedOut = /timed out/i.test(message);
 
     await settlePublicQuota({
       receiptId: claim.receiptId,
       clientKey,
-      actualCostUsd: providerAttempted ? claim.reservationCostUsd : 0,
+      actualCostUsd: claim.reservationCostUsd,
       succeeded: false,
     });
-
-    if (providerAttempted) {
-      await recordDurableAIUsage({
-        feature: FEATURE,
-        endpoint: ENDPOINT,
-        shop_id: null,
-        user_id: null,
-        provider: "openai",
-        model: null,
-        modality: "text",
-        latency_ms: Date.now() - startedAt,
-        prompt_tokens: null,
-        completion_tokens: null,
-        total_tokens: null,
-        status: "error",
-        error_code: timedOut ? "provider_timeout" : "provider_error",
-        error_message: message.slice(0, 200),
-        provider_request_id: null,
-      });
-      registerAIUsageEvent({
-        feature: FEATURE,
-        endpoint: ENDPOINT,
-        shopId: null,
-        model: null,
-        totalTokens: null,
-        estimatedCostUsd: claim.reservationCostUsd,
-        status: "error",
-        errorCode: timedOut ? "provider_timeout" : "provider_error",
-      });
-    }
+    await recordDurableAIUsage({
+      event_key: `quota:${claim.receiptId}`,
+      quota_receipt_id: claim.receiptId,
+      feature: FEATURE,
+      endpoint: ENDPOINT,
+      shop_id: null,
+      user_id: null,
+      provider: "openai",
+      model,
+      modality: "text",
+      latency_ms: Date.now() - startedAt,
+      prompt_tokens: null,
+      completion_tokens: null,
+      total_tokens: null,
+      estimated_cost_usd: claim.reservationCostUsd,
+      status: "error",
+      error_code: timedOut ? "provider_timeout" : "provider_error",
+      error_message: message.slice(0, 200),
+      provider_request_id: null,
+    });
+    registerAIUsageEvent({
+      feature: FEATURE,
+      endpoint: ENDPOINT,
+      shopId: null,
+      model,
+      totalTokens: null,
+      estimatedCostUsd: claim.reservationCostUsd,
+      status: "error",
+      errorCode: timedOut ? "provider_timeout" : "provider_error",
+    });
 
     console.error("[/api/chatbot] error", {
-      kind: timedOut ? "timeout" : providerAttempted ? "provider" : "setup",
+      kind: timedOut ? "timeout" : "provider",
     });
     return json(
       { error: "TechBot is temporarily unavailable. Please try again shortly." },
