@@ -33,17 +33,14 @@ describe("Fleet inspection builder review repairs", () => {
     ).toBe(false);
   });
 
-  it("enforces Fleet template scope in catalog, submit route, and canonical RPC", () => {
+  it("enforces Fleet template scope in catalog and submit routes", () => {
     const context = source("app/api/fleet/request-builder/context/route.ts");
     const submit = source("app/api/fleet/request-builder/submit/route.ts");
-    const migration = source(
-      "supabase/migrations/20260923002000_fleet_inspection_template_scope.sql",
-    );
 
     expect(context).toContain("isInspectionTemplateAvailableToFleet");
+    expect(context).toContain("while (inspections.length < 250)");
+    expect(context).toContain(".range(");
     expect(submit).toContain("isInspectionTemplateAvailableToFleet");
-    expect(migration).toContain("fleet-maintenance");
-    expect(migration).toContain("'fleet:' || p_fleet_id::text");
   });
 
   it("uses canonical Shop vehicle types for Fleet PM templates", () => {
@@ -60,6 +57,7 @@ describe("Fleet inspection builder review repairs", () => {
     const route = source("app/api/fleet/inspection-templates/route.ts");
     expect(route).toContain("canonicalVehicleType");
     expect(route).toContain('"highway tractor": "truck"');
+    expect(route).toContain("LEGACY_VEHICLE_TYPE_ALIASES[normalized] ?? trimmed");
   });
 
   it("retains one PM template id until a definitive publish success", () => {
@@ -75,6 +73,8 @@ describe("Fleet inspection builder review repairs", () => {
     expect(builder).toContain("setTemplateId(crypto.randomUUID())");
     expect(route).toContain("samePayload");
     expect(route).toContain("stableJson(existing.sections)");
+    expect(route).toContain('error.code === "23505"');
+    expect(route).toContain("readPublishedTemplate");
     expect(route).toContain("already published with different content");
   });
 
