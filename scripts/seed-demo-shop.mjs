@@ -371,6 +371,12 @@ async function main() {
       profileActions.push("skipped:missing auth-linked profile");
       continue;
     }
+    if (existingProfile.shop_id !== shopId) {
+      throw new Error(
+        `Refusing to seed persona ${email}: profile ${existingProfile.id} belongs to shop ${existingProfile.shop_id ?? "null"}, not DEMO_SHOP_ID ${shopId}. ` +
+          "Run provision:demo-personas first; seed-demo-shop never transfers reserved personas across shops.",
+      );
+    }
 
     const profile = await upsertByNaturalKey({
       supabase,
