@@ -232,6 +232,8 @@ export function isFleetProductSharedPath(pathname: string): boolean {
     normalized === "/auth/set-password" ||
     normalized === "/auth/callback" ||
     normalized === "/confirm" ||
+    normalized === "/legal" ||
+    normalized.startsWith("/legal/") ||
     normalized === "/robots.txt" ||
     normalized === "/sitemap.xml" ||
     normalized === "/fleet-manifest.webmanifest" ||

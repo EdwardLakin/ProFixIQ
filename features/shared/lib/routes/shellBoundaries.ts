@@ -16,6 +16,7 @@ const STANDALONE_PUBLIC_PREFIXES = [
   "/compare-plans",
   "/subscribe",
   "/demo",
+  "/legal",
   "/field-service",
   "/fleet-maintenance",
   "/portal/auth",

@@ -20,6 +20,18 @@ const withSerwist = withSerwistInit({
 const nextConfig: NextConfig = {
   reactStrictMode: true,
 
+  // /legal/* pages read their content from docs/legal/*.md at request time via
+  // fs.readFileSync. That directory sits outside app/ and public/, so it isn't
+  // reliably picked up by Next's automatic serverless file tracing — make the
+  // inclusion explicit so the deployed function always has the source files.
+  // outputFileTracingIncludes keys are matched against route URL patterns,
+  // not filesystem paths, so this covers both the /legal index route and
+  // every nested document route.
+  outputFileTracingIncludes: {
+    "/legal": ["./docs/legal/**/*.md"],
+    "/legal/**": ["./docs/legal/**/*.md"],
+  },
+
   images: {
     remotePatterns: [
       {
