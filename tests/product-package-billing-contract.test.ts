@@ -246,9 +246,16 @@ describe("ProFixIQ product package billing contract", () => {
         additionalFleetAssetPriceId: "price_cad_asset",
       },
     });
-    expect(list).toHaveBeenCalledWith(
-      expect.objectContaining({ limit: 30 }),
-    );
+    expect(list).toHaveBeenCalledTimes(2);
+    for (const [params] of list.mock.calls) {
+      expect(params).toEqual(
+        expect.objectContaining({
+          active: true,
+          limit: 10,
+        }),
+      );
+      expect(params.lookup_keys.length).toBeLessThanOrEqual(10);
+    }
   });
 
   it("fails closed when the USD package catalog drifts", async () => {
