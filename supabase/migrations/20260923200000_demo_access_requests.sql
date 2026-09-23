@@ -28,7 +28,7 @@ create table public.demo_access_requests (
   reviewed_at timestamptz,
   reviewed_by uuid references public.profiles(id) on delete set null,
   constraint demo_access_requests_status_chk
-    check (status in ('pending', 'approved', 'dismissed'))
+    check (status in ('pending', 'provisioning', 'approved', 'dismissed'))
 );
 
 create index demo_access_requests_status_created_idx
@@ -36,6 +36,15 @@ create index demo_access_requests_status_created_idx
 
 create index demo_access_requests_email_created_idx
   on public.demo_access_requests (email, created_at desc);
+
+-- Closes a race between the app-level cooldown pre-check and the insert:
+-- concurrent submissions for the same email can both pass the pre-check
+-- before either insert commits. At most one pending request per email can
+-- exist at the database level; a second concurrent submit fails this
+-- constraint and the app treats that failure the same as a cooldown skip.
+create unique index demo_access_requests_pending_email_uidx
+  on public.demo_access_requests (lower(email))
+  where status = 'pending';
 
 alter table public.demo_access_requests enable row level security;
 

@@ -441,8 +441,12 @@ function DismissRequestButton({ requestId, onDone }: { requestId: string; onDone
 }
 
 function RequestsSection({ requests, onChanged }: { requests: DemoAccessRequest[]; onChanged: () => void }) {
-  const pending = requests.filter((request) => request.status === "pending");
-  const reviewed = requests.filter((request) => request.status !== "pending").slice(0, 10);
+  const pending = requests.filter(
+    (request) => request.status === "pending" || request.status === "provisioning",
+  );
+  const reviewed = requests.filter(
+    (request) => request.status === "approved" || request.status === "dismissed",
+  );
 
   return (
     <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-card">
@@ -484,10 +488,16 @@ function RequestsSection({ requests, onChanged }: { requests: DemoAccessRequest[
                 </p>
               </div>
               <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
-                <div className="flex gap-2">
-                  <ApproveRequestControl requestId={request.id} onDone={onChanged} />
-                  <DismissRequestButton requestId={request.id} onDone={onChanged} />
-                </div>
+                {request.status === "provisioning" ? (
+                  <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[color:var(--theme-text-muted)]">
+                    Processing…
+                  </span>
+                ) : (
+                  <div className="flex gap-2">
+                    <ApproveRequestControl requestId={request.id} onDone={onChanged} />
+                    <DismissRequestButton requestId={request.id} onDone={onChanged} />
+                  </div>
+                )}
               </div>
             </div>
           ))

@@ -5,7 +5,7 @@ import { createDemoProspect } from "@/features/ops/server/demoAccess";
 
 type AdminSupabase = ReturnType<typeof createAdminSupabase>;
 
-export type DemoAccessRequestStatus = "pending" | "approved" | "dismissed";
+export type DemoAccessRequestStatus = "pending" | "provisioning" | "approved" | "dismissed";
 
 export type DemoAccessRequest = {
   id: string;
@@ -86,6 +86,14 @@ export async function submitDemoAccessRequest(input: SubmitDemoAccessRequestInpu
     message,
   });
   if (error) {
+    // The cooldown pre-check above isn't atomic with this insert, so two
+    // concurrent submissions for the same email can both pass it. The
+    // database's partial unique index on (email) where status='pending' is
+    // the real guard; a violation here means a concurrent submit won, which
+    // is the same outcome as the cooldown skip above.
+    if (error.code === "23505") {
+      return;
+    }
     throw new Error(`Failed to submit demo access request: ${error.message}`);
   }
 }
@@ -96,31 +104,19 @@ export async function submitDemoAccessRequest(input: SubmitDemoAccessRequestInpu
  * requireOpsOperatorApiAccess()/requireOpsOperatorPageAccess(), matching
  * every other function in features/ops/server/demoAccess.ts.
  */
-export async function listDemoAccessRequests(): Promise<DemoAccessRequest[]> {
-  const admin = createAdminSupabase();
-  const { data, error } = await admin
-    .from("demo_access_requests")
-    .select("id, full_name, email, company_name, message, status, created_at, reviewed_at")
-    .order("created_at", { ascending: false })
-    .limit(200)
-    .returns<
-      {
-        id: string;
-        full_name: string;
-        email: string;
-        company_name: string | null;
-        message: string | null;
-        status: DemoAccessRequestStatus;
-        created_at: string;
-        reviewed_at: string | null;
-      }[]
-    >();
+type DemoAccessRequestRow = {
+  id: string;
+  full_name: string;
+  email: string;
+  company_name: string | null;
+  message: string | null;
+  status: DemoAccessRequestStatus;
+  created_at: string;
+  reviewed_at: string | null;
+};
 
-  if (error) {
-    throw new Error(`Failed to list demo access requests: ${error.message}`);
-  }
-
-  return (data ?? []).map((row) => ({
+function mapRequestRow(row: DemoAccessRequestRow): DemoAccessRequest {
+  return {
     id: row.id,
     fullName: row.full_name,
     email: row.email,
@@ -129,23 +125,90 @@ export async function listDemoAccessRequests(): Promise<DemoAccessRequest[]> {
     status: row.status,
     createdAt: row.created_at,
     reviewedAt: row.reviewed_at,
-  }));
+  };
 }
 
-async function loadPendingRequest(admin: AdminSupabase, requestId: string) {
+const REQUEST_ROW_COLUMNS = "id, full_name, email, company_name, message, status, created_at, reviewed_at";
+
+export async function listDemoAccessRequests(): Promise<DemoAccessRequest[]> {
+  const admin = createAdminSupabase();
+
+  // Queried separately so a pending/provisioning request can never be
+  // pushed out of view by a page of older reviewed history -- the two
+  // groups compete for the same page under a single created_at-ordered
+  // query once the table holds more rows than the limit.
+  const [pendingResult, reviewedResult] = await Promise.all([
+    admin
+      .from("demo_access_requests")
+      .select(REQUEST_ROW_COLUMNS)
+      .in("status", ["pending", "provisioning"])
+      .order("created_at", { ascending: false })
+      .returns<DemoAccessRequestRow[]>(),
+    admin
+      .from("demo_access_requests")
+      .select(REQUEST_ROW_COLUMNS)
+      .in("status", ["approved", "dismissed"])
+      .order("reviewed_at", { ascending: false })
+      .limit(10)
+      .returns<DemoAccessRequestRow[]>(),
+  ]);
+
+  if (pendingResult.error) {
+    throw new Error(`Failed to list demo access requests: ${pendingResult.error.message}`);
+  }
+  if (reviewedResult.error) {
+    throw new Error(`Failed to list demo access requests: ${reviewedResult.error.message}`);
+  }
+
+  return [...(pendingResult.data ?? []), ...(reviewedResult.data ?? [])].map(mapRequestRow);
+}
+
+async function describeUnclaimableRequest(admin: AdminSupabase, requestId: string): Promise<never> {
   const { data, error } = await admin
     .from("demo_access_requests")
-    .select("id, full_name, email, status")
+    .select("status")
     .eq("id", requestId)
-    .maybeSingle<{ id: string; full_name: string; email: string; status: DemoAccessRequestStatus }>();
+    .maybeSingle<{ status: DemoAccessRequestStatus }>();
   if (error) {
     throw new Error(`Failed to load demo access request: ${error.message}`);
   }
   if (!data) {
     throw new Error("Demo access request not found.");
   }
-  if (data.status !== "pending") {
-    throw new Error(`This request is already ${data.status}.`);
+  if (data.status === "provisioning") {
+    throw new Error("This request is already being processed.");
+  }
+  if (data.status === "pending") {
+    // Lost a race to another claim between our attempt and this recheck.
+    throw new Error("This request is already being processed.");
+  }
+  throw new Error(`This request is already ${data.status}.`);
+}
+
+/**
+ * Atomically transitions a request from `pending` to `provisioning`,
+ * returning the row only when this call won the transition. Two concurrent
+ * approve calls on the same request can otherwise both pass a plain read
+ * check before either writes, each independently provisioning a duplicate
+ * account -- this conditional update (`eq("status", "pending")`) is the
+ * guard, since only one concurrent UPDATE can match that predicate.
+ */
+async function claimPendingRequest(
+  admin: AdminSupabase,
+  requestId: string,
+): Promise<{ id: string; full_name: string; email: string }> {
+  const { data, error } = await admin
+    .from("demo_access_requests")
+    .update({ status: "provisioning" })
+    .eq("id", requestId)
+    .eq("status", "pending")
+    .select("id, full_name, email")
+    .maybeSingle<{ id: string; full_name: string; email: string }>();
+  if (error) {
+    throw new Error(`Failed to claim demo access request: ${error.message}`);
+  }
+  if (!data) {
+    return describeUnclaimableRequest(admin, requestId);
   }
   return data;
 }
@@ -155,19 +218,31 @@ export async function approveDemoAccessRequest(
   actorProfileId: string | null,
 ): Promise<{ profileId: string; username: string; expiresAt: string }> {
   const admin = createAdminSupabase();
-  const request = await loadPendingRequest(admin, input.requestId);
+  const request = await claimPendingRequest(admin, input.requestId);
 
   const expiresAt =
     input.expiresAt ?? new Date(Date.now() + DEFAULT_APPROVAL_EXPIRY_HOURS * 60 * 60 * 1000).toISOString();
 
-  // Reuses the existing, already-reviewed prospect-provisioning path
-  // end-to-end (shop resolution, internal_demo check, auth user + profile
-  // creation, invite email) -- this function only adds the request-queue
-  // bookkeeping around it.
-  const result = await createDemoProspect(
-    { fullName: request.full_name, email: request.email, expiresAt },
-    actorProfileId,
-  );
+  let result: { profileId: string; username: string; expiresAt: string };
+  try {
+    // Reuses the existing, already-reviewed prospect-provisioning path
+    // end-to-end (shop resolution, internal_demo check, auth user + profile
+    // creation, invite email) -- this function only adds the request-queue
+    // bookkeeping around it.
+    result = await createDemoProspect(
+      { fullName: request.full_name, email: request.email, expiresAt },
+      actorProfileId,
+    );
+  } catch (provisionError) {
+    // Release the claim so the request goes back to pending and can be
+    // retried, instead of being stuck at "provisioning" forever.
+    await admin
+      .from("demo_access_requests")
+      .update({ status: "pending" })
+      .eq("id", request.id)
+      .eq("status", "provisioning");
+    throw provisionError;
+  }
 
   const { error } = await admin
     .from("demo_access_requests")
@@ -185,13 +260,23 @@ export async function dismissDemoAccessRequest(
   actorProfileId: string | null,
 ): Promise<void> {
   const admin = createAdminSupabase();
-  await loadPendingRequest(admin, input.requestId);
 
-  const { error } = await admin
+  // Dismiss is a terminal transition with no async work in between, so a
+  // single conditional update is enough to make it race-safe: only one
+  // concurrent dismiss/approve can win the eq("status", ...) predicate.
+  // Also allows clearing a request stuck in "provisioning" (e.g. a crash
+  // between claim and outcome), since that's otherwise unrecoverable.
+  const { data, error } = await admin
     .from("demo_access_requests")
     .update({ status: "dismissed", reviewed_at: new Date().toISOString(), reviewed_by: actorProfileId })
-    .eq("id", input.requestId);
+    .eq("id", input.requestId)
+    .in("status", ["pending", "provisioning"])
+    .select("id")
+    .maybeSingle();
   if (error) {
     throw new Error(`Failed to dismiss demo access request: ${error.message}`);
+  }
+  if (!data) {
+    await describeUnclaimableRequest(admin, input.requestId);
   }
 }

@@ -392,6 +392,7 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/auth/reset") ||
     pathname.startsWith("/auth/set-password") ||
     pathname.startsWith("/demo") ||
+    pathname.startsWith("/request-demo") ||
     isPublicFleetMetadata ||
     isPortalAuthPage ||
     isLegacyPortalConfirm ||

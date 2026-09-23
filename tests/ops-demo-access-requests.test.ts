@@ -13,6 +13,7 @@ function makeBuilder(result: MockResult) {
   const chain = () => builder;
   builder.select = vi.fn(chain);
   builder.eq = vi.fn(chain);
+  builder.in = vi.fn(chain);
   builder.gte = vi.fn(chain);
   builder.order = vi.fn(chain);
   builder.limit = vi.fn(chain);
@@ -119,6 +120,9 @@ describe("submitDemoAccessRequest — public intake", () => {
 
 describe("listDemoAccessRequests", () => {
   it("maps snake_case rows to the camelCase DemoAccessRequest shape", async () => {
+    // Pending/provisioning and approved/dismissed are queried separately
+    // (in that order) so a page of reviewed history can never push a
+    // pending request out of view.
     createAdminSupabaseMock.mockReturnValue(
       createAdminMock({
         demo_access_requests: [
@@ -137,6 +141,7 @@ describe("listDemoAccessRequests", () => {
             ],
             error: null,
           },
+          { data: [], error: null },
         ],
       }),
     );
@@ -158,9 +163,21 @@ describe("listDemoAccessRequests", () => {
 });
 
 describe("approveDemoAccessRequest", () => {
+  // approve claims the request with a conditional update
+  // (status='pending' -> 'provisioning') before doing anything else, so two
+  // concurrent approvals can never both provision an account: only one
+  // update can match the eq("status", "pending") predicate. A claim that
+  // matches no row (not found, or already reviewed/claimed) falls through
+  // to a separate lookup that reports why.
+
   it("rejects a request id that does not exist", async () => {
     createAdminSupabaseMock.mockReturnValue(
-      createAdminMock({ demo_access_requests: [{ data: null, error: null }] }),
+      createAdminMock({
+        demo_access_requests: [
+          { data: null, error: null }, // claim attempt matches no row
+          { data: null, error: null }, // lookup: no such row
+        ],
+      }),
     );
     const { approveDemoAccessRequest } = await import("@/features/ops/server/demoAccessRequests");
 
@@ -174,7 +191,8 @@ describe("approveDemoAccessRequest", () => {
     createAdminSupabaseMock.mockReturnValue(
       createAdminMock({
         demo_access_requests: [
-          { data: { id: REQUEST_ID, full_name: "Jordan Ramirez", email: "jordan@example.com", status: "approved" }, error: null },
+          { data: null, error: null }, // claim attempt: not pending, matches no row
+          { data: { status: "approved" }, error: null }, // lookup: already approved
         ],
       }),
     );
@@ -194,8 +212,8 @@ describe("approveDemoAccessRequest", () => {
     });
     const admin = createAdminMock({
       demo_access_requests: [
-        { data: { id: REQUEST_ID, full_name: "Jordan Ramirez", email: "jordan@example.com", status: "pending" }, error: null },
-        { data: null, error: null },
+        { data: { id: REQUEST_ID, full_name: "Jordan Ramirez", email: "jordan@example.com" }, error: null }, // claim succeeds
+        { data: null, error: null }, // final approved update
       ],
     });
     createAdminSupabaseMock.mockReturnValue(admin);
@@ -215,11 +233,12 @@ describe("approveDemoAccessRequest", () => {
     );
   });
 
-  it("does not mark the request approved when createDemoProspect fails, so it can be retried", async () => {
+  it("releases the claim back to pending when createDemoProspect fails, so it can be retried", async () => {
     createDemoProspectMock.mockRejectedValue(new Error("Failed to seed shop membership: boom"));
     const admin = createAdminMock({
       demo_access_requests: [
-        { data: { id: REQUEST_ID, full_name: "Jordan Ramirez", email: "jordan@example.com", status: "pending" }, error: null },
+        { data: { id: REQUEST_ID, full_name: "Jordan Ramirez", email: "jordan@example.com" }, error: null }, // claim succeeds
+        { data: null, error: null }, // revert provisioning -> pending
       ],
     });
     createAdminSupabaseMock.mockReturnValue(admin);
@@ -230,14 +249,23 @@ describe("approveDemoAccessRequest", () => {
     ).rejects.toThrow("Failed to seed shop membership: boom");
 
     const demoRequestCalls = admin.from.mock.calls.filter((call) => call[0] === "demo_access_requests");
-    expect(demoRequestCalls).toHaveLength(1); // only the load, never the update
+    expect(demoRequestCalls).toHaveLength(2); // claim, then revert -- never the approved update
   });
 });
 
 describe("dismissDemoAccessRequest", () => {
+  // dismiss is a single conditional update (matches status in
+  // pending/provisioning), so it's race-safe against a concurrent
+  // approve/dismiss the same way approve's claim step is.
+
   it("rejects a request id that does not exist", async () => {
     createAdminSupabaseMock.mockReturnValue(
-      createAdminMock({ demo_access_requests: [{ data: null, error: null }] }),
+      createAdminMock({
+        demo_access_requests: [
+          { data: null, error: null }, // conditional update matches no row
+          { data: null, error: null }, // lookup: no such row
+        ],
+      }),
     );
     const { dismissDemoAccessRequest } = await import("@/features/ops/server/demoAccessRequests");
 
@@ -249,8 +277,7 @@ describe("dismissDemoAccessRequest", () => {
   it("marks a pending request dismissed", async () => {
     const admin = createAdminMock({
       demo_access_requests: [
-        { data: { id: REQUEST_ID, full_name: "Jordan Ramirez", email: "jordan@example.com", status: "pending" }, error: null },
-        { data: null, error: null },
+        { data: { id: REQUEST_ID }, error: null }, // conditional update matches and succeeds
       ],
     });
     createAdminSupabaseMock.mockReturnValue(admin);
