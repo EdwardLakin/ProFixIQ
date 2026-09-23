@@ -100,6 +100,18 @@ describe("acquisition auth handoff", () => {
     expect(signIn).toContain("Verify your email");
   });
 
+  it("does not trap an acquisition checkout in verification when Supabase returns an existing-account response", () => {
+    const signIn = read("features/auth/components/SignIn.tsx");
+
+    expect(signIn).toContain("looksLikeExistingAccount");
+    expect(signIn).toContain("Array.isArray(returnedIdentities)");
+    expect(signIn).toContain("returnedIdentities.length === 0");
+    expect(signIn).toContain('setMode("sign-in")');
+    expect(signIn).toContain(
+      "Continue by signing in with this email to attach the completed checkout.",
+    );
+  });
+
   it("routes a checkout and confirmed account using the verified product surface", () => {
     const checkout = read("app/api/stripe/checkout/route.ts");
     const callback = read("app/auth/callback/page.tsx");
