@@ -28,10 +28,11 @@ const LEGACY_VEHICLE_TYPE_ALIASES: Record<string, string> = {
   pickup: "car",
 };
 
-function canonicalVehicleType(value: string): string | null {
-  const normalized = value.trim().toLowerCase();
+function canonicalVehicleType(value: string): string {
+  const trimmed = value.trim();
+  const normalized = trimmed.toLowerCase();
   if (CANONICAL_VEHICLE_TYPES.has(normalized)) return normalized;
-  return LEGACY_VEHICLE_TYPE_ALIASES[normalized] ?? null;
+  return LEGACY_VEHICLE_TYPE_ALIASES[normalized] ?? trimmed;
 }
 
 function stableJson(value: unknown): string {
@@ -211,7 +212,7 @@ export async function POST(request: Request) {
     const templateId = body.templateId?.trim() ?? "";
     const name = body.name?.trim() ?? "";
     const requestedVehicleType = body.vehicleType?.trim() ?? "";
-    const vehicleType = canonicalVehicleType(requestedVehicleType) ?? "";
+    const vehicleType = canonicalVehicleType(requestedVehicleType);
     const rawItemCount = Array.isArray(body.sections)
       ? body.sections.reduce((total, section) => {
           if (!section || typeof section !== "object") return total;
@@ -233,12 +234,9 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    if (!vehicleType) {
+    if (!vehicleType || vehicleType.length > 80) {
       return NextResponse.json(
-        {
-          error:
-            "Choose a specific Shop-compatible vehicle type: heavy truck, trailer, bus/coach, or light duty.",
-        },
+        { error: "Vehicle type is required" },
         { status: 400 },
       );
     }
@@ -268,14 +266,18 @@ export async function POST(request: Request) {
       fleetTag(fleetId),
     ];
 
-    const { data: existing, error: existingError } = await admin
-      .from("inspection_templates")
-      .select("id,shop_id,tags,template_name,vehicle_type,sections")
-      .eq("id", templateId)
-      .maybeSingle();
+    const readPublishedTemplate = async () =>
+      admin
+        .from("inspection_templates")
+        .select("id,shop_id,tags,template_name,vehicle_type,sections")
+        .eq("id", templateId)
+        .maybeSingle();
 
-    if (existingError) throw new Error(existingError.message);
-    if (existing) {
+    const replayResponse = (
+      existing: NonNullable<
+        Awaited<ReturnType<typeof readPublishedTemplate>>["data"]
+      >,
+    ) => {
       const existingTags = existing.tags ?? [];
       const replay =
         existing.shop_id === shopId &&
@@ -301,7 +303,13 @@ export async function POST(request: Request) {
         );
       }
       return NextResponse.json({ id: existing.id, replayed: true });
-    }
+    };
+
+    const { data: existing, error: existingError } =
+      await readPublishedTemplate();
+
+    if (existingError) throw new Error(existingError.message);
+    if (existing) return replayResponse(existing);
 
     const insert: TemplateInsert = {
       id: templateId,
@@ -324,6 +332,13 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
+      if (error.code === "23505") {
+        const { data: concurrentExisting, error: replayReadError } =
+          await readPublishedTemplate();
+        if (!replayReadError && concurrentExisting) {
+          return replayResponse(concurrentExisting);
+        }
+      }
       console.error("[fleet/inspection-templates] save", error);
       return NextResponse.json(
         { error: "Unable to publish Fleet inspection template" },
