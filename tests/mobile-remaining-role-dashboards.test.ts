@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const mobileHome = () => readFileSync("app/mobile/page.tsx", "utf8");
+const mobileHome = () =>
+  readFileSync("features/mobile/dashboard/MobileHome.tsx", "utf8");
 const operationalHome = () =>
   readFileSync("features/mobile/dashboard/MobileOperationalRoleHome.tsx", "utf8");
 

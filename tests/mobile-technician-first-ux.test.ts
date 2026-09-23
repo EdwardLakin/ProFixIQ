@@ -2,7 +2,10 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it, test } from "vitest";
 import { getMobileTilesForRole } from "@/features/mobile/config/mobile-tiles";
 
-const mobileHome = readFileSync("app/mobile/page.tsx", "utf8");
+const mobileHome = readFileSync(
+  "features/mobile/dashboard/MobileHome.tsx",
+  "utf8",
+);
 const techHome = readFileSync(
   "features/mobile/dashboard/MobileTechHome.tsx",
   "utf8",

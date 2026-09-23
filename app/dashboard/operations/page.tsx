@@ -1,23 +1,16 @@
 import OperationalHealthAlertStrip from "@/features/operations/components/OperationalHealthAlertStrip";
-import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
-import { canonicalizeRole } from "@/features/shared/lib/rbac";
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
+import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
 import OperationsDashboardView from "../_components/OperationsDashboardView";
 import OperationsDashboardFreshness from "../_components/OperationsDashboardFreshness";
 
 export default async function OperationsDashboardPage() {
-  const supabase = createServerSupabaseRSC();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const { profile } = user
-    ? await resolveAuthenticatedStaffProfile(supabase, user.id)
-    : { profile: null };
-  const role = canonicalizeRole(profile?.role);
-  const canViewObservability = ["owner", "admin", "manager"].includes(role);
+  const { profile, canonicalRole } = await requireShopPageAccess({});
+  const canViewObservability = ["owner", "admin", "manager"].includes(
+    canonicalRole,
+  );
 
   return (
-    <OperationsDashboardFreshness shopId={profile?.shop_id ?? null}>
+    <OperationsDashboardFreshness shopId={profile.shop_id}>
       {canViewObservability ? <OperationalHealthAlertStrip /> : null}
       <OperationsDashboardView />
     </OperationsDashboardFreshness>

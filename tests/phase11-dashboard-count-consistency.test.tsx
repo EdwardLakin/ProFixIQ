@@ -164,7 +164,7 @@ describe("phase 11 dashboard count consistency", () => {
     expect(routedFreshness).toContain("router.refresh()");
     expect(routedFreshness).toContain("Live updates unavailable");
 
-    const mobilePage = read("app/mobile/page.tsx");
+    const mobilePage = read("features/mobile/dashboard/MobileHome.tsx");
     expect(mobilePage).toContain(
       "Promise.all([loadHomePayload(), loadTechnicianState()])",
     );

@@ -116,7 +116,7 @@ describe("technician job queue rollup", () => {
 describe("technician surfaces share one rollup", () => {
   const surfaces = [
     "app/tech/queue/page.tsx",
-    "app/mobile/page.tsx",
+    "features/mobile/dashboard/MobileHome.tsx",
     "features/mobile/technician/MobileTechnicianQueue.tsx",
   ];
 
