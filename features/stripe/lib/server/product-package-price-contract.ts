@@ -190,20 +190,27 @@ function catalogIds(
 export async function resolveProductPackagePriceContract(
   stripe: Stripe,
 ): Promise<ProductPackagePriceContract> {
-  const expectedPrices = [
-    ...CURRENT_PACKAGE_PRICES,
-    ...LEGACY_CAD_PACKAGE_PRICES,
-  ];
-  const response = await stripe.prices.list({
-    active: true,
-    lookup_keys: expectedPrices.map((price) => price.lookupKey),
-    limit: 30,
-  });
+  // Stripe accepts at most 10 lookup_keys per list request. The complete
+  // contract currently contains 13 keys (7 current USD + 6 legacy CAD), so
+  // resolve each catalog separately and validate the combined result.
+  const [currentResponse, legacyResponse] = await Promise.all([
+    stripe.prices.list({
+      active: true,
+      lookup_keys: CURRENT_PACKAGE_PRICES.map((price) => price.lookupKey),
+      limit: 10,
+    }),
+    stripe.prices.list({
+      active: true,
+      lookup_keys: LEGACY_CAD_PACKAGE_PRICES.map((price) => price.lookupKey),
+      limit: 10,
+    }),
+  ]);
 
-  const pricesByLookup = collectByLookup(response.data);
-  const current = resolveExpectedPrices(pricesByLookup, CURRENT_PACKAGE_PRICES);
+  const currentByLookup = collectByLookup(currentResponse.data);
+  const legacyByLookup = collectByLookup(legacyResponse.data);
+  const current = resolveExpectedPrices(currentByLookup, CURRENT_PACKAGE_PRICES);
   const legacy = resolveExpectedPrices(
-    pricesByLookup,
+    legacyByLookup,
     LEGACY_CAD_PACKAGE_PRICES,
   );
 
