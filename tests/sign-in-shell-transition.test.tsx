@@ -9,6 +9,8 @@ const mocks = vi.hoisted(() => ({
   getUser: vi.fn(),
   navigateAfterAuthentication: vi.fn(),
   signInWithIdentifier: vi.fn(),
+  signUp: vi.fn(),
+  fetch: vi.fn(),
 }));
 
 const searchParams = new URLSearchParams();
@@ -55,7 +57,7 @@ vi.mock("@/features/shared/lib/supabase/client", () => ({
       getUser: mocks.getUser,
       resend: vi.fn(),
       signInWithOAuth: vi.fn(),
-      signUp: vi.fn(),
+      signUp: mocks.signUp,
     },
   }),
 }));
@@ -70,6 +72,23 @@ describe("Shop sign-in shell transition", () => {
       ok: true,
       destination: "/dashboard/operations",
     });
+    mocks.signUp.mockResolvedValue({
+      data: { user: null, session: null },
+      error: null,
+    });
+    mocks.fetch.mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          email: "owner@example.com",
+          surface: "shop",
+        }),
+        {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        },
+      ),
+    );
+    vi.stubGlobal("fetch", mocks.fetch);
   });
 
   it("performs a document navigation after a successful sign-in", async () => {
@@ -92,6 +111,65 @@ describe("Shop sign-in shell transition", () => {
       password: "password123",
       surface: "shop",
       acquisitionSessionId: undefined,
+    });
+  });
+
+  it("hands an existing acquisition account back to sign-in instead of verification", async () => {
+    searchParams.set("flow", "acquisition");
+    searchParams.set("session_id", "cs_existing_account_test");
+
+    mocks.signUp.mockResolvedValue({
+      data: {
+        session: null,
+        user: { identities: [] },
+      },
+      error: null,
+    });
+
+    const user = userEvent.setup();
+    render(<AuthPage initialMode="sign-up" />);
+
+    const ownerEmail = await screen.findByLabelText("Owner email");
+    expect(ownerEmail).toHaveValue("owner@example.com");
+
+    await user.type(screen.getByLabelText("Password"), "verysecure123");
+    const createOwnerButtons = screen.getAllByRole("button", {
+      name: "Create owner account",
+    });
+    const submitButton = createOwnerButtons.find(
+      (button) => button.getAttribute("type") === "submit",
+    );
+    expect(submitButton).toBeTruthy();
+    await user.click(submitButton!);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Welcome back" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText(
+        "Continue by signing in with this email to attach the completed checkout. If you don't remember the password, use Forgot password.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByLabelText("Email or username")).toHaveValue(
+      "owner@example.com",
+    );
+    expect(
+      screen.queryByRole("heading", { name: "Verify your email" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Resend verification email" }),
+    ).not.toBeInTheDocument();
+    expect(mocks.signUp).toHaveBeenCalledWith({
+      email: "owner@example.com",
+      password: "verysecure123",
+      options: {
+        emailRedirectTo: expect.stringContaining(
+          "/auth/callback?session_id=cs_existing_account_test&flow=acquisition",
+        ),
+      },
     });
   });
 

@@ -381,6 +381,22 @@ export default function AuthPage({ initialMode = "sign-in" }: AuthPageProps) {
         return;
       }
       if (!data.session) {
+        const returnedIdentities = data.user?.identities;
+        const looksLikeExistingAccount =
+          isAcquisitionFlow &&
+          Array.isArray(returnedIdentities) &&
+          returnedIdentities.length === 0;
+
+        if (looksLikeExistingAccount) {
+          setPassword("");
+          setPendingConfirmationEmail(null);
+          setMode("sign-in");
+          setNotice(
+            "Continue by signing in with this email to attach the completed checkout. If you don't remember the password, use Forgot password.",
+          );
+          return;
+        }
+
         setPassword("");
         setPendingConfirmationEmail(email);
         setNotice(
