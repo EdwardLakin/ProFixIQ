@@ -66,6 +66,25 @@ export const ADDITIONAL_FLEET_ASSET_LOOKUP_KEY =
 export const ADDITIONAL_USER_LOOKUP_KEY =
   "profixiq_additional_user_monthly_usd_v2";
 
+// Snapshot of the currently provisioned live USD Stripe catalog. Runtime
+// checkout still resolves by lookup key so test/sandbox catalogs and future
+// Stripe rotations remain possible without coupling application logic to one
+// account's object IDs. Keep this snapshot updated whenever the live catalog is
+// intentionally re-provisioned.
+export const LIVE_PRODUCT_PACKAGE_PRICE_IDS: Record<ProductPackageKey, string> = {
+  shop_operations: "price_1UIgbsITYwJQigUIQYY1VZh3",
+  field_service: "price_1UIgbuITYwJQigUI3Nfl8FqC",
+  fleet_maintenance: "price_1UIgbvITYwJQigUIq0RhgFkL",
+  complete_operations: "price_1UIgbxITYwJQigUIZvVBxp9Q",
+};
+
+export const LIVE_ADDITIONAL_USER_PRICE_ID =
+  "price_1UIgbyITYwJQigUImzzsschG";
+export const LIVE_ADDITIONAL_SERVICE_TRUCK_PRICE_ID =
+  "price_1UIgbzITYwJQigUIF9So4ngq";
+export const LIVE_ADDITIONAL_FLEET_ASSET_PRICE_ID =
+  "price_1UIgc1ITYwJQigUIxUo1aZga";
+
 export const LEGACY_ADDITIONAL_SERVICE_TRUCK_LOOKUP_KEY =
   "profixiq_additional_service_truck_monthly_v1";
 export const LEGACY_ADDITIONAL_FLEET_ASSET_LOOKUP_KEY =
