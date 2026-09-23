@@ -2,9 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { CircleDot, KeyRound, ShieldAlert } from "lucide-react";
+import { CircleDot, Inbox, KeyRound, ShieldAlert } from "lucide-react";
 import { cn } from "@shared/lib/utils";
 import type { DemoProspect, DemoShopContext } from "@/features/ops/server/demoAccess";
+import type { DemoAccessRequest } from "@/features/ops/server/demoAccessRequests";
 
 const DURATION_PRESETS = [
   { label: "24 hours", hours: 24 },
@@ -306,12 +307,233 @@ function RevokeButton({ profileId, onDone }: { profileId: string; onDone: () => 
   );
 }
 
+function ApproveRequestControl({
+  requestId,
+  onDone,
+}: {
+  requestId: string;
+  onDone: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [durationHours, setDurationHours] = useState<string>(String(DURATION_PRESETS[2].hours));
+  const [customExpiresAt, setCustomExpiresAt] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rounded-lg bg-orange-500 px-2.5 py-1.5 text-xs font-bold text-white transition hover:bg-orange-400"
+      >
+        Approve
+      </button>
+    );
+  }
+
+  async function handleApprove() {
+    setError(null);
+    const expiresAt =
+      durationHours === CUSTOM_DURATION_VALUE
+        ? customExpiresAt
+          ? new Date(customExpiresAt).toISOString()
+          : ""
+        : new Date(Date.now() + Number(durationHours) * 60 * 60 * 1000).toISOString();
+
+    if (durationHours === CUSTOM_DURATION_VALUE && !expiresAt) {
+      setError("Choose an expiration date/time.");
+      return;
+    }
+
+    setSubmitting(true);
+    const result = await postJson(`/api/ops/demo-access/requests/${requestId}/approve`, {
+      expiresAt: expiresAt || undefined,
+    });
+    setSubmitting(false);
+
+    if (!result.ok) {
+      setError(result.error ?? "Failed to approve this request.");
+      return;
+    }
+
+    setOpen(false);
+    onDone();
+  }
+
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-orange-500/30 bg-orange-500/5 p-2">
+      <div className="flex flex-col gap-2 sm:flex-row">
+        <select
+          value={durationHours}
+          onChange={(event) => setDurationHours(event.target.value)}
+          className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)]"
+        >
+          {DURATION_PRESETS.map((preset) => (
+            <option key={preset.hours} value={preset.hours}>
+              {preset.label}
+            </option>
+          ))}
+          <option value={CUSTOM_DURATION_VALUE}>Custom date/time…</option>
+        </select>
+        {durationHours === CUSTOM_DURATION_VALUE ? (
+          <input
+            type="datetime-local"
+            value={customExpiresAt}
+            onChange={(event) => setCustomExpiresAt(event.target.value)}
+            className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-2 py-1.5 text-xs text-[color:var(--theme-text-primary)]"
+          />
+        ) : null}
+      </div>
+      {error ? <p className="text-[11px] font-semibold text-red-300">{error}</p> : null}
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => void handleApprove()}
+          disabled={submitting}
+          className="rounded-lg bg-orange-500 px-2.5 py-1.5 text-xs font-bold text-white transition hover:bg-orange-400 disabled:opacity-60"
+        >
+          {submitting ? "Approving…" : "Confirm & create access"}
+        </button>
+        <button
+          type="button"
+          onClick={() => setOpen(false)}
+          className="rounded-lg border border-[color:var(--theme-border-soft)] px-2.5 py-1.5 text-xs font-semibold text-[color:var(--theme-text-secondary)]"
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DismissRequestButton({ requestId, onDone }: { requestId: string; onDone: () => void }) {
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function handleDismiss() {
+    if (!window.confirm("Dismiss this demo access request?")) return;
+    setError(null);
+    setSubmitting(true);
+    const result = await postJson(`/api/ops/demo-access/requests/${requestId}/dismiss`, {});
+    setSubmitting(false);
+
+    if (!result.ok) {
+      setError(result.error ?? "Failed to dismiss this request.");
+      return;
+    }
+    onDone();
+  }
+
+  return (
+    <div className="flex flex-col items-start gap-1">
+      <button
+        type="button"
+        onClick={() => void handleDismiss()}
+        disabled={submitting}
+        className="rounded-lg border border-[color:var(--theme-border-soft)] px-2.5 py-1.5 text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:border-red-500/40 hover:text-red-300 disabled:opacity-60"
+      >
+        {submitting ? "Dismissing…" : "Dismiss"}
+      </button>
+      {error ? <p className="text-[11px] font-semibold text-red-300">{error}</p> : null}
+    </div>
+  );
+}
+
+function RequestsSection({ requests, onChanged }: { requests: DemoAccessRequest[]; onChanged: () => void }) {
+  const pending = requests.filter((request) => request.status === "pending");
+  const reviewed = requests.filter((request) => request.status !== "pending").slice(0, 10);
+
+  return (
+    <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-card">
+      <div className="border-b border-[color:var(--theme-border-soft)] px-4 py-4 sm:px-5">
+        <div className="flex items-center gap-2">
+          <Inbox className="h-4 w-4 text-orange-400" />
+          <h2 className="font-bold">Demo access requests</h2>
+        </div>
+        <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+          Submitted from the landing page&apos;s &quot;Request Demo Access&quot; form.
+          {" "}
+          {pending.length} pending.
+        </p>
+      </div>
+      <div className="divide-y divide-[color:var(--theme-border-soft)]">
+        {pending.length === 0 ? (
+          <div className="px-5 py-8 text-center text-sm text-[color:var(--theme-text-secondary)]">
+            No pending requests.
+          </div>
+        ) : (
+          pending.map((request) => (
+            <div
+              key={request.id}
+              className="flex flex-col gap-3 px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5"
+            >
+              <div className="min-w-0 flex-1 space-y-1">
+                <p className="text-sm font-semibold">{request.fullName}</p>
+                <p className="truncate text-xs text-[color:var(--theme-text-muted)]">
+                  {request.email}
+                  {request.companyName ? ` · ${request.companyName}` : ""}
+                </p>
+                {request.message ? (
+                  <p className="mt-1 max-w-xl text-xs leading-5 text-[color:var(--theme-text-secondary)]">
+                    {request.message}
+                  </p>
+                ) : null}
+                <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
+                  Requested {formatDateTime(request.createdAt)}
+                </p>
+              </div>
+              <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+                <div className="flex gap-2">
+                  <ApproveRequestControl requestId={request.id} onDone={onChanged} />
+                  <DismissRequestButton requestId={request.id} onDone={onChanged} />
+                </div>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+      {reviewed.length > 0 ? (
+        <div className="border-t border-[color:var(--theme-border-soft)] px-4 py-3 sm:px-5">
+          <p className="mb-2 text-[11px] font-bold uppercase tracking-wide text-[color:var(--theme-text-muted)]">
+            Recently reviewed
+          </p>
+          <div className="space-y-1.5">
+            {reviewed.map((request) => (
+              <div
+                key={request.id}
+                className="flex items-center justify-between gap-3 text-xs text-[color:var(--theme-text-secondary)]"
+              >
+                <span className="truncate">
+                  {request.fullName} · {request.email}
+                </span>
+                <span
+                  className={cn(
+                    "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide",
+                    request.status === "approved"
+                      ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+                      : "border-[color:var(--theme-border-soft)] text-[color:var(--theme-text-muted)]",
+                  )}
+                >
+                  {request.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
 export default function OpsDemoAccess({
   shop,
   prospects,
+  requests,
 }: {
   shop: DemoShopContext;
   prospects: DemoProspect[];
+  requests: DemoAccessRequest[];
 }) {
   const router = useRouter();
   const refresh = () => router.refresh();
@@ -332,6 +554,8 @@ export default function OpsDemoAccess({
           tenant.
         </p>
       </section>
+
+      <RequestsSection requests={requests} onChanged={refresh} />
 
       <CreateProspectForm onCreated={refresh} />
 

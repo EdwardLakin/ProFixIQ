@@ -1,14 +1,18 @@
 import { ShieldAlert } from "lucide-react";
 import OpsDemoAccess from "@/features/ops/components/OpsDemoAccess";
 import { listDemoProspects } from "@/features/ops/server/demoAccess";
+import { listDemoAccessRequests } from "@/features/ops/server/demoAccessRequests";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
 export default async function OpsDemoAccessPage() {
   try {
-    const { shop, prospects } = await listDemoProspects();
-    return <OpsDemoAccess shop={shop} prospects={prospects} />;
+    const [{ shop, prospects }, requests] = await Promise.all([
+      listDemoProspects(),
+      listDemoAccessRequests(),
+    ]);
+    return <OpsDemoAccess shop={shop} prospects={prospects} requests={requests} />;
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Failed to resolve the configured Demo Shop.";
