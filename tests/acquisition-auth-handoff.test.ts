@@ -112,6 +112,27 @@ describe("acquisition auth handoff", () => {
     );
   });
 
+  it("preserves a verified acquisition password session before staff profile creation", () => {
+    const signInRoute = read("app/api/auth/sign-in/route.ts");
+
+    expect(signInRoute).toContain("isVerifiedAcquisitionSignIn");
+    expect(signInRoute).toContain("getStripeCheckoutEmail");
+    expect(signInRoute).toContain("isCompletedStripeAcquisitionSession");
+    expect(signInRoute).toContain("isStripeSubscriptionAccessBearing");
+    expect(signInRoute).toContain(
+      'return NextResponse.json({ ok: true, destination: "/onboarding" });',
+    );
+
+    const acquisitionHandoff = signInRoute.indexOf(
+      "await isVerifiedAcquisitionSignIn",
+    );
+    const profileResolution = signInRoute.indexOf(
+      "await resolveAuthenticatedStaffProfile",
+    );
+    expect(acquisitionHandoff).toBeGreaterThan(-1);
+    expect(profileResolution).toBeGreaterThan(acquisitionHandoff);
+  });
+
   it("routes a checkout and confirmed account using the verified product surface", () => {
     const checkout = read("app/api/stripe/checkout/route.ts");
     const callback = read("app/auth/callback/page.tsx");
