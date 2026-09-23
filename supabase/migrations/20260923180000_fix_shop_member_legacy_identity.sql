@@ -35,16 +35,6 @@
 -- else -- signature, return type, language, STABLE/SECURITY DEFINER,
 -- search_path, the demo_access_expires_at condition PR 1 (#1720) and its
 -- follow-up (#1723) added -- is unchanged.
---
--- This file was applied to canonical production and its version stamp
--- (20260923174335) renamed to match the version the Supabase migration
--- tool actually assigned on apply, per the standing instruction that
--- repository history and the remote ledger must agree. As with
--- 20260923145536_reconcile_demo_access_expiry.sql, production's
--- is_shop_member() keeps its live parameter name (p_shop_id) rather than
--- this repo chain's p_shop, since CREATE OR REPLACE FUNCTION cannot rename
--- a parameter and no caller anywhere uses named-argument syntax, so the
--- name has no observable effect.
 
 CREATE OR REPLACE FUNCTION public.is_shop_member(p_shop uuid)
 RETURNS boolean

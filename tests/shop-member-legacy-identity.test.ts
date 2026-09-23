@@ -12,12 +12,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 // profiles.user_id -- so for an imported/legacy profile where id and
 // user_id differ (auth.uid() = user_id), that join never matches and both
 // functions wrongly deny a real member. This file covers the fix in
-// 20260923174335_fix_shop_member_legacy_identity.sql: joining on
+// 20260923180000_fix_shop_member_legacy_identity.sql: joining on
 // pr.id = sm.user_id (the invariant those write paths actually maintain)
 // and checking the caller against either supported profile identity
 // column, matching current_shop_id()'s already-established pattern.
 
-const migrationPath = "supabase/migrations/20260923174335_fix_shop_member_legacy_identity.sql";
+const migrationPath = "supabase/migrations/20260923180000_fix_shop_member_legacy_identity.sql";
 
 function extractFunctionBody(source: string, functionName: string): string {
   const start = source.indexOf(`CREATE OR REPLACE FUNCTION public.${functionName}`);
