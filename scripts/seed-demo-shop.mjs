@@ -1,22 +1,18 @@
 import { createClient } from "@supabase/supabase-js";
 
-const DEMO_SHOP = {
-  slug: "prairie-fleet-diesel-demo",
-  name: "Prairie Fleet & Diesel Demo",
-  business_name: "Prairie Fleet & Diesel Demo",
-  city: "Calgary",
-  province: "AB",
-  timezone: "America/Edmonton",
-  street: "100 Demo Yard Way",
-  address: "100 Demo Yard Way",
-  postal_code: "T2P 0A1",
-  phone_number: "+1-555-010-1000",
-  email: "contact@demo.profixiq.local",
-  plan: "pro",
-};
+// This script seeds DATA (customers, vehicles, work orders, staff persona
+// links) into an already-provisioned demo shop. It never creates a shop or
+// writes shop identity/address fields -- the target shop's own name,
+// address, plan, and owner come from wherever it was actually provisioned
+// (e.g. the normal owner onboarding flow) and are left untouched here.
+// The target shop is always resolved from the required DEMO_SHOP_ID env
+// var, the same server-only pointer /ops/demo-access and the demo-access
+// expiry gating use, and this script refuses to run against any shop that
+// isn't marked shops.billing_entitlement_override = 'internal_demo'.
 
+// The real owner (resolved separately by resolveDemoOwner()) is not listed
+// here -- it is linked to the shop directly, not provisioned from this list.
 const DEMO_USERS = [
-  ["owner@demo.profixiq.local", "Owner Demo", "owner"],
   ["admin@demo.profixiq.local", "Admin Demo", "admin"],
   ["manager@demo.profixiq.local", "Manager Demo", "manager"],
   ["advisor1@demo.profixiq.local", "Advisor One", "advisor"],
@@ -81,7 +77,7 @@ async function resolveDemoOwner({ supabase, ownerEmail }) {
           ? "DEMO_OWNER_USER_ID"
           : configuredOwnerEmail
             ? "DEMO_OWNER_EMAIL"
-            : "fallback owner@demo.profixiq.local";
+            : `fallback ${ownerEmail}`;
     return {
       ownerUserId: configuredOwnerUserId ?? fakeUserIdForEmail(configuredOwnerEmail ?? ownerEmail),
       ownerProfileId: configuredOwnerProfileId ?? configuredOwnerUserId ?? fakeUserIdForEmail(configuredOwnerEmail ?? ownerEmail),
@@ -114,8 +110,8 @@ async function resolveDemoOwner({ supabase, ownerEmail }) {
       throw new Error("DEMO_OWNER_EMAIL matched a profile without a valid user_id. Use DEMO_OWNER_PROFILE_ID and DEMO_OWNER_USER_ID for an auth-linked owner.");
     }
   } else {
-    strategy = "fallback owner@demo.profixiq.local";
-    profile = await loadProfileBy({ supabase, column: "email", value: ownerEmail, label: "owner@demo.profixiq.local fallback" });
+    strategy = `fallback ${ownerEmail}`;
+    profile = await loadProfileBy({ supabase, column: "email", value: ownerEmail, label: `${ownerEmail} fallback` });
   }
 
   if (!isValidUuid(profile.id) || !isValidUuid(profile.user_id)) {
@@ -279,36 +275,79 @@ async function main() {
 
   logStep(`Starting ${dryRun ? "DRY RUN" : "WRITE MODE"}`);
 
-  const ownerEmail = "owner@demo.profixiq.local";
+  const ownerEmail = "edwardlakin35+demo@gmail.com";
   const ownerResolution = await resolveDemoOwner({ supabase, ownerEmail });
 
   logStep(`owner strategy: ${ownerResolution.strategy}`);
   logStep(`resolved owner email: ${ownerResolution.resolvedOwnerEmail}`);
-  logStep(`owner_fk_target: shops.owner_id -> profiles.id`);
   logStep(`auth_user_creation: ${ownerResolution.authUsersSkipped ? "skipped" : "enabled"}`);
   logStep(`owner_env_hints: DEMO_OWNER_USER_ID=${process.env.DEMO_OWNER_USER_ID ? "set" : "unset"}, DEMO_OWNER_PROFILE_ID=${process.env.DEMO_OWNER_PROFILE_ID ? "set" : "unset"}, DEMO_OWNER_EMAIL=${process.env.DEMO_OWNER_EMAIL ? "set" : "unset"}`);
   if (ownerResolution.requiresRealOwnerInWriteMode) {
     logStep("write-mode requirement: existing owner profile/auth user required (set DEMO_OWNER_USER_ID or DEMO_OWNER_PROFILE_ID)");
   }
 
-  const shopResult = await upsertByNaturalKey({
-    supabase,
-    table: "shops",
-    match: { slug: DEMO_SHOP.slug },
-    payload: {
-      ...DEMO_SHOP,
-      owner_id: ownerResolution.ownerProfileId,
-      created_by: ownerResolution.ownerUserId,
-      shop_name: DEMO_SHOP.name,
-      use_ai: true,
-      require_authorization: true,
-    },
-  });
+  const configuredShopId = requireEnv("DEMO_SHOP_ID");
+  requireValidUuid(configuredShopId, "DEMO_SHOP_ID");
 
-  const shopId = shopResult.id;
-  requireValidUuid(shopId, "shopId");
-  if (!shopId && !dryRun) throw new Error("Failed to resolve demo shop id");
-  logStep(`Shop ${shopResult.action}: ${DEMO_SHOP.name}`);
+  let shopId = configuredShopId;
+  let shopDisplayName = "(dry run - shop not verified)";
+  if (!dryRun) {
+    const { data: shopRow, error: shopLookupError } = await supabase
+      .from("shops")
+      .select("id, name, shop_name, billing_entitlement_override")
+      .eq("id", configuredShopId)
+      .maybeSingle();
+    if (shopLookupError) throw opError("shop_lookup", `shops.id=${configuredShopId}`, shopLookupError);
+    if (!shopRow) {
+      throw new Error(`DEMO_SHOP_ID ${configuredShopId} does not match an existing shop.`);
+    }
+    if (shopRow.billing_entitlement_override !== "internal_demo") {
+      throw new Error(
+        `Refusing to seed: shop ${configuredShopId} is not marked billing_entitlement_override = 'internal_demo'. ` +
+          "This script only populates data into an already-provisioned internal demo shop; it never creates one.",
+      );
+    }
+    shopId = shopRow.id;
+    shopDisplayName = shopRow.shop_name ?? shopRow.name ?? shopId;
+  }
+  logStep(`Seeding into existing shop: ${shopDisplayName} (${configuredShopId})`);
+  logStep("shop identity/address/plan fields are not modified by this script");
+
+  let realOwnerProfileModified = false;
+  if (!dryRun) {
+    // The owner is not provisioned from DEMO_USERS below -- bind/verify it
+    // against the target shop explicitly, here, so a resolved owner from a
+    // different tenant (e.g. a stale DEMO_OWNER_EMAIL) can never seed work
+    // orders/lines/inspections with cross-tenant actor references. Missing
+    // personas fall back to this same owner profile id, so this check has
+    // to hold before any of that seeding runs.
+    const { data: ownerProfile, error: ownerProfileError } = await supabase
+      .from("profiles")
+      .select("id, shop_id")
+      .eq("id", ownerResolution.ownerProfileId)
+      .maybeSingle();
+    if (ownerProfileError) {
+      throw opError("owner_shop_binding_lookup", `profiles.id=${ownerResolution.ownerProfileId}`, ownerProfileError);
+    }
+    if (!ownerProfile) {
+      throw new Error(`Resolved owner profile ${ownerResolution.ownerProfileId} does not exist.`);
+    }
+    if (ownerProfile.shop_id && ownerProfile.shop_id !== shopId) {
+      throw new Error(
+        `Refusing to seed: resolved owner profile ${ownerResolution.ownerProfileId} belongs to shop ${ownerProfile.shop_id}, not the configured DEMO_SHOP_ID ${shopId}. ` +
+          "This script never reassigns an owner's shop across tenants.",
+      );
+    }
+    if (!ownerProfile.shop_id) {
+      const { error: bindError } = await supabase
+        .from("profiles")
+        .update({ shop_id: shopId })
+        .eq("id", ownerResolution.ownerProfileId);
+      if (bindError) throw opError("owner_shop_binding", `profiles.id=${ownerResolution.ownerProfileId}`, bindError);
+      realOwnerProfileModified = true;
+      logStep(`Linked previously unlinked owner profile ${ownerResolution.ownerProfileId} to shop ${shopId}`);
+    }
+  }
 
   const profileActions = [];
   const profileIds = {};
@@ -316,25 +355,8 @@ async function main() {
   const assignmentFallbacks = [];
   const intendedPersonaCount = DEMO_USERS.length;
   let createdOrUpdatedProfileCount = 0;
-  let realOwnerProfileModified = false;
   for (const [email, full_name, role] of DEMO_USERS) {
-    const isResolvedRealOwner = ownerResolution.resolvedOwnerEmail?.toLowerCase() === email.toLowerCase();
-    const userId = isResolvedRealOwner ? ownerResolution.ownerUserId : fakeUserIdForEmail(email);
-    const profileId = isResolvedRealOwner ? ownerResolution.ownerProfileId : userId;
-
-    if (isResolvedRealOwner) {
-      const profile = await upsertByNaturalKey({
-        supabase,
-        table: "profiles",
-        match: { id: profileId },
-        payload: { shop_id: shopId },
-      });
-      profileIds[email] = profile.id ?? profileId;
-      profileActions.push(`${profile.action}:real-owner-shop-link-only`);
-      createdOrUpdatedProfileCount += 1;
-      if (profile.action === "updated" || profile.action === "inserted") realOwnerProfileModified = true;
-      continue;
-    }
+    const profileId = fakeUserIdForEmail(email);
 
     if (dryRun) {
       profileIds[email] = profileId;
