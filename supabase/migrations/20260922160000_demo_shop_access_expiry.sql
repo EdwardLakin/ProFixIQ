@@ -16,18 +16,21 @@
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS demo_access_expires_at timestamptz;
 
-CREATE OR REPLACE FUNCTION "public"."is_shop_member"("p_shop" "uuid") RETURNS boolean
+CREATE OR REPLACE FUNCTION "public"."is_shop_member"("p_shop_id" "uuid") RETURNS boolean
     LANGUAGE "sql" STABLE
     SET search_path TO 'public, extensions, pg_temp'
-    AS $$
+    AS $
   SELECT EXISTS (
     SELECT 1
-    FROM public.profiles pr
-    WHERE pr.user_id = auth.uid()
-      AND pr.shop_id = p_shop
+    FROM public.shop_members sm
+    JOIN public.profiles pr
+      ON pr.user_id = sm.user_id
+     AND pr.shop_id = sm.shop_id
+    WHERE sm.shop_id = p_shop_id
+      AND sm.user_id = auth.uid()
       AND (pr.demo_access_expires_at IS NULL OR pr.demo_access_expires_at > now())
   );
-$$;
+$;
 
 CREATE OR REPLACE FUNCTION public.shop_role(shop_id uuid)
  RETURNS text
