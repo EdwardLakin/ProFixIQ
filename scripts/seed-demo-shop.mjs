@@ -488,6 +488,17 @@ async function main() {
   requireValidUuid(leadTechId, "leadTechId");
   requireValidUuid(tech1Id, "tech1Id");
 
+  // work_order_lines.assigned_tech_id is governed by a separate DB contract
+  // (private.enforce_work_order_line_assignment_contract(), a deferred
+  // constraint trigger) that requires the assignee to already have a
+  // technician-family role (mechanic/tech/foreman/lead hand) -- the owner
+  // fallback above (role=owner) does not qualify. Resolve line-assignment
+  // candidates separately, allowing null so a line is simply left
+  // unassigned rather than assigned to a non-technician when the real
+  // tech1/leadtech personas don't have auth-linked profiles yet.
+  const leadTechLineAssigneeId = resolvePersonaId("leadtech@demo.profixiq.local", "leadTechLineAssigneeId", { allowNull: true });
+  const tech1LineAssigneeId = resolvePersonaId("tech1@demo.profixiq.local", "tech1LineAssigneeId", { allowNull: true });
+
   const workOrders = [
     ["DEMO-WO-1001", "TR-101", "new", "Routine PM and brake noise check", "pending"],
     ["DEMO-WO-1002", "TR-102", "in_progress", "Coolant leak diagnostics", "pending"],
@@ -557,7 +568,7 @@ async function main() {
       cause: "Inspection found uneven front pad wear and rotor hot spotting.",
       correction: "Recommend front brake service and rotor resurfacing.",
       approval_state: "approved",
-      techId: leadTechId,
+      techId: leadTechLineAssigneeId,
       status: "active",
       labor_time: 1.2,
       job_type: "inspection",
@@ -570,7 +581,7 @@ async function main() {
       cause: "Pressure test shows seepage at upper radiator hose clamp.",
       correction: "Replace clamp and retest cooling system.",
       approval_state: null,
-      techId: tech1Id,
+      techId: tech1LineAssigneeId,
       status: "active",
       labor_time: 1.5,
       job_type: "diagnosis",
@@ -583,7 +594,7 @@ async function main() {
       cause: "Inner tie rod play exceeds tolerance.",
       correction: "Replace worn steering link and align toe.",
       approval_state: "pending",
-      techId: leadTechId,
+      techId: leadTechLineAssigneeId,
       status: "awaiting_approval",
       labor_time: 2.2,
       job_type: "repair",
@@ -609,7 +620,7 @@ async function main() {
       cause: "Sensor failed; replacement currently backordered.",
       correction: "Parts requested, hold line until sensor arrives. demo_moment:parts_bottleneck",
       approval_state: "approved",
-      techId: tech1Id,
+      techId: tech1LineAssigneeId,
       status: "on_hold",
       labor_time: 1.1,
       job_type: "repair",
@@ -635,7 +646,7 @@ async function main() {
       cause: "Axle seal lip damaged from prior bearing heat cycle.",
       correction: "Replace seal, clean brake assembly, road-test.",
       approval_state: "approved",
-      techId: leadTechId,
+      techId: leadTechLineAssigneeId,
       status: "active",
       labor_time: 2.4,
       job_type: "repair",
@@ -662,8 +673,18 @@ async function main() {
       shop_id: shopId,
       work_order_id: workOrderIds[woNumber],
       user_id: managerId,
-      assigned_to: techId,
-      assigned_tech_id: techId,
+      // Primary technician assignment is written atomically below via
+      // mutate_work_order_line_assignment_atomic(), which sets
+      // assigned_tech_id and inserts the matching work_order_line_technicians
+      // row (the canonical multi-technician set) in a single transaction.
+      // The DB's deferred assignment-contract trigger validates that
+      // assigned_tech_id appears in the canonical set at the end of every
+      // transaction; setting assigned_tech_id on this separate insert would
+      // still fail even though this script creates the canonical-set row
+      // moments later, because each REST call is its own transaction and
+      // the deferred trigger cannot see writes from a later one. assigned_to
+      // is legacy-only and the same trigger rejects it coexisting with a
+      // canonical assignment, so it's never written here either.
       description,
       complaint,
       cause,
@@ -682,12 +703,29 @@ async function main() {
     validateSeededWorkOrderLineFields(linePayload);
     validateWorkOrderLineCompletedConstraint(linePayload);
 
-    await upsertByNaturalKey({
+    const lineResult = await upsertByNaturalKey({
       supabase,
       table: "work_order_lines",
       match: { shop_id: shopId, work_order_id: workOrderIds[woNumber], description },
       payload: linePayload,
     });
+
+    if (!dryRun && techId && lineResult.id) {
+      const { error: assignError } = await supabase.rpc("mutate_work_order_line_assignment_atomic", {
+        p_shop_id: shopId,
+        p_work_order_line_id: lineResult.id,
+        p_technician_id: techId,
+        p_actor_user_id: managerId,
+        p_action: "set_primary",
+        // Deterministic per line so a re-run reuses the same
+        // workforce_operation_keys row and is a safe no-op, matching this
+        // script's upsert-everywhere idempotency.
+        p_operation_key: `seed-demo-shop:${woNumber}:${description}`,
+      });
+      if (assignError) {
+        throw opError("technician_assignment", `work_order_line_id=${lineResult.id} technician_id=${techId}`, assignError);
+      }
+    }
   }
 
   const inspections = [
