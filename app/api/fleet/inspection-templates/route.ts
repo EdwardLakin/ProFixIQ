@@ -17,6 +17,36 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_SECTIONS = 30;
 const MAX_ITEMS = 200;
+const CANONICAL_VEHICLE_TYPES = new Set(["car", "truck", "bus", "trailer"]);
+
+const LEGACY_VEHICLE_TYPE_ALIASES: Record<string, string> = {
+  "highway tractor": "truck",
+  "dump truck": "truck",
+  "service truck": "truck",
+  trailer: "trailer",
+  bus: "bus",
+  pickup: "car",
+};
+
+function canonicalVehicleType(value: string): string | null {
+  const normalized = value.trim().toLowerCase();
+  if (CANONICAL_VEHICLE_TYPES.has(normalized)) return normalized;
+  return LEGACY_VEHICLE_TYPE_ALIASES[normalized] ?? null;
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
 
 type SaveBody = {
   fleetId?: string;
@@ -180,7 +210,8 @@ export async function POST(request: Request) {
 
     const templateId = body.templateId?.trim() ?? "";
     const name = body.name?.trim() ?? "";
-    const vehicleType = body.vehicleType?.trim() ?? "";
+    const requestedVehicleType = body.vehicleType?.trim() ?? "";
+    const vehicleType = canonicalVehicleType(requestedVehicleType) ?? "";
     const rawItemCount = Array.isArray(body.sections)
       ? body.sections.reduce((total, section) => {
           if (!section || typeof section !== "object") return total;
@@ -202,9 +233,12 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     }
-    if (!vehicleType || vehicleType.length > 80) {
+    if (!vehicleType) {
       return NextResponse.json(
-        { error: "Vehicle type is required" },
+        {
+          error:
+            "Choose a specific Shop-compatible vehicle type: heavy truck, trailer, bus/coach, or light duty.",
+        },
         { status: 400 },
       );
     }
@@ -256,7 +290,7 @@ export async function POST(request: Request) {
       const samePayload =
         existing.template_name === name &&
         existing.vehicle_type === vehicleType &&
-        JSON.stringify(existing.sections) === JSON.stringify(sections);
+        stableJson(existing.sections) === stableJson(sections);
       if (!samePayload) {
         return NextResponse.json(
           {

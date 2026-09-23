@@ -57,6 +57,9 @@ describe("Fleet inspection builder review repairs", () => {
     expect(builder).toContain('{ value: "car"');
     expect(builder).not.toContain('"All fleet assets"');
     expect(builder).not.toContain('useState("Highway tractor")');
+    const route = source("app/api/fleet/inspection-templates/route.ts");
+    expect(route).toContain("canonicalVehicleType");
+    expect(route).toContain('"highway tractor": "truck"');
   });
 
   it("retains one PM template id until a definitive publish success", () => {
@@ -71,6 +74,7 @@ describe("Fleet inspection builder review repairs", () => {
     expect(builder).toContain("templateId,");
     expect(builder).toContain("setTemplateId(crypto.randomUUID())");
     expect(route).toContain("samePayload");
+    expect(route).toContain("stableJson(existing.sections)");
     expect(route).toContain("already published with different content");
   });
 
