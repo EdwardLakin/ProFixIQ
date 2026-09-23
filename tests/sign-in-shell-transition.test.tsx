@@ -133,9 +133,14 @@ describe("Shop sign-in shell transition", () => {
     expect(ownerEmail).toHaveValue("owner@example.com");
 
     await user.type(screen.getByLabelText("Password"), "verysecure123");
-    await user.click(
-      screen.getByRole("button", { name: "Create owner account" }),
+    const createOwnerButtons = screen.getAllByRole("button", {
+      name: "Create owner account",
+    });
+    const submitButton = createOwnerButtons.find(
+      (button) => button.getAttribute("type") === "submit",
     );
+    expect(submitButton).toBeTruthy();
+    await user.click(submitButton!);
 
     await waitFor(() => {
       expect(
