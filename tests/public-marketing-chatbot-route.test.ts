@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   registerAIUsageEvent: vi.fn(),
   rpc: vi.fn(),
   runWithProviderTimeout: vi.fn(),
+  getModel: vi.fn(),
 }));
 
 vi.mock("@/features/auth/server/authRateLimit", () => ({
@@ -28,7 +29,7 @@ vi.mock("@/features/shared/lib/server/openai", () => ({
 }));
 
 vi.mock("@/features/shared/lib/server/openai-models", () => ({
-  getOpenAIModelForPurpose: () => "gpt-5.4-mini",
+  getOpenAIModelForPurpose: mocks.getModel,
   openAITemperatureParam: () => ({}),
 }));
 
@@ -50,8 +51,9 @@ describe("public marketing chatbot route", () => {
       allowed: true,
       retryAfterSeconds: 0,
     });
-    mocks.rpc.mockImplementation((name: string) =>
-      Promise.resolve(
+    mocks.getModel.mockReturnValue("gpt-5.4-mini");
+    mocks.rpc.mockImplementation((name: string) => ({
+      abortSignal: vi.fn().mockResolvedValue(
         name === "consume_public_ai_route_quota"
           ? {
               data: [
@@ -66,7 +68,7 @@ describe("public marketing chatbot route", () => {
             }
           : { data: true, error: null },
       ),
-    );
+    }));
     mocks.runWithProviderTimeout.mockImplementation(
       async (_timeoutMs: number, operation: (signal: AbortSignal) => Promise<unknown>) =>
         operation(new AbortController().signal),
@@ -141,6 +143,38 @@ describe("public marketing chatbot route", () => {
     );
   });
 
+  it("reserves a model-aware worst-case cost before calling the provider", async () => {
+    mocks.getModel.mockReturnValue("gpt-5.5");
+
+    const request = new Request("https://profixiq.com/api/chatbot", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-for": "203.0.113.12",
+      },
+      body: JSON.stringify({
+        variant: "marketing",
+        messages: [
+          { role: "user", content: "x".repeat(2_000) },
+        ],
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+
+    const consumeCall = mocks.rpc.mock.calls.find(
+      ([name]) => name === "consume_public_ai_route_quota",
+    );
+    expect(consumeCall).toBeTruthy();
+    expect(consumeCall?.[1]).toEqual(
+      expect.objectContaining({
+        p_reservation_cost_usd: expect.any(Number),
+      }),
+    );
+    expect(consumeCall?.[1].p_reservation_cost_usd).toBeGreaterThan(0.02);
+  });
+
   it("rejects non-marketing variants before invoking OpenAI", async () => {
     const request = new Request("https://profixiq.com/api/chatbot", {
       method: "POST",
@@ -196,8 +230,8 @@ describe("public marketing chatbot route", () => {
   });
 
   it("returns 429 before the provider when the atomic durable budget reservation is denied", async () => {
-    mocks.rpc.mockImplementation((name: string) =>
-      Promise.resolve(
+    mocks.rpc.mockImplementation((name: string) => ({
+      abortSignal: vi.fn().mockResolvedValue(
         name === "consume_public_ai_route_quota"
           ? {
               data: [
@@ -212,7 +246,7 @@ describe("public marketing chatbot route", () => {
             }
           : { data: true, error: null },
       ),
-    );
+    }));
 
     const request = new Request("https://profixiq.com/api/chatbot", {
       method: "POST",
