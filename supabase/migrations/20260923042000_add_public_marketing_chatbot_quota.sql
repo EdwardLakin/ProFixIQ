@@ -161,7 +161,7 @@ begin
       pg_catalog.greatest(
         1,
         pg_catalog.ceil(
-          pg_catalog.extract(
+          extract(
             epoch from (v_month_started_at + interval '1 month' - v_now)
           )
         )::integer

@@ -10,15 +10,26 @@ import { estimateMaxOpenAITextCostUsd } from "@/features/shared/lib/server/ai-co
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { registerAIUsageEvent } from "@/features/shared/lib/server/ai-ops-guard";
 import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
-import { getOpenAIClient } from "@/features/shared/lib/server/openai";
+import {
+  getOpenAIClient,
+  isOpenAIConfigured,
+} from "@/features/shared/lib/server/openai";
 import {
   getOpenAIModelForPurpose,
   openAITemperatureParam,
 } from "@/features/shared/lib/server/openai-models";
 import { runWithProviderTimeout } from "@/features/shared/lib/server/provider-timeout";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import type { Database } from "@shared/types/types/supabase";
 
 type ChatMessage = { role: "system" | "user" | "assistant"; content: string };
+
+// `.abortSignal()` on a set-returning `.rpc()` call defeats the postgrest-js
+// return-type narrowing (the generic collapses to the union of every RPC's
+// Returns type), so the row shape is re-derived here from the same generated
+// contract instead of trusting the builder's inferred type.
+type PublicQuotaConsumeRow =
+  Database["public"]["Functions"]["consume_public_ai_route_quota"]["Returns"][number];
 
 const FEATURE = "public_marketing_chatbot" as const;
 const ENDPOINT = "/api/chatbot";
@@ -183,27 +194,28 @@ async function claimPublicQuota(
   );
 
   const admin = createAdminSupabase();
+  const reserve = async (signal: AbortSignal) =>
+    await admin
+      .rpc("consume_public_ai_route_quota", {
+        p_client_key: clientKey,
+        p_feature: FEATURE,
+        p_client_max: clientMax,
+        p_global_max: globalMax,
+        p_window_seconds: windowSeconds,
+        p_hard_budget_usd: hardBudgetUsd,
+        p_reservation_cost_usd: reservationCostUsd,
+      })
+      .abortSignal(signal);
   const result = await runQuotaRpcWithTimeout(
     "public chatbot quota reservation",
-    (signal) =>
-      admin
-        .rpc("consume_public_ai_route_quota", {
-          p_client_key: clientKey,
-          p_feature: FEATURE,
-          p_client_max: clientMax,
-          p_global_max: globalMax,
-          p_window_seconds: windowSeconds,
-          p_hard_budget_usd: hardBudgetUsd,
-          p_reservation_cost_usd: reservationCostUsd,
-        })
-        .abortSignal(signal),
+    reserve,
   );
 
   if (result.error) {
     throw new Error("Public AI quota is unavailable");
   }
 
-  const row = result.data?.[0];
+  const row = (result.data as PublicQuotaConsumeRow[] | null)?.[0];
   if (row?.allowed && row.receipt_id) {
     return {
       allowed: true,
@@ -227,18 +239,19 @@ async function settlePublicQuota(input: {
 }): Promise<void> {
   try {
     const admin = createAdminSupabase();
+    const settle = async (signal: AbortSignal) =>
+      await admin
+        .rpc("complete_public_ai_route_quota", {
+          p_receipt_id: input.receiptId,
+          p_client_key: input.clientKey,
+          p_feature: FEATURE,
+          p_actual_cost_usd: Math.max(0, input.actualCostUsd),
+          p_succeeded: input.succeeded,
+        })
+        .abortSignal(signal);
     const result = await runQuotaRpcWithTimeout(
       "public chatbot quota settlement",
-      (signal) =>
-        admin
-          .rpc("complete_public_ai_route_quota", {
-            p_receipt_id: input.receiptId,
-            p_client_key: input.clientKey,
-            p_feature: FEATURE,
-            p_actual_cost_usd: Math.max(0, input.actualCostUsd),
-            p_succeeded: input.succeeded,
-          })
-          .abortSignal(signal),
+      settle,
     );
 
     if (result.error || result.data !== true) {
@@ -295,12 +308,17 @@ export async function POST(req: Request) {
     );
   }
 
-  let body: { messages?: unknown; variant?: unknown };
+  let parsed: unknown;
   try {
-    body = (await req.json()) as { messages?: unknown; variant?: unknown };
+    parsed = await req.json();
   } catch {
     return json({ error: "Invalid request body." }, 400);
   }
+
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return json({ error: "Invalid request body." }, 400);
+  }
+  const body = parsed as { messages?: unknown; variant?: unknown };
 
   if (body.variant !== "marketing") {
     return json(
@@ -324,6 +342,14 @@ export async function POST(req: Request) {
 
   if (reservationCostUsd == null || reservationCostUsd <= 0) {
     console.error("public_chatbot_unknown_model_rate", { model });
+    return json(
+      { error: "TechBot is temporarily unavailable. Please try again shortly." },
+      503,
+    );
+  }
+
+  if (!isOpenAIConfigured()) {
+    console.error("public_chatbot_provider_not_configured");
     return json(
       { error: "TechBot is temporarily unavailable. Please try again shortly." },
       503,
@@ -354,9 +380,8 @@ export async function POST(req: Request) {
     );
   }
 
-  const openai = getOpenAIClient();
-
   try {
+    const openai = getOpenAIClient();
     const completion = await runWithProviderTimeout(policy.timeoutMs, (signal) =>
       openai.chat.completions.create(
         {
@@ -365,7 +390,7 @@ export async function POST(req: Request) {
           ...openAITemperatureParam(model, 0.4),
           max_completion_tokens: policy.maxTokens,
         },
-        { signal },
+        { signal, maxRetries: 0 },
       ),
     );
 

@@ -8,6 +8,7 @@ const mocks = vi.hoisted(() => ({
   rpc: vi.fn(),
   runWithProviderTimeout: vi.fn(),
   getModel: vi.fn(),
+  isOpenAIConfigured: vi.fn(),
 }));
 
 vi.mock("@/features/auth/server/authRateLimit", () => ({
@@ -26,6 +27,7 @@ vi.mock("@/features/shared/lib/server/openai", () => ({
   getOpenAIClient: () => ({
     chat: { completions: { create: mocks.createCompletion } },
   }),
+  isOpenAIConfigured: mocks.isOpenAIConfigured,
 }));
 
 vi.mock("@/features/shared/lib/server/openai-models", () => ({
@@ -52,6 +54,7 @@ describe("public marketing chatbot route", () => {
       retryAfterSeconds: 0,
     });
     mocks.getModel.mockReturnValue("gpt-5.4-mini");
+    mocks.isOpenAIConfigured.mockReturnValue(true);
     mocks.rpc.mockImplementation((name: string) => ({
       abortSignal: vi.fn().mockResolvedValue(
         name === "consume_public_ai_route_quota"
@@ -115,7 +118,7 @@ describe("public marketing chatbot route", () => {
     );
     expect(mocks.createCompletion).toHaveBeenCalledTimes(1);
 
-    const [params] = mocks.createCompletion.mock.calls[0]!;
+    const [params, options] = mocks.createCompletion.mock.calls[0]!;
     expect(params).toEqual(
       expect.objectContaining({
         model: "gpt-5.4-mini",
@@ -123,6 +126,7 @@ describe("public marketing chatbot route", () => {
       }),
     );
     expect(params).not.toHaveProperty("max_tokens");
+    expect(options).toEqual(expect.objectContaining({ maxRetries: 0 }));
 
     const messages = params.messages as Array<{ role: string; content: string }>;
     expect(messages[0]?.role).toBe("system");
@@ -229,6 +233,23 @@ describe("public marketing chatbot route", () => {
     expect(mocks.recordDurableAIUsage).not.toHaveBeenCalled();
   });
 
+  it("rejects a valid but non-object JSON body instead of throwing", async () => {
+    const request = new Request("https://profixiq.com/api/chatbot", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-forwarded-for": "203.0.113.12",
+      },
+      body: "null",
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(400);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.createCompletion).not.toHaveBeenCalled();
+    expect(mocks.recordDurableAIUsage).not.toHaveBeenCalled();
+  });
+
   it("returns 429 before the provider when the atomic durable budget reservation is denied", async () => {
     mocks.rpc.mockImplementation((name: string) => ({
       abortSignal: vi.fn().mockResolvedValue(
@@ -259,6 +280,24 @@ describe("public marketing chatbot route", () => {
 
     const response = await POST(request);
     expect(response.status).toBe(429);
+    expect(mocks.createCompletion).not.toHaveBeenCalled();
+  });
+
+  it("returns a controlled 503 instead of throwing when the provider is unconfigured", async () => {
+    mocks.isOpenAIConfigured.mockReturnValue(false);
+
+    const request = new Request("https://profixiq.com/api/chatbot", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        variant: "marketing",
+        messages: [{ role: "user", content: "What is ProFixIQ?" }],
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(503);
+    expect(mocks.rpc).not.toHaveBeenCalled();
     expect(mocks.createCompletion).not.toHaveBeenCalled();
   });
 });
