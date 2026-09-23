@@ -141,12 +141,13 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const selectedFleetId = scope.fleetId;
   const inspections = (inspectionResult.data ?? []).filter((template) =>
-    isInspectionTemplateAvailableToFleet(template.tags, scope.fleetId),
+    isInspectionTemplateAvailableToFleet(template.tags, selectedFleetId),
   );
 
   return NextResponse.json({
-    fleetId: scope.fleetId,
+    fleetId: selectedFleetId,
     shopId: scope.shopId,
     units: unitResult.data ?? [],
     menuItems: menuResult.data ?? [],
