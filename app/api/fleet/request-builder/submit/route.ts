@@ -3,6 +3,8 @@ import { z } from "zod";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import { mapFleetServiceRequestError } from "@/features/fleet/lib/fleetServiceRequestError";
+import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
+import { isInspectionTemplateAvailableToFleet } from "@/features/fleet/lib/fleetInspectionTemplateScope";
 
 const RequestLineSchema = z.object({
   lineKind: z.enum([
@@ -60,6 +62,63 @@ export async function POST(req: NextRequest) {
       { error: "Fleet manager access is required." },
       { status: 403 },
     );
+  }
+
+  const scope = resolveSelectedFleetRequestScope(actor, {
+    explicitFleetId: parsed.data.fleetId,
+  });
+  if (!scope?.shopId || scope.fleetId !== parsed.data.fleetId) {
+    return NextResponse.json(
+      { error: "Fleet manager access is required." },
+      { status: 403 },
+    );
+  }
+
+  const inspectionTemplateIds = Array.from(
+    new Set(
+      parsed.data.lines
+        .map((line) => line.sourceInspectionTemplateId)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  );
+  if (inspectionTemplateIds.length > 0) {
+    const { data: templates, error: templateError } = await supabase
+      .from("inspection_templates")
+      .select("id,tags")
+      .eq("shop_id", scope.shopId)
+      .in("id", inspectionTemplateIds);
+
+    if (templateError) {
+      console.error(
+        "[fleet/request-builder/submit] inspection scope lookup error",
+        templateError,
+      );
+      return NextResponse.json(
+        { error: "Failed to validate the requested inspection." },
+        { status: 500 },
+      );
+    }
+
+    const availableIds = new Set(
+      (templates ?? [])
+        .filter((template) =>
+          isInspectionTemplateAvailableToFleet(
+            template.tags,
+            parsed.data.fleetId,
+          ),
+        )
+        .map((template) => template.id),
+    );
+    if (
+      inspectionTemplateIds.some(
+        (templateId) => !availableIds.has(templateId),
+      )
+    ) {
+      return NextResponse.json(
+        { error: "Inspection template is not available to this fleet." },
+        { status: 409 },
+      );
+    }
   }
 
   const { data, error } = await supabase.rpc(

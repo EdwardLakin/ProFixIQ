@@ -21,6 +21,8 @@ import type {
 } from "@/features/fleet/types/driverPortal";
 import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
 
+const MAX_TEMPLATE_ITEMS = 200;
+
 type TemplateHistoryRow = {
   id: string;
   vehicle_type: string;
@@ -118,6 +120,15 @@ export default function FleetPretripTemplateBuilder({
   const [success, setSuccess] = useState<string | null>(null);
   const [masterQuery, setMasterQuery] = useState("");
 
+  const itemCount = useMemo(
+    () =>
+      sections.reduce(
+        (total, section) => total + section.items.length,
+        0,
+      ),
+    [sections],
+  );
+
   const load = useCallback(async () => {
     const response = await fetch(
       `/api/fleet/pretrip/templates?fleetId=${encodeURIComponent(fleetId)}`,
@@ -185,23 +196,39 @@ export default function FleetPretripTemplateBuilder({
     sectionId: string,
     type: FleetPretripFieldType = "pass_fail",
   ) {
-    const id = key("item");
-    updateSection(sectionId, (section) => ({
-      ...section,
-      items: [
-        ...section.items,
-        {
-          id,
-          item: "New inspection item",
-          label: "New inspection item",
-          type,
-          required: false,
-          unit: type === "number" ? "psi" : null,
-          severity: "recommend",
-          failureActions: failureActions(),
-        },
-      ],
-    }));
+    setSections((current) => {
+      const currentCount = current.reduce(
+        (total, section) => total + section.items.length,
+        0,
+      );
+      if (currentCount >= MAX_TEMPLATE_ITEMS) {
+        setError(
+          `Pre-trip templates support up to ${MAX_TEMPLATE_ITEMS} items. Remove an item before adding another.`,
+        );
+        return current;
+      }
+      const id = key("item");
+      return current.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              items: [
+                ...section.items,
+                {
+                  id,
+                  item: "New inspection item",
+                  label: "New inspection item",
+                  type,
+                  required: false,
+                  unit: type === "number" ? "psi" : null,
+                  severity: "recommend",
+                  failureActions: failureActions(),
+                },
+              ],
+            }
+          : section,
+      );
+    });
   }
 
   function addMasterItem(
@@ -215,6 +242,16 @@ export default function FleetPretripTemplateBuilder({
     const id = masterItemId(sectionTitle, masterItem.item);
     setSections((current) => {
       if (current.some((section) => section.items.some((item) => item.id === id))) {
+        return current;
+      }
+      const currentCount = current.reduce(
+        (total, section) => total + section.items.length,
+        0,
+      );
+      if (currentCount >= MAX_TEMPLATE_ITEMS) {
+        setError(
+          `Pre-trip templates support up to ${MAX_TEMPLATE_ITEMS} items. Remove an item before adding another.`,
+        );
         return current;
       }
 
@@ -429,7 +466,8 @@ export default function FleetPretripTemplateBuilder({
             <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
               The source item names come from the same list used by the Shop
               inspection builder. Fleet-specific driver behavior is configured
-              after the item is added.
+              after the item is added. {itemCount} / {MAX_TEMPLATE_ITEMS} items
+              selected.
             </p>
           </div>
           <label className="relative w-full md:max-w-sm">
@@ -463,7 +501,7 @@ export default function FleetPretripTemplateBuilder({
                     <button
                       key={masterItem.item}
                       type="button"
-                      disabled={added}
+                      disabled={added || itemCount >= MAX_TEMPLATE_ITEMS}
                       onClick={() =>
                         addMasterItem(masterSection.title, masterItem)
                       }
@@ -478,7 +516,11 @@ export default function FleetPretripTemplateBuilder({
                         ) : null}
                       </span>
                       <span className="shrink-0 text-[10px] font-semibold uppercase tracking-[0.12em] text-sky-600 dark:text-sky-300">
-                        {added ? "Added" : "Add"}
+                        {added
+                          ? "Added"
+                          : itemCount >= MAX_TEMPLATE_ITEMS
+                            ? "Limit reached"
+                            : "Add"}
                       </span>
                     </button>
                   );
@@ -728,6 +770,7 @@ export default function FleetPretripTemplateBuilder({
               <div className="mt-3 flex flex-wrap gap-2">
                 <button
                   type="button"
+                  disabled={itemCount >= MAX_TEMPLATE_ITEMS}
                   onClick={() => addItem(section.id, "pass_fail")}
                   className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-[color:var(--theme-border-soft)] px-2.5 text-[10px] font-semibold"
                 >
@@ -735,6 +778,7 @@ export default function FleetPretripTemplateBuilder({
                 </button>
                 <button
                   type="button"
+                  disabled={itemCount >= MAX_TEMPLATE_ITEMS}
                   onClick={() => addItem(section.id, "defect")}
                   className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-[color:var(--theme-border-soft)] px-2.5 text-[10px] font-semibold"
                 >
@@ -742,6 +786,7 @@ export default function FleetPretripTemplateBuilder({
                 </button>
                 <button
                   type="button"
+                  disabled={itemCount >= MAX_TEMPLATE_ITEMS}
                   onClick={() => addItem(section.id, "number")}
                   className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-[color:var(--theme-border-soft)] px-2.5 text-[10px] font-semibold"
                 >
@@ -749,6 +794,7 @@ export default function FleetPretripTemplateBuilder({
                 </button>
                 <button
                   type="button"
+                  disabled={itemCount >= MAX_TEMPLATE_ITEMS}
                   onClick={() => addItem(section.id, "photo")}
                   className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-[color:var(--theme-border-soft)] px-2.5 text-[10px] font-semibold"
                 >
@@ -756,6 +802,7 @@ export default function FleetPretripTemplateBuilder({
                 </button>
                 <button
                   type="button"
+                  disabled={itemCount >= MAX_TEMPLATE_ITEMS}
                   onClick={() => addItem(section.id, "voice")}
                   className="inline-flex min-h-9 items-center gap-1 rounded-lg border border-[color:var(--theme-border-soft)] px-2.5 text-[10px] font-semibold"
                 >

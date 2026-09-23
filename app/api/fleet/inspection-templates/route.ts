@@ -17,6 +17,37 @@ const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const MAX_SECTIONS = 30;
 const MAX_ITEMS = 200;
+const CANONICAL_VEHICLE_TYPES = new Set(["car", "truck", "bus", "trailer"]);
+
+const LEGACY_VEHICLE_TYPE_ALIASES: Record<string, string> = {
+  "highway tractor": "truck",
+  "dump truck": "truck",
+  "service truck": "truck",
+  trailer: "trailer",
+  bus: "bus",
+  pickup: "car",
+};
+
+function canonicalVehicleType(value: string): string {
+  const trimmed = value.trim();
+  const normalized = trimmed.toLowerCase();
+  if (CANONICAL_VEHICLE_TYPES.has(normalized)) return normalized;
+  return LEGACY_VEHICLE_TYPE_ALIASES[normalized] ?? trimmed;
+}
+
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableJson(item)).join(",")}]`;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
 
 type SaveBody = {
   fleetId?: string;
@@ -180,7 +211,15 @@ export async function POST(request: Request) {
 
     const templateId = body.templateId?.trim() ?? "";
     const name = body.name?.trim() ?? "";
-    const vehicleType = body.vehicleType?.trim() ?? "";
+    const requestedVehicleType = body.vehicleType?.trim() ?? "";
+    const vehicleType = canonicalVehicleType(requestedVehicleType);
+    const rawItemCount = Array.isArray(body.sections)
+      ? body.sections.reduce((total, section) => {
+          if (!section || typeof section !== "object") return total;
+          const items = (section as Record<string, unknown>).items;
+          return total + (Array.isArray(items) ? items.length : 0);
+        }, 0)
+      : 0;
     const sections = cleanSections(body.sections);
 
     if (!UUID.test(templateId)) {
@@ -198,6 +237,12 @@ export async function POST(request: Request) {
     if (!vehicleType || vehicleType.length > 80) {
       return NextResponse.json(
         { error: "Vehicle type is required" },
+        { status: 400 },
+      );
+    }
+    if (rawItemCount > MAX_ITEMS) {
+      return NextResponse.json(
+        { error: `Inspection templates support up to ${MAX_ITEMS} items` },
         { status: 400 },
       );
     }
@@ -221,14 +266,18 @@ export async function POST(request: Request) {
       fleetTag(fleetId),
     ];
 
-    const { data: existing, error: existingError } = await admin
-      .from("inspection_templates")
-      .select("id,shop_id,tags")
-      .eq("id", templateId)
-      .maybeSingle();
+    const readPublishedTemplate = async () =>
+      admin
+        .from("inspection_templates")
+        .select("id,shop_id,tags,template_name,vehicle_type,sections")
+        .eq("id", templateId)
+        .maybeSingle();
 
-    if (existingError) throw new Error(existingError.message);
-    if (existing) {
+    const replayResponse = (
+      existing: NonNullable<
+        Awaited<ReturnType<typeof readPublishedTemplate>>["data"]
+      >,
+    ) => {
       const existingTags = existing.tags ?? [];
       const replay =
         existing.shop_id === shopId &&
@@ -240,8 +289,27 @@ export async function POST(request: Request) {
           { status: 409 },
         );
       }
+      const samePayload =
+        existing.template_name === name &&
+        existing.vehicle_type === vehicleType &&
+        stableJson(existing.sections) === stableJson(sections);
+      if (!samePayload) {
+        return NextResponse.json(
+          {
+            error:
+              "This Fleet inspection draft was already published with different content. Refresh before publishing again.",
+          },
+          { status: 409 },
+        );
+      }
       return NextResponse.json({ id: existing.id, replayed: true });
-    }
+    };
+
+    const { data: existing, error: existingError } =
+      await readPublishedTemplate();
+
+    if (existingError) throw new Error(existingError.message);
+    if (existing) return replayResponse(existing);
 
     const insert: TemplateInsert = {
       id: templateId,
@@ -264,6 +332,13 @@ export async function POST(request: Request) {
       .single();
 
     if (error) {
+      if (error.code === "23505") {
+        const { data: concurrentExisting, error: replayReadError } =
+          await readPublishedTemplate();
+        if (!replayReadError && concurrentExisting) {
+          return replayResponse(concurrentExisting);
+        }
+      }
       console.error("[fleet/inspection-templates] save", error);
       return NextResponse.json(
         { error: "Unable to publish Fleet inspection template" },

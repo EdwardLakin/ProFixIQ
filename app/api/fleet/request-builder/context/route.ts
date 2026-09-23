@@ -4,6 +4,7 @@ import {
   resolveFleetActorContext,
 } from "@/features/fleet/lib/resolveFleetActorContext";
 import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
+import { isInspectionTemplateAvailableToFleet } from "@/features/fleet/lib/fleetInspectionTemplateScope";
 
 export async function GET(req: NextRequest) {
   const supabase = createServerSupabaseRoute();
@@ -52,7 +53,7 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const [unitResult, menuResult, inspectionResult, programResult] =
+  const [unitResult, menuResult, programResult] =
     await Promise.all([
       supabase
         .from("fleet_vehicles")
@@ -87,14 +88,6 @@ export async function GET(req: NextRequest) {
         .order("category", { ascending: true })
         .limit(500),
       supabase
-        .from("inspection_templates")
-        .select(
-          "id,template_name,description,labor_hours,vehicle_type,tags,shop_id",
-        )
-        .eq("shop_id", scope.shopId)
-        .order("template_name", { ascending: true })
-        .limit(250),
-      supabase
         .from("fleet_programs")
         .select(
           "id,fleet_id,name,cadence,interval_km,interval_hours,interval_days,notes,include_custom_inspection",
@@ -106,7 +99,6 @@ export async function GET(req: NextRequest) {
   const firstError =
     unitResult.error ??
     menuResult.error ??
-    inspectionResult.error ??
     programResult.error;
 
   if (firstError) {
@@ -140,12 +132,66 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const selectedFleetId = scope.fleetId;
+  const inspections: Array<{
+    id: string;
+    template_name: string;
+    description: string | null;
+    labor_hours: number | null;
+    vehicle_type: string | null;
+    tags: string[] | null;
+    shop_id: string | null;
+  }> = [];
+  const inspectionPageSize = 250;
+  let inspectionOffset = 0;
+
+  while (inspections.length < 250) {
+    const inspectionPage = await supabase
+      .from("inspection_templates")
+      .select(
+        "id,template_name,description,labor_hours,vehicle_type,tags,shop_id",
+      )
+      .eq("shop_id", scope.shopId)
+      .order("template_name", { ascending: true })
+      .range(
+        inspectionOffset,
+        inspectionOffset + inspectionPageSize - 1,
+      );
+
+    if (inspectionPage.error) {
+      console.error(
+        "[fleet/request-builder/context] inspection load error",
+        inspectionPage.error,
+      );
+      return NextResponse.json(
+        { error: "Failed to load the fleet service catalog." },
+        { status: 500 },
+      );
+    }
+
+    const rows = inspectionPage.data ?? [];
+    for (const template of rows) {
+      if (
+        isInspectionTemplateAvailableToFleet(
+          template.tags,
+          selectedFleetId,
+        )
+      ) {
+        inspections.push(template);
+        if (inspections.length === 250) break;
+      }
+    }
+
+    if (rows.length < inspectionPageSize) break;
+    inspectionOffset += inspectionPageSize;
+  }
+
   return NextResponse.json({
-    fleetId: scope.fleetId,
+    fleetId: selectedFleetId,
     shopId: scope.shopId,
     units: unitResult.data ?? [],
     menuItems: menuResult.data ?? [],
-    inspections: inspectionResult.data ?? [],
+    inspections,
     pmPackages: (programResult.data ?? []).map((program) => ({
       ...program,
       tasks: (taskResult.data ?? []).filter(
