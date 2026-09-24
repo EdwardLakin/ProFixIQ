@@ -62,7 +62,9 @@ describe("is_shop_member()/shop_role() — legacy-identity join fix (SQL contrac
 
   it("preserves each function's signature, language, and security characteristics", () => {
     const isShopMember = extractFunctionBody(source, "is_shop_member");
-    expect(isShopMember).toContain("is_shop_member(p_shop uuid)");
+    expect(isShopMember).toContain("is_shop_member(%I uuid)");
+    expect(source).toContain("v_arg_name NOT IN ('p_shop', 'p_shop_id')");
+    expect(isShopMember).toContain("sm.shop_id = $1");
     expect(isShopMember).toContain("RETURNS boolean");
     expect(isShopMember).toContain("LANGUAGE sql");
     expect(isShopMember).toContain("STABLE");
