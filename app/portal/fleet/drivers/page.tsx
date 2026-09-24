@@ -18,7 +18,7 @@ export default async function FleetDriversPage({ searchParams }: Props) {
   return (
     <FleetDriversWorkspace
       actorLabel={uiContext.actorLabel}
-      canInviteDrivers={actor.fleetIds.some(id => canAdministerFleetForActor(actor, id))}
+      manageableFleetIds={actor.fleetIds.filter(id => canAdministerFleetForActor(actor, id))}
       initialFleetId={selectedFleetId}
     />
   );
