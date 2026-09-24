@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { issueFleetPortalInvite, type FleetInviteRole } from "@/features/fleet/server/issueFleetPortalInvite";
+import { issueFleetPortalInvite, deliverFleetPortalInvite, recordInviteDelivery, type FleetInviteRole } from "@/features/fleet/server/issueFleetPortalInvite";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
 
