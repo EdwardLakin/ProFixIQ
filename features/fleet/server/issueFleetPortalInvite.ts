@@ -170,7 +170,9 @@ export async function issueFleetPortalInvite(input: {
       p_created_by: createdByAuthUserId,
     },
   );
-  const invite = Array.isArray(data) ? data[0] : null;
+  const invite = Array.isArray(data)
+    ? (data[0] as unknown as { invite_id: string } | undefined)
+    : null;
   if (error || !invite?.invite_id) {
     const inProgress = error?.code === "55P03";
     const existingMember = error?.code === "23505";
