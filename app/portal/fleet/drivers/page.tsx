@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 
 import FleetDriversWorkspace from "@/features/fleet/components/FleetDriversWorkspace";
+import { canAdministerFleetForActor } from "@/features/fleet/lib/resolveFleetActorContext";
 import { getFleetUiContext } from "@/features/fleet/lib/fleetUiCapabilities";
 import { getFleetPortalActorContext } from "../_lib/requireFleetPortalActor";
 
@@ -17,6 +18,7 @@ export default async function FleetDriversPage({ searchParams }: Props) {
   return (
     <FleetDriversWorkspace
       actorLabel={uiContext.actorLabel}
+      canInviteDrivers={actor.fleetIds.some(id => canAdministerFleetForActor(actor, id))}
       initialFleetId={selectedFleetId}
     />
   );
