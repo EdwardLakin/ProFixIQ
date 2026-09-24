@@ -491,6 +491,11 @@ describe("Fleet relationship creation", () => {
   });
 
   it("uses the existing Fleet tables and locks first invitations before replacing", () => {
+    expect(memberAtomicMigration.match(/pg_advisory_xact_lock/g)).toHaveLength(2);
+    expect(memberAtomicMigration).toContain("[.]");
+    expect(memberAtomicMigration).toContain("v_target_fleet_id");
+    expect(memberAtomicMigration).toContain("v_target_email");
+    expect(memberAtomicMigration).toContain("create or replace function public.replace_fleet_portal_invitation_atomic");
     expect(memberAtomicMigration).toContain("pg_advisory_xact_lock");
     expect(memberAtomicMigration).toContain("delivery_reserved_until > now()");
     expect(memberAtomicMigration).toContain("from public.fleet_members");
