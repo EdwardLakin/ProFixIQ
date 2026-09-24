@@ -278,6 +278,37 @@ export function enforceAIOperationalPolicy(input: EnforceInput):
   };
 }
 
+export function registerAIOperationalRequest(input: EnforceInput): void {
+  const now = Date.now();
+  const policy = FEATURE_POLICY[input.feature];
+  const key = scopedKey(input.shopId, input.endpoint);
+  const requests = [...(rateBuckets.get(key) ?? []), now].filter(
+    (ts) => now - ts <= policy.rateLimitWindowMs,
+  );
+  rateBuckets.set(key, requests);
+}
+
+export function registerAIOperationalDenial(input: EnforceInput): void {
+  const now = Date.now();
+  const policy = FEATURE_POLICY[input.feature];
+  const key = scopedKey(input.shopId, input.endpoint);
+  const denials = [...(hardDenialBuckets.get(key) ?? []), now].filter(
+    (ts) => now - ts <= policy.rateLimitWindowMs,
+  );
+  hardDenialBuckets.set(key, denials);
+
+  const requestsInWindow = (rateBuckets.get(key) ?? []).filter(
+    (ts) => now - ts <= policy.rateLimitWindowMs,
+  ).length;
+  if (requestsInWindow >= policy.anomalySpikeThreshold) {
+    emitAlert("request_spike", input, { count: requestsInWindow });
+  }
+
+  if (denials.length >= policy.anomalyHardDenialThreshold) {
+    emitAlert("repeated_denials", input, { denialCount: denials.length });
+  }
+}
+
 export function registerAIUsageEvent(event: UsageEventInput): void {
   const now = Date.now();
   const nowDate = new Date(now);
