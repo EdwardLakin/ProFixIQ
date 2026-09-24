@@ -106,6 +106,10 @@ begin
     raise exception 'Replacement must revoke prior token in one transaction';
   end if;
 
+  update public.fleet_portal_invites
+  set delivery_status = 'delivered', delivery_reserved_until = null
+  where id = v_second;
+
   -- A duplicate token fails at INSERT after UPDATE, which must roll back
   -- the revocation of the prior valid invitation.
   begin
@@ -123,10 +127,6 @@ begin
   ) then
     raise exception 'Failed insertion revoked a valid invitation';
   end if;
-
-  update public.fleet_portal_invites
-  set delivery_status = 'delivered', delivery_reserved_until = null
-  where id = v_second;
 
   select * into v_resend
   from public.replace_fleet_portal_invitation_atomic(
