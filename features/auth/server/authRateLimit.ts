@@ -20,12 +20,10 @@ function pruneBuckets(now: number) {
 }
 
 function requestAddress(req: Request): string {
-  // ProFixIQ is deployed on Vercel. Prefer Vercel's proxy-derived client chain
-  // instead of provider-specific headers that an Internet client can spoof
-  // when Cloudflare is not guaranteed to be in front of the deployment.
   return (
-    req.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() ||
-    req.headers.get("x-real-ip")?.trim() ||
+    req.headers.get("cf-connecting-ip") ||
+    req.headers.get("x-real-ip") ||
+    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
     "unknown"
   );
 }
