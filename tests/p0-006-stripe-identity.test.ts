@@ -84,6 +84,9 @@ describe("P0-006 Stripe identity boundary", () => {
 
   it("keeps price, trial, governed discounts, redirects, and Stripe retries server-owned", async () => {
     const checkout = await source("app/api/stripe/checkout/route.ts");
+    const trialConfig = await source(
+      "features/stripe/lib/server/trial-config.ts",
+    );
     const landing = await source(
       "features/shared/components/ProFixIQLanding.tsx",
     );
@@ -101,8 +104,8 @@ describe("P0-006 Stripe identity boundary", () => {
     );
     expect(checkout).not.toContain("STRIPE_PRICE_BASE_MONTHLY");
     expect(checkout).toContain("configuredTrialDays()");
-    expect(checkout).toContain('process.env.STRIPE_TRIAL_DAYS ?? "7"');
-    expect(checkout).toMatch(/\? parsed : 7;/);
+    expect(trialConfig).toContain('process.env.STRIPE_TRIAL_DAYS ?? "7"');
+    expect(trialConfig).toMatch(/\? parsed : 7;/);
     expect(checkout).toContain("allow_promotion_codes: true");
     expect(checkout).not.toContain("STRIPE_FOUNDING_COUPON_ID");
     expect(discountMigration).toContain(
