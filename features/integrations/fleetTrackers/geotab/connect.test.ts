@@ -3,7 +3,7 @@ import { connectGeotab } from "./connect";
 
 describe("connectGeotab", () => {
   it("rejects a connect attempt without ever calling Geotab when a field is missing", async () => {
-    const supabase = { from: vi.fn() } as never;
+    const supabase = { from: vi.fn() } as unknown as Parameters<typeof connectGeotab>[0];
 
     const result = await connectGeotab(supabase, {
       shopId: "shop-1",
