@@ -29,7 +29,7 @@ type InviteDelivery =
  * Persist the delivery outcome so a failed or suppressed invitation stays
  * visible and retryable after the response that reported it is gone.
  */
-async function recordInviteDelivery(input: {
+export async function recordInviteDelivery(input: {
   inviteId: string;
   shopId: string;
   delivery: InviteDelivery;
@@ -72,7 +72,7 @@ async function recordInviteDelivery(input: {
  * suppressed recipient rather than throwing, so awaiting it without inspecting
  * the result silently reports success while the recipient receives nothing.
  */
-async function deliverFleetPortalInvite(input: {
+export async function deliverFleetPortalInvite(input: {
   shopId: string;
   createdBy: string;
   fleetName: string;
