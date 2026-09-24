@@ -23,6 +23,18 @@ const lifecycleMigration = fs.readFileSync(
   ),
   "utf8",
 );
+const memberAtomicMigration = fs.readFileSync(
+  path.join(process.cwd(), "supabase/migrations/20260924030000_fleet_member_invitation_atomic.sql"),
+  "utf8",
+);
+const memberInviteRoute = fs.readFileSync(
+  path.join(process.cwd(), "app/api/portal/fleet/member-invitations/route.ts"),
+  "utf8",
+);
+const issueInviteHelper = fs.readFileSync(
+  path.join(process.cwd(), "features/fleet/server/issueFleetPortalInvite.ts"),
+  "utf8",
+);
 const sendGridWebhookRoute = fs.readFileSync(
   path.join(process.cwd(), "app/api/webhooks/sendgrid/events/route.ts"),
   "utf8",
@@ -33,6 +45,7 @@ const fixture = vi.hoisted(() => ({
   invitePayload: null as Record<string, unknown> | null,
   rpcCalls: [] as Array<{ name: string; args: Record<string, unknown> }>,
   inviteUpdates: [] as Array<Record<string, unknown>>,
+  issueRpcError: null as { code?: string } | null,
   inviteUpdateError: null as { code?: string } | null,
   existingInvite: {
     data: {
@@ -106,6 +119,9 @@ vi.mock("@/features/shared/lib/supabase/admin", () => ({
   supabaseAdmin: {
     rpc: vi.fn(async (name: string, args: Record<string, unknown>) => {
       fixture.rpcCalls.push({ name, args });
+      if (name === "issue_fleet_portal_invitation_atomic") {
+        return { data: fixture.issueRpcError ? null : [{ invite_id: "invite-1" }], error: fixture.issueRpcError };
+      }
       if (name === "record_fleet_portal_invitation_email_acceptance") {
         return { data: true, error: null };
       }
@@ -199,6 +215,7 @@ describe("Fleet relationship creation", () => {
     fixture.rpcCalls = [];
     fixture.inviteUpdates = [];
     fixture.inviteUpdateError = null;
+    fixture.issueRpcError = null;
     fixture.existingInvite = {
       data: {
         id: "33333333-3333-4333-8333-333333333333",
@@ -434,6 +451,61 @@ describe("Fleet relationship creation", () => {
 
     expect(response.status).toBe(502);
     expect(body.error).toContain("suppressed");
+  });
+
+  it("issues standalone invitations transactionally before sending email", async () => {
+    const response = await POST(createRequest({
+      fleetId: "fleet-1", email: "driver@example.com", role: "viewer",
+    }));
+    expect(response.status).toBe(200);
+    expect(fixture.rpcCalls[0]).toMatchObject({
+      name: "issue_fleet_portal_invitation_atomic",
+      args: {
+        p_shop_id: "shop-1", p_fleet_id: "fleet-1",
+        p_email: "driver@example.com", p_role: "viewer",
+        p_created_by: "auth-user-1",
+      },
+    });
+    expect(fixture.rpcCalls[0].args.p_token_hash).toMatch(/^[0-9a-f]{64}$/);
+    expect(fixture.invitePayload).toBeNull();
+    expect(sendPortalInviteEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it("preserves an existing token and does not email if atomic issuance fails", async () => {
+    fixture.issueRpcError = { code: "23505" };
+    const response = await POST(createRequest({
+      fleetId: "fleet-1", email: "driver@example.com", role: "viewer",
+    }));
+    expect(response.status).toBe(409);
+    expect(fixture.inviteUpdates).toEqual([]);
+    expect(sendPortalInviteEmail).not.toHaveBeenCalled();
+  });
+
+  it("does not replace a reserved invitation while delivery is underway", async () => {
+    fixture.issueRpcError = { code: "55P03" };
+    const response = await POST(createRequest({
+      fleetId: "fleet-1", email: "driver@example.com", role: "viewer",
+    }));
+    expect(response.status).toBe(423);
+    expect(sendPortalInviteEmail).not.toHaveBeenCalled();
+  });
+
+  it("uses the existing Fleet tables and locks first invitations before replacing", () => {
+    expect(memberAtomicMigration.match(/pg_advisory_xact_lock/g)).toHaveLength(2);
+    expect(memberAtomicMigration).toContain("[.]");
+    expect(memberAtomicMigration).toContain("v_target_fleet_id");
+    expect(memberAtomicMigration).toContain("v_target_email");
+    expect(memberAtomicMigration).toContain("create or replace function public.replace_fleet_portal_invitation_atomic");
+    expect(memberAtomicMigration).toContain("pg_advisory_xact_lock");
+    expect(memberAtomicMigration).toContain("delivery_reserved_until > now()");
+    expect(memberAtomicMigration).toContain("from public.fleet_members");
+    expect(memberAtomicMigration).toContain("update public.fleet_portal_invites");
+    expect(memberAtomicMigration).toContain("insert into public.fleet_portal_invites");
+    expect(memberAtomicMigration).toContain("to service_role");
+    expect(memberAtomicMigration).not.toMatch(/create table|alter table/i);
+    expect(issueInviteHelper).toContain('"issue_fleet_portal_invitation_atomic"');
+    expect(memberInviteRoute).toContain(".eq(\"email\", email)");
+    expect(memberInviteRoute).not.toContain('.ilike("email"');
   });
 
   it("persists a failed delivery so it survives the response that reported it", async () => {

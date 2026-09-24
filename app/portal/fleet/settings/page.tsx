@@ -14,6 +14,7 @@ import {
   updateFleetMemberRole,
   updateFleetWorkspace,
 } from "./actions";
+import FleetMemberInvite from "@/features/fleet/components/FleetMemberInvite";
 import FleetMemberRemoveButton from "@/features/fleet/components/FleetMemberRemoveButton";
 import { canAdministerFleetForActor } from "@/features/fleet/lib/resolveFleetActorContext";
 import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
@@ -316,17 +317,24 @@ export default async function FleetSettingsPage({ searchParams }: PageProps) {
 
         <section className={`${panel} overflow-hidden`}>
           <div className="border-b border-[color:var(--theme-border-soft)] p-5">
-            <div className="flex items-center gap-2">
-              <UserRoundCog
-                className="h-4 w-4 text-sky-300"
-                aria-hidden="true"
-              />
-              <div>
-                <h2 className="font-semibold">Users & roles</h2>
-                <p className="text-xs text-[color:var(--theme-text-muted)]">
-                  Fleet permissions only — never Shop staff permissions
-                </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <UserRoundCog
+                  className="h-4 w-4 text-sky-300"
+                  aria-hidden="true"
+                />
+                <div>
+                  <h2 className="font-semibold">Users & roles</h2>
+                  <p className="text-xs text-[color:var(--theme-text-muted)]">
+                    Fleet permissions only — never Shop staff permissions
+                  </p>
+                </div>
               </div>
+              <FleetMemberInvite
+                key={selectedFleetId}
+                fleets={fleets.map((item) => ({ id: item.id, name: item.name }))}
+                initialFleetId={selectedFleetId}
+              />
             </div>
           </div>
 

@@ -125,7 +125,8 @@ describe("authentication and portal hardening", () => {
     const acceptRoute = read("app/api/portal/fleet/invites/accept/route.ts");
     const activationPage = read("app/portal/auth/fleet-invite/page.tsx");
 
-    expect(inviteRoute).toContain("portalLink,");
+    expect(inviteRoute).toContain("issueFleetPortalInvite");
+    expect(read("features/fleet/server/issueFleetPortalInvite.ts")).toContain("portalLink,");
     expect(inviteRoute).not.toContain("properties?.action_link");
     expect(acceptRoute).toContain("password?: string");
     expect(acceptRoute).toContain("enforceAuthRateLimit");
