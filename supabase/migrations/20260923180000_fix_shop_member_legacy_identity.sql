@@ -36,7 +36,22 @@
 -- search_path, the demo_access_expires_at condition PR 1 (#1720) and its
 -- follow-up (#1723) added -- is unchanged.
 
-CREATE OR REPLACE FUNCTION public.is_shop_member(p_shop_id uuid)
+-- Preserve the argument name installed by the existing database lineage.
+-- The clean baseline uses p_shop; canonical production uses p_shop_id.
+DO $migration$
+DECLARE
+  v_arg_name text;
+BEGIN
+  SELECT p.proargnames[1] INTO v_arg_name
+  FROM pg_proc p
+  WHERE p.oid = 'public.is_shop_member(uuid)'::regprocedure;
+
+  IF v_arg_name NOT IN ('p_shop', 'p_shop_id') OR v_arg_name IS NULL THEN
+    RAISE EXCEPTION 'Unexpected is_shop_member argument name: %', v_arg_name;
+  END IF;
+
+  EXECUTE format($definition$
+CREATE OR REPLACE FUNCTION public.is_shop_member(%I uuid)
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -48,11 +63,14 @@ AS $function$
     join public.profiles pr
       on pr.id = sm.user_id
      and pr.shop_id = sm.shop_id
-    where sm.shop_id = p_shop_id
+    where sm.shop_id = $1
       and (pr.id = auth.uid() or pr.user_id = auth.uid())
       and (pr.demo_access_expires_at is null or pr.demo_access_expires_at > now())
   );
 $function$;
+$definition$, v_arg_name);
+END;
+$migration$;
 
 CREATE OR REPLACE FUNCTION public.shop_role(shop_id uuid)
 RETURNS text
