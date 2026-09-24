@@ -224,7 +224,46 @@ describe("public marketing chatbot route", () => {
     const response = await POST(request);
     expect(response.status).toBe(429);
     expect(response.headers.get("Retry-After")).toBe("45");
+    expect(mocks.registerAIOperationalDenial).toHaveBeenCalledTimes(1);
+    expect(mocks.rpc).not.toHaveBeenCalled();
     expect(mocks.createCompletion).not.toHaveBeenCalled();
+  });
+
+  it("rejects oversized bodies before the provider and durable quota", async () => {
+    const request = new Request("https://profixiq.com/api/chatbot", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        variant: "marketing",
+        messages: [{ role: "user", content: "x".repeat(65_536) }],
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(413);
+    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.createCompletion).not.toHaveBeenCalled();
+  });
+
+  it("uses the normalized Vercel identity for the local limiter", async () => {
+    const request = new Request("https://profixiq.com/api/chatbot", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "cf-connecting-ip": "198.51.100.5",
+        "x-vercel-forwarded-for": "203.0.113.9",
+      },
+      body: JSON.stringify({
+        variant: "marketing",
+        messages: [{ role: "user", content: "What is ProFixIQ?" }],
+      }),
+    });
+
+    const response = await POST(request);
+    expect(response.status).toBe(200);
+    const limiterRequest = mocks.rateLimit.mock.calls[0]?.[0] as Request;
+    expect(limiterRequest.headers.get("x-real-ip")).toBe("203.0.113.9");
+    expect(limiterRequest.headers.get("cf-connecting-ip")).toBeNull();
   });
 
   it("rejects malformed JSON before durable quota or provider telemetry", async () => {
