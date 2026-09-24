@@ -20,10 +20,3 @@ export type TrackerOdometerReading = {
   odometerMeters: number;
   recordedAt: string;
 };
-
-export type TrackerAdapter = {
-  vendor: TrackerVendor;
-  fetchVehicles(): Promise<TrackerVehicleSnapshot[]>;
-  fetchFaultCodes(sinceIso: string): Promise<TrackerFaultCode[]>;
-  fetchOdometerReadings(sinceIso: string): Promise<TrackerOdometerReading[]>;
-};

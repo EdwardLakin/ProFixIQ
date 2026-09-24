@@ -6623,6 +6623,141 @@ export type Database = {
           },
         ]
       }
+      fleet_tracker_connections: {
+        Row: {
+          connected_at: string
+          created_at: string
+          created_by: string | null
+          credentials: Json
+          id: string
+          last_error: string | null
+          last_sync_at: string | null
+          metadata: Json
+          shop_id: string
+          status: string
+          updated_at: string
+          vendor: string
+        }
+        Insert: {
+          connected_at?: string
+          created_at?: string
+          created_by?: string | null
+          credentials?: Json
+          id?: string
+          last_error?: string | null
+          last_sync_at?: string | null
+          metadata?: Json
+          shop_id: string
+          status?: string
+          updated_at?: string
+          vendor: string
+        }
+        Update: {
+          connected_at?: string
+          created_at?: string
+          created_by?: string | null
+          credentials?: Json
+          id?: string
+          last_error?: string | null
+          last_sync_at?: string | null
+          metadata?: Json
+          shop_id?: string
+          status?: string
+          updated_at?: string
+          vendor?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_tracker_connections_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_tracker_connections_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_tracker_connections_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      fleet_tracker_vehicle_links: {
+        Row: {
+          connection_id: string
+          created_at: string
+          id: string
+          last_synced_at: string | null
+          shop_id: string
+          updated_at: string
+          vehicle_id: string | null
+          vendor_name: string | null
+          vendor_vehicle_id: string
+          vendor_vin: string | null
+        }
+        Insert: {
+          connection_id: string
+          created_at?: string
+          id?: string
+          last_synced_at?: string | null
+          shop_id: string
+          updated_at?: string
+          vehicle_id?: string | null
+          vendor_name?: string | null
+          vendor_vehicle_id: string
+          vendor_vin?: string | null
+        }
+        Update: {
+          connection_id?: string
+          created_at?: string
+          id?: string
+          last_synced_at?: string | null
+          shop_id?: string
+          updated_at?: string
+          vehicle_id?: string | null
+          vendor_name?: string | null
+          vendor_vehicle_id?: string
+          vendor_vin?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "fleet_tracker_vehicle_links_connection_id_fkey"
+            columns: ["connection_id"]
+            isOneToOne: false
+            referencedRelation: "fleet_tracker_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_tracker_vehicle_links_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_tracker_vehicle_links_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_tracker_vehicle_links_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       fleet_unit_defects: {
         Row: {
           acknowledged_at: string | null

@@ -1,14 +1,19 @@
-import {
-  getGeotabDatabase,
-  getGeotabPassword,
-  getGeotabServer,
-  getGeotabUsername,
-} from "./env";
+export type GeotabCredentialsInput = {
+  database: string;
+  username: string;
+  password: string;
+  server?: string;
+};
 
-type GeotabCredentials = {
+type GeotabSessionCredentials = {
   database: string;
   userName: string;
   sessionId: string;
+};
+
+export type GeotabSession = {
+  credentials: GeotabSessionCredentials;
+  server: string;
 };
 
 type GeotabRpcError = {
@@ -21,12 +26,21 @@ type GeotabRpcResponse<T> = {
   error?: GeotabRpcError;
 };
 
-type GeotabSession = {
-  credentials: GeotabCredentials;
-  server: string;
-};
+export class GeotabApiError extends Error {
+  code: string;
 
-let cachedSession: GeotabSession | null = null;
+  constructor(code: string, message: string) {
+    super(message);
+    this.name = "GeotabApiError";
+    this.code = code;
+  }
+}
+
+const DEFAULT_SERVER = "my.geotab.com";
+
+function normalizeServer(server: string | undefined): string {
+  return (server?.trim() || DEFAULT_SERVER).replace(/^https?:\/\//, "");
+}
 
 async function rpcCall<T>(
   server: string,
@@ -42,7 +56,10 @@ async function rpcCall<T>(
   const body = (await response.json()) as GeotabRpcResponse<T>;
 
   if (body.error) {
-    throw new GeotabApiError(body.error.name ?? "GeotabApiError", body.error.message ?? "Unknown Geotab API error");
+    throw new GeotabApiError(
+      body.error.name ?? "GeotabApiError",
+      body.error.message ?? "Unknown Geotab API error",
+    );
   }
 
   if (!response.ok) {
@@ -52,34 +69,18 @@ async function rpcCall<T>(
   return body.result as T;
 }
 
-export class GeotabApiError extends Error {
-  code: string;
+export async function authenticateGeotab(
+  input: GeotabCredentialsInput,
+): Promise<GeotabSession> {
+  const baseServer = normalizeServer(input.server);
 
-  constructor(code: string, message: string) {
-    super(message);
-    this.name = "GeotabApiError";
-    this.code = code;
-  }
-}
-
-function isSessionInvalid(error: unknown): boolean {
-  return (
-    error instanceof GeotabApiError &&
-    (error.code === "InvalidUserException" ||
-      error.code === "DbUnavailableException" ||
-      /session/i.test(error.message))
-  );
-}
-
-async function authenticate(): Promise<GeotabSession> {
-  const baseServer = getGeotabServer();
   const result = await rpcCall<{
-    credentials: GeotabCredentials;
+    credentials: GeotabSessionCredentials;
     path: string;
   }>(baseServer, "Authenticate", {
-    database: getGeotabDatabase(),
-    userName: getGeotabUsername(),
-    password: getGeotabPassword(),
+    database: input.database,
+    userName: input.username,
+    password: input.password,
   });
 
   const server =
@@ -87,35 +88,16 @@ async function authenticate(): Promise<GeotabSession> {
       ? result.path
       : baseServer;
 
-  const session: GeotabSession = { credentials: result.credentials, server };
-  cachedSession = session;
-  return session;
-}
-
-async function getSession(): Promise<GeotabSession> {
-  if (cachedSession) return cachedSession;
-  return authenticate();
+  return { credentials: result.credentials, server };
 }
 
 export async function geotabCall<T>(
+  session: GeotabSession,
   method: string,
   params: Record<string, unknown> = {},
 ): Promise<T> {
-  const session = await getSession();
-
-  try {
-    return await rpcCall<T>(session.server, method, {
-      ...params,
-      credentials: session.credentials,
-    });
-  } catch (error) {
-    if (!isSessionInvalid(error)) throw error;
-
-    cachedSession = null;
-    const freshSession = await authenticate();
-    return rpcCall<T>(freshSession.server, method, {
-      ...params,
-      credentials: freshSession.credentials,
-    });
-  }
+  return rpcCall<T>(session.server, method, {
+    ...params,
+    credentials: session.credentials,
+  });
 }
