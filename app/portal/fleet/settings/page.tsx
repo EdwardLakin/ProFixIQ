@@ -14,6 +14,7 @@ import {
   updateFleetMemberRole,
   updateFleetWorkspace,
 } from "./actions";
+import FleetMemberInvite from "@/features/fleet/components/FleetMemberInvite";
 import FleetMemberRemoveButton from "@/features/fleet/components/FleetMemberRemoveButton";
 import { canAdministerFleetForActor } from "@/features/fleet/lib/resolveFleetActorContext";
 import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
