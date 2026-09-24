@@ -262,7 +262,8 @@ describe("demo access expiry — SQL contract", () => {
   describe("is_shop_member()", () => {
     it("keeps its existing profiles membership check and adds only the expiry condition", () => {
       expect(isShopMemberBody).toContain("pr.user_id = auth.uid()");
-      expect(isShopMemberBody).toContain("pr.shop_id = p_shop_id");
+      expect(isShopMemberBody).toContain("pr.shop_id = $1");
+      expect(isShopMemberBody).toContain("v_arg_name NOT IN ('p_shop', 'p_shop_id')");
       expect(isShopMemberBody).toContain(
         "AND (pr.demo_access_expires_at IS NULL OR pr.demo_access_expires_at > now())",
       );
