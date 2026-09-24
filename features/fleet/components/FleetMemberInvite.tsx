@@ -32,6 +32,10 @@ export default function FleetMemberInvite({ fleets, initialFleetId, driverOnly =
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!fleets.some(fleet => fleet.id === fleetId)) {
+      setError("Choose a Fleet you administer before sending an invitation.");
+      return;
+    }
     setBusy(true); setError(""); setNotice("");
     try {
       const response = await fetch("/api/portal/fleet/member-invitations", {
