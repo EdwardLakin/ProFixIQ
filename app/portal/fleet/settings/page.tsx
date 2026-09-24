@@ -14,6 +14,7 @@ import {
   updateFleetMemberRole,
   updateFleetWorkspace,
 } from "./actions";
+import FleetGeotabConnectCard from "@/features/fleet/components/FleetGeotabConnectCard";
 import FleetMemberInvite from "@/features/fleet/components/FleetMemberInvite";
 import FleetMemberRemoveButton from "@/features/fleet/components/FleetMemberRemoveButton";
 import { canAdministerFleetForActor } from "@/features/fleet/lib/resolveFleetActorContext";
@@ -429,6 +430,8 @@ export default async function FleetSettingsPage({ searchParams }: PageProps) {
           </div>
         </section>
       </div>
+
+      <FleetGeotabConnectCard key={selectedFleetId} fleetId={selectedFleetId} />
     </main>
   );
 }
