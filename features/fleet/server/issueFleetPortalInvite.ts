@@ -131,9 +131,9 @@ export async function deliverFleetPortalInvite(input: {
 }
 
 /**
- * Canonical Fleet portal invitation issuance: revoke any pending invite for the
- * same fleet/email, persist a hashed token, then deliver the branded email.
- * Delivery failure revokes the invite so no unreachable token is left behind.
+ * Canonical Fleet portal invitation issuance uses a transaction-scoped lock and
+ * one atomic database operation before delivery. Both Shop and Fleet entry
+ * points use the same issuance path to avoid competing valid tokens.
  */
 export async function issueFleetPortalInvite(input: {
   shopId: string;
@@ -152,49 +152,36 @@ export async function issueFleetPortalInvite(input: {
     role,
   } = input;
 
-  const { error: revokeError } = await supabaseAdmin
-    .from("fleet_portal_invites")
-    .update({ revoked_at: new Date().toISOString() })
-    .eq("shop_id", shopId)
-    .eq("fleet_id", fleet.id)
-    .eq("email", email)
-    .is("accepted_at", null)
-    .is("revoked_at", null);
-  if (revokeError) {
-    return {
-      ok: false,
-      status: 500,
-      error: "Invitation could not be prepared.",
-    };
-  }
-
   const rawToken = crypto.randomBytes(32).toString("base64url");
   const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
-  const expiresAt = new Date(
-    Date.now() + 14 * 24 * 60 * 60 * 1000,
-  ).toISOString();
-  const { data: invite, error: insertError } = await supabaseAdmin
-    .from("fleet_portal_invites")
-    .insert({
-      shop_id: shopId,
-      fleet_id: fleet.id,
-      email,
-      role,
-      token_hash: tokenHash,
-      expires_at: expiresAt,
-      created_by: createdByAuthUserId,
-      delivery_status: "sending",
-      delivery_reserved_until: new Date(
-        Date.now() + 15 * 60 * 1000,
-      ).toISOString(),
-    })
-    .select("id")
-    .single();
-  if (insertError || !invite) {
+  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+
+  // The database serializes first-time and replacement invitations together.
+  // If insertion fails, the prior invitation remains valid.
+  const { data, error } = await supabaseAdmin.rpc(
+    "issue_fleet_portal_invitation_atomic",
+    {
+      p_shop_id: shopId,
+      p_fleet_id: fleet.id,
+      p_email: email,
+      p_role: role,
+      p_token_hash: tokenHash,
+      p_expires_at: expiresAt,
+      p_created_by: createdByAuthUserId,
+    },
+  );
+  const invite = Array.isArray(data) ? data[0] : null;
+  if (error || !invite?.invite_id) {
+    const inProgress = error?.code === "55P03";
+    const existingMember = error?.code === "23505";
     return {
       ok: false,
-      status: 400,
-      error: "Invitation could not be created.",
+      status: inProgress ? 423 : existingMember ? 409 : 500,
+      error: inProgress
+        ? "Invitation delivery is in progress. Check its status before retrying."
+        : existingMember
+          ? "This user already belongs to this Fleet."
+          : "Invitation could not be created. The previous invitation was preserved.",
     };
   }
 
