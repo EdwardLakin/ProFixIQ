@@ -50,6 +50,12 @@ describe("public marketing chatbot contract", () => {
     expect(route).not.toContain("max_tokens:");
     expect(route).toContain("PRODUCT_PACKAGE_PRICING");
     expect(route).toContain("PRODUCT_PACKAGE_CATALOG");
+    expect(route).toContain("configuredTrialDays");
+    expect(route).toContain("Shop Boost / Instant Shop Analysis");
+    expect(route).toContain("registerAIOperationalRequest");
+    expect(route).toContain("registerAIOperationalDenial");
+    expect(route).toContain("x-vercel-forwarded-for");
+    expect(route).not.toContain("cf-connecting-ip");
   });
 
   it("shows one client-visible failure instead of duplicating the same error", async () => {
