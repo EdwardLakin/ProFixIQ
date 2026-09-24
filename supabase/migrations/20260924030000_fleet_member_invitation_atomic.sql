@@ -17,7 +17,6 @@ set search_path = ''
 as $$
 declare
   v_email text := lower(trim(coalesce(p_email, '')));
-  v_existing public.fleet_portal_invites%rowtype;
   v_invite_id uuid;
 begin
   if p_shop_id is null or p_fleet_id is null or p_created_by is null
