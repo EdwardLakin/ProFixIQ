@@ -317,7 +317,8 @@ export default async function FleetSettingsPage({ searchParams }: PageProps) {
 
         <section className={`${panel} overflow-hidden`}>
           <div className="border-b border-[color:var(--theme-border-soft)] p-5">
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
               <UserRoundCog
                 className="h-4 w-4 text-sky-300"
                 aria-hidden="true"
@@ -328,6 +329,7 @@ export default async function FleetSettingsPage({ searchParams }: PageProps) {
                   Fleet permissions only — never Shop staff permissions
                 </p>
               </div>
+              <FleetMemberInvite fleets={fleets.map(item => ({ id: item.id, name: item.name }))} initialFleetId={selectedFleetId} />
             </div>
           </div>
 
