@@ -1258,7 +1258,7 @@ export default function QuoteReviewView(props: {
               </div>
               {quoteLines.length === 0 ? (
                 <div className={`${padX} py-4 text-sm text-[color:var(--theme-text-secondary)]`}>
-                  No canonical quote lines exist for this work order yet. Phase 5B does not create temporary work_order_lines for portal visibility; customer portal rendering remains Phase 5C.
+                  No quote lines yet. They&apos;ll appear here once repair items are added to this work order.
                 </div>
               ) : (
                 <div className="divide-y divide-[color:var(--desktop-border)]">
