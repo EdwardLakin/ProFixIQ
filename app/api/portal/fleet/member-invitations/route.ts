@@ -47,7 +47,7 @@ export async function POST(request: Request) {
   }
   const result = await access(fleetId);
   if (result.error) return result.error;
-  const { data: profiles, error: profileError } = await result.admin!.from("profiles").select("id").ilike("email", email).limit(20);
+  const { data: profiles, error: profileError } = await result.admin!.from("profiles").select("id").eq("email", email).limit(20);
   if (profileError) return NextResponse.json({ error: "Existing membership could not be checked" }, { status: 500 });
   if (profiles?.length) {
     const { data: existing, error } = await result.admin!.from("fleet_members").select("user_id").eq("fleet_id",fleetId).eq("shop_id",result.shopId!).in("user_id", profiles.map(p=>p.id)).limit(1);
