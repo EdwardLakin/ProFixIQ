@@ -6678,6 +6678,13 @@ export type Database = {
             foreignKeyName: "fleet_tracker_connections_shop_id_fkey"
             columns: ["shop_id"]
             isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_tracker_connections_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
             referencedRelation: "shops"
             referencedColumns: ["id"]
           },
@@ -6726,6 +6733,13 @@ export type Database = {
             columns: ["connection_id"]
             isOneToOne: false
             referencedRelation: "fleet_tracker_connections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "fleet_tracker_vehicle_links_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
             referencedColumns: ["id"]
           },
           {
