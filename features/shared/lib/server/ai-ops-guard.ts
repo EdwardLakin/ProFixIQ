@@ -180,6 +180,19 @@ const FEATURE_POLICY: Record<AIOpsFeature, AIOpsPolicy> = {
     anomalyHighCostUsd: envNum("AI_ANOMALY_COST_COPILOT_TEXT", 0.3),
     anomalyHardDenialThreshold: envNum("AI_ANOMALY_DENIAL_COPILOT_TEXT", 6),
   },
+  public_marketing_chatbot: {
+    budgetSoftUsd: envNum("AI_BUDGET_SOFT_USD_PUBLIC_MARKETING_CHATBOT", 15),
+    budgetHardUsd: envNum("AI_BUDGET_HARD_USD_PUBLIC_MARKETING_CHATBOT", 25),
+    rateLimitMax: envNum("AI_RATE_LIMIT_PUBLIC_MARKETING_CHATBOT_MAX", 60),
+    rateLimitWindowMs: envNum(
+      "AI_RATE_LIMIT_PUBLIC_MARKETING_CHATBOT_WINDOW_MS",
+      5 * 60 * 1000,
+    ),
+    anomalySpikeThreshold: envNum("AI_ANOMALY_SPIKE_PUBLIC_MARKETING_CHATBOT", 30),
+    anomalyFailureThreshold: envNum("AI_ANOMALY_FAIL_PUBLIC_MARKETING_CHATBOT", 6),
+    anomalyHighCostUsd: envNum("AI_ANOMALY_COST_PUBLIC_MARKETING_CHATBOT", 0.05),
+    anomalyHardDenialThreshold: envNum("AI_ANOMALY_DENIAL_PUBLIC_MARKETING_CHATBOT", 4),
+  },
   inspection_interpret: {
     budgetSoftUsd: 35,
     budgetHardUsd: 50,
@@ -263,6 +276,37 @@ export function enforceAIOperationalPolicy(input: EnforceInput):
     allowed: true,
     softBudgetWarning: currentBudget >= policy.budgetSoftUsd,
   };
+}
+
+export function registerAIOperationalRequest(input: EnforceInput): void {
+  const now = Date.now();
+  const policy = FEATURE_POLICY[input.feature];
+  const key = scopedKey(input.shopId, input.endpoint);
+  const requests = [...(rateBuckets.get(key) ?? []), now].filter(
+    (ts) => now - ts <= policy.rateLimitWindowMs,
+  );
+  rateBuckets.set(key, requests);
+}
+
+export function registerAIOperationalDenial(input: EnforceInput): void {
+  const now = Date.now();
+  const policy = FEATURE_POLICY[input.feature];
+  const key = scopedKey(input.shopId, input.endpoint);
+  const denials = [...(hardDenialBuckets.get(key) ?? []), now].filter(
+    (ts) => now - ts <= policy.rateLimitWindowMs,
+  );
+  hardDenialBuckets.set(key, denials);
+
+  const requestsInWindow = (rateBuckets.get(key) ?? []).filter(
+    (ts) => now - ts <= policy.rateLimitWindowMs,
+  ).length;
+  if (requestsInWindow >= policy.anomalySpikeThreshold) {
+    emitAlert("request_spike", input, { count: requestsInWindow });
+  }
+
+  if (denials.length >= policy.anomalyHardDenialThreshold) {
+    emitAlert("repeated_denials", input, { denialCount: denials.length });
+  }
 }
 
 export function registerAIUsageEvent(event: UsageEventInput): void {

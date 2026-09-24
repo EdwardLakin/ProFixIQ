@@ -44,6 +44,25 @@ export function getOpenAITextModelRate(model: string | null): TextModelRate | nu
   return OPENAI_TEXT_MODEL_RATES.find((entry) => entry.matches(normalized))?.rate ?? null;
 }
 
+export function estimateMaxOpenAITextCostUsd(input: {
+  model: string | null;
+  maxPromptTokens: number;
+  maxCompletionTokens: number;
+}): number | null {
+  const rate = getOpenAITextModelRate(input.model);
+  if (!rate) return null;
+
+  const promptTokens = Math.max(0, Math.ceil(input.maxPromptTokens));
+  const completionTokens = Math.max(0, Math.ceil(input.maxCompletionTokens));
+
+  return Number(
+    (
+      (promptTokens / 1_000_000) * rate.inputPerMillionUsd +
+      (completionTokens / 1_000_000) * rate.outputPerMillionUsd
+    ).toFixed(8),
+  );
+}
+
 export function estimateOpenAITextCostUsd(
   input: OpenAITextCostInput,
 ): number | null {

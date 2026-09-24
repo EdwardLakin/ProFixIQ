@@ -22,7 +22,8 @@ export type AIFeature =
   | "dtc_suggest"
   | "inspection_interpret"
   | "technician_copilot_text"
-  | "technician_copilot_documentation";
+  | "technician_copilot_documentation"
+  | "public_marketing_chatbot";
 
 const AI_POLICIES: Record<AIFeature, AIPolicy> = {
   work_orders_suggest_lines: {
@@ -112,6 +113,13 @@ const AI_POLICIES: Record<AIFeature, AIPolicy> = {
     timeoutMs: 20000,
     maxTokens: 1000,
     fallbackMode: "graceful_empty",
+  },
+  public_marketing_chatbot: {
+    feature: "public_marketing_chatbot",
+    modelPurpose: "fast",
+    timeoutMs: 15000,
+    maxTokens: 350,
+    fallbackMode: "hard_fail",
   },
 };
 

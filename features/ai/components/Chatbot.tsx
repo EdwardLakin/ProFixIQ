@@ -40,7 +40,6 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
     { role: "system", content: systemPromptFor(variant) },
   ]);
   const [loading, setLoading] = useState(false);
-  const [errorText, setErrorText] = useState<string | null>(null);
 
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -60,7 +59,6 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
   // reset system message when variant changes
   useEffect(() => {
     setMessages([{ role: "system", content: systemPromptFor(variant) }]);
-    setErrorText(null);
     setInput("");
   }, [variant]);
 
@@ -92,7 +90,6 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
     setMessages(updated);
     setInput("");
     setLoading(true);
-    setErrorText(null);
 
     try {
       const res = await fetch("/api/chatbot", {
@@ -119,15 +116,11 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
             ? "TechBot is only available on the public landing page right now."
             : "Sorry, something went wrong while answering. Please try again in a moment.");
 
-        setErrorText(msg);
-
         setMessages([
           ...updated,
           {
             role: "assistant",
-            content:
-              reply ??
-              "Sorry, something went wrong while answering. Please try again in a moment.",
+            content: reply ?? msg,
           },
         ]);
         return;
@@ -135,7 +128,6 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
 
       setMessages([...updated, { role: "assistant", content: reply }]);
     } catch {
-      setErrorText("Connection error. Please try again.");
       setMessages([
         ...updated,
         {
@@ -303,11 +295,6 @@ export default function Chatbot({ variant = "full" }: { variant?: Variant }) {
                 <span className="inline-flex h-2 w-2 animate-pulse rounded-full bg-[color:var(--accent-copper,#f97316)]" />
                 TechBot is thinking…
               </div>
-            )}
-            {errorText && (
-              <p className="mr-auto max-w-[88%] rounded-2xl bg-red-900/40 px-3 py-2 text-[11px] text-red-200">
-                {errorText}
-              </p>
             )}
             <div ref={bottomRef} />
           </div>
