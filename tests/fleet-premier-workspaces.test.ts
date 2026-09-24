@@ -182,8 +182,8 @@ describe("premier fleet workspaces", () => {
     expect(drivers).toContain('fetch("/api/fleet/enrollment"');
     expect(drivers).toContain("Drivers & assignments");
     expect(drivers).not.toContain("Invite driver");
-    expect(drivers).toContain("Shop-issued Fleet access");
-    expect(drivers).toContain("Fleet Settings");
+    expect(drivers).toContain("Fleet invitation");
+    expect(drivers).toContain("FleetMemberInvite");
     expect(drivers).toContain("/assets/new");
 
     expect(reportsPage).toContain("FleetReportsWorkspace");
