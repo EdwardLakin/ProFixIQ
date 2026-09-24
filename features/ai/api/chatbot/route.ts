@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import { enforceAuthRateLimit } from "@/features/auth/server/authRateLimit";
+import { readBoundedJson } from "@/features/shared/lib/server/bounded-json";
 import {
   PRODUCT_PACKAGE_CATALOG,
   PRODUCT_PACKAGE_PRICING,
@@ -40,6 +41,7 @@ const FEATURE = "public_marketing_chatbot" as const;
 const ENDPOINT = "/api/chatbot";
 const MAX_HISTORY_MESSAGES = 12;
 const MAX_MESSAGE_CHARS = 2_000;
+const MAX_REQUEST_BODY_BYTES = 64 * 1024;
 const CLIENT_RATE_LIMIT_MAX = 10;
 const CLIENT_RATE_LIMIT_WINDOW_MS = 5 * 60 * 1000;
 const QUOTA_RPC_TIMEOUT_MS = 2_000;
@@ -286,7 +288,12 @@ export async function POST(req: Request) {
   const startedAt = Date.now();
   const clientKey = publicClientKey(req);
 
-  const localRateLimit = enforceAuthRateLimit(req, FEATURE, "anonymous", {
+  // Pass only the trusted, normalized identity to the shared limiter, without
+  // changing its established behavior for authentication call sites.
+  const rateLimitRequest = new Request(req.url, {
+    headers: { "x-real-ip": requestAddress(req) },
+  });
+  const localRateLimit = enforceAuthRateLimit(rateLimitRequest, FEATURE, "anonymous", {
     max: Math.max(
       1,
       Math.floor(
@@ -305,6 +312,11 @@ export async function POST(req: Request) {
     ),
   });
   if (!localRateLimit.allowed) {
+    registerAIOperationalDenial({
+      feature: FEATURE,
+      endpoint: ENDPOINT,
+      shopId: null,
+    });
     return json(
       {
         error: "TechBot is temporarily rate limited. Please try again shortly.",
@@ -315,13 +327,14 @@ export async function POST(req: Request) {
     );
   }
 
-  let parsed: unknown;
-  try {
-    parsed = await req.json();
-  } catch {
-    return json({ error: "Invalid request body." }, 400);
+  const bounded = await readBoundedJson(req, MAX_REQUEST_BODY_BYTES);
+  if (!bounded.ok) {
+    return bounded.reason === "too_large"
+      ? json({ error: "Request body too large." }, 413)
+      : json({ error: "Invalid request body." }, 400);
   }
 
+  const parsed = bounded.value;
   if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
     return json({ error: "Invalid request body." }, 400);
   }
