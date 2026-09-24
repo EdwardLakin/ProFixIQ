@@ -27,10 +27,10 @@ set local statement_timeout = '5min';
 -- (re)apply from a clean replay of 20260922160000 -> 20260923000000 ->
 -- this file, in order.
 --
--- Clean replay and production both use the established p_shop_id argument
--- name for is_shop_member(uuid). CREATE OR REPLACE FUNCTION cannot rename an
--- existing input parameter, so preserve p_shop_id through this reconciliation.
--- The function body and expiry behavior otherwise remain unchanged.
+-- Clean replay uses the baseline p_shop argument name, while canonical
+-- production uses p_shop_id. CREATE OR REPLACE FUNCTION cannot rename an
+-- existing input parameter. Preserve the installed name on either lineage;
+-- the function body and expiry behavior otherwise remain unchanged.
 
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS demo_access_expires_at timestamptz;
