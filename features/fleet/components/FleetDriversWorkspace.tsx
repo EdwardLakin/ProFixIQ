@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import FleetMemberInvite from "./FleetMemberInvite";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
@@ -72,9 +73,11 @@ function stateLabel(value: string): string {
 export default function FleetDriversWorkspace({
   actorLabel,
   initialFleetId,
+  canInviteDrivers = false,
 }: {
   actorLabel: string;
   initialFleetId?: string | null;
+  canInviteDrivers?: boolean;
 }) {
   const pathname = usePathname() ?? "";
   const internalRoutes = pathname.startsWith("/portal/fleet");
@@ -214,6 +217,7 @@ export default function FleetDriversWorkspace({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
+            {canInviteDrivers && context?.fleets?.length ? <FleetMemberInvite fleets={context.fleets} initialFleetId={selectedFleetId ?? initialFleetId} driverOnly /> : null}
             <Link
               href={assignmentHref}
               className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-sky-300/40 px-3 py-2 text-xs font-semibold text-sky-300"
@@ -303,9 +307,9 @@ export default function FleetDriversWorkspace({
             <UsersRound className="mx-auto h-7 w-7 text-sky-300" />
             <h2 className="mt-3 font-semibold">No drivers match this view</h2>
             <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-              Drivers appear here after their Shop-issued Fleet access is
-              accepted. Manage existing Fleet roles in Fleet Settings, then
-              assign an enrolled asset to activate daily pre-trip tracking.
+              Drivers appear here after accepting their Fleet invitation.
+              Invite a driver above, then assign an enrolled asset to activate
+              daily pre-trip tracking.
             </p>
           </div>
         ) : null}
