@@ -28,6 +28,7 @@ export default function GeotabConnectCard() {
   const [database, setDatabase] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [server, setServer] = useState("");
 
   const loadStatus = useCallback(async () => {
     setLoading(true);
@@ -66,7 +67,12 @@ export default function GeotabConnectCard() {
       const res = await fetch("/api/fleet/trackers/geotab/connect", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ database, username, password }),
+        body: JSON.stringify({
+          database,
+          username,
+          password,
+          server: server.trim() || undefined,
+        }),
       });
 
       const json = (await res.json().catch(() => ({}))) as {
@@ -144,8 +150,9 @@ export default function GeotabConnectCard() {
         <div>
           <h2 className="text-lg font-semibold">Geotab</h2>
           <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-            Connect a MyGeotab database to pull vehicle location, odometer, and fault
-            code data into this shop.
+            Connect a MyGeotab database to pull its vehicles into this shop and match
+            them to existing vehicle records by VIN. Odometer and fault code ingestion
+            are a follow-up, not yet wired in.
           </p>
         </div>
 
@@ -199,6 +206,22 @@ export default function GeotabConnectCard() {
               onChange={(e) => setPassword(e.target.value)}
               className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm"
             />
+          </div>
+          <div>
+            <label className="mb-1 block text-xs text-[color:var(--theme-text-secondary)]">
+              Server (advanced, optional)
+            </label>
+            <input
+              type="text"
+              value={server}
+              onChange={(e) => setServer(e.target.value)}
+              className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2 text-sm"
+              placeholder="my.geotab.com"
+            />
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+              Only needed for a regional or government Geotab deployment. Leave blank
+              for my.geotab.com.
+            </p>
           </div>
           <Button type="submit" disabled={busy || loading}>
             {busy ? "Connecting…" : "Connect Geotab"}

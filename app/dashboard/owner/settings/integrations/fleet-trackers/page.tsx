@@ -9,8 +9,8 @@ export default async function FleetTrackersSettingsPage() {
       <div>
         <h1 className="text-2xl font-semibold">Fleet Trackers</h1>
         <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
-          Connect GPS/telematics providers to pull vehicle location, odometer, and
-          fault code data into this shop.
+          Connect GPS/telematics providers to pull their vehicles into this shop and
+          match them to existing vehicle records by VIN.
         </p>
       </div>
 

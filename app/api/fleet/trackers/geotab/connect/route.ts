@@ -10,6 +10,7 @@ type Body = {
   database?: string;
   username?: string;
   password?: string;
+  server?: string;
 };
 
 export async function POST(req: NextRequest) {
@@ -27,10 +28,11 @@ export async function POST(req: NextRequest) {
 
   const connectResult = await connectGeotab(auth.supabase, {
     shopId: auth.profile.shop_id,
-    actorId: auth.authUserId,
+    actorId: auth.profile.id,
     database: body.database,
     username: body.username,
     password: body.password,
+    server: body.server,
   });
 
   if (!connectResult.ok) {

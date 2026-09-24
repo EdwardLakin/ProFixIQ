@@ -8,6 +8,11 @@ export type GeotabConnectInput = {
   database: string;
   username: string;
   password: string;
+  /**
+   * Optional non-default Geotab authentication host (e.g. a regional or
+   * government deployment). Defaults to my.geotab.com when omitted.
+   */
+  server?: string;
 };
 
 export type GeotabConnectResult =
@@ -27,13 +32,14 @@ export async function connectGeotab(
   const database = params.database.trim();
   const username = params.username.trim();
   const password = params.password;
+  const server = params.server?.trim() || undefined;
 
   if (!database || !username || !password) {
     return { ok: false, error: "Database, username, and password are all required." };
   }
 
   try {
-    await authenticateGeotab({ database, username, password });
+    await authenticateGeotab({ database, username, password, server });
   } catch (error) {
     return {
       ok: false,
@@ -48,7 +54,7 @@ export async function connectGeotab(
         shop_id: params.shopId,
         vendor: "geotab",
         status: "active",
-        credentials: { database, username, password },
+        credentials: { database, username, password, ...(server ? { server } : {}) },
         created_by: params.actorId,
         connected_at: new Date().toISOString(),
         last_error: null,

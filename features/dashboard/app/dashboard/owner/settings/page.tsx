@@ -38,6 +38,7 @@ import {
 import BrandStudioSummaryCard from "@/features/branding/components/BrandStudioSummaryCard";
 import InvoiceDesignSettings from "@/features/dashboard/components/owner-settings/InvoiceDesignSettings";
 import QuickBooksConnectCard from "@/features/integrations/quickbooks/components/QuickBooksConnectCard";
+import GeotabConnectCard from "@/features/integrations/fleetTrackers/geotab/components/GeotabConnectCard";
 import ProfileIdentityCard from "@/features/users/components/ProfileIdentityCard";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import {
@@ -1955,14 +1956,24 @@ export default function OwnerSettingsPage() {
             />
           ) : null}
           {activeSection === "integrations" ? (
-            <OwnerSettingsPanel
-              id="quickbooks-integration"
-              tone="secondary"
-              title="Accounting integration"
-              description="Connect financial workflows without mixing them into daily shop defaults."
-            >
-              <QuickBooksConnectCard />
-            </OwnerSettingsPanel>
+            <>
+              <OwnerSettingsPanel
+                id="quickbooks-integration"
+                tone="secondary"
+                title="Accounting integration"
+                description="Connect financial workflows without mixing them into daily shop defaults."
+              >
+                <QuickBooksConnectCard />
+              </OwnerSettingsPanel>
+              <OwnerSettingsPanel
+                id="fleet-trackers-integration"
+                tone="secondary"
+                title="Fleet trackers"
+                description="Connect GPS/telematics providers and match their vehicles to this shop's vehicle records."
+              >
+                <GeotabConnectCard />
+              </OwnerSettingsPanel>
+            </>
           ) : null}
 
           {activeSection === "communications" ? (
