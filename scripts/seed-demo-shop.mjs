@@ -17,9 +17,9 @@ const DEMO_USERS = [
   ["manager@demo.profixiq.local", "Manager Demo", "manager"],
   ["advisor1@demo.profixiq.local", "Advisor One", "advisor"],
   ["advisor2@demo.profixiq.local", "Advisor Two", "advisor"],
-  ["leadtech@demo.profixiq.local", "Lead Tech", "tech"],
-  ["tech1@demo.profixiq.local", "Tech One", "tech"],
-  ["tech2@demo.profixiq.local", "Tech Two", "tech"],
+  ["leadtech@demo.profixiq.local", "Lead Tech", "mechanic"],
+  ["tech1@demo.profixiq.local", "Tech One", "mechanic"],
+  ["tech2@demo.profixiq.local", "Tech Two", "mechanic"],
   ["parts@demo.profixiq.local", "Parts Coordinator", "parts"],
   ["payroll@demo.profixiq.local", "Payroll Coordinator", "manager"],
 ];
@@ -370,6 +370,12 @@ async function main() {
       skippedPersonas.push({ email, reason: "missing auth-linked profile" });
       profileActions.push("skipped:missing auth-linked profile");
       continue;
+    }
+    if (existingProfile.shop_id !== shopId) {
+      throw new Error(
+        `Refusing to seed persona ${email}: profile ${existingProfile.id} belongs to shop ${existingProfile.shop_id ?? "null"}, not DEMO_SHOP_ID ${shopId}. ` +
+          "Run provision:demo-personas first; seed-demo-shop never transfers reserved personas across shops.",
+      );
     }
 
     const profile = await upsertByNaturalKey({
