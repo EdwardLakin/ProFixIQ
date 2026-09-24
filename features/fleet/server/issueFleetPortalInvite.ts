@@ -158,26 +158,7 @@ export async function issueFleetPortalInvite(input: {
 
   // The database serializes first-time and replacement invitations together.
   // If insertion fails, the prior invitation remains valid.
-  // The function is introduced by this PR's migration; generated Supabase
-  // types are refreshed separately. Keep the new RPC's result locally typed.
-  const atomicRpc = supabaseAdmin as unknown as {
-    rpc(
-      name: "issue_fleet_portal_invitation_atomic",
-      args: {
-        p_shop_id: string;
-        p_fleet_id: string;
-        p_email: string;
-        p_role: FleetInviteRole;
-        p_token_hash: string;
-        p_expires_at: string;
-        p_created_by: string;
-      },
-    ): Promise<{
-      data: Array<{ invite_id: string }> | null;
-      error: { code?: string } | null;
-    }>;
-  };
-  const { data, error } = await atomicRpc.rpc(
+  const { data, error } = await supabaseAdmin.rpc(
     "issue_fleet_portal_invitation_atomic",
     {
       p_shop_id: shopId,
