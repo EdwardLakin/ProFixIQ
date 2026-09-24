@@ -217,7 +217,7 @@ export default function FleetDriversWorkspace({
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
-            {manageableFleetIds.length > 0 && context?.fleets?.length ? <FleetMemberInvite fleets={context.fleets.filter(fleet => manageableFleetIds.includes(fleet.id))} initialFleetId={selectedFleetId ?? initialFleetId} driverOnly /> : null}
+            {manageableFleetIds.length > 0 && context?.fleets?.length ? <FleetMemberInvite key={selectedFleetId ?? "all"} fleets={context.fleets.filter(fleet => manageableFleetIds.includes(fleet.id))} initialFleetId={selectedFleetId} driverOnly /> : null}
             <Link
               href={assignmentHref}
               className="inline-flex min-h-10 items-center gap-2 rounded-xl border border-sky-300/40 px-3 py-2 text-xs font-semibold text-sky-300"
