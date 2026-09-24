@@ -290,6 +290,16 @@ Green CI is necessary but not sufficient. Before recommending merge, confirm
 the final diff, final head, unresolved findings, migration state, and deployment
 ordering. Never merge or enable auto-merge without explicit approval.
 
+A PR whose migration has already been applied to production is a special
+case: it is never left as an ordinary open draft. The moment the apply
+succeeds, mark the PR Ready (this is exactly the "agreed release step" the
+Draft/Ready rule above allows) and explicitly ask the user to merge it, in
+the same response that reports the apply. Production is now ahead of `main`,
+and the release-health dashboard's migration-parity gate blocks on that gap
+until the merge lands — so this is not a normal "waiting on review" state to
+report quietly; say plainly that production and `main` are out of parity and
+name the exact PR that closes it.
+
 ## Database and Migration Delivery
 
 `supabase/migrations/` is the only ordered deployable schema history. `db/sql/`
@@ -311,8 +321,19 @@ contains reference material, snapshots, or audits.
 
 For an implementation task that adds a new task-owned forward migration, normal
 completion includes applying that exact migration directly to canonical
-ProFixIQ production after the gates below pass. Do not leave it silently pending
-or hand the user a CLI command.
+ProFixIQ production after the gates below pass, **and** getting that same
+migration file merged into `main` without material delay. Do not leave either
+half done, and do not leave it silently pending or hand the user a CLI
+command.
+
+Applying to production while the PR sits open leaves `main` and production's
+migration ledger out of parity — the Deployments/release-health dashboard
+treats that gap as a blocking release gate ("Migration parity failed") the
+moment it exists, not eventually. That gap is created by the apply step
+itself, so closing it is part of the same task, not a follow-up: the instant
+a migration is applied, mark the PR Ready and ask the user to merge it in
+that same turn (see PR Safety and Notification Control). Never treat
+"production has it, the PR is still open" as a finished state.
 
 This authorizes only the reviewed migration(s) created for the current task. It
 does not authorize destructive/ambiguous data cleanup, reset/restore/pause/
@@ -326,7 +347,7 @@ explicit action-specific approval. Read-only requests never authorize writes.
 2. Compare repository and remote history. Stop on gaps, collisions, modified
    historical files, or unrelated pending migrations.
 3. Pass schema check, required runtime tests, generated-type checks, and final
-   clean-replay CI.
+   clean-replay CI on the PR's current head.
 4. Publish final SQL in the draft PR before applying it.
 5. Verify the canonical production project readiness gate; do not trust a
    display name alone.
@@ -336,11 +357,18 @@ explicit action-specific approval. Read-only requests never authorize writes.
 8. Verify remote version/name and expected schema, RLS/grants, triggers,
    functions, constraints, and backfill counts.
 9. Run security/performance advisors and fix task-created findings.
-10. Record exact applied migrations and evidence in the PR body/final response.
+10. Immediately after the apply is verified, mark the PR Ready and explicitly
+    ask the user to merge it — state that production now leads `main` and
+    name the exact PR that closes the gap. Do not wait for a later turn or a
+    separate prompt to raise this.
+11. Record exact applied migrations, the PR's Ready/merge state, and evidence
+    in the PR body/final response.
 
-Application is incomplete until repository history, remote history, and schema
-agree. If the connector cannot preserve that agreement, stop before drift and
-report the exact blocker.
+Application is incomplete until `main` (not just the PR branch), remote
+production history, and schema all agree. An applied migration whose PR is
+still open is drift, in progress, not a stopping point — report it as an open
+item needing the user's merge, never as done. If the connector cannot
+preserve that agreement, stop before drift and report the exact blocker.
 
 ## Core Product Invariants
 
@@ -397,14 +425,19 @@ A task is done only when the root cause/capability is understood, relevant
 consumers were inspected, canonical implementation and focused regressions are
 complete, risk-appropriate validation passed on the final diff, only task-owned
 files are present, one draft PR contains the work, and task-owned migrations
-were applied/verified or an exact safety blocker is reported.
+were applied/verified or an exact safety blocker is reported. If a migration
+was applied to production, the task is not done while its PR is still
+unmerged — that is an open item ("waiting on your merge to close a
+main/production parity gap"), not a caveat to mention in passing.
 
 Final response:
 
 - **Result:** outcome and material behavior change.
 - **Validation:** only checks actually run and their result.
 - **Database/deployment:** exact migration status, environment changes, and
-  manual actions; say `none` when none.
+  manual actions; say `none` when none. If a migration was applied to
+  production, state its merge state explicitly (merged / awaiting your merge)
+  rather than folding it into "PR" below.
 - **PR:** branch, commit, draft PR link, check state, and review/merge readiness.
 - **Remaining:** only real blockers, risks, or unverified device/production
   behavior.
