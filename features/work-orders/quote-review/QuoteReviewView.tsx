@@ -380,7 +380,7 @@ function workflowDisplay(line: EditableQuoteLine): {
     return { label: "Converted / punchable", detail: "Approved quote line is linked to active work.", tone: "ok" };
   }
   if (status === "approved" || line.approved_at) {
-    return { label: "Approved", detail: "Customer approval is recorded; materialization is Phase 5C.", tone: "ok" };
+    return { label: "Approved", detail: "Customer approval is recorded; the work order line has not been linked yet.", tone: "ok" };
   }
   if (status === "declined" || line.declined_at) {
     return { label: "Declined", detail: "Customer/advisor declined this quote line.", tone: "bad" };
