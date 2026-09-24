@@ -1,6 +1,5 @@
-import { geotabCall } from "./client";
+import { geotabCall, type GeotabSession } from "./client";
 import type {
-  TrackerAdapter,
   TrackerFaultCode,
   TrackerOdometerReading,
   TrackerVehicleSnapshot,
@@ -33,8 +32,10 @@ type GeotabStatusData = {
 
 const ODOMETER_DIAGNOSTIC_ID = "DiagnosticOdometerId";
 
-async function fetchVehicles(): Promise<TrackerVehicleSnapshot[]> {
-  const devices = await geotabCall<GeotabDevice[]>("Get", {
+export async function fetchGeotabVehicles(
+  session: GeotabSession,
+): Promise<TrackerVehicleSnapshot[]> {
+  const devices = await geotabCall<GeotabDevice[]>(session, "Get", {
     typeName: "Device",
   });
 
@@ -46,8 +47,11 @@ async function fetchVehicles(): Promise<TrackerVehicleSnapshot[]> {
   }));
 }
 
-async function fetchFaultCodes(sinceIso: string): Promise<TrackerFaultCode[]> {
-  const faults = await geotabCall<GeotabFaultData[]>("Get", {
+export async function fetchGeotabFaultCodes(
+  session: GeotabSession,
+  sinceIso: string,
+): Promise<TrackerFaultCode[]> {
+  const faults = await geotabCall<GeotabFaultData[]>(session, "Get", {
     typeName: "FaultData",
     search: { fromDate: sinceIso },
   });
@@ -63,10 +67,11 @@ async function fetchFaultCodes(sinceIso: string): Promise<TrackerFaultCode[]> {
     }));
 }
 
-async function fetchOdometerReadings(
+export async function fetchGeotabOdometerReadings(
+  session: GeotabSession,
   sinceIso: string,
 ): Promise<TrackerOdometerReading[]> {
-  const readings = await geotabCall<GeotabStatusData[]>("Get", {
+  const readings = await geotabCall<GeotabStatusData[]>(session, "Get", {
     typeName: "StatusData",
     search: {
       fromDate: sinceIso,
@@ -87,10 +92,3 @@ async function fetchOdometerReadings(
       recordedAt: reading.dateTime!,
     }));
 }
-
-export const geotabAdapter: TrackerAdapter = {
-  vendor: "geotab",
-  fetchVehicles,
-  fetchFaultCodes,
-  fetchOdometerReadings,
-};
