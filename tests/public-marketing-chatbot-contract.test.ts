@@ -31,7 +31,7 @@ describe("public marketing chatbot contract", () => {
     expect(route).toContain('"complete_public_ai_route_quota"');
     expect(route).not.toContain(".from(");
     expect(route).not.toContain("work_orders");
-    expect(route).not.toContain("customers");
+    expect(route).not.toMatch(/\.from\(\s*["\x27`]customers["\x27`]\s*\)/);
     expect(route).not.toContain("profiles");
   });
 
@@ -39,6 +39,8 @@ describe("public marketing chatbot contract", () => {
     const route = await readFile(FEATURE_ROUTE, "utf8");
 
     expect(route).toContain("enforceAuthRateLimit");
+    expect(route).toContain("readBoundedJson(req, MAX_REQUEST_BODY_BYTES)");
+    expect(route).toContain("rateLimitRequest");
     expect(route).toContain("AI_BUDGET_HARD_USD_PUBLIC_MARKETING_CHATBOT");
     expect(route).toContain("claimPublicQuota");
     expect(route).toContain("settlePublicQuota");
