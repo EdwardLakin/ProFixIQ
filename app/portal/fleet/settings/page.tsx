@@ -329,6 +329,7 @@ export default async function FleetSettingsPage({ searchParams }: PageProps) {
                   Fleet permissions only — never Shop staff permissions
                 </p>
               </div>
+              </div>
               <FleetMemberInvite fleets={fleets.map(item => ({ id: item.id, name: item.name }))} initialFleetId={selectedFleetId} />
             </div>
           </div>
