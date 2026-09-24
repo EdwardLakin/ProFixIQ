@@ -15661,6 +15661,18 @@ export type Database = {
         Args: { issued_at: string; s: string }
         Returns: boolean
       }
+      issue_fleet_portal_invitation_atomic: {
+        Args: {
+          p_shop_id: string
+          p_fleet_id: string
+          p_email: string
+          p_role: string
+          p_token_hash: string
+          p_expires_at: string
+          p_created_by: string
+        }
+        Returns: { invite_id: string }[]
+      }
       is_admin: { Args: never; Returns: boolean }
       is_agent_developer: { Args: never; Returns: boolean }
       is_customer: { Args: { _customer: string }; Returns: boolean }
