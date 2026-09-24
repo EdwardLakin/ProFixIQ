@@ -26,7 +26,7 @@ begin
      ) then
     raise exception using errcode = 'P0002', message = 'Fleet not found';
   end if;
-  if length(v_email) > 254 or v_email !~ '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+
+  if length(v_email) > 254 or v_email !~ '^[^[:space:]@]+@[^[:space:]@]+[.][^[:space:]@]+$'
      or p_role not in ('manager', 'approver', 'viewer')
      or p_token_hash !~ '^[0-9a-f]{64}$'
      or p_expires_at <= now() then
@@ -80,8 +80,7 @@ begin
 end;
 $$;
 
--- Use the same Fleet/email lock for existing resend and first-time issuance.
--- This preserves the existing RPC signature and role-preserving resend logic.
+-- Coordinate the existing resend RPC with first-time issuance.
 create or replace function public.replace_fleet_portal_invitation_atomic(
   p_shop_id uuid,
   p_invite_id uuid,
@@ -99,7 +98,7 @@ returns table (
 language plpgsql
 security definer
 set search_path = ''
-as $
+as $$
 declare
   v_existing public.fleet_portal_invites%rowtype;
   v_target_fleet_id uuid;
@@ -107,14 +106,11 @@ declare
   v_fleet_name text;
   v_invite_id uuid;
 begin
-  -- Discover the lock key without holding a row lock. Issuance takes this
-  -- same advisory lock first, preventing lock-order inversion and duplicate
-  -- active replacement tokens across both entry points.
+  -- Discover the advisory lock key without taking a row lock first.
   select i.fleet_id, lower(trim(i.email))
   into v_target_fleet_id, v_target_email
   from public.fleet_portal_invites i
   where i.id = p_invite_id and i.shop_id = p_shop_id;
-
   if not found then
     raise exception using errcode = 'P0002', message = 'Invitation not found';
   end if;
@@ -124,8 +120,7 @@ begin
     pg_catalog.hashtext(v_target_email)
   );
 
-  -- Re-read after acquiring the lock: issuance may have replaced this row
-  -- while we waited. PostgreSQL takes a fresh READ COMMITTED snapshot.
+  -- Re-read after the shared lock to observe any concurrent issuance.
   select i.*
   into v_existing
   from public.fleet_portal_invites i
@@ -197,69 +192,8 @@ begin
   invite_role := v_existing.role;
   return next;
 end;
-$;
-
-
-revoke all on function public.issue_fleet_portal_invitation_atomic(
-  uuid, uuid, text, text, text, timestamptz, uuid
-) from public, anon, authenticated;
-
-grant execute on function public.issue_fleet_portal_invitation_atomic(
-  uuid, uuid, text, text, text, timestamptz, uuid
-) to service_role;
-
-     or p_role not in ('manager', 'approver', 'viewer')
-     or p_token_hash !~ '^[0-9a-f]{64}$'
-     or p_expires_at <= now() then
-    raise exception using errcode = '22023', message = 'Invalid Fleet invitation';
-  end if;
-
-  -- One lock per Fleet/normalized email. Unlike row locking, this also works
-  -- for the first invitation (when there is no existing row to lock).
-  perform pg_catalog.pg_advisory_xact_lock(
-    pg_catalog.hashtext(p_fleet_id::text), pg_catalog.hashtext(v_email)
-  );
-
-  if exists (
-    select 1 from public.fleet_members m
-    join public.profiles p on p.id = m.user_id
-    where m.fleet_id = p_fleet_id
-      and m.shop_id = p_shop_id
-      and lower(p.email) = v_email
-  ) then
-    raise exception using errcode = '23505', message = 'Fleet member already exists';
-  end if;
-
-  -- Never invalidate a token while its provider acceptance is still pending.
-  if exists (
-    select 1 from public.fleet_portal_invites i
-    where i.fleet_id = p_fleet_id and i.shop_id = p_shop_id
-      and lower(i.email) = v_email
-      and i.accepted_at is null and i.revoked_at is null
-      and i.delivery_status in ('sending', 'accepted')
-      and i.delivery_reserved_until > now()
-  ) then
-    raise exception using errcode = '55P03', message = 'Invitation delivery is still in progress';
-  end if;
-
-  update public.fleet_portal_invites i
-  set revoked_at = now()
-  where i.fleet_id = p_fleet_id and i.shop_id = p_shop_id
-    and lower(i.email) = v_email
-    and i.accepted_at is null and i.revoked_at is null;
-
-  insert into public.fleet_portal_invites (
-    shop_id, fleet_id, email, role, token_hash, expires_at, created_by,
-    delivery_status, delivery_reserved_until
-  ) values (
-    p_shop_id, p_fleet_id, v_email, p_role, p_token_hash, p_expires_at,
-    p_created_by, 'sending', now() + interval '15 minutes'
-  ) returning id into v_invite_id;
-
-  invite_id := v_invite_id;
-  return next;
-end;
 $$;
+
 
 revoke all on function public.issue_fleet_portal_invitation_atomic(
   uuid, uuid, text, text, text, timestamptz, uuid
