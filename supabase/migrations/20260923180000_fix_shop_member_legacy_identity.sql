@@ -36,7 +36,7 @@
 -- search_path, the demo_access_expires_at condition PR 1 (#1720) and its
 -- follow-up (#1723) added -- is unchanged.
 
-CREATE OR REPLACE FUNCTION public.is_shop_member(p_shop uuid)
+CREATE OR REPLACE FUNCTION public.is_shop_member(p_shop_id uuid)
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -48,7 +48,7 @@ AS $function$
     join public.profiles pr
       on pr.id = sm.user_id
      and pr.shop_id = sm.shop_id
-    where sm.shop_id = p_shop
+    where sm.shop_id = p_shop_id
       and (pr.id = auth.uid() or pr.user_id = auth.uid())
       and (pr.demo_access_expires_at is null or pr.demo_access_expires_at > now())
   );
