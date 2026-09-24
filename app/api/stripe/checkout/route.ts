@@ -21,6 +21,7 @@ import {
 } from "@/features/stripe/lib/stripe/product-packages";
 import { resolveProductPackagePriceId } from "@/features/stripe/lib/server/product-package-price-contract";
 import { resolveStripePlanPriceId } from "@/features/stripe/lib/server/stripe-price-contract";
+import { configuredTrialDays } from "@/features/stripe/lib/server/trial-config";
 import {
   attachStripeAcquisitionCheckout,
   beginStripeAcquisitionIntent,
@@ -125,11 +126,6 @@ function getBaseUrl(): string {
 
 function getShopDisplayName(shop: ShopScope): string {
   return String(shop.shop_name ?? shop.name ?? "").trim() || "ProFixIQ Shop";
-}
-
-function configuredTrialDays(): number {
-  const parsed = Math.trunc(Number(process.env.STRIPE_TRIAL_DAYS ?? "7"));
-  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 60 ? parsed : 7;
 }
 
 function automaticTaxEnabled(): boolean {
