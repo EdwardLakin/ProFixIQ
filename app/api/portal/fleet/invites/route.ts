@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { issueFleetPortalInvite, deliverFleetPortalInvite, recordInviteDelivery, type FleetInviteRole } from "@/features/fleet/server/issueFleetPortalInvite";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
