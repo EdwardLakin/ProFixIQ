@@ -6,9 +6,14 @@ import {
   PRODUCT_PACKAGE_CATALOG,
   PRODUCT_PACKAGE_PRICING,
 } from "@/features/stripe/lib/stripe/product-packages";
+import { configuredTrialDays } from "@/features/stripe/lib/server/trial-config";
 import { estimateMaxOpenAITextCostUsd } from "@/features/shared/lib/server/ai-cost";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
-import { registerAIUsageEvent } from "@/features/shared/lib/server/ai-ops-guard";
+import {
+  registerAIOperationalDenial,
+  registerAIOperationalRequest,
+  registerAIUsageEvent,
+} from "@/features/shared/lib/server/ai-ops-guard";
 import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import {
   getOpenAIClient,
@@ -50,9 +55,8 @@ function envNum(name: string, fallback: number): number {
 
 function requestAddress(req: Request): string {
   return (
-    req.headers.get("cf-connecting-ip") ||
-    req.headers.get("x-real-ip") ||
-    req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-vercel-forwarded-for")?.split(",")[0]?.trim() ||
+    req.headers.get("x-real-ip")?.trim() ||
     "unknown"
   );
 }
@@ -72,9 +76,12 @@ function marketingCatalogContext(): string {
     `Field Service — ${usd(PRODUCT_PACKAGE_PRICING.field_service.monthlyCents)} per month; ${PRODUCT_PACKAGE_PRICING.field_service.includedServiceTrucks} active service truck included; additional active service trucks are ${usd(PRODUCT_PACKAGE_PRICING.additionalServiceTruckCents)} per month each. ${PRODUCT_PACKAGE_CATALOG.field_service.description}`,
     `Fleet Maintenance — ${usd(PRODUCT_PACKAGE_PRICING.fleet_maintenance.monthlyCents)} per month; ${PRODUCT_PACKAGE_PRICING.fleet_maintenance.includedFleetAssets} fleet-owned assets included; additional fleet assets are ${usd(PRODUCT_PACKAGE_PRICING.additionalFleetAssetCents)} per month each. ${PRODUCT_PACKAGE_CATALOG.fleet_maintenance.description}`,
     `Complete Operations — ${usd(PRODUCT_PACKAGE_PRICING.complete_operations.monthlyCents)} per month per location; ${PRODUCT_PACKAGE_PRICING.complete_operations.includedUsers} active staff users, ${PRODUCT_PACKAGE_PRICING.complete_operations.includedServiceTrucks} service trucks, and ${PRODUCT_PACKAGE_PRICING.complete_operations.includedFleetAssets} fleet assets included. Additional active staff users are ${usd(PRODUCT_PACKAGE_PRICING.additionalUserCents)} per month each. ${PRODUCT_PACKAGE_CATALOG.complete_operations.description}`,
-    "The public pricing page offers a 7-day free trial and a direct paid subscription option.",
+    configuredTrialDays() > 0
+      ? `The public pricing page offers a ${configuredTrialDays()}-day free trial and a direct paid subscription option.`
+      : "The public pricing page offers a direct paid subscription option; no free-trial duration is currently configured.",
+    "Shop Boost / Instant Shop Analysis is a public onboarding flow for bringing an existing shop into ProFixIQ: profile how bays, people, and workflow operate; import customers, vehicles, history, parts, and services; preview what ProFixIQ understands; and review the shop blueprint before anything is activated.",
     "Customer, driver, and fleet portal identities are not counted as paid staff seats.",
-    "If a requested commercial detail is not stated above, say that it should be confirmed with ProFixIQ rather than guessing.",
+    "Only make public feature, setup, workflow, pricing, and commercial claims that are explicitly stated in this approved context. If a requested detail is not stated here, say it should be confirmed with ProFixIQ rather than guessing.",
   ].join("\n");
 }
 
@@ -327,6 +334,12 @@ export async function POST(req: Request) {
     );
   }
 
+  registerAIOperationalRequest({
+    feature: FEATURE,
+    endpoint: ENDPOINT,
+    shopId: null,
+  });
+
   const incoming = asSafeMessages(body.messages);
   const safeMessages: ChatMessage[] = [
     { role: "system", content: guardrailSystem() },
@@ -367,6 +380,12 @@ export async function POST(req: Request) {
   }
 
   if (!claim.allowed) {
+    registerAIOperationalDenial({
+      feature: FEATURE,
+      endpoint: ENDPOINT,
+      shopId: null,
+    });
+
     return json(
       {
         error: "TechBot is temporarily unavailable. Please try again later.",
