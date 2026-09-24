@@ -29633,6 +29633,18 @@ export type Database = {
         Args: { p_metadata: Json }
         Returns: boolean
       }
+      issue_fleet_portal_invitation_atomic: {
+        Args: {
+          p_shop_id: string
+          p_fleet_id: string
+          p_email: string
+          p_role: string
+          p_token_hash: string
+          p_expires_at: string
+          p_created_by: string
+        }
+        Returns: { invite_id: string }[]
+      }
       is_agent_developer: { Args: never; Returns: boolean }
       is_customer: { Args: { _customer: string }; Returns: boolean }
       is_shop_member: { Args: { p_shop: string }; Returns: boolean }
