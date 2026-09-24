@@ -28607,16 +28607,6 @@ export type Database = {
         }
         Returns: boolean
       }
-      complete_public_ai_route_quota: {
-        Args: {
-          p_actual_cost_usd: number
-          p_client_key: string
-          p_feature: string
-          p_receipt_id: string
-          p_succeeded: boolean
-        }
-        Returns: boolean
-      }
       complete_canonical_shift: {
         Args: {
           p_profile_id: string
@@ -28646,6 +28636,16 @@ export type Database = {
       }
       complete_financial_outbox_claim: {
         Args: { p_outbox_id: string; p_worker_id: string }
+        Returns: boolean
+      }
+      complete_public_ai_route_quota: {
+        Args: {
+          p_actual_cost_usd: number
+          p_client_key: string
+          p_feature: string
+          p_receipt_id: string
+          p_succeeded: boolean
+        }
         Returns: boolean
       }
       complete_scheduled_shift_end_atomic: {
