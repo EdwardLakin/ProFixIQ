@@ -27,26 +27,15 @@ set local statement_timeout = '5min';
 -- (re)apply from a clean replay of 20260922160000 -> 20260923000000 ->
 -- this file, in order.
 --
--- One deliberate deviation from the literal production SQL: production's
--- current is_shop_member() names its argument p_shop_id, while this
--- repository's chain (unbroken since 20260705000000_public_schema_baseline.sql,
--- through 20260922160000) has always named it p_shop. That naming
--- divergence predates and is unrelated to the Demo Shop work -- it is a
--- separate, already-existing repo/production drift, out of scope here.
--- Postgres cannot CREATE OR REPLACE a function to rename a parameter
--- (it errors: "cannot change name of input parameter"), and dropping
--- is_shop_member to rename it would require CASCADE, destroying the RLS
--- policies that depend on it. So this migration keeps the repository's
--- own p_shop name rather than forcing that unrelated rename through
--- here. Nothing calls this function with named-argument syntax anywhere
--- in this codebase, so the parameter name has no observable effect on
--- any caller -- the resulting function is behaviorally identical either
--- way.
+-- Clean replay and production both use the established p_shop_id argument
+-- name for is_shop_member(uuid). CREATE OR REPLACE FUNCTION cannot rename an
+-- existing input parameter, so preserve p_shop_id through this reconciliation.
+-- The function body and expiry behavior otherwise remain unchanged.
 
 ALTER TABLE public.profiles
   ADD COLUMN IF NOT EXISTS demo_access_expires_at timestamptz;
 
-CREATE OR REPLACE FUNCTION public.is_shop_member(p_shop uuid)
+CREATE OR REPLACE FUNCTION public.is_shop_member(p_shop_id uuid)
 RETURNS boolean
 LANGUAGE sql
 STABLE
@@ -58,7 +47,7 @@ AS $function$
     join public.profiles pr
       on pr.user_id = sm.user_id
      and pr.shop_id = sm.shop_id
-    where sm.shop_id = p_shop
+    where sm.shop_id = p_shop_id
       and sm.user_id = auth.uid()
       and (pr.demo_access_expires_at is null or pr.demo_access_expires_at > now())
   );
