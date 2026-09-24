@@ -11,6 +11,7 @@ import {
   resolveFleetActorContext,
 } from "@/features/fleet/lib/resolveFleetActorContext";
 import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
+import { verifyFleetShopPair } from "@/features/fleet/lib/verifyFleetShopPair";
 
 type Body = { fleetId?: unknown };
 
@@ -48,6 +49,10 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = createAdminSupabase();
+  if (!(await verifyFleetShopPair(admin, scope.fleetId, scope.shopId))) {
+    return NextResponse.json({ ok: false, error: "Fleet not found" }, { status: 404 });
+  }
+
   const { data: connection, error } = await admin
     .from("fleet_portal_tracker_connections")
     .select("id, status, connected_at, last_sync_at, last_error")
@@ -63,11 +68,15 @@ export async function POST(request: NextRequest) {
   let vehicles: { name: string | null; vin: string | null; matched: boolean }[] = [];
 
   if (connection) {
-    const { data: links } = await admin
+    const { data: links, error: linksError } = await admin
       .from("fleet_portal_tracker_vehicle_links")
       .select("vendor_name, vendor_vin, vehicle_id")
       .eq("connection_id", connection.id)
       .order("vendor_name", { ascending: true });
+
+    if (linksError) {
+      return NextResponse.json({ ok: false, error: linksError.message }, { status: 500 });
+    }
 
     vehicles = (links ?? []).map((link) => ({
       name: link.vendor_name,

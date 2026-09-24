@@ -11,6 +11,7 @@ import {
   resolveFleetActorContext,
 } from "@/features/fleet/lib/resolveFleetActorContext";
 import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
+import { verifyFleetShopPair } from "@/features/fleet/lib/verifyFleetShopPair";
 import { connectFleetPortalGeotab } from "@/features/integrations/fleetTrackers/geotab/connectFleetPortal";
 import { syncFleetPortalGeotabConnection } from "@/features/integrations/fleetTrackers/geotab/syncFleetPortal";
 
@@ -55,6 +56,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const admin = createAdminSupabase();
+  if (!(await verifyFleetShopPair(admin, scope.fleetId, scope.shopId))) {
+    return NextResponse.json({ ok: false, error: "Fleet not found" }, { status: 404 });
+  }
+
   const database = clean(body.database);
   const username = clean(body.username);
   const password = typeof body.password === "string" ? body.password : "";
@@ -67,7 +73,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const admin = createAdminSupabase();
   const connectResult = await connectFleetPortalGeotab(admin, {
     fleetId: scope.fleetId,
     shopId: scope.shopId,

@@ -17,6 +17,27 @@ export type GeotabFleetSyncResult =
     }
   | { ok: false; error: string };
 
+// Supabase's PostgREST layer caps a single response at max_rows (1000 by
+// default here; see supabase/config.toml). A fleet with more enrolled units
+// or synced links than that would silently see only the first page unless
+// every unbounded query here is paged through explicitly.
+const PAGE_SIZE = 1000;
+
+async function fetchAllRows<T>(
+  page: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<{ data: T[]; error: { message: string } | null }> {
+  const rows: T[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await page(from, from + PAGE_SIZE - 1);
+    if (error) return { data: rows, error };
+    const batch = data ?? [];
+    rows.push(...batch);
+    if (batch.length < PAGE_SIZE) return { data: rows, error: null };
+    from += PAGE_SIZE;
+  }
+}
+
 function readCredentials(
   credentials: Json,
 ): { database: string; username: string; password: string; server?: string } | null {
@@ -62,6 +83,11 @@ export async function syncFleetPortalGeotabConnection(
   supabase: SupabaseClient<DB>,
   connection: Pick<ConnectionRow, "id" | "fleet_id" | "shop_id" | "credentials">,
 ): Promise<GeotabFleetSyncResult> {
+  // Captured before any Geotab call or write. Used below to make sure an
+  // older, still-running sync can never delete a link a newer, overlapping
+  // sync just wrote (see the stale-link reconciliation guard further down).
+  const runStartedAt = new Date().toISOString();
+
   const credentials = readCredentials(connection.credentials);
   if (!credentials) {
     const error = "Stored Geotab credentials are malformed.";
@@ -81,12 +107,18 @@ export async function syncFleetPortalGeotabConnection(
 
   // Match only against vehicles enrolled in this Fleet workspace, not every
   // vehicle in the shop -- a shop can service multiple, unrelated fleets.
-  const { data: enrollments, error: enrollmentError } = await supabase
-    .from("fleet_vehicles")
-    .select("vehicle_id")
-    .eq("fleet_id", connection.fleet_id)
-    .eq("shop_id", connection.shop_id)
-    .eq("active", true);
+  // Paged: a fleet can have more enrolled units than a single page holds.
+  const { data: enrollments, error: enrollmentError } = await fetchAllRows<{
+    vehicle_id: string;
+  }>((from, to) =>
+    supabase
+      .from("fleet_vehicles")
+      .select("vehicle_id")
+      .eq("fleet_id", connection.fleet_id)
+      .eq("shop_id", connection.shop_id)
+      .eq("active", true)
+      .range(from, to),
+  );
 
   if (enrollmentError) {
     const message = `Sync connected but looking up enrolled vehicles failed: ${enrollmentError.message}`;
@@ -94,22 +126,28 @@ export async function syncFleetPortalGeotabConnection(
     return { ok: false, error: message };
   }
 
-  const enrolledVehicleIds = (enrollments ?? []).map((row) => row.vehicle_id);
+  const enrolledVehicleIds = enrollments.map((row) => row.vehicle_id);
   let shopVehicles: { id: string; vin: string | null }[] = [];
   if (enrolledVehicleIds.length) {
-    const { data: vehicleRows, error: vehiclesError } = await supabase
-      .from("vehicles")
-      .select("id, vin")
-      .eq("shop_id", connection.shop_id)
-      .in("id", enrolledVehicleIds)
-      .not("vin", "is", null);
+    const { data: vehicleRows, error: vehiclesError } = await fetchAllRows<{
+      id: string;
+      vin: string | null;
+    }>((from, to) =>
+      supabase
+        .from("vehicles")
+        .select("id, vin")
+        .eq("shop_id", connection.shop_id)
+        .in("id", enrolledVehicleIds)
+        .not("vin", "is", null)
+        .range(from, to),
+    );
 
     if (vehiclesError) {
       const message = `Sync connected but looking up vehicles to match failed: ${vehiclesError.message}`;
       await markConnectionError(supabase, connection.id, message);
       return { ok: false, error: message };
     }
-    shopVehicles = vehicleRows ?? [];
+    shopVehicles = vehicleRows;
   }
 
   const idsByNormalizedVin = new Map<string, string[]>();
@@ -158,12 +196,17 @@ export async function syncFleetPortalGeotabConnection(
   }
 
   // Devices Geotab no longer returns (deleted, transferred, deactivated)
-  // should stop appearing as synced.
+  // should stop appearing as synced. Only consider links last touched
+  // strictly before this run started: if an overlapping, newer sync already
+  // wrote a link (its own upsert always advances last_synced_at to that
+  // run's own "now"), this older run must not treat it as stale and delete
+  // it out from under the newer run.
   const currentVendorVehicleIds = new Set(vehicles.map((v) => v.vendorVehicleId));
   const { data: existingLinks, error: existingLinksError } = await supabase
     .from("fleet_portal_tracker_vehicle_links")
     .select("id, vendor_vehicle_id")
-    .eq("connection_id", connection.id);
+    .eq("connection_id", connection.id)
+    .lt("last_synced_at", runStartedAt);
 
   if (existingLinksError) {
     const message = `Sync connected but reconciling stale vehicles failed: ${existingLinksError.message}`;

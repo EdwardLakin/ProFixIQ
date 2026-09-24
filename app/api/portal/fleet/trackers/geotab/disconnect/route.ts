@@ -11,6 +11,7 @@ import {
   resolveFleetActorContext,
 } from "@/features/fleet/lib/resolveFleetActorContext";
 import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
+import { verifyFleetShopPair } from "@/features/fleet/lib/verifyFleetShopPair";
 
 type Body = { fleetId?: unknown };
 
@@ -48,12 +49,41 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = createAdminSupabase();
+  if (!(await verifyFleetShopPair(admin, scope.fleetId, scope.shopId))) {
+    return NextResponse.json({ ok: false, error: "Fleet not found" }, { status: 404 });
+  }
+
+  const { data: connection, error: fetchError } = await admin
+    .from("fleet_portal_tracker_connections")
+    .select("id")
+    .eq("fleet_id", scope.fleetId)
+    .eq("shop_id", scope.shopId)
+    .eq("vendor", "geotab")
+    .maybeSingle();
+
+  if (fetchError) {
+    return NextResponse.json({ ok: false, error: fetchError.message }, { status: 500 });
+  }
+  if (!connection) {
+    return NextResponse.json({ ok: true });
+  }
+
+  // Record who disconnected it and when before the row (and its created_by)
+  // is gone -- the delete below carries no other durable trace of this.
+  const { error: auditError } = await admin.from("audit_logs").insert({
+    actor_id: actor.userId,
+    action: "fleet_portal_tracker_disconnect",
+    target: connection.id,
+    metadata: { fleetId: scope.fleetId, shopId: scope.shopId, vendor: "geotab" },
+  });
+  if (auditError) {
+    return NextResponse.json({ ok: false, error: auditError.message }, { status: 500 });
+  }
+
   const { error } = await admin
     .from("fleet_portal_tracker_connections")
     .delete()
-    .eq("fleet_id", scope.fleetId)
-    .eq("shop_id", scope.shopId)
-    .eq("vendor", "geotab");
+    .eq("id", connection.id);
 
   if (error) {
     return NextResponse.json({ ok: false, error: error.message }, { status: 500 });

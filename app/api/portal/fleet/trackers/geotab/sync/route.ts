@@ -11,6 +11,7 @@ import {
   resolveFleetActorContext,
 } from "@/features/fleet/lib/resolveFleetActorContext";
 import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
+import { verifyFleetShopPair } from "@/features/fleet/lib/verifyFleetShopPair";
 import { syncFleetPortalGeotabConnection } from "@/features/integrations/fleetTrackers/geotab/syncFleetPortal";
 
 type Body = { fleetId?: unknown };
@@ -49,6 +50,10 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = createAdminSupabase();
+  if (!(await verifyFleetShopPair(admin, scope.fleetId, scope.shopId))) {
+    return NextResponse.json({ ok: false, error: "Fleet not found" }, { status: 404 });
+  }
+
   const { data: connection, error } = await admin
     .from("fleet_portal_tracker_connections")
     .select("id, fleet_id, shop_id, credentials")

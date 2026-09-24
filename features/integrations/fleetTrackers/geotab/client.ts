@@ -38,8 +38,26 @@ export class GeotabApiError extends Error {
 
 const DEFAULT_SERVER = "my.geotab.com";
 
+// Every Geotab authentication/API host is a subdomain of geotab.com (regional
+// and government deployments included). Reject anything else -- including a
+// port, path, or embedded credentials -- before it reaches fetch(), or a
+// caller-supplied (or Geotab-response-supplied) host could make this server
+// probe or call arbitrary internal/external hosts (SSRF).
+const GEOTAB_HOST_PATTERN =
+  /^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*\.geotab\.com$/i;
+
 function normalizeServer(server: string | undefined): string {
-  return (server?.trim() || DEFAULT_SERVER).replace(/^https?:\/\//, "");
+  const withoutProtocol = (server?.trim() || DEFAULT_SERVER).replace(/^https?:\/\//i, "");
+  const host = withoutProtocol.split(/[/?#:]/)[0];
+
+  if (!GEOTAB_HOST_PATTERN.test(host)) {
+    throw new GeotabApiError(
+      "InvalidServer",
+      "Geotab server must be a geotab.com host.",
+    );
+  }
+
+  return host;
 }
 
 async function rpcCall<T>(
@@ -85,7 +103,7 @@ export async function authenticateGeotab(
 
   const server =
     result.path && result.path.toLowerCase() !== "thisserver"
-      ? result.path
+      ? normalizeServer(result.path)
       : baseServer;
 
   return { credentials: result.credentials, server };
