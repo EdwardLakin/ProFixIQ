@@ -134,4 +134,49 @@ describe("generateMaintenanceRulesForVehicle", () => {
       }),
     );
   });
+
+  it("maps generated services onto catalog codes and labels", async () => {
+    create.mockResolvedValue({
+      choices: [
+        {
+          message: {
+            content: JSON.stringify({
+              services: [
+                { code: "ENGINE_OIL_FILTER", label: "Engine oil and filter", jobType: "maintenance" },
+                { code: "KING_PIN", label: "King pin lubrication", jobType: "maintenance" },
+              ],
+              rules: [
+                { serviceCode: "ENGINE_OIL_FILTER", distanceKmNormal: 8000 },
+                { serviceCode: "KING_PIN", distanceKmNormal: 20000 },
+              ],
+            }),
+          },
+        },
+      ],
+    });
+    const writeCalls: Call[] = [];
+
+    await generateMaintenanceRulesForVehicle({
+      supabase: makeClient({ calls: [] }),
+      writeClient: makeClient({ calls: writeCalls }),
+      year: 2019,
+      make: "Ford",
+      model: "F-150",
+    });
+
+    const servicesUpsert = writeCalls.find(
+      (c) => c.table === "maintenance_services" && c.method === "upsert",
+    );
+    const rulesUpsert = writeCalls.find(
+      (c) => c.table === "maintenance_rules" && c.method === "upsert",
+    );
+    expect(servicesUpsert?.args[0]).toEqual([
+      expect.objectContaining({ code: "OIL_CHANGE", label: "Engine oil & filter change" }),
+      expect.objectContaining({ code: "KING_PIN", label: "King pin lubrication" }),
+    ]);
+    expect(
+      (rulesUpsert?.args[0] as Array<{ service_code: string }>).map((r) => r.service_code),
+    ).toEqual(["OIL_CHANGE", "KING_PIN"]);
+  });
 });
+

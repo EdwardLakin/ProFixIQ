@@ -4,6 +4,10 @@ import type {
   MaintenanceSuggestionItem,
   WorkOrderHistoryRow,
 } from "./types";
+import {
+  canonicalizeServiceCode,
+  descriptionMatchesService,
+} from "./serviceCatalog";
 
 export type VehicleMaintenanceHistorySummary = {
   lastCompletedAt: string | null;
@@ -21,14 +25,6 @@ type GetHistoryOpts = {
   menuItemId?: string | null;
   label: string;
 };
-
-function normalizeText(value: string | null | undefined): string {
-  return (value ?? "")
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
 
 function isCompletedLike(status: string | null | undefined): boolean {
   const value = (status ?? "").toLowerCase();
@@ -56,7 +52,7 @@ export async function getVehicleMaintenanceHistory(
   const { data, error } = await supabase
     .from("work_order_lines")
     .select(
-      "id, vehicle_id, work_order_id, service_code, menu_item_id, description, odometer_km, created_at, line_status, status",
+      "id, vehicle_id, work_order_id, service_code, menu_item_id, description, odometer_km, created_at, punched_out_at, line_status, status, work_orders!work_order_lines_work_order_id_fkey(odometer_km)",
     )
     .eq("vehicle_id", vehicleId)
     .order("created_at", { ascending: false })
@@ -73,41 +69,38 @@ export async function getVehicleMaintenanceHistory(
     historyMatchSource: null,
   };
 
-  const normalizedLabel = normalizeText(label);
-
   for (const row of rows) {
     if (!isCompletedLike(row.line_status ?? row.status)) continue;
 
-    if (row.service_code && row.service_code === serviceCode) {
-      summary = pickNewest(summary, {
-        lastCompletedAt: row.created_at ?? null,
-        lastCompletedMileageKm: row.odometer_km ?? null,
-        historyMatchSource: "service_code",
-      });
-      continue;
-    }
+    // When the work was finished, and the mileage it was done at. Lines
+    // rarely carry their own odometer, so fall back to the work order's.
+    const completedAt = row.punched_out_at ?? row.created_at ?? null;
+    const workOrder = Array.isArray(row.work_orders)
+      ? row.work_orders[0]
+      : row.work_orders;
+    const completedMileageKm =
+      row.odometer_km ?? workOrder?.odometer_km ?? null;
 
-    if (menuItemId && row.menu_item_id && row.menu_item_id === menuItemId) {
-      summary = pickNewest(summary, {
-        lastCompletedAt: row.created_at ?? null,
-        lastCompletedMileageKm: row.odometer_km ?? null,
-        historyMatchSource: "shop_map_menu_item",
-      });
-      continue;
-    }
-
-    const normalizedDescription = normalizeText(row.description);
+    let historyMatchSource: VehicleMaintenanceHistorySummary["historyMatchSource"] =
+      null;
     if (
-      normalizedLabel.length > 0 &&
-      normalizedDescription.length > 0 &&
-      normalizedDescription.includes(normalizedLabel)
+      row.service_code &&
+      canonicalizeServiceCode(row.service_code) === serviceCode
     ) {
-      summary = pickNewest(summary, {
-        lastCompletedAt: row.created_at ?? null,
-        lastCompletedMileageKm: row.odometer_km ?? null,
-        historyMatchSource: "text_fallback",
-      });
+      historyMatchSource = "service_code";
+    } else if (menuItemId && row.menu_item_id && row.menu_item_id === menuItemId) {
+      historyMatchSource = "shop_map_menu_item";
+    } else if (descriptionMatchesService(row.description, serviceCode, label)) {
+      historyMatchSource = "text_fallback";
     }
+
+    if (!historyMatchSource) continue;
+
+    summary = pickNewest(summary, {
+      lastCompletedAt: completedAt,
+      lastCompletedMileageKm: completedMileageKm,
+      historyMatchSource,
+    });
   }
 
   return summary;
