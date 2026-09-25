@@ -11,6 +11,7 @@ const realtime = vi.hoisted(() => ({
   stop: vi.fn(),
   onFinal: null as null | ((text: string) => void),
   onStateChange: null as null | ((state: "idle" | "connecting" | "listening" | "error") => void),
+  onAutoStop: null as null | ((reason: "max_duration" | "idle") => void),
 }));
 
 vi.mock("@/features/copilot/technician/voice/useTechnicianRealtimeVoice", () => ({
@@ -21,10 +22,12 @@ vi.mock("@/features/copilot/technician/voice/useTechnicianRealtimeVoice", () => 
       onStateChange?: (
         state: "idle" | "connecting" | "listening" | "error",
       ) => void;
+      onAutoStop?: (reason: "max_duration" | "idle") => void;
     },
   ) => {
     realtime.onFinal = onFinal;
     realtime.onStateChange = options?.onStateChange ?? null;
+    realtime.onAutoStop = options?.onAutoStop ?? null;
     return {
       start: realtime.start,
       pause: realtime.pause,
@@ -79,6 +82,7 @@ describe("Technician CoPilot voice interaction gateway", () => {
     realtime.connected = false;
     realtime.onFinal = null;
     realtime.onStateChange = null;
+    realtime.onAutoStop = null;
     generatedPlayback = deferred<void>();
     generatedPlaybackStarted = false;
     speech.speaking = true;
@@ -556,6 +560,78 @@ describe("Technician CoPilot voice interaction gateway", () => {
     expect(result.current.active).toBe(false);
     expect(result.current.phase).toBe("idle");
     expect(result.current.error).toContain("Voice connection ended");
+  });
+
+  it("reconnects automatically after an idle-timeout auto-stop instead of requiring Start again", async () => {
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({
+        enabled: true,
+        onUtterance: vi.fn(async () => ({ reply: null })),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    expect(result.current.active).toBe(true);
+    expect(realtime.start).toHaveBeenCalledTimes(1);
+
+    // Mirrors what the real transport does when its idle-silence guard
+    // fires: settle to idle, then report why.
+    await act(async () => {
+      realtime.connected = false;
+      realtime.onStateChange?.("idle");
+      realtime.onAutoStop?.("idle");
+      await Promise.resolve();
+    });
+
+    // The technician never had to press Start again.
+    expect(realtime.start).toHaveBeenCalledTimes(2);
+    expect(result.current.active).toBe(true);
+    expect(result.current.phase).toBe("listening");
+    expect(result.current.error).toBeNull();
+  });
+
+  it("stops auto-reconnecting after repeated idle timeouts with no speech in between", async () => {
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({
+        enabled: true,
+        onUtterance: vi.fn(async () => ({ reply: null })),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    expect(realtime.start).toHaveBeenCalledTimes(1);
+
+    // Three consecutive idle auto-stops with no recognized speech in
+    // between exhaust the auto-resume streak (capped at 3) and each still
+    // reconnect on their own.
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await act(async () => {
+        realtime.connected = false;
+        realtime.onStateChange?.("idle");
+        realtime.onAutoStop?.("idle");
+        await Promise.resolve();
+      });
+      expect(realtime.start).toHaveBeenCalledTimes(2 + attempt);
+      expect(result.current.active).toBe(true);
+    }
+
+    // A fourth auto-stop in a row exceeds the cap: this most likely means an
+    // abandoned device, not a technician pausing between jobs, so give up
+    // instead of reconnecting again and require an explicit Start.
+    await act(async () => {
+      realtime.connected = false;
+      realtime.onStateChange?.("idle");
+      realtime.onAutoStop?.("idle");
+      await Promise.resolve();
+    });
+
+    expect(realtime.start).toHaveBeenCalledTimes(4);
+    expect(result.current.active).toBe(false);
+    expect(result.current.error).toContain("Start voice to continue");
   });
 
   it("allows a fresh start after a current Realtime startup failure", async () => {

@@ -21,7 +21,9 @@ import {
   describeTechnicianDayAgenda,
 } from "@/features/copilot/technician/server/dayAgenda";
 import { listTechnicianConversationDigest } from "@/features/copilot/technician/server/messages";
+import { getActiveTechnicianJobLabor } from "@/features/work-orders/server/technicianJobLabor";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { getShopDayRange } from "@/features/shared/lib/utils/shopDayWindow";
 
 export const runtime = "nodejs";
 
@@ -77,7 +79,23 @@ async function snapshot(
     shopId: access.shopId,
     technicianIds: [access.authUserId, access.profileId],
   });
-  const dayAgenda = buildTechnicianDayAgenda(candidates);
+
+  // Ground truth for "currently punched in": an open labor segment, not a
+  // line's own status. A line can still read "in_progress" long after the
+  // technician actually punched out (e.g. an auto punch-out at shift end
+  // deliberately preserves line status so the job still reads as
+  // unfinished), so status alone would misreport the technician as active.
+  const { data: openLaborSegments } = await getActiveTechnicianJobLabor({
+    supabase: createAdminSupabase(),
+    shopId: access.shopId,
+    technicianId: access.profileId,
+  });
+  const punchedInLineIds = new Set(
+    openLaborSegments
+      .map((segment) => segment.work_order_line_id)
+      .filter((lineId): lineId is string => Boolean(lineId)),
+  );
+  const dayAgenda = buildTechnicianDayAgenda(candidates, punchedInLineIds);
 
   // No active repair session yet: this is the CoPilot's idle state, so this
   // is also when it has something proactive to say — the technician's full
@@ -85,9 +103,24 @@ async function snapshot(
   // session starts, the ordinary turn runtime takes over and this stops
   // being computed, which naturally limits it to "once per idle open"
   // rather than needing separate once-a-day tracking.
-  const greeting = envelope.session
-    ? null
-    : describeTechnicianDayAgenda(dayAgenda, access.technicianName);
+  let greeting: string | null = null;
+  if (!envelope.session) {
+    // The salutation ("Good morning"/"afternoon"/"evening") has to read
+    // against the shop's own clock, not the server's — same normalization
+    // deliverDailyAssistantDigest already relies on for shop-local time.
+    const { data: shop } = await createAdminSupabase()
+      .from("shops")
+      .select("timezone")
+      .eq("id", access.shopId)
+      .maybeSingle();
+    const safeTimezone = getShopDayRange(shop?.timezone ?? null).timezone;
+    greeting = describeTechnicianDayAgenda(
+      dayAgenda,
+      access.technicianName,
+      new Date(),
+      safeTimezone,
+    );
+  }
 
   // Conversation participation is keyed by the true auth user id
   // (conversation_participants.user_id), not the profiles row id — the two

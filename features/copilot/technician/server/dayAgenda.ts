@@ -71,6 +71,16 @@ function toAgendaItem(
 
 export function buildTechnicianDayAgenda(
   assignedWork: readonly TechnicianWorkCandidate[],
+  /**
+   * Line IDs the technician currently has an open labor segment on (the
+   * ground truth for "punched in" — work_order_line_labor_segments with
+   * ended_at null). A line's own `status` can read "in_progress" long after
+   * the technician actually punched out of it (e.g. an auto punch-out at
+   * shift end intentionally preserves line status so the job still reads as
+   * unfinished), so status alone is not sufficient to claim the technician
+   * is *currently* punched into it.
+   */
+  punchedInLineIds: ReadonlySet<string> = new Set(),
 ): TechnicianDayAgenda {
   const pairs = assignedWork
     .flatMap((workOrder) =>
@@ -93,7 +103,9 @@ export function buildTechnicianDayAgenda(
 
   return {
     items,
-    activeItem: items.find((item) => item.status === "in_progress") ?? null,
+    activeItem:
+      items.find((item) => punchedInLineIds.has(item.workOrderLineId)) ??
+      null,
     readyCount,
     inProgressCount,
     onHoldCount,
@@ -102,11 +114,32 @@ export function buildTechnicianDayAgenda(
   };
 }
 
-function greetingSalutation(now: Date): string {
-  const hour = now.getHours();
+/**
+ * `now` is a wall-clock instant (UTC on the server). The salutation has to
+ * read against the technician's own clock, not the server's, so this reads
+ * the hour through the shop's IANA timezone instead of `now.getHours()`
+ * (which previously always resolved to server-local/UTC and could show
+ * "Good evening" in the middle of the shop's afternoon).
+ */
+function greetingSalutation(now: Date, timezone: string): string {
+  const hour = localHour(now, timezone);
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
   return "Good evening";
+}
+
+function localHour(now: Date, timezone: string): number {
+  try {
+    const formatted = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      hourCycle: "h23",
+    }).format(now);
+    const hour = Number(formatted);
+    return Number.isFinite(hour) ? hour : now.getHours();
+  } catch {
+    return now.getHours();
+  }
 }
 
 /**
@@ -119,8 +152,9 @@ export function describeTechnicianDayAgenda(
   agenda: TechnicianDayAgenda,
   technicianName: string | null,
   now: Date = new Date(),
+  timezone: string = "UTC",
 ): string {
-  const salutation = greetingSalutation(now);
+  const salutation = greetingSalutation(now, timezone);
   const name = technicianName?.trim();
   const greetingLine = name ? `${salutation}, ${name}.` : `${salutation}.`;
 

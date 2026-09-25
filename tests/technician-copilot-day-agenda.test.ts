@@ -85,9 +85,14 @@ const oilChange: TechnicianWorkCandidate = {
   lineComplaints: ["Oil and filter change"],
 };
 
+const roadTestLineId = "00000000-0000-4000-8000-000000000202";
+
 describe("buildTechnicianDayAgenda", () => {
   it("orders the full assigned queue and counts by status, not just the next line", () => {
-    const agenda = buildTechnicianDayAgenda([brakeJob, oilChange]);
+    const agenda = buildTechnicianDayAgenda(
+      [brakeJob, oilChange],
+      new Set([roadTestLineId]),
+    );
 
     expect(agenda.totalCount).toBe(3);
     expect(agenda.inProgressCount).toBe(1);
@@ -103,12 +108,33 @@ describe("buildTechnicianDayAgenda", () => {
     expect(agenda.totalCount).toBe(0);
     expect(agenda.activeItem).toBeNull();
   });
+
+  it("never claims the technician is punched in from line status alone", () => {
+    // Reported bug: a line's status can still read "in_progress" (e.g. via
+    // the legacy "active" status alias) long after the technician actually
+    // punched out — an auto punch-out at shift end deliberately preserves
+    // line status so the job still reads as unfinished. Without an actual
+    // open labor segment for this technician, the line must not be reported
+    // as the active/punched-in item.
+    const agenda = buildTechnicianDayAgenda([brakeJob, oilChange]);
+
+    expect(agenda.inProgressCount).toBe(1);
+    expect(agenda.activeItem).toBeNull();
+  });
 });
 
 describe("describeTechnicianDayAgenda", () => {
   it("tells an idle technician what's already in progress instead of restating the whole queue", () => {
-    const agenda = buildTechnicianDayAgenda([brakeJob, oilChange]);
-    const greeting = describeTechnicianDayAgenda(agenda, "Edward", atHour(8));
+    const agenda = buildTechnicianDayAgenda(
+      [brakeJob, oilChange],
+      new Set([roadTestLineId]),
+    );
+    const greeting = describeTechnicianDayAgenda(
+      agenda,
+      "Edward",
+      atHour(8),
+      "UTC",
+    );
 
     expect(greeting).toContain("Good morning, Edward.");
     expect(greeting).toContain("already punched into Road test");
@@ -118,7 +144,12 @@ describe("describeTechnicianDayAgenda", () => {
 
   it("previews the queue and asks where to begin when nothing is active yet", () => {
     const agenda = buildTechnicianDayAgenda([oilChange]);
-    const greeting = describeTechnicianDayAgenda(agenda, "Edward", atHour(14));
+    const greeting = describeTechnicianDayAgenda(
+      agenda,
+      "Edward",
+      atHour(14),
+      "UTC",
+    );
 
     expect(greeting).toContain("Good afternoon, Edward.");
     expect(greeting).toContain("You've got 1 job lined up today");
@@ -129,10 +160,35 @@ describe("describeTechnicianDayAgenda", () => {
 
   it("never invents a name or a job when there isn't one", () => {
     const agenda = buildTechnicianDayAgenda([]);
-    const greeting = describeTechnicianDayAgenda(agenda, null, atHour(19));
+    const greeting = describeTechnicianDayAgenda(agenda, null, atHour(19), "UTC");
 
     expect(greeting).toBe(
       "Good evening. You don't have any assigned jobs right now. Let me know if you want me to check for anything.",
     );
+  });
+
+  it("reads the salutation against the shop's own timezone, not the server's UTC clock", () => {
+    // 18:00 UTC is evening on the server, but it's still 11:00 (late
+    // morning) in Los Angeles (UTC-7 in September) — the greeting must
+    // reflect the shop's local time, not the server's, or a shop mid-morning
+    // gets told "good evening" the way the reported bug did.
+    const agenda = buildTechnicianDayAgenda([]);
+    const serverEveningUtc = new Date("2026-09-04T18:00:00Z");
+
+    const shopLocalGreeting = describeTechnicianDayAgenda(
+      agenda,
+      null,
+      serverEveningUtc,
+      "America/Los_Angeles",
+    );
+    expect(shopLocalGreeting.startsWith("Good morning.")).toBe(true);
+
+    const utcGreeting = describeTechnicianDayAgenda(
+      agenda,
+      null,
+      serverEveningUtc,
+      "UTC",
+    );
+    expect(utcGreeting.startsWith("Good evening.")).toBe(true);
   });
 });
