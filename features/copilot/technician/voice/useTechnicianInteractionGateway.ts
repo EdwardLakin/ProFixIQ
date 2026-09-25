@@ -67,6 +67,16 @@ const COPILOT_SPEECH_TIMEOUT_MS = 20_000;
 // clear, sticky error instead of retrying forever.
 const MAX_CONSECUTIVE_RECOVERABLE_FAILURES = 3;
 
+// The realtime transport auto-stops the *connection* after a quiet stretch
+// or a session-duration cap purely to recycle/bound streaming cost — it
+// isn't meant to end "voice mode" itself, and the UI promises the
+// technician voice "stays active while you keep
+// working." So an auto-stop reconnects transparently instead of leaving the
+// technician to press Start again. Cap consecutive auto-reconnects with no
+// real speech in between so a genuinely abandoned/idle device still gives up
+// eventually rather than reconnecting forever.
+const MAX_CONSECUTIVE_AUTO_RESUMES = 3;
+
 function normalizedTranscript(text: string): string | null {
   const value = text.trim();
   return value || null;
@@ -127,6 +137,9 @@ export function useTechnicianInteractionGateway({
   const onUtteranceRef = useRef(onUtterance);
   const realtimeRef = useRef<RealtimeTransport | null>(null);
   const startListeningRef = useRef<() => Promise<void>>(async () => undefined);
+  const startRef = useRef<
+    (opts?: { isAutoResume?: boolean }) => Promise<void>
+  >(async () => undefined);
   const speakReplyRef = useRef<(text: string) => void>(() => undefined);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const speechWatchdogRef = useRef<number | null>(null);
@@ -136,6 +149,7 @@ export function useTechnicianInteractionGateway({
   const wakeLockRef = useRef<ScreenWakeLockSentinel | null>(null);
   const wakeLockRequestPendingRef = useRef(false);
   const consecutiveRecoverableFailuresRef = useRef(0);
+  const consecutiveAutoResumesRef = useRef(0);
   const greetingRef = useRef(greeting);
   const greetingSpokenRef = useRef(false);
 
@@ -282,6 +296,10 @@ export function useTechnicianInteractionGateway({
         return;
       }
       const generation = generationRef.current;
+      // Real recognized speech, not just a reconnect — a genuinely idle
+      // device never reaches this point, so this is the right place to
+      // clear the auto-resume streak the idle/session-limit guard counts.
+      consecutiveAutoResumesRef.current = 0;
 
       void (async () => {
         inFlightRef.current = true;
@@ -368,13 +386,24 @@ export function useTechnicianInteractionGateway({
     (text) => normalizedTranscript(text),
     {
       onStateChange: handleTransportState,
-      // The transport has already settled to idle by this point, so this only
-      // replaces the generic "connection ended" text with the real reason.
+      // The transport has already settled to idle (and handleTransportState
+      // has already deactivated voice mode) by this point. Reconnect
+      // transparently rather than making the technician press Start again —
+      // this guard exists to recycle the streaming connection, not to end
+      // voice mode — unless that's happened too many times in a row with no
+      // real speech in between, which more likely means an abandoned device
+      // than a technician who's just pausing between jobs.
       onAutoStop: (reason) => {
+        const attempt = ++consecutiveAutoResumesRef.current;
+        if (attempt <= MAX_CONSECUTIVE_AUTO_RESUMES) {
+          setError(null);
+          void startRef.current({ isAutoResume: true });
+          return;
+        }
         setError(
           reason === "idle"
-            ? "Voice stopped after a stretch of silence. Start voice to continue."
-            : "Voice reached its session limit. Start voice to continue.",
+            ? "Voice stopped after several quiet stretches. Start voice to continue."
+            : "Voice reached its session limit several times in a row. Start voice to continue.",
         );
       },
       onError: (message) => {
@@ -622,10 +651,15 @@ export function useTechnicianInteractionGateway({
   );
   speakReplyRef.current = speakReply;
 
-  const start = useCallback(async () => {
+  const start = useCallback(async (opts?: { isAutoResume?: boolean }) => {
     if (!enabled || activeRef.current) return;
     invalidateGeneration();
     consecutiveRecoverableFailuresRef.current = 0;
+    // A genuine, technician-initiated start (the button, or the initial
+    // autoStart) begins a fresh auto-resume streak. An automatic
+    // post-auto-stop reconnect must NOT reset it here, or the streak this
+    // very call is part of could never reach its cap.
+    if (!opts?.isAutoResume) consecutiveAutoResumesRef.current = 0;
     utteranceRef.current = null;
     activeRef.current = true;
     setModeActive(true);
@@ -643,6 +677,7 @@ export function useTechnicianInteractionGateway({
     }
     await startListeningRef.current();
   }, [enabled, invalidateGeneration, requestWakeLock]);
+  startRef.current = start;
 
   useEffect(() => {
     if (!enabled || !autoStart || autoStartAttemptedRef.current) return;
@@ -653,6 +688,7 @@ export function useTechnicianInteractionGateway({
   const stop = useCallback(() => {
     invalidateGeneration();
     consecutiveRecoverableFailuresRef.current = 0;
+    consecutiveAutoResumesRef.current = 0;
     activeRef.current = false;
     setModeActive(false);
     setHeardTranscript("");
