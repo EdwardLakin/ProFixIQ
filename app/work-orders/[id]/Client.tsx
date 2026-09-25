@@ -1989,7 +1989,7 @@ export default function WorkOrderIdClient(): JSX.Element {
               </div>
             ) : null}
 
-            {vehicle?.id ? (
+            {vehicle?.id && currentActor.canManageWorkOrders ? (
               <PreviousDeferredWorkActionsPanel
                 workOrderId={wo.id}
                 vehicleId={vehicle.id}
