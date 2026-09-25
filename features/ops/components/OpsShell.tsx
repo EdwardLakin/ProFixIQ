@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Activity, Bot, BrainCircuit, Gauge, GitBranch, KeyRound, LogOut, Menu, ShieldCheck, X } from "lucide-react";
+import { Activity, ArrowLeft, Bot, BrainCircuit, Gauge, GitBranch, KeyRound, LogOut, Menu, ShieldCheck, X } from "lucide-react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { cn } from "@shared/lib/utils";
 
@@ -93,6 +93,13 @@ export default function OpsShell({
             </Link>
           </div>
           <div className="flex items-center gap-2">
+            <Link
+              href="/dashboard"
+              className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)]"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              <span className="hidden sm:inline">Back to Shop Dashboard</span>
+            </Link>
             <div className="hidden items-center gap-2 text-xs text-[color:var(--theme-text-secondary)] sm:flex">
               <ShieldCheck className="h-4 w-4 text-emerald-400" />
               <span>{operatorEmail}</span>
