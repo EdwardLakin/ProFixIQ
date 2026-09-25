@@ -138,6 +138,20 @@ describe("technician surfaces share one rollup", () => {
     expect(mobileQueue).not.toContain('{ value: "completed", label: "Completed" }');
     expect(mobileQueue).not.toContain("completed: 0,");
   });
+
+  it("defaults the desktop Tech Job Queue to the full list, like mobile's All tab", () => {
+    // Desktop used to default to the Awaiting bucket alone (3 of 10 jobs),
+    // which read as a mismatch against mobile's My jobs "All" tab even
+    // though both surfaces resolve the same rollup.
+    const desktopQueue = read("app/tech/queue/page.tsx");
+    expect(desktopQueue).toContain('defaultBucket: "all"');
+    expect(desktopQueue).toContain("bucketPrefToFilter");
+    expect(desktopQueue).toContain('onClick={() => setActiveFilter(null)}');
+    expect(desktopQueue).toContain("{lines.length}");
+
+    const desktopSettings = read("app/dashboard/tech/settings/page.tsx");
+    expect(desktopSettings).toContain('<option value="all">All jobs</option>');
+  });
 });
 
 describe("assigned technician work-order queue", () => {

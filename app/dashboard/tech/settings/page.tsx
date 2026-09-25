@@ -13,7 +13,7 @@ import { MyWorkforceCard } from "@/features/workforce/components/MyWorkforceCard
 const PREFS_KEY = "profixiq.tech.prefs.v1";
 
 type TechPrefs = {
-  defaultBucket: "awaiting" | "in_progress" | "on_hold";
+  defaultBucket: "all" | "awaiting" | "in_progress" | "on_hold";
   showUnassigned: boolean;
   compactCards: boolean;
   autoRefresh: boolean;
@@ -64,7 +64,7 @@ export default function TechSettingsPage() {
   const [sigBusy, setSigBusy] = useState(false);
 
   const [prefs, setPrefs] = useState<TechPrefs>({
-    defaultBucket: "awaiting",
+    defaultBucket: "all",
     showUnassigned: false,
     compactCards: false,
     autoRefresh: false,
@@ -122,6 +122,7 @@ export default function TechSettingsPage() {
             ...prev,
             ...parsed,
             defaultBucket:
+              parsed.defaultBucket === "all" ||
               parsed.defaultBucket === "awaiting" ||
               parsed.defaultBucket === "in_progress" ||
               parsed.defaultBucket === "on_hold"
@@ -267,6 +268,7 @@ export default function TechSettingsPage() {
               }
               className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm"
             >
+              <option value="all">All jobs</option>
               <option value="awaiting">Awaiting</option>
               <option value="in_progress">In progress</option>
               <option value="on_hold">On hold</option>
