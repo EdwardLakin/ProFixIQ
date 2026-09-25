@@ -108,7 +108,12 @@ describe("buildTechnicianDayAgenda", () => {
 describe("describeTechnicianDayAgenda", () => {
   it("tells an idle technician what's already in progress instead of restating the whole queue", () => {
     const agenda = buildTechnicianDayAgenda([brakeJob, oilChange]);
-    const greeting = describeTechnicianDayAgenda(agenda, "Edward", atHour(8));
+    const greeting = describeTechnicianDayAgenda(
+      agenda,
+      "Edward",
+      atHour(8),
+      "UTC",
+    );
 
     expect(greeting).toContain("Good morning, Edward.");
     expect(greeting).toContain("already punched into Road test");
@@ -118,7 +123,12 @@ describe("describeTechnicianDayAgenda", () => {
 
   it("previews the queue and asks where to begin when nothing is active yet", () => {
     const agenda = buildTechnicianDayAgenda([oilChange]);
-    const greeting = describeTechnicianDayAgenda(agenda, "Edward", atHour(14));
+    const greeting = describeTechnicianDayAgenda(
+      agenda,
+      "Edward",
+      atHour(14),
+      "UTC",
+    );
 
     expect(greeting).toContain("Good afternoon, Edward.");
     expect(greeting).toContain("You've got 1 job lined up today");
@@ -129,10 +139,35 @@ describe("describeTechnicianDayAgenda", () => {
 
   it("never invents a name or a job when there isn't one", () => {
     const agenda = buildTechnicianDayAgenda([]);
-    const greeting = describeTechnicianDayAgenda(agenda, null, atHour(19));
+    const greeting = describeTechnicianDayAgenda(agenda, null, atHour(19), "UTC");
 
     expect(greeting).toBe(
       "Good evening. You don't have any assigned jobs right now. Let me know if you want me to check for anything.",
     );
+  });
+
+  it("reads the salutation against the shop's own timezone, not the server's UTC clock", () => {
+    // 18:00 UTC is evening on the server, but it's still 11:00 (late
+    // morning) in Los Angeles (UTC-7 in September) — the greeting must
+    // reflect the shop's local time, not the server's, or a shop mid-morning
+    // gets told "good evening" the way the reported bug did.
+    const agenda = buildTechnicianDayAgenda([]);
+    const serverEveningUtc = new Date("2026-09-04T18:00:00Z");
+
+    const shopLocalGreeting = describeTechnicianDayAgenda(
+      agenda,
+      null,
+      serverEveningUtc,
+      "America/Los_Angeles",
+    );
+    expect(shopLocalGreeting.startsWith("Good morning.")).toBe(true);
+
+    const utcGreeting = describeTechnicianDayAgenda(
+      agenda,
+      null,
+      serverEveningUtc,
+      "UTC",
+    );
+    expect(utcGreeting.startsWith("Good evening.")).toBe(true);
   });
 });

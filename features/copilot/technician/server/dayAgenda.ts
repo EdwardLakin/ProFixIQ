@@ -102,11 +102,32 @@ export function buildTechnicianDayAgenda(
   };
 }
 
-function greetingSalutation(now: Date): string {
-  const hour = now.getHours();
+/**
+ * `now` is a wall-clock instant (UTC on the server). The salutation has to
+ * read against the technician's own clock, not the server's, so this reads
+ * the hour through the shop's IANA timezone instead of `now.getHours()`
+ * (which previously always resolved to server-local/UTC and could show
+ * "Good evening" in the middle of the shop's afternoon).
+ */
+function greetingSalutation(now: Date, timezone: string): string {
+  const hour = localHour(now, timezone);
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
   return "Good evening";
+}
+
+function localHour(now: Date, timezone: string): number {
+  try {
+    const formatted = new Intl.DateTimeFormat("en-US", {
+      timeZone: timezone,
+      hour: "numeric",
+      hourCycle: "h23",
+    }).format(now);
+    const hour = Number(formatted);
+    return Number.isFinite(hour) ? hour : now.getHours();
+  } catch {
+    return now.getHours();
+  }
 }
 
 /**
@@ -119,8 +140,9 @@ export function describeTechnicianDayAgenda(
   agenda: TechnicianDayAgenda,
   technicianName: string | null,
   now: Date = new Date(),
+  timezone: string = "UTC",
 ): string {
-  const salutation = greetingSalutation(now);
+  const salutation = greetingSalutation(now, timezone);
   const name = technicianName?.trim();
   const greetingLine = name ? `${salutation}, ${name}.` : `${salutation}.`;
 
