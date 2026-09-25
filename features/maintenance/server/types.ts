@@ -34,9 +34,21 @@ export type WorkOrderHistoryRow =
     | "description"
     | "odometer_km"
     | "created_at"
+    | "punched_out_at"
     | "line_status"
     | "status"
-  >;
+  > & {
+    // Embedded parent work order; the generated types model the join as a list.
+    work_orders?:
+      | WorkOrderOdometer
+      | WorkOrderOdometer[]
+      | null;
+  };
+
+type WorkOrderOdometer = Pick<
+  DB["public"]["Tables"]["work_orders"]["Row"],
+  "odometer_km"
+>;
 
 export type ShopMaintenanceServiceMapRow = {
   id: string;

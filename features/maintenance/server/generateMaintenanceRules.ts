@@ -3,6 +3,14 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { openai } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
+import {
+  MAINTENANCE_SERVICE_CATALOG,
+  canonicalizeServiceCode,
+} from "./serviceCatalog";
+
+const CATALOG_LABEL_BY_CODE = new Map(
+  MAINTENANCE_SERVICE_CATALOG.map((entry) => [entry.code, entry.label]),
+);
 
 type DB = Database;
 
@@ -226,6 +234,10 @@ export async function generateMaintenanceRulesForVehicle(opts: {
     "    ...",
     "  ]",
     "}",
+    "Use these service codes whenever a service matches one of them:",
+    MAINTENANCE_SERVICE_CATALOG.map((entry) => `${entry.code} (${entry.label})`).join(", ") + ".",
+    "Only invent a new UPPER_SNAKE_CASE code for a service none of these cover.",
+    "Only include services that apply to this vehicle; a trailer or other unpowered asset has no engine, transmission or differential services.",
     "Be realistic and conservative.",
     "Prefer kilometers, not miles.",
     "If you are not sure of exact manufacturer values, use reasonable averages.",
@@ -265,10 +277,20 @@ export async function generateMaintenanceRulesForVehicle(opts: {
     : [];
   const rulesArray = Array.isArray(parsed.rules) ? parsed.rules : [];
 
+  // Map every generated code onto the shared catalog so the same service
+  // keeps one code across vehicles and matches existing service history.
+  const canonicalCodeByRaw = new Map<string, string>();
   const services: GeneratedMaintenanceService[] = [];
   for (const item of servicesArray) {
     const svc = parseService(item);
-    if (svc) services.push(svc);
+    if (!svc) continue;
+    const code = canonicalizeServiceCode(svc.code, svc.label);
+    canonicalCodeByRaw.set(svc.code, code);
+    services.push({
+      ...svc,
+      code,
+      label: CATALOG_LABEL_BY_CODE.get(code) ?? svc.label,
+    });
   }
 
   const rules: GeneratedMaintenanceRule[] = [];
@@ -280,7 +302,13 @@ export async function generateMaintenanceRulesForVehicle(opts: {
   };
   for (const item of rulesArray) {
     const rule = parseRule(item, base);
-    if (rule) rules.push(rule);
+    if (!rule) continue;
+    const serviceCode =
+      canonicalCodeByRaw.get(rule.service_code) ??
+      canonicalizeServiceCode(rule.service_code);
+    // Two generated services can map to the same catalog code; keep one rule each.
+    if (rules.some((existing) => existing.service_code === serviceCode)) continue;
+    rules.push({ ...rule, service_code: serviceCode });
   }
 
   if (services.length === 0 || rules.length === 0) {
