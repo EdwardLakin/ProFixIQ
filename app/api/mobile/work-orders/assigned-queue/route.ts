@@ -7,6 +7,7 @@ import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { loadRowsForIdChunks } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
+import { resolveAssignedQueueLimit } from "@/features/work-orders/lib/data/resolveAssignedQueueLimit";
 import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
 import { ACTIVE_WORK_ORDER_STATUSES } from "@/features/work-orders/lib/work-order-status";
 import { resolveWorkOrderFinancialAccess } from "@/features/work-orders/workspace/server/workOrderFinancialAuthorization";
@@ -74,10 +75,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const requestedStatus = (url.searchParams.get("status") ?? "").trim();
-  const parsedLimit = Number(url.searchParams.get("limit"));
-  const limit = Number.isFinite(parsedLimit)
-    ? Math.min(MAX_LIMIT, Math.max(1, Math.trunc(parsedLimit)))
-    : MAX_LIMIT;
+  const limit = resolveAssignedQueueLimit(url, MAX_LIMIT);
 
   const shopId = access.profile.shop_id;
   const technicianId = access.profile.id;

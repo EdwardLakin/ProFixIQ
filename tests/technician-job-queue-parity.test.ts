@@ -10,6 +10,7 @@ import {
   isOpenTechnicianJob,
   toTechnicianJobBucket,
 } from "@/features/work-orders/lib/technicianJobQueue";
+import { resolveAssignedQueueLimit } from "@/features/work-orders/lib/data/resolveAssignedQueueLimit";
 
 function read(path: string): string {
   return readFileSync(path, "utf8");
@@ -138,6 +139,20 @@ describe("technician surfaces share one rollup", () => {
     expect(mobileQueue).not.toContain('{ value: "completed", label: "Completed" }');
     expect(mobileQueue).not.toContain("completed: 0,");
   });
+
+  it("defaults the desktop Tech Job Queue to the full list, like mobile's All tab", () => {
+    // Desktop used to default to the Awaiting bucket alone (3 of 10 jobs),
+    // which read as a mismatch against mobile's My jobs "All" tab even
+    // though both surfaces resolve the same rollup.
+    const desktopQueue = read("app/tech/queue/page.tsx");
+    expect(desktopQueue).toContain('defaultBucket: "all"');
+    expect(desktopQueue).toContain("bucketPrefToFilter");
+    expect(desktopQueue).toContain('onClick={() => setActiveFilter(null)}');
+    expect(desktopQueue).toContain("{lines.length}");
+
+    const desktopSettings = read("app/dashboard/tech/settings/page.tsx");
+    expect(desktopSettings).toContain('<option value="all">All jobs</option>');
+  });
 });
 
 describe("assigned technician work-order queue", () => {
@@ -210,5 +225,34 @@ describe("assigned technician work-order queue", () => {
       queue.match(/(?<!function )accumulateLineSignal\(/g) ?? [],
     ).toHaveLength(2);
     expect(queue).toContain('toTechnicianJobBucket(line) === "in_progress"');
+  });
+
+  it("never collapses the queue to 1 row when no limit param is supplied", () => {
+    // Reported bug: the mobile "My work orders" Active tab always showed
+    // exactly 1 work order for a technician with 6 active ones. Root cause:
+    // fetchAssignedQueue never sends a `limit` param, and Number(null) is 0
+    // (not NaN) — an unguarded Number() on searchParams.get("limit") treated
+    // "absent" as an explicit limit=0, which clamped to Math.max(1, 0) = 1.
+    const noLimitParam = new URL(
+      "https://example.com/api/mobile/work-orders/assigned-queue?status=",
+    );
+    expect(resolveAssignedQueueLimit(noLimitParam, 100)).toBe(100);
+
+    const explicitLimit = new URL(
+      "https://example.com/api/mobile/work-orders/assigned-queue?status=&limit=5",
+    );
+    expect(resolveAssignedQueueLimit(explicitLimit, 100)).toBe(5);
+
+    const overLimit = new URL(
+      "https://example.com/api/mobile/work-orders/assigned-queue?limit=500",
+    );
+    expect(resolveAssignedQueueLimit(overLimit, 100)).toBe(100);
+
+    const garbageLimit = new URL(
+      "https://example.com/api/mobile/work-orders/assigned-queue?limit=not-a-number",
+    );
+    expect(resolveAssignedQueueLimit(garbageLimit, 100)).toBe(100);
+
+    expect(route).toContain("resolveAssignedQueueLimit(url, MAX_LIMIT)");
   });
 });

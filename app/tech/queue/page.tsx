@@ -38,7 +38,7 @@ type PartRequestMini = Pick<PartRequest, "job_id" | "work_order_id">;
 const PREFS_KEY = "profixiq.tech.prefs.v1";
 
 type TechPrefs = {
-  defaultBucket: "awaiting" | "in_progress" | "on_hold";
+  defaultBucket: "all" | "awaiting" | "in_progress" | "on_hold";
   showUnassigned: boolean;
   compactCards: boolean;
   autoRefresh: boolean;
@@ -121,8 +121,11 @@ function toPriority(line: Line): JobPriority {
 }
 
 function readPrefs(): TechPrefs {
+  // "all" (see mobile's My jobs) is the default for anyone who hasn't chosen
+  // a preferred bucket yet, so the desktop queue starts on the same full
+  // list mobile does instead of the "Awaiting" slice alone.
   const fallback: TechPrefs = {
-    defaultBucket: "awaiting",
+    defaultBucket: "all",
     showUnassigned: false,
     compactCards: false,
     autoRefresh: false,
@@ -137,6 +140,7 @@ function readPrefs(): TechPrefs {
       ...fallback,
       ...parsed,
       defaultBucket:
+        bucket === "all" ||
         bucket === "awaiting" ||
         bucket === "in_progress" ||
         bucket === "on_hold"
@@ -148,12 +152,18 @@ function readPrefs(): TechPrefs {
   }
 }
 
+function bucketPrefToFilter(
+  bucket: TechPrefs["defaultBucket"],
+): RollupStatus | null {
+  return bucket === "all" ? null : bucket;
+}
+
 export default function TechQueuePage() {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const router = useRouter();
 
   const [prefs, setPrefs] = useState<TechPrefs>({
-    defaultBucket: "awaiting",
+    defaultBucket: "all",
     showUnassigned: false,
     compactCards: false,
     autoRefresh: false,
@@ -183,13 +193,13 @@ export default function TechQueuePage() {
   useEffect(() => {
     const p = readPrefs();
     setPrefs(p);
-    setActiveFilter(p.defaultBucket);
+    setActiveFilter(bucketPrefToFilter(p.defaultBucket));
 
     const onStorage = (e: StorageEvent) => {
       if (e.key !== PREFS_KEY) return;
       const next = readPrefs();
       setPrefs(next);
-      setActiveFilter((cur) => cur ?? next.defaultBucket);
+      setActiveFilter((cur) => cur ?? bucketPrefToFilter(next.defaultBucket));
     };
 
     window.addEventListener("storage", onStorage);
@@ -474,7 +484,37 @@ export default function TechQueuePage() {
       </div>
 
       {/* FILTER BUTTONS */}
-      <div className="mb-6 grid gap-3 md:grid-cols-3">
+      <div className="mb-6 grid gap-3 md:grid-cols-4">
+        <button
+          type="button"
+          onClick={() => setActiveFilter(null)}
+          className={[
+            "rounded-2xl border text-left transition",
+            compact ? "p-3" : "p-4",
+            "border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] hover:border-[color:var(--theme-border-soft)]",
+            activeFilter === null
+              ? "ring-1 ring-[color:var(--theme-border-strong)]"
+              : "",
+          ].join(" ")}
+        >
+          <div className="text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
+            All
+          </div>
+          <div
+            className={
+              compact
+                ? "mt-1 text-2xl font-semibold"
+                : "mt-1 text-3xl font-semibold"
+            }
+          >
+            {lines.length}
+          </div>
+          {activeFilter === null && (
+            <div className="mt-1 text-[10px] text-[color:var(--theme-text-secondary)]">
+              Showing all assigned jobs
+            </div>
+          )}
+        </button>
         {(["awaiting", "in_progress", "on_hold"] as RollupStatus[]).map((s) => {
           const isActive = activeFilter === s;
           return (
