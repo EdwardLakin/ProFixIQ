@@ -1,7 +1,7 @@
 import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
-import { openai } from "lib/server/openai";
+import { openai } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 
 type DB = Database;
@@ -146,11 +146,22 @@ export async function generateMaintenanceRulesForVehicle(opts: {
   model: string;
   engineFamily?: string | null;
   forceRefresh?: boolean;
+  /**
+   * Client used for the catalog inserts. `maintenance_rules` and
+   * `maintenance_services` are read-only to `authenticated`, so callers that
+   * have already authorized the request pass a service-role client here.
+   * Defaults to `supabase`.
+   */
+  writeClient?: SupabaseClient<DB>;
+  /** Upper bound for the provider request; no retries when set. */
+  timeoutMs?: number;
 }): Promise<{
   servicesInserted: number;
   rulesInserted: number;
 }> {
-  const { supabase, year, make, model, engineFamily, forceRefresh } = opts;
+  const { supabase, year, make, model, engineFamily, forceRefresh, timeoutMs } =
+    opts;
+  const writeClient = opts.writeClient ?? supabase;
 
   const trimmedMake = make.trim();
   const trimmedModel = model.trim();
@@ -164,14 +175,19 @@ export async function generateMaintenanceRulesForVehicle(opts: {
   }
 
   if (!forceRefresh) {
-    const { data: existingRules, error: existingError } = await supabase
+    const existingQuery = supabase
       .from("maintenance_rules")
       .select("id")
       .eq("make", trimmedMake)
       .eq("model", trimmedModel)
       .eq("year_from", year)
-      .eq("year_to", year)
-      .limit(1);
+      .eq("year_to", year);
+
+    const { data: existingRules, error: existingError } = await (
+      normalizedEngineFamily
+        ? existingQuery.eq("engine_family", normalizedEngineFamily)
+        : existingQuery.is("engine_family", null)
+    ).limit(1);
 
     if (existingError) throw existingError;
     if (existingRules && existingRules.length > 0) {
@@ -232,7 +248,7 @@ export async function generateMaintenanceRulesForVehicle(opts: {
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
-  });
+  }, timeoutMs ? { timeout: timeoutMs, maxRetries: 0 } : undefined);
 
   const rawContent = completion.choices[0]?.message?.content ?? "{}";
 
@@ -298,18 +314,23 @@ export async function generateMaintenanceRulesForVehicle(opts: {
 
   let servicesInserted = 0;
   if (servicesToInsert.length > 0) {
-    const { error: insertSvcError } = await supabase
+    const { error: insertSvcError } = await writeClient
       .from("maintenance_services")
-      .insert(servicesToInsert);
+      .upsert(servicesToInsert, { onConflict: "code", ignoreDuplicates: true });
     if (insertSvcError) throw insertSvcError;
     servicesInserted = servicesToInsert.length;
   }
 
   let rulesInserted = 0;
   if (rules.length > 0) {
-    const { error: insertRuleError } = await supabase
+    // Conflict-safe: concurrent first lookups for the same vehicle spec hit
+    // maintenance_rules_vehicle_service_key instead of inserting duplicates.
+    const { error: insertRuleError } = await writeClient
       .from("maintenance_rules")
-      .insert(rules);
+      .upsert(rules, {
+        onConflict: "service_code,make,model,year_from,year_to,engine_family",
+        ignoreDuplicates: true,
+      });
     if (insertRuleError) throw insertRuleError;
     rulesInserted = rules.length;
   }

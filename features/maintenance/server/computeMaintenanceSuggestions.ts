@@ -9,6 +9,10 @@ import type {
 } from "./types";
 import { getVehicleMaintenanceHistory } from "./getVehicleMaintenanceHistory";
 import { resolveMaintenanceMenuMap } from "./resolveMaintenanceMenuMap";
+import { generateMaintenanceRulesForVehicle } from "./generateMaintenanceRules";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+
+const SCHEDULE_GENERATION_TIMEOUT_MS = 8000;
 
 function parseMileage(value: string | number | null | undefined): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -246,6 +250,29 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
 
   const vehicle = vehicleRow as VehicleRow;
 
+  const trimmedVehicleMake = vehicle.make?.trim() ?? "";
+  const trimmedVehicleModel = vehicle.model?.trim() ?? "";
+  if (trimmedVehicleMake && trimmedVehicleModel && vehicle.year != null) {
+    try {
+      // The work order and vehicle were read above through the caller's
+      // RLS-scoped client, which authorizes this request. The generated rows
+      // are shared catalog data that `authenticated` can only read, so they
+      // are written with the service role.
+      await generateMaintenanceRulesForVehicle({
+        supabase,
+        writeClient: createAdminSupabase(),
+        year: vehicle.year,
+        make: trimmedVehicleMake,
+        model: trimmedVehicleModel,
+        engineFamily: vehicle.engine_family ?? null,
+        timeoutMs: SCHEDULE_GENERATION_TIMEOUT_MS,
+      });
+    } catch {
+      // Best-effort: if AI schedule generation fails, fall back to whatever
+      // rules already exist rather than blocking suggestions entirely.
+    }
+  }
+
   const currentMileageKm = workOrder.odometer_km ?? parseMileage(vehicle.mileage) ?? null;
   const vehicleYear = vehicle.year ?? null;
   const now = new Date();
@@ -274,7 +301,17 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
 
   const rules = (rulesData ?? []) as MaintenanceRuleRow[];
 
-  const matchedRules = rules.filter((rule) => ruleMatchesVehicle(vehicle, rule));
+  const hasVehicleSpecificRules = rules.some(
+    (rule) => rule.make != null && ruleMatchesVehicle(vehicle, rule),
+  );
+
+  // Once this vehicle has its own generated schedule, generic (make-less)
+  // rules would otherwise still match every vehicle unconditionally — drop
+  // them so an asset like a trailer doesn't inherit engine/drivetrain rules.
+  const matchedRules = rules.filter((rule) => {
+    if (hasVehicleSpecificRules && rule.make == null) return false;
+    return ruleMatchesVehicle(vehicle, rule);
+  });
   const suggestions: MaintenanceSuggestionItem[] = [];
 
   for (const rule of matchedRules) {
