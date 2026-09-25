@@ -85,9 +85,14 @@ const oilChange: TechnicianWorkCandidate = {
   lineComplaints: ["Oil and filter change"],
 };
 
+const roadTestLineId = "00000000-0000-4000-8000-000000000202";
+
 describe("buildTechnicianDayAgenda", () => {
   it("orders the full assigned queue and counts by status, not just the next line", () => {
-    const agenda = buildTechnicianDayAgenda([brakeJob, oilChange]);
+    const agenda = buildTechnicianDayAgenda(
+      [brakeJob, oilChange],
+      new Set([roadTestLineId]),
+    );
 
     expect(agenda.totalCount).toBe(3);
     expect(agenda.inProgressCount).toBe(1);
@@ -103,11 +108,27 @@ describe("buildTechnicianDayAgenda", () => {
     expect(agenda.totalCount).toBe(0);
     expect(agenda.activeItem).toBeNull();
   });
+
+  it("never claims the technician is punched in from line status alone", () => {
+    // Reported bug: a line's status can still read "in_progress" (e.g. via
+    // the legacy "active" status alias) long after the technician actually
+    // punched out — an auto punch-out at shift end deliberately preserves
+    // line status so the job still reads as unfinished. Without an actual
+    // open labor segment for this technician, the line must not be reported
+    // as the active/punched-in item.
+    const agenda = buildTechnicianDayAgenda([brakeJob, oilChange]);
+
+    expect(agenda.inProgressCount).toBe(1);
+    expect(agenda.activeItem).toBeNull();
+  });
 });
 
 describe("describeTechnicianDayAgenda", () => {
   it("tells an idle technician what's already in progress instead of restating the whole queue", () => {
-    const agenda = buildTechnicianDayAgenda([brakeJob, oilChange]);
+    const agenda = buildTechnicianDayAgenda(
+      [brakeJob, oilChange],
+      new Set([roadTestLineId]),
+    );
     const greeting = describeTechnicianDayAgenda(
       agenda,
       "Edward",

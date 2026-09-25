@@ -71,6 +71,16 @@ function toAgendaItem(
 
 export function buildTechnicianDayAgenda(
   assignedWork: readonly TechnicianWorkCandidate[],
+  /**
+   * Line IDs the technician currently has an open labor segment on (the
+   * ground truth for "punched in" — work_order_line_labor_segments with
+   * ended_at null). A line's own `status` can read "in_progress" long after
+   * the technician actually punched out of it (e.g. an auto punch-out at
+   * shift end intentionally preserves line status so the job still reads as
+   * unfinished), so status alone is not sufficient to claim the technician
+   * is *currently* punched into it.
+   */
+  punchedInLineIds: ReadonlySet<string> = new Set(),
 ): TechnicianDayAgenda {
   const pairs = assignedWork
     .flatMap((workOrder) =>
@@ -93,7 +103,9 @@ export function buildTechnicianDayAgenda(
 
   return {
     items,
-    activeItem: items.find((item) => item.status === "in_progress") ?? null,
+    activeItem:
+      items.find((item) => punchedInLineIds.has(item.workOrderLineId)) ??
+      null,
     readyCount,
     inProgressCount,
     onHoldCount,
