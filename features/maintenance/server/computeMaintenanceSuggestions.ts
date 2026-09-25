@@ -10,6 +10,9 @@ import type {
 import { getVehicleMaintenanceHistory } from "./getVehicleMaintenanceHistory";
 import { resolveMaintenanceMenuMap } from "./resolveMaintenanceMenuMap";
 import { generateMaintenanceRulesForVehicle } from "./generateMaintenanceRules";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+
+const SCHEDULE_GENERATION_TIMEOUT_MS = 8000;
 
 function parseMileage(value: string | number | null | undefined): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -251,12 +254,18 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
   const trimmedVehicleModel = vehicle.model?.trim() ?? "";
   if (trimmedVehicleMake && trimmedVehicleModel && vehicle.year != null) {
     try {
+      // The work order and vehicle were read above through the caller's
+      // RLS-scoped client, which authorizes this request. The generated rows
+      // are shared catalog data that `authenticated` can only read, so they
+      // are written with the service role.
       await generateMaintenanceRulesForVehicle({
         supabase,
+        writeClient: createAdminSupabase(),
         year: vehicle.year,
         make: trimmedVehicleMake,
         model: trimmedVehicleModel,
         engineFamily: vehicle.engine_family ?? null,
+        timeoutMs: SCHEDULE_GENERATION_TIMEOUT_MS,
       });
     } catch {
       // Best-effort: if AI schedule generation fails, fall back to whatever

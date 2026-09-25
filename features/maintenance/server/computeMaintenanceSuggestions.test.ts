@@ -22,6 +22,11 @@ vi.mock("./resolveMaintenanceMenuMap", () => ({
   })),
 }));
 
+const adminClient = { admin: true };
+vi.mock("@/features/shared/lib/supabase/server", () => ({
+  createAdminSupabase: vi.fn(() => adminClient),
+}));
+
 vi.mock("./getVehicleMaintenanceHistory", () => ({
   getVehicleMaintenanceHistory: vi.fn(async () => ({
     lastCompletedAt: null,
@@ -147,6 +152,8 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
         make: "Manac",
         model: "Flatbed",
         engineFamily: null,
+        writeClient: adminClient,
+        timeoutMs: 8000,
       }),
     );
   });

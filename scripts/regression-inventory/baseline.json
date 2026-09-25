@@ -1703,16 +1703,6 @@
       "expiresOn": "2026-10-07"
     },
     {
-      "fingerprint": "9620acf5f7b0455bc65d",
-      "rule": "dynamic-mutation-payload",
-      "severity": "warning",
-      "domain": "core",
-      "file": "features/maintenance/server/generateMaintenanceRules.ts",
-      "subject": "maintenance_services",
-      "message": "insert payload for maintenance_services cannot be checked statically",
-      "expiresOn": "2026-10-07"
-    },
-    {
       "fingerprint": "055353ae4810dfaeb7af",
       "rule": "dynamic-mutation-payload",
       "severity": "warning",
