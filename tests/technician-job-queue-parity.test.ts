@@ -10,7 +10,7 @@ import {
   isOpenTechnicianJob,
   toTechnicianJobBucket,
 } from "@/features/work-orders/lib/technicianJobQueue";
-import { resolveAssignedQueueLimit } from "../app/api/mobile/work-orders/assigned-queue/route";
+import { resolveAssignedQueueLimit } from "@/features/work-orders/lib/data/resolveAssignedQueueLimit";
 
 function read(path: string): string {
   return readFileSync(path, "utf8");
@@ -253,6 +253,6 @@ describe("assigned technician work-order queue", () => {
     );
     expect(resolveAssignedQueueLimit(garbageLimit, 100)).toBe(100);
 
-    expect(route).toContain("resolveAssignedQueueLimit(url)");
+    expect(route).toContain("resolveAssignedQueueLimit(url, MAX_LIMIT)");
   });
 });

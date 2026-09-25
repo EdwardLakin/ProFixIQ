@@ -7,6 +7,7 @@ import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { loadRowsForIdChunks } from "@/features/work-orders/lib/data/loadCanonicalWorkOrderLineContext";
+import { resolveAssignedQueueLimit } from "@/features/work-orders/lib/data/resolveAssignedQueueLimit";
 import { resolveTechnicianAssignmentContract } from "@/features/work-orders/lib/technicianAssignmentContract";
 import { ACTIVE_WORK_ORDER_STATUSES } from "@/features/work-orders/lib/work-order-status";
 import { resolveWorkOrderFinancialAccess } from "@/features/work-orders/workspace/server/workOrderFinancialAuthorization";
@@ -45,28 +46,6 @@ type AssignmentRow = Pick<
 const MAX_LIMIT = 100;
 
 /**
- * Resolves the row cap from an optional `?limit=` query param, clamped to
- * [1, maxLimit] and defaulting to maxLimit when absent or unparsable.
- *
- * `URLSearchParams#get` returns `null` (not `undefined`) for a missing
- * param, and `Number(null)` is `0` — a finite number — not `NaN`. Passing
- * that straight to `Number()` before checking `Number.isFinite` silently
- * treated "no limit supplied" (the only way this route is ever actually
- * called) as an explicit `limit=0`, which then clamped to `Math.max(1, 0)`
- * and capped every request to exactly one row.
- */
-export function resolveAssignedQueueLimit(
-  url: URL,
-  maxLimit: number = MAX_LIMIT,
-): number {
-  const raw = url.searchParams.get("limit");
-  const parsed = raw !== null && raw.trim() !== "" ? Number(raw) : NaN;
-  return Number.isFinite(parsed)
-    ? Math.min(maxLimit, Math.max(1, Math.trunc(parsed)))
-    : maxLimit;
-}
-
-/**
  * Bounded list projection for the mobile "My work orders" queue.
  *
  * Technicians cannot read work_orders/work_order_lines through PostgREST: the
@@ -96,7 +75,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const requestedStatus = (url.searchParams.get("status") ?? "").trim();
-  const limit = resolveAssignedQueueLimit(url);
+  const limit = resolveAssignedQueueLimit(url, MAX_LIMIT);
 
   const shopId = access.profile.shop_id;
   const technicianId = access.profile.id;
