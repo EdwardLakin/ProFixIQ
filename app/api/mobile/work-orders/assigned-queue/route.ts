@@ -45,6 +45,28 @@ type AssignmentRow = Pick<
 const MAX_LIMIT = 100;
 
 /**
+ * Resolves the row cap from an optional `?limit=` query param, clamped to
+ * [1, maxLimit] and defaulting to maxLimit when absent or unparsable.
+ *
+ * `URLSearchParams#get` returns `null` (not `undefined`) for a missing
+ * param, and `Number(null)` is `0` — a finite number — not `NaN`. Passing
+ * that straight to `Number()` before checking `Number.isFinite` silently
+ * treated "no limit supplied" (the only way this route is ever actually
+ * called) as an explicit `limit=0`, which then clamped to `Math.max(1, 0)`
+ * and capped every request to exactly one row.
+ */
+export function resolveAssignedQueueLimit(
+  url: URL,
+  maxLimit: number = MAX_LIMIT,
+): number {
+  const raw = url.searchParams.get("limit");
+  const parsed = raw !== null && raw.trim() !== "" ? Number(raw) : NaN;
+  return Number.isFinite(parsed)
+    ? Math.min(maxLimit, Math.max(1, Math.trunc(parsed)))
+    : maxLimit;
+}
+
+/**
  * Bounded list projection for the mobile "My work orders" queue.
  *
  * Technicians cannot read work_orders/work_order_lines through PostgREST: the
@@ -74,10 +96,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const requestedStatus = (url.searchParams.get("status") ?? "").trim();
-  const parsedLimit = Number(url.searchParams.get("limit"));
-  const limit = Number.isFinite(parsedLimit)
-    ? Math.min(MAX_LIMIT, Math.max(1, Math.trunc(parsedLimit)))
-    : MAX_LIMIT;
+  const limit = resolveAssignedQueueLimit(url);
 
   const shopId = access.profile.shop_id;
   const technicianId = access.profile.id;

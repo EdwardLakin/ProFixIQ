@@ -10,6 +10,7 @@ import {
   isOpenTechnicianJob,
   toTechnicianJobBucket,
 } from "@/features/work-orders/lib/technicianJobQueue";
+import { resolveAssignedQueueLimit } from "../app/api/mobile/work-orders/assigned-queue/route";
 
 function read(path: string): string {
   return readFileSync(path, "utf8");
@@ -224,5 +225,34 @@ describe("assigned technician work-order queue", () => {
       queue.match(/(?<!function )accumulateLineSignal\(/g) ?? [],
     ).toHaveLength(2);
     expect(queue).toContain('toTechnicianJobBucket(line) === "in_progress"');
+  });
+
+  it("never collapses the queue to 1 row when no limit param is supplied", () => {
+    // Reported bug: the mobile "My work orders" Active tab always showed
+    // exactly 1 work order for a technician with 6 active ones. Root cause:
+    // fetchAssignedQueue never sends a `limit` param, and Number(null) is 0
+    // (not NaN) — an unguarded Number() on searchParams.get("limit") treated
+    // "absent" as an explicit limit=0, which clamped to Math.max(1, 0) = 1.
+    const noLimitParam = new URL(
+      "https://example.com/api/mobile/work-orders/assigned-queue?status=",
+    );
+    expect(resolveAssignedQueueLimit(noLimitParam, 100)).toBe(100);
+
+    const explicitLimit = new URL(
+      "https://example.com/api/mobile/work-orders/assigned-queue?status=&limit=5",
+    );
+    expect(resolveAssignedQueueLimit(explicitLimit, 100)).toBe(5);
+
+    const overLimit = new URL(
+      "https://example.com/api/mobile/work-orders/assigned-queue?limit=500",
+    );
+    expect(resolveAssignedQueueLimit(overLimit, 100)).toBe(100);
+
+    const garbageLimit = new URL(
+      "https://example.com/api/mobile/work-orders/assigned-queue?limit=not-a-number",
+    );
+    expect(resolveAssignedQueueLimit(garbageLimit, 100)).toBe(100);
+
+    expect(route).toContain("resolveAssignedQueueLimit(url)");
   });
 });
