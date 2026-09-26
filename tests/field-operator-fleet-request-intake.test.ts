@@ -39,6 +39,9 @@ describe("verified Field operator fleet-request intake", () => {
       "app/api/fleet/service-requests/convert-to-work-order/route.ts",
     );
     const listRoute = read("app/api/fleet/service-requests/route.ts");
+    const listRouteAccess = read(
+      "features/fleet/lib/resolveServiceRequestsAccess.ts",
+    );
     const fieldPage = read("app/mobile/service/fleet-requests/page.tsx");
     const shopPage = read("app/work-orders/fleet-requests/page.tsx");
     const inbox = read("features/fleet/components/ShopFleetRequestInbox.tsx");
@@ -56,7 +59,11 @@ describe("verified Field operator fleet-request intake", () => {
 
     // The list endpoint verifies Field access with the same RPC the
     // migration authorizes with, rather than re-deriving the boundary.
-    expect(listRoute).toContain("mobile_profile_has_field_service_access");
+    // That check lives in resolveServiceRequestsAccess, shared with the
+    // lightweight nav-visibility GET on this same route so the two can
+    // never authorize different things.
+    expect(listRoute).toContain("resolveServiceRequestsAccess");
+    expect(listRouteAccess).toContain("mobile_profile_has_field_service_access");
 
     // Field mounts the shared inbox but must not redirect an operator to
     // the desktop work-order route after accepting a request.
