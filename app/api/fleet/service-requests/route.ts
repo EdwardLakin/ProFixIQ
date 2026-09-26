@@ -44,27 +44,6 @@ function projectedRequestStatus(requestStatus: unknown, shopStatus: unknown) {
   return current;
 }
 
-/**
- * Lightweight access check for nav visibility only (no request data) — e.g.
- * the mobile Resume/Work menu deciding whether to show a "Service Requests"
- * link at all, rather than showing it to every shop-side role and letting
- * the page itself 403. Shares resolveServiceRequestsAccess with POST so
- * this can never authorize something the real endpoint would reject.
- */
-export async function GET(request: Request) {
-  try {
-    const supabase = createServerSupabaseRoute();
-    const requestedFleetId = new URL(request.url).searchParams.get("fleetId");
-    const access = await resolveServiceRequestsAccess(supabase, {
-      requestedFleetId,
-    });
-    return NextResponse.json({ canAccess: access.ok });
-  } catch (error) {
-    console.error("[fleet/service-requests] access check error", error);
-    return NextResponse.json({ canAccess: false });
-  }
-}
-
 export async function POST(request: Request) {
   try {
     const supabase = createServerSupabaseRoute();

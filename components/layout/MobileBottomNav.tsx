@@ -272,7 +272,7 @@ export function MobileBottomNav({ open, onClose }: Props) {
       // resolveServiceRequestsAccess, shared with the real endpoint so
       // this can never claim access the page itself would refuse).
       const serviceRequestsResponse = await fetch(
-        "/api/fleet/service-requests",
+        "/api/mobile/fleet/service-requests/access",
         { credentials: "include", cache: "no-store" },
       ).catch(() => null);
       const serviceRequestsAccess = (await serviceRequestsResponse
