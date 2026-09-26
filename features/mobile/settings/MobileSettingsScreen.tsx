@@ -13,6 +13,12 @@ import SignaturePad, {
   openSignaturePad,
 } from "@/features/shared/signaturePad/controller";
 import { MyWorkforceCard } from "@/features/workforce/components/MyWorkforceCard";
+import {
+  applyThemePreference,
+  readThemePreference,
+  THEME_CHANGE_EVENT,
+  type ThemePreference,
+} from "@/features/shared/lib/theme";
 
 const PREFS_KEY = "profixiq.tech.prefs.v1";
 
@@ -75,6 +81,39 @@ export default function MobileTechSettingsPage(): JSX.Element {
     compactCards: false,
     autoRefresh: false,
   });
+
+  // appearance (light/dark/system) — device-local, not synced through profiles
+  const [themePreference, setThemePreference] =
+    useState<ThemePreference>("system");
+
+  useEffect(() => {
+    const sync = () => setThemePreference(readThemePreference());
+    sync();
+    window.addEventListener(THEME_CHANGE_EVENT, sync);
+    return () => window.removeEventListener(THEME_CHANGE_EVENT, sync);
+  }, []);
+
+  const handleThemeChange = (next: ThemePreference) => {
+    applyThemePreference(next);
+    setThemePreference(next);
+
+    // Persist through the canonical preference route (same one Brand Studio
+    // uses) so BrandThemeBoot's server-supplied theme_mode doesn't win over
+    // this choice and silently revert it on the next load.
+    void fetch("/api/branding/user-preferences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ themeMode: next }),
+    })
+      .then(() => {
+        window.dispatchEvent(new CustomEvent("profixiq:brand-refresh"));
+      })
+      .catch(() => {
+        // Offline or transient failure: the local preference above still
+        // applies for this session; it will retry to save next time the
+        // technician changes it.
+      });
+  };
 
   // load profile + prefs
   useEffect(() => {
@@ -366,6 +405,35 @@ export default function MobileTechSettingsPage(): JSX.Element {
             </div>
           </section>
 
+          {/* Appearance */}
+          <section className="glass-card rounded-2xl border border-[color:var(--theme-border-soft)] px-4 py-4 space-y-3">
+            <div>
+              <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                Appearance
+              </h2>
+              <p className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
+                Choose light or dark mode, or follow your device.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <TogglePill
+                active={themePreference === "system"}
+                label="System"
+                onClick={() => handleThemeChange("system")}
+              />
+              <TogglePill
+                active={themePreference === "light"}
+                label="Light"
+                onClick={() => handleThemeChange("light")}
+              />
+              <TogglePill
+                active={themePreference === "dark"}
+                label="Dark"
+                onClick={() => handleThemeChange("dark")}
+              />
+            </div>
+          </section>
+
           {/* ✅ Saved Signature (mobile) */}
           <section className="glass-card rounded-2xl border border-[color:var(--theme-border-soft)] px-4 py-4 space-y-3">
             <div className="flex items-start justify-between gap-3">
@@ -564,7 +632,7 @@ function TogglePill({
       onClick={onClick}
       className={`flex-1 rounded-full px-3 py-1.5 text-[0.75rem] ${
         active
-          ? "border border-[var(--accent-copper)] bg-[var(--accent-copper)]/15 text-[var(--accent-copper-light)]"
+          ? "border border-[var(--accent-copper)] bg-[var(--accent-copper)]/15 text-[color:var(--theme-accent-text)]"
           : "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]"
       }`}
     >
