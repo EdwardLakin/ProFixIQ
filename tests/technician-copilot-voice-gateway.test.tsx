@@ -237,6 +237,56 @@ describe("Technician CoPilot voice interaction gateway", () => {
     });
   });
 
+  it("starts and pauses the Realtime transport before speaking the opening greeting, so it uses generated voice instead of the device fallback", async () => {
+    const onUtterance = vi.fn(async () => ({ reply: null }));
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({
+        enabled: true,
+        onUtterance,
+        greeting: "Good morning. You have 3 jobs today.",
+      }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+
+    // The greeting must start (and pause) the same Realtime session an
+    // ordinary reply already has by the time it speaks — playAudio can only
+    // play through that session's own audio context. Speaking before ever
+    // starting it is exactly the regression this covers: it silently forced
+    // every greeting onto the device voice even when generated speech
+    // worked fine.
+    expect(realtime.start).toHaveBeenCalledTimes(1);
+    expect(realtime.pause).toHaveBeenCalledTimes(1);
+    await waitFor(() => {
+      expect(result.current.phase).toBe("speaking");
+    });
+    expect(speechFetch).toHaveBeenCalledWith(
+      "/api/copilot/technician/speech",
+      expect.objectContaining({ method: "POST" }),
+    );
+    const speechRequest = speechFetch.mock.calls[0]?.[1] as
+      | RequestInit
+      | undefined;
+    expect(JSON.parse(String(speechRequest?.body))).toEqual({
+      text: "Good morning. You have 3 jobs today.",
+    });
+    expect(realtime.playAudio).toHaveBeenCalledTimes(1);
+    expect(speech.speak).not.toHaveBeenCalled();
+    expect(onUtterance).not.toHaveBeenCalled();
+
+    await act(async () => {
+      generatedPlayback.resolve();
+      await generatedPlayback.promise;
+    });
+
+    await waitFor(() => {
+      expect(realtime.resume).toHaveBeenCalledTimes(1);
+      expect(result.current.phase).toBe("listening");
+    });
+  });
+
   it("returns to listening when a persisted CoPilot turn fails", async () => {
     const onUtterance = vi.fn(async () => {
       throw new Error("CoPilot took too long to respond. Please try again.");
