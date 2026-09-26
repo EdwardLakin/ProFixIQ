@@ -34,6 +34,7 @@ export function resolveFieldWorkspaceCapabilities(input: {
   standaloneFieldWorkspace?: boolean;
   canConfigureFieldService: boolean;
   canSwitchWorkspace: boolean;
+  canReturnToShop?: boolean;
 }): FieldWorkspaceCapabilities {
   if (input.standaloneFieldWorkspace === true) {
     const standaloneOwner = input.canConfigureFieldService;
@@ -45,6 +46,8 @@ export function resolveFieldWorkspaceCapabilities(input: {
       canConfigureFieldService: standaloneOwner,
       canInviteFleetMembers: standaloneOwner,
       canSwitchWorkspace: input.canSwitchWorkspace,
+      // A standalone Field-only workspace has no Shop side to return to.
+      canReturnToShop: false,
     };
   }
 
@@ -60,6 +63,7 @@ export function resolveFieldWorkspaceCapabilities(input: {
     canConfigureFieldService: input.canConfigureFieldService,
     canInviteFleetMembers: actor.canInviteFleetMembers,
     canSwitchWorkspace: input.canSwitchWorkspace,
+    canReturnToShop: input.canReturnToShop === true,
   };
 }
 
@@ -162,6 +166,7 @@ export async function getMobileFieldServiceWorkspaceAccess(
       standaloneFieldWorkspace: fieldAccess.standaloneFieldWorkspace,
       canConfigureFieldService: fieldAccess.canConfigure,
       canSwitchWorkspace: canAccessShop || canAccessFleet,
+      canReturnToShop: canAccessShop,
     }),
   };
 }

@@ -3,6 +3,7 @@
 import {
   Boxes,
   BriefcaseBusiness,
+  Building2,
   CalendarDays,
   ClipboardCheck,
   Home,
@@ -330,6 +331,12 @@ export default function FieldWorkspaceShell({
               <span>Field setup</span>
             </Link>
           ) : null}
+          {workspaceCapabilities.canReturnToShop ? (
+            <Link href="/mobile" onClick={exitField} className="field-workspace-nav__link">
+              <Building2 aria-hidden className="h-[1.1rem] w-[1.1rem]" />
+              <span>Back to Shop Mobile</span>
+            </Link>
+          ) : null}
           {workspaceCapabilities.canSwitchWorkspace ? (
             <Link
               href="/sign-in"
@@ -497,6 +504,16 @@ export default function FieldWorkspaceShell({
           </div>
         </div>
         <div className="field-workspace-drawer__footer">
+          {workspaceCapabilities.canReturnToShop ? (
+            <Link
+              href="/mobile"
+              onClick={exitField}
+              className="field-workspace-return-to-shop"
+            >
+              <Building2 aria-hidden className="h-4 w-4" />
+              Back to Shop Mobile
+            </Link>
+          ) : null}
           {workspaceCapabilities.canSwitchWorkspace ? (
             <Link href="/sign-in" onClick={exitField}>
               Switch workspace

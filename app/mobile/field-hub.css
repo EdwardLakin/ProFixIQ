@@ -356,6 +356,13 @@
   grid-column: 1 / -1;
 }
 
+.field-workspace-drawer__footer .field-workspace-return-to-shop {
+  grid-column: 1 / -1;
+  border-color: rgba(93, 166, 255, 0.4);
+  background: rgba(23, 71, 255, 0.16);
+  color: #eaf3ff;
+}
+
 /* Field Hub dashboard */
 .field-hub {
   width: min(100%, 96rem);

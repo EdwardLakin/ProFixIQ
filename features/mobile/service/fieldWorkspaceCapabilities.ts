@@ -6,6 +6,14 @@ export type FieldWorkspaceCapabilities = {
   canConfigureFieldService: boolean;
   canInviteFleetMembers: boolean;
   canSwitchWorkspace: boolean;
+  /**
+   * True when this same account also has Shop entitlement (not just Fleet),
+   * so a direct one-tap link back to Shop Mobile is meaningful. Distinct
+   * from canSwitchWorkspace, which also covers Fleet-only accounts and
+   * always routes through the /sign-in product chooser rather than
+   * straight to /mobile.
+   */
+  canReturnToShop: boolean;
 };
 
 export const EMPTY_FIELD_WORKSPACE_CAPABILITIES: FieldWorkspaceCapabilities = {
@@ -16,6 +24,7 @@ export const EMPTY_FIELD_WORKSPACE_CAPABILITIES: FieldWorkspaceCapabilities = {
   canConfigureFieldService: false,
   canInviteFleetMembers: false,
   canSwitchWorkspace: false,
+  canReturnToShop: false,
 };
 
 export function normalizeFieldWorkspaceCapabilities(
@@ -35,6 +44,7 @@ export function normalizeFieldWorkspaceCapabilities(
     canConfigureFieldService: capabilities?.canConfigureFieldService === true,
     canInviteFleetMembers: capabilities?.canInviteFleetMembers === true,
     canSwitchWorkspace: capabilities?.canSwitchWorkspace === true,
+    canReturnToShop: capabilities?.canReturnToShop === true,
   };
 }
 

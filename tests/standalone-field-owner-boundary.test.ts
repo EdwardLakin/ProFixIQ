@@ -40,6 +40,7 @@ describe("standalone Field owner boundary", () => {
       canConfigureFieldService: true,
       canInviteFleetMembers: true,
       canSwitchWorkspace: false,
+      canReturnToShop: false,
     });
   });
 
@@ -92,6 +93,7 @@ describe("standalone Field owner boundary", () => {
       canConfigureFieldService: false,
       canInviteFleetMembers: false,
       canSwitchWorkspace: true,
+      canReturnToShop: false,
     });
   });
 

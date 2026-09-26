@@ -159,11 +159,19 @@ describe("mobile route continuity", () => {
 
   it("uses the canonical fleet actor scope for mobile service requests", () => {
     const route = read("app/api/fleet/service-requests/route.ts");
-    expect(route).toContain("resolveFleetActorContext");
-    expect(route).toContain("resolveSelectedFleetRequestScope");
+    // Authorization (actor/scope resolution, the fleet-manager/dispatcher/
+    // Field-operator decision) is shared with the lightweight nav-visibility
+    // GET on this same route via resolveServiceRequestsAccess, so both can
+    // never drift from the same canonical rule — see that module for the
+    // actor/scope resolution itself.
+    expect(route).toContain("resolveServiceRequestsAccess");
     expect(route).toContain("scope.fleetIds");
     expect(route).toContain('.eq("shop_id", scope.shopId)');
-    expect(route).toContain(
+
+    const access = read("features/fleet/lib/resolveServiceRequestsAccess.ts");
+    expect(access).toContain("resolveFleetActorContext");
+    expect(access).toContain("resolveSelectedFleetRequestScope");
+    expect(access).toContain(
       'actor.isInternal || actor.actorType === "fleet_manager"',
     );
   });
