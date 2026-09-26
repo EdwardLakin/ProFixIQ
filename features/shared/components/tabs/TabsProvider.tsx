@@ -31,6 +31,22 @@ type TabsContextValue = {
   closeOthers: (key: string) => void;
   closeAll: () => void;
   updateActiveTab: (update: OpenWorkUpdate) => void;
+  /**
+   * Re-keys the active tab to the canonical identity for the record it
+   * represents (e.g. a work order's real database id) once that identity is
+   * known from loaded data, rather than whatever raw id happened to be in
+   * the URL that opened it. Different entry routes can resolve the same
+   * record to different open-work keys (see openWork.ts's resolveOpenWork);
+   * without this, that shows up as duplicate Resume/Open-work entries for
+   * one real record. If another tab already holds the canonical key, that
+   * duplicate is dropped and this tab takes its place.
+   */
+  canonicalizeActiveTab: (canonicalKey: string) => void;
+  /** Patches title/status for any tabs matching the given keys with fresh
+   * server data, without disturbing lastOpenedAt/order. Used to refresh
+   * Resume/Open-work labels that would otherwise stay frozen at whatever
+   * they were the last time that record's own page was open. */
+  syncTabStatuses: (updates: ReadonlyMap<string, OpenWorkUpdate>) => void;
 };
 
 const TabsCtx = createContext<TabsContextValue | null>(null);
@@ -261,6 +277,41 @@ export function TabsProvider({
     [activeKey],
   );
 
+  const canonicalizeActiveTab = useCallback(
+    (canonicalKey: string) => {
+      if (
+        !activeKey ||
+        activeKey === DASHBOARD_OPEN_WORK_ITEM.key ||
+        activeKey === canonicalKey
+      ) {
+        return;
+      }
+      setTabs((current) => {
+        const active = current.find((item) => item.key === activeKey);
+        if (!active) return current;
+        const withoutDuplicates = current.filter(
+          (item) => item.key !== activeKey && item.key !== canonicalKey,
+        );
+        return [...withoutDuplicates, { ...active, key: canonicalKey }];
+      });
+      setActiveKey(canonicalKey);
+    },
+    [activeKey],
+  );
+
+  const syncTabStatuses = useCallback(
+    (updates: ReadonlyMap<string, OpenWorkUpdate>) => {
+      if (updates.size === 0) return;
+      setTabs((current) =>
+        current.map((item) => {
+          const update = updates.get(item.key);
+          return update ? { ...item, ...update } : item;
+        }),
+      );
+    },
+    [],
+  );
+
   const activeHref =
     tabs.find((item) => item.key === activeKey)?.href ?? pathname;
 
@@ -275,6 +326,8 @@ export function TabsProvider({
       closeOthers,
       closeAll,
       updateActiveTab,
+      canonicalizeActiveTab,
+      syncTabStatuses,
     }),
     [
       tabs,
@@ -286,6 +339,8 @@ export function TabsProvider({
       closeOthers,
       closeAll,
       updateActiveTab,
+      canonicalizeActiveTab,
+      syncTabStatuses,
     ],
   );
 

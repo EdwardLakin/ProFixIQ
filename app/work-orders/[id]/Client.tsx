@@ -240,7 +240,7 @@ export default function WorkOrderIdClient(): JSX.Element {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { updateActiveTab } = useTabs();
+  const { updateActiveTab, canonicalizeActiveTab } = useTabs();
 
   const routeId = (params?.id as string) || "";
 
@@ -413,6 +413,11 @@ export default function WorkOrderIdClient(): JSX.Element {
       : "";
     const workOrderLabel = wo.custom_id?.trim() || `WO-${wo.id.slice(0, 8)}`;
 
+    // Re-key onto the canonical work order id so a different entry route
+    // into this same record (mobile deep link, quote-review, etc.) can't
+    // leave a stale duplicate behind in Resume/Open-work.
+    canonicalizeActiveTab(`work-order:${wo.id}`);
+
     updateActiveTab({
       title: customerName
         ? `${workOrderLabel} · ${customerName}`
@@ -420,7 +425,14 @@ export default function WorkOrderIdClient(): JSX.Element {
       subtitle: vehicleLabel || undefined,
       status: workOrderStatusView.label,
     });
-  }, [customer, updateActiveTab, vehicle, wo, workOrderStatusView.label]);
+  }, [
+    canonicalizeActiveTab,
+    customer,
+    updateActiveTab,
+    vehicle,
+    wo,
+    workOrderStatusView.label,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
