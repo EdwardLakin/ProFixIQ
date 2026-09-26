@@ -182,6 +182,24 @@ function queueViewFromBundle(bundle: TechnicianOfflineBundle): {
   };
 }
 
+function waitingSince(createdAt: string | null): string | null {
+  if (!createdAt) return null;
+  const startedMs = new Date(createdAt).getTime();
+  if (!Number.isFinite(startedMs)) return null;
+  const minutes = Math.max(0, Math.round((Date.now() - startedMs) / 60_000));
+  if (minutes < 1) return "Just now";
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  if (hours === 0) return `Waiting ${minutes}m`;
+  if (hours < 24) {
+    return remainingMinutes > 0
+      ? `Waiting ${hours}h ${remainingMinutes}m`
+      : `Waiting ${hours}h`;
+  }
+  const days = Math.floor(hours / 24);
+  return `Waiting ${days}d ${hours % 24}h`;
+}
+
 function statusTone(status: RollupStatus): string {
   if (status === "in_progress") {
     return "border-emerald-400/45 bg-emerald-500/10 text-emerald-100";
@@ -360,6 +378,22 @@ export default function MobileTechnicianQueue() {
       .filter((line) => filter === "all" || toBucket(line) === filter);
   }, [filter, lineNumberMap, lines]);
 
+  // The single job that's been sitting the longest without being started,
+  // regardless of the active filter — this is what "what's been waiting the
+  // longest" means to a technician scanning the queue, not just whatever
+  // happens to sort first within today's filter.
+  const longestWaitingLineId = useMemo(() => {
+    let oldest: Line | null = null;
+    for (const line of lines) {
+      if (toBucket(line) === "in_progress") continue;
+      if (!line.created_at) continue;
+      if (!oldest || new Date(line.created_at) < new Date(oldest.created_at!)) {
+        oldest = line;
+      }
+    }
+    return oldest?.id ?? null;
+  }, [lines]);
+
   const pendingSync =
     syncSummary.queued +
     syncSummary.syncing +
@@ -467,11 +501,24 @@ export default function MobileTechnicianQueue() {
               line.description || line.complaint || "Untitled job",
             );
             const approval = cleanText(line.approval_state || "approved");
+            const isTimerActive = Boolean(
+              line.punched_in_at && !line.punched_out_at,
+            );
+            const readyToPunch =
+              bucket === "awaiting" &&
+              !isTimerActive &&
+              approval.toLowerCase() === "approved";
+            const isLongestWaiting = line.id === longestWaitingLineId;
+            const waitingLabel = !isTimerActive
+              ? waitingSince(line.created_at)
+              : null;
 
             const hasBadges =
               priority !== "normal" ||
               (approval && approval.toLowerCase() !== "approved") ||
-              (line.punched_in_at && !line.punched_out_at);
+              isTimerActive ||
+              readyToPunch ||
+              isLongestWaiting;
 
             return (
               <Link
@@ -481,13 +528,18 @@ export default function MobileTechnicianQueue() {
                     ? `/mobile/work-orders/${workOrder.id}`
                     : "/mobile/tech/queue"
                 }
-                className="mobile-tech-subpanel block border border-[color:var(--theme-border-soft)] px-3 py-2.5 active:scale-[0.99]"
+                className={`mobile-tech-subpanel block border px-3 py-2.5 active:scale-[0.99] ${
+                  isLongestWaiting
+                    ? "border-[var(--accent-copper)]/60"
+                    : "border-[color:var(--theme-border-soft)]"
+                }`}
               >
                 <div className="flex items-center justify-between gap-3">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-1.5 text-[0.65rem] uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">
                       <span>WO {workOrderLabel}</span>
                       {lineNumber ? <span>• Line {lineNumber}</span> : null}
+                      {waitingLabel ? <span>• {waitingLabel}</span> : null}
                     </div>
                     <div className="mt-0.5 truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
                       {jobLabel}
@@ -497,6 +549,16 @@ export default function MobileTechnicianQueue() {
                     </div>
                     {hasBadges ? (
                       <div className="mt-1.5 flex flex-wrap gap-1.5">
+                        {isLongestWaiting ? (
+                          <span className="rounded-full border border-[var(--accent-copper)]/60 bg-[color:var(--accent-copper)]/15 px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.1em] text-[var(--accent-copper)]">
+                            Longest waiting
+                          </span>
+                        ) : null}
+                        {readyToPunch ? (
+                          <span className="rounded-full border border-sky-400/40 bg-sky-500/10 px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.1em] text-sky-100">
+                            Ready to punch
+                          </span>
+                        ) : null}
                         {priority !== "normal" ? (
                           <span className="rounded-full border border-red-400/35 bg-red-500/10 px-2 py-0.5 text-[0.62rem] font-semibold uppercase tracking-[0.1em] text-red-100">
                             {priority}
@@ -507,7 +569,7 @@ export default function MobileTechnicianQueue() {
                             Approval {approval.replaceAll("_", " ")}
                           </span>
                         ) : null}
-                        {line.punched_in_at && !line.punched_out_at ? (
+                        {isTimerActive ? (
                           <span className="rounded-full border border-emerald-400/35 bg-emerald-500/10 px-2 py-0.5 text-[0.62rem] uppercase tracking-[0.1em] text-emerald-100">
                             Timer active
                           </span>

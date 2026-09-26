@@ -245,7 +245,7 @@ export default function MobileWorkOrderClient({
 }): JSX.Element {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { updateActiveTab } = useTabs();
+  const { updateActiveTab, canonicalizeActiveTab } = useTabs();
 
   // ✅ handle ?focus=<workOrderLineId>
   const focusParam = searchParams?.get("focus") ?? null;
@@ -946,6 +946,13 @@ export default function MobileWorkOrderClient({
         offlineSummary.conflicted >
       0;
 
+    // The tab that opened this page may have been keyed from whatever raw id
+    // was in the URL (a friendly id, a different route's id param, etc).
+    // Now that the real work order has loaded, re-key it to the canonical
+    // database id so every route into this same work order collapses onto
+    // one Resume/Open-work entry instead of leaving stale duplicates behind.
+    canonicalizeActiveTab(`work-order:${wo.id}`);
+
     updateActiveTab({
       title: customerName
         ? `${workOrderLabel} · ${customerName}`
@@ -954,7 +961,7 @@ export default function MobileWorkOrderClient({
       status: String(wo.status ?? "awaiting").replaceAll("_", " "),
       offline: !navigator.onLine || pendingOfflineChanges,
     });
-  }, [customer, offlineSummary, updateActiveTab, vehicle, wo]);
+  }, [canonicalizeActiveTab, customer, offlineSummary, updateActiveTab, vehicle, wo]);
 
   const visibleLineState = useCallback(
     (line: WorkOrderLine) =>

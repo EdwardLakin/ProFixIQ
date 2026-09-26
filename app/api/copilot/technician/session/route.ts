@@ -22,6 +22,7 @@ import {
 } from "@/features/copilot/technician/server/dayAgenda";
 import { listTechnicianConversationDigest } from "@/features/copilot/technician/server/messages";
 import { getActiveTechnicianJobLabor } from "@/features/work-orders/server/technicianJobLabor";
+import { loadActiveShiftId } from "@/features/copilot/technician/server/shiftPunch";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { getShopDayRange } from "@/features/shared/lib/utils/shopDayWindow";
 
@@ -95,7 +96,22 @@ async function snapshot(
       .map((segment) => segment.work_order_line_id)
       .filter((lineId): lineId is string => Boolean(lineId)),
   );
-  const dayAgenda = buildTechnicianDayAgenda(candidates, punchedInLineIds);
+
+  // An open labor segment can outlive the shift it was punched in on (e.g. a
+  // very short-lived segment right at a shift boundary), and job-level punch
+  // is tracked independently of day-level shift attendance. But telling the
+  // technician "you're already punched into X" while the app is showing them
+  // as off-shift reads as contradictory and confusing, so the day agenda's
+  // "already active" framing requires a currently active shift too — this
+  // only affects greeting text, never the underlying labor segment data.
+  const activeShiftId = await loadActiveShiftId(createAdminSupabase(), access.shopId, [
+    access.profileId,
+    access.authUserId,
+  ]);
+  const dayAgenda = buildTechnicianDayAgenda(
+    candidates,
+    activeShiftId ? punchedInLineIds : new Set(),
+  );
 
   // No active repair session yet: this is the CoPilot's idle state, so this
   // is also when it has something proactive to say — the technician's full
