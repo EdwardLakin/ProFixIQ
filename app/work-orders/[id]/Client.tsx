@@ -415,8 +415,13 @@ export default function WorkOrderIdClient(): JSX.Element {
 
     // Re-key onto the canonical work order id so a different entry route
     // into this same record (mobile deep link, quote-review, etc.) can't
-    // leave a stale duplicate behind in Resume/Open-work.
-    canonicalizeActiveTab(`work-order:${wo.id}`);
+    // leave a stale duplicate behind in Resume/Open-work. Some links (e.g.
+    // ActiveJobWidget) point at the friendly custom_id instead of the
+    // database id, so that alias needs purging too.
+    canonicalizeActiveTab(
+      `work-order:${wo.id}`,
+      wo.custom_id ? [`work-order:${wo.custom_id}`] : [],
+    );
 
     updateActiveTab({
       title: customerName

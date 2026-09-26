@@ -951,7 +951,13 @@ export default function MobileWorkOrderClient({
     // Now that the real work order has loaded, re-key it to the canonical
     // database id so every route into this same work order collapses onto
     // one Resume/Open-work entry instead of leaving stale duplicates behind.
-    canonicalizeActiveTab(`work-order:${wo.id}`);
+    // Some links (e.g. ActiveJobWidget) point at the friendly custom_id
+    // instead of the database id, so that alias needs purging too — not
+    // just whatever key this particular visit happened to arrive under.
+    canonicalizeActiveTab(
+      `work-order:${wo.id}`,
+      wo.custom_id ? [`work-order:${wo.custom_id}`] : [],
+    );
 
     updateActiveTab({
       title: customerName

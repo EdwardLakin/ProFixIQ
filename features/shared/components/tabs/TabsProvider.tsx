@@ -36,12 +36,21 @@ type TabsContextValue = {
    * represents (e.g. a work order's real database id) once that identity is
    * known from loaded data, rather than whatever raw id happened to be in
    * the URL that opened it. Different entry routes can resolve the same
-   * record to different open-work keys (see openWork.ts's resolveOpenWork);
-   * without this, that shows up as duplicate Resume/Open-work entries for
-   * one real record. If another tab already holds the canonical key, that
-   * duplicate is dropped and this tab takes its place.
+   * record to different open-work keys (see openWork.ts's resolveOpenWork) —
+   * e.g. a work order reached once by its friendly custom_id and once by its
+   * database id gets two separate keys for one real record. `aliasKeys`
+   * names every other key this same record is known to be reachable under
+   * (pass what you can derive from the loaded record, such as a
+   * `work-order:<custom_id>` key alongside the canonical `work-order:<id>`
+   * one) so any of them still sitting elsewhere in the list — not just
+   * whatever the currently active tab happens to be keyed as — gets purged
+   * too. Always runs the merge, even when the active tab is already
+   * canonical, since a stale alias can otherwise survive indefinitely.
    */
-  canonicalizeActiveTab: (canonicalKey: string) => void;
+  canonicalizeActiveTab: (
+    canonicalKey: string,
+    aliasKeys?: readonly string[],
+  ) => void;
   /** Patches title/status for any tabs matching the given keys with fresh
    * server data, without disturbing lastOpenedAt/order. Used to refresh
    * Resume/Open-work labels that would otherwise stay frozen at whatever
@@ -278,23 +287,35 @@ export function TabsProvider({
   );
 
   const canonicalizeActiveTab = useCallback(
-    (canonicalKey: string) => {
-      if (
-        !activeKey ||
-        activeKey === DASHBOARD_OPEN_WORK_ITEM.key ||
-        activeKey === canonicalKey
-      ) {
-        return;
-      }
+    (canonicalKey: string, aliasKeys: readonly string[] = []) => {
+      if (!activeKey || activeKey === DASHBOARD_OPEN_WORK_ITEM.key) return;
+
+      // Every key this record could already be sitting under: the tab we
+      // navigated in on, the canonical key itself (in case some other stale
+      // entry already occupies it), and any other alias the caller knows
+      // about (e.g. a friendly custom_id key alongside the database id).
+      const staleKeys = new Set([activeKey, canonicalKey, ...aliasKeys]);
+
       setTabs((current) => {
-        const active = current.find((item) => item.key === activeKey);
+        const active =
+          current.find((item) => item.key === activeKey) ??
+          current.find((item) => staleKeys.has(item.key));
         if (!active) return current;
-        const withoutDuplicates = current.filter(
-          (item) => item.key !== activeKey && item.key !== canonicalKey,
+
+        const hasStaleDuplicate = current.some(
+          (item) => item.key !== active.key && staleKeys.has(item.key),
         );
-        return [...withoutDuplicates, { ...active, key: canonicalKey }];
+        // Nothing to merge: the active tab is already canonical and no
+        // alias-keyed duplicate exists elsewhere in the list.
+        if (active.key === canonicalKey && !hasStaleDuplicate) return current;
+
+        const withoutStale = current.filter(
+          (item) => !staleKeys.has(item.key),
+        );
+        return [...withoutStale, { ...active, key: canonicalKey }];
       });
-      setActiveKey(canonicalKey);
+
+      if (activeKey !== canonicalKey) setActiveKey(canonicalKey);
     },
     [activeKey],
   );
