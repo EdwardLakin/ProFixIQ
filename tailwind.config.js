@@ -62,6 +62,47 @@ module.exports = {
           text: "#111111",
           muted: "#444444",
         },
+
+        /* -----------------------------------------------------------
+         * Semantic tokens (shadcn/ui-style naming) used across dozens
+         * of components (`bg-background`, `text-foreground`,
+         * `bg-muted`, `text-muted-foreground`, `border-border`, etc.)
+         * that previously had no matching color definition here, so
+         * Tailwind generated no rule for them at all and the affected
+         * text/surfaces silently fell back to the browser default
+         * (unstyled) color. These alias the existing CSS custom
+         * properties so every one of those classes now resolves to
+         * the same theme already used everywhere else, and continues
+         * to respond to the light/dark `data-theme-mode` toggle.
+         * ----------------------------------------------------------- */
+        background: "var(--theme-surface-page)",
+        foreground: "var(--theme-text-primary)",
+        border: "var(--theme-border-soft)",
+        ring: "var(--brand-accent)",
+        muted: {
+          DEFAULT: "var(--theme-surface-subtle)",
+          foreground: "var(--theme-text-muted)",
+        },
+        card: {
+          DEFAULT: "var(--theme-card-bg)",
+          foreground: "var(--theme-text-primary)",
+        },
+        popover: {
+          DEFAULT: "var(--theme-surface-overlay)",
+          foreground: "var(--theme-text-primary)",
+        },
+        primary: {
+          DEFAULT: "var(--brand-primary)",
+          foreground: "var(--theme-button-primary-text)",
+        },
+        secondary: {
+          DEFAULT: "var(--theme-button-secondary-bg)",
+          foreground: "var(--theme-button-secondary-text)",
+        },
+        destructive: {
+          DEFAULT: "#ef4444",
+          foreground: "#ffffff",
+        },
       },
 
       /* ------------------------------------------------------------- */

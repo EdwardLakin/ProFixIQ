@@ -13,6 +13,12 @@ import SignaturePad, {
   openSignaturePad,
 } from "@/features/shared/signaturePad/controller";
 import { MyWorkforceCard } from "@/features/workforce/components/MyWorkforceCard";
+import {
+  applyThemePreference,
+  readThemePreference,
+  THEME_CHANGE_EVENT,
+  type ThemePreference,
+} from "@/features/shared/lib/theme";
 
 const PREFS_KEY = "profixiq.tech.prefs.v1";
 
@@ -75,6 +81,22 @@ export default function MobileTechSettingsPage(): JSX.Element {
     compactCards: false,
     autoRefresh: false,
   });
+
+  // appearance (light/dark/system) — device-local, not synced through profiles
+  const [themePreference, setThemePreference] =
+    useState<ThemePreference>("system");
+
+  useEffect(() => {
+    const sync = () => setThemePreference(readThemePreference());
+    sync();
+    window.addEventListener(THEME_CHANGE_EVENT, sync);
+    return () => window.removeEventListener(THEME_CHANGE_EVENT, sync);
+  }, []);
+
+  const handleThemeChange = (next: ThemePreference) => {
+    applyThemePreference(next);
+    setThemePreference(next);
+  };
 
   // load profile + prefs
   useEffect(() => {
@@ -363,6 +385,35 @@ export default function MobileTechSettingsPage(): JSX.Element {
               </button>
               {error && <span className="text-[0.7rem] text-red-300">{error}</span>}
               {ok && <span className="text-[0.7rem] text-emerald-300">{ok}</span>}
+            </div>
+          </section>
+
+          {/* Appearance */}
+          <section className="glass-card rounded-2xl border border-[color:var(--theme-border-soft)] px-4 py-4 space-y-3">
+            <div>
+              <h2 className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                Appearance
+              </h2>
+              <p className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">
+                Choose light or dark mode, or follow your device.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <TogglePill
+                active={themePreference === "system"}
+                label="System"
+                onClick={() => handleThemeChange("system")}
+              />
+              <TogglePill
+                active={themePreference === "light"}
+                label="Light"
+                onClick={() => handleThemeChange("light")}
+              />
+              <TogglePill
+                active={themePreference === "dark"}
+                label="Dark"
+                onClick={() => handleThemeChange("dark")}
+              />
             </div>
           </section>
 
