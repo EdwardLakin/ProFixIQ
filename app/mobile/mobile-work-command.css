@@ -140,7 +140,7 @@
   border-color: rgba(61, 113, 255, 0.42) !important;
   background:
     radial-gradient(circle at 100% 0%, rgba(25, 183, 255, 0.16), transparent 14rem),
-    var(--theme-surface-panel);
+    var(--mobile-surface-panel, var(--theme-surface-panel));
   box-shadow: 0 14px 34px rgba(3, 13, 32, 0.14);
 }
 
@@ -219,7 +219,7 @@
   border-color: rgba(61, 113, 255, 0.4) !important;
   background:
     radial-gradient(circle at 100% 0%, rgba(23, 71, 255, 0.1), transparent 14rem),
-    var(--theme-surface-panel) !important;
+    var(--mobile-surface-panel, var(--theme-surface-panel)) !important;
 }
 
 .profixiq-mobile-command

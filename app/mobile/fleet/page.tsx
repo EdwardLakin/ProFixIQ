@@ -211,7 +211,7 @@ export default function MobileFleetPage() {
           [0, 1, 2].map((item) => (
             <div
               key={item}
-              className="h-32 animate-pulse rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]"
+              className="h-32 animate-pulse rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))]"
             />
           ))
         ) : sortedUnits.length === 0 ? (

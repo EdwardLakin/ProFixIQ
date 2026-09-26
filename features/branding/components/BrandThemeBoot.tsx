@@ -61,13 +61,12 @@ function setVar(
 }
 
 // Unlike `setVar`, this never substitutes a JS-computed fallback: it either
-// applies the shop's explicit customization or removes any previous inline
-// override entirely, letting the variable fall through to its CSS-authored
-// `:root` / `data-theme-mode` default. `--theme-surface-panel` backs card
-// and panel backgrounds across the mobile app, which the light/dark mode
-// system already keeps in sync with that default; applying a fallback here
-// would fight that, whereas leaving it unset preserves today's behavior for
-// every shop that hasn't customized `card_background`.
+// applies an explicit value or removes any previous inline override
+// entirely, letting the variable fall through to whatever a plain CSS
+// `var(--x, fallback)` reference (or a stylesheet default) already
+// provides. Used for `--mobile-surface-panel` below, so leaving it unset
+// preserves today's behavior for every shop/mode combination this doesn't
+// apply to.
 function setVarOrClear(
   root: HTMLElement,
   name: string,
@@ -325,6 +324,21 @@ export default function BrandThemeBoot() {
     const accent = profile.accent_color || "#E39A6E";
     const preset = profile.style_preset || "industrial-dark";
 
+    // Resolved ahead of the rest of this effect (rather than where the
+    // dark/light preference is normally applied, further down) because the
+    // mobile card-surface bridge below needs to know the *current* resolved
+    // mode, not just the shop's static brand colors.
+    const suppliedThemePreference = userPrefs.theme_mode || profile.theme_mode;
+    const rawThemePreference = String(
+      suppliedThemePreference || readThemePreference(),
+    ).toLowerCase();
+    const themePreference: ThemePreference = isThemePreference(rawThemePreference)
+      ? rawThemePreference
+      : readThemePreference();
+    const resolvedTheme = applyThemePreference(themePreference, {
+      notify: false,
+    });
+
     root.style.setProperty("--brand-primary", primary);
     root.style.setProperty("--brand-secondary", secondary);
     root.style.setProperty("--brand-accent", accent);
@@ -375,17 +389,31 @@ export default function BrandThemeBoot() {
       "var(--theme-surface-page)",
     );
 
-    // The mobile app's card/panel backgrounds (`app/mobile/*.css`) read
-    // `--theme-surface-panel` directly rather than `--theme-card-bg`, so a
-    // shop's configured card background previously never reached them --
-    // only its configured text colors did (via --theme-text-primary below).
-    // A shop customized for a light card surface (e.g. a white card with
-    // dark ink text) would then get that dark ink text rendered over the
-    // mobile app's unrelated, always-dark default panel background,
-    // producing near-invisible text. Keeping this variable in sync with
-    // the same `card_background` value fixes that mismatch without
-    // changing anything for shops that haven't customized their branding.
-    setVarOrClear(root, "--theme-surface-panel", profile.card_background);
+    // The mobile app's card/panel backgrounds (`app/mobile/*.css`) read a
+    // dedicated `--mobile-surface-panel` variable (falling back to the
+    // shared `--theme-surface-panel` used by 150+ desktop/portal surfaces
+    // when unset) rather than `--theme-card-bg`, so a shop's configured
+    // card background previously never reached them -- only its configured
+    // text colors did (via --theme-text-primary below). A shop customized
+    // for a light card surface (e.g. a white card with dark ink text) would
+    // then get that dark ink text rendered over the mobile app's unrelated,
+    // always-dark default panel background, producing near-invisible text.
+    //
+    // This only applies in dark mode: the shared `--theme-surface-panel`
+    // already goes light in light mode via its own CSS override, which
+    // already pairs correctly with this same brand text color for a shop
+    // like this one (light card + dark ink), so there is nothing to bridge
+    // there -- and gating on mode keeps this from fighting the light/dark
+    // toggle for shops on the default preset, whose `card_background`
+    // resolves to a flat brand-preset value rather than something mode
+    // aware. A dedicated variable name (instead of writing
+    // `--theme-surface-panel` itself) keeps this fix scoped to mobile,
+    // since no desktop/portal stylesheet references `--mobile-surface-panel`.
+    setVarOrClear(
+      root,
+      "--mobile-surface-panel",
+      resolvedTheme === "dark" ? profile.card_background : null,
+    );
 
     setVar(root, "--theme-text-primary", profile.text_primary, "var(--theme-text-inverse)");
     setVar(root, "--theme-text-secondary", profile.text_secondary, "var(--theme-text-muted)");
@@ -445,15 +473,6 @@ export default function BrandThemeBoot() {
       root,
       userPrefs.shadow_style || profile.shadow_style || "medium",
     );
-
-    const suppliedThemePreference = userPrefs.theme_mode || profile.theme_mode;
-    const rawThemePreference = String(
-      suppliedThemePreference || readThemePreference(),
-    ).toLowerCase();
-    const themePreference: ThemePreference = isThemePreference(rawThemePreference)
-      ? rawThemePreference
-      : readThemePreference();
-    applyThemePreference(themePreference, { notify: false });
 
     const onThemeChange = (event: Event) => {
       const preference = (event as CustomEvent<{ preference?: unknown }>).detail

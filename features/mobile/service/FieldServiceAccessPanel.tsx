@@ -17,7 +17,7 @@ export default function FieldServiceAccessPanel({
   return (
     <section
       role="alert"
-      className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-6 text-center shadow-card"
+      className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-6 text-center shadow-card"
     >
       <span className="mx-auto inline-grid h-12 w-12 place-items-center rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-300">
         <LockKeyhole aria-hidden className="h-6 w-6" />

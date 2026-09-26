@@ -363,7 +363,7 @@ export default function MobileServiceScopeGate() {
             onRetry={() => setAttempt((value) => value + 1)}
           />
         ) : (
-          <div className="h-32 animate-pulse rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]" />
+          <div className="h-32 animate-pulse rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))]" />
         )}
       </main>
     );

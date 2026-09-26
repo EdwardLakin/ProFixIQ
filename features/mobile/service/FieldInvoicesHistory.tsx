@@ -373,7 +373,7 @@ export default function FieldInvoicesHistory() {
           Array.from({ length: 3 }).map((_, index) => (
             <div
               key={index}
-              className="h-40 animate-pulse rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]"
+              className="h-40 animate-pulse rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))]"
             />
           ))
         ) : filteredRows.length === 0 ? (

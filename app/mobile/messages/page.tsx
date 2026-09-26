@@ -178,7 +178,7 @@ export default function MobileMessagesPage() {
                   <span className="relative inline-grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-[color:var(--theme-surface-subtle)] text-sm font-extrabold text-[color:var(--accent-copper)]">
                     {title.slice(0, 1).toUpperCase()}
                     {unreadCount > 0 ? (
-                      <span className="absolute -right-1 -top-1 inline-grid min-h-5 min-w-5 place-items-center rounded-full bg-[color:var(--accent-copper)] px-1 text-[0.6rem] font-extrabold text-white ring-2 ring-[color:var(--theme-surface-panel)]">
+                      <span className="absolute -right-1 -top-1 inline-grid min-h-5 min-w-5 place-items-center rounded-full bg-[color:var(--accent-copper)] px-1 text-[0.6rem] font-extrabold text-white ring-2 ring-[color:var(--mobile-surface-panel,var(--theme-surface-panel))]">
                         {unreadCount}
                       </span>
                     ) : null}

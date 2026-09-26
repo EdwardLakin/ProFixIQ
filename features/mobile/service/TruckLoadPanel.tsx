@@ -43,7 +43,7 @@ export default function TruckLoadPanel({
   transferToTruck,
 }: Props) {
   return (
-    <section className="space-y-4 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
+    <section className="space-y-4 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4">
       <div>
         <h2 className="text-lg font-bold">Transfer shop stock to truck</h2>
         <p className="text-sm text-[color:var(--theme-text-secondary)]">
