@@ -96,6 +96,23 @@ export default function MobileTechSettingsPage(): JSX.Element {
   const handleThemeChange = (next: ThemePreference) => {
     applyThemePreference(next);
     setThemePreference(next);
+
+    // Persist through the canonical preference route (same one Brand Studio
+    // uses) so BrandThemeBoot's server-supplied theme_mode doesn't win over
+    // this choice and silently revert it on the next load.
+    void fetch("/api/branding/user-preferences", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ themeMode: next }),
+    })
+      .then(() => {
+        window.dispatchEvent(new CustomEvent("profixiq:brand-refresh"));
+      })
+      .catch(() => {
+        // Offline or transient failure: the local preference above still
+        // applies for this session; it will retry to save next time the
+        // technician changes it.
+      });
   };
 
   // load profile + prefs
@@ -615,7 +632,7 @@ function TogglePill({
       onClick={onClick}
       className={`flex-1 rounded-full px-3 py-1.5 text-[0.75rem] ${
         active
-          ? "border border-[var(--accent-copper)] bg-[var(--accent-copper)]/15 text-[var(--accent-copper-light)]"
+          ? "border border-[var(--accent-copper)] bg-[var(--accent-copper)]/15 text-[color:var(--theme-accent-text)]"
           : "border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] text-[color:var(--theme-text-primary)]"
       }`}
     >

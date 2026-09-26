@@ -57,6 +57,9 @@
 
   /* Semantic surfaces used by every route and shared component. */
   --theme-surface-page: #050B16;
+  --theme-surface-page-rgb: 5 11 22;
+  --theme-border-rgb: 96 165 250;
+  --theme-destructive-rgb: 239 68 68;
   --theme-surface-panel: #0D172A;
   --theme-surface-panel-strong: #091426;
   --theme-surface-inset: rgba(0, 0, 0, 0.38);
@@ -280,6 +283,9 @@ html[data-theme-mode="light"] {
   /* BrandThemeBoot writes brand values inline, so mode tokens intentionally
      use !important to remain authoritative when the mode changes. */
   --theme-surface-page: #f8fafc !important;
+  --theme-surface-page-rgb: 248 250 252 !important;
+  --theme-border-rgb: 59 99 140 !important;
+  --theme-destructive-rgb: 185 28 28 !important;
   --theme-surface-panel: rgba(255, 255, 255, 0.94) !important;
   --theme-surface-panel-strong: #ffffff !important;
   --theme-surface-inset: rgba(226, 232, 240, 0.72) !important;
