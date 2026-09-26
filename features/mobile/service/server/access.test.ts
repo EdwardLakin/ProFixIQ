@@ -71,7 +71,39 @@ describe("resolveFieldWorkspaceCapabilities", () => {
       canConfigureFieldService: false,
       canInviteFleetMembers: false,
       canSwitchWorkspace: false,
+      canReturnToShop: false,
     });
+  });
+
+  it("advertises a direct return to Shop only when Shop access is verified, distinct from the general workspace switch", () => {
+    expect(
+      resolveFieldWorkspaceCapabilities({
+        role: "mechanic",
+        canConfigureFieldService: false,
+        canSwitchWorkspace: true,
+        canReturnToShop: true,
+      }).canReturnToShop,
+    ).toBe(true);
+    expect(
+      resolveFieldWorkspaceCapabilities({
+        role: "mechanic",
+        canConfigureFieldService: false,
+        // Fleet-only access still lets a technician switch workspaces
+        // through the chooser, but there is no Shop Mobile to jump to
+        // directly.
+        canSwitchWorkspace: true,
+        canReturnToShop: false,
+      }).canReturnToShop,
+    ).toBe(false);
+    expect(
+      resolveFieldWorkspaceCapabilities({
+        role: "owner",
+        standaloneFieldWorkspace: true,
+        canConfigureFieldService: true,
+        canSwitchWorkspace: false,
+        canReturnToShop: true,
+      }).canReturnToShop,
+    ).toBe(false);
   });
 
   it("advertises workspace switching only after another product scope is verified", () => {

@@ -3,8 +3,7 @@ import {
   createAdminSupabase,
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
-import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
-import { resolveSelectedFleetRequestScope } from "@/features/fleet/lib/resolveSelectedFleetRequestScope";
+import { resolveServiceRequestsAccess } from "@/features/fleet/lib/resolveServiceRequestsAccess";
 
 export const dynamic = "force-dynamic";
 
@@ -49,53 +48,19 @@ export async function POST(request: Request) {
   try {
     const supabase = createServerSupabaseRoute();
     const body = (await request.json().catch(() => ({}))) as Body;
-    const actor = await resolveFleetActorContext(supabase, {
+    const access = await resolveServiceRequestsAccess(supabase, {
       requestedFleetId: body.fleetId ?? null,
     });
-    const scope = resolveSelectedFleetRequestScope(actor, {
-      explicitFleetId: body.fleetId ?? null,
-      preferMembershipFleet: !actor.isInternal,
-    });
-    const dispatcherView = actor.actorType === "fleet_dispatcher";
-    const isCanonicalFleetManager =
-      actor.isInternal || actor.actorType === "fleet_manager";
-
-    if (!actor.userId) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-    if (!scope?.shopId) {
+    if (!access.ok) {
       return NextResponse.json(
-        { error: "Fleet access required" },
-        { status: 403 },
+        { error: access.error },
+        { status: access.status },
       );
     }
+    const { scope, isCanonicalFleetManager, dispatcherView, hasFieldAccess } =
+      access;
 
     const admin = createAdminSupabase();
-
-    // A verified Field operator (a Field Service-entitled shop's enabled
-    // operator, or a standalone Field shop's canonical owner) can see and
-    // accept requests themselves alongside the existing internal-staff and
-    // Fleet-side roles — Field is a full operations workspace with no
-    // separate advisor/manager to hand this off to.
-    let hasFieldAccess = false;
-    if (
-      !isCanonicalFleetManager &&
-      !dispatcherView &&
-      actor.profileShopId === scope.shopId
-    ) {
-      const { data } = await admin.rpc(
-        "mobile_profile_has_field_service_access",
-        { p_shop_id: scope.shopId, p_profile_id: actor.userId },
-      );
-      hasFieldAccess = data === true;
-    }
-
-    if (!isCanonicalFleetManager && !dispatcherView && !hasFieldAccess) {
-      return NextResponse.json(
-        { error: "Fleet manager or dispatcher access required" },
-        { status: 403 },
-      );
-    }
     let enrollmentQuery = admin
       .from("fleet_vehicles")
       .select("fleet_id,vehicle_id,nickname,active")

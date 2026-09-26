@@ -195,6 +195,8 @@ export function MobileBottomNav({ open, onClose }: Props) {
   const [profileName, setProfileName] = useState<string>("Team member");
   const [role, setRole] = useState<MobileRole | null>(null);
   const [fieldServiceHref, setFieldServiceHref] = useState<string | null>(null);
+  const [canAccessServiceRequests, setCanAccessServiceRequests] =
+    useState(false);
   const [messageUnreadCount, setMessageUnreadCount] = useState(0);
   const [signingOut, setSigningOut] = useState(false);
   const [install, setInstall] = useState<InstallAvailability>({
@@ -216,6 +218,7 @@ export function MobileBottomNav({ open, onClose }: Props) {
         setRole(null);
         setProfileName("Team member");
         setFieldServiceHref(null);
+        setCanAccessServiceRequests(false);
         return;
       }
 
@@ -260,6 +263,23 @@ export function MobileBottomNav({ open, onClose }: Props) {
           : verifiedSetupDestination
             ? "/mobile/service/setup"
             : null,
+      );
+
+      // "Service Requests" is Fleet's defect inbox — meant for fleet
+      // managers/dispatchers or a verified Field operator, not every shop
+      // mechanic. Check before showing it instead of showing it to
+      // everyone with the role and letting the page 403 (see
+      // resolveServiceRequestsAccess, shared with the real endpoint so
+      // this can never claim access the page itself would refuse).
+      const serviceRequestsResponse = await fetch(
+        "/api/mobile/fleet/service-requests/access",
+        { credentials: "include", cache: "no-store" },
+      ).catch(() => null);
+      const serviceRequestsAccess = (await serviceRequestsResponse
+        ?.json()
+        .catch(() => null)) as { canAccess?: boolean } | null;
+      setCanAccessServiceRequests(
+        serviceRequestsAccess?.canAccess === true,
       );
     };
 
@@ -351,6 +371,11 @@ export function MobileBottomNav({ open, onClose }: Props) {
 
     const dynamic = getMobileTilesForRole(role, ["all"])
       .filter((tile) => tile.href !== "/mobile/service" || fieldServiceHref)
+      .filter(
+        (tile) =>
+          tile.href !== "/mobile/fleet/service-requests" ||
+          canAccessServiceRequests,
+      )
       .map((tile) => {
         const href =
           tile.href === "/mobile/service" && fieldServiceHref
@@ -373,7 +398,7 @@ export function MobileBottomNav({ open, onClose }: Props) {
       (item, index, items) =>
         items.findIndex((candidate) => candidate.href === item.href) === index,
     );
-  }, [fieldServiceHref, messageUnreadCount, role]);
+  }, [canAccessServiceRequests, fieldServiceHref, messageUnreadCount, role]);
 
   const utilityItems = useMemo<NavItem[]>(() => {
     if (role === "mechanic") return [];
