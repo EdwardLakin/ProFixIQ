@@ -654,6 +654,7 @@ export function useTechnicianInteractionGateway({
   const start = useCallback(async (opts?: { isAutoResume?: boolean }) => {
     if (!enabled || activeRef.current) return;
     invalidateGeneration();
+    const generation = generationRef.current;
     consecutiveRecoverableFailuresRef.current = 0;
     // A genuine, technician-initiated start (the button, or the initial
     // autoStart) begins a fresh auto-resume streak. An automatic
@@ -669,9 +670,24 @@ export function useTechnicianInteractionGateway({
     const pendingGreeting = greetingRef.current;
     if (pendingGreeting && !greetingSpokenRef.current) {
       greetingSpokenRef.current = true;
-      // Same path a normal turn's spoken reply takes: speaks, then resumes
-      // listening on its own. No transcription session is opened until
-      // after the greeting finishes, so it can't transcribe itself.
+      // speakReply's generated-voice path plays audio through the realtime
+      // transport's own audio context, which only exists once that
+      // transport has been started — exactly like it already is by the
+      // time an ordinary turn's reply gets spoken (handleFinalTranscript
+      // pauses, doesn't stop, the transport before calling onUtterance).
+      // Speaking the greeting without ever having started that transport
+      // meant its playback call always threw "not ready" and every
+      // greeting silently fell back to the device voice, even when the
+      // generated audio itself was fine. Start (and immediately pause, the
+      // same way a normal turn does) before speaking so the greeting gets
+      // the same playback path.
+      await startListeningRef.current();
+      if (!activeRef.current || generationRef.current !== generation) return;
+      const paused = realtimeRef.current?.pause?.() ?? false;
+      if (!paused) {
+        realtimeRef.current?.stop();
+        transportStartedRef.current = false;
+      }
       speakReplyRef.current(pendingGreeting);
       return;
     }

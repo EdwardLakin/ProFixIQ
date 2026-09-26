@@ -190,7 +190,7 @@ export function MobileBottomNav({ open, onClose }: Props) {
   const pathname = usePathname();
   const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabase(), []);
-  const { tabs, activateTab, closeTab } = useTabs();
+  const { tabs, activateTab, closeTab, syncTabStatuses } = useTabs();
   const [userId, setUserId] = useState<string | null>(null);
   const [profileName, setProfileName] = useState<string>("Team member");
   const [role, setRole] = useState<MobileRole | null>(null);
@@ -399,6 +399,48 @@ export function MobileBottomNav({ open, onClose }: Props) {
         .slice(0, RESUME_VISIBLE_LIMIT),
     [tabs],
   );
+
+  // The Resume list's status text is written once, whenever that work order's
+  // own page was last open (see MobileWorkOrderClient's updateActiveTab
+  // call) — it never updates on its own afterward, so a job finished from
+  // another device or another tab can sit here reading a stale status
+  // indefinitely. Refresh the handful of visible work-order entries from the
+  // database each time this menu opens, rather than trusting the cached
+  // snapshot.
+  useEffect(() => {
+    if (!open) return;
+    const workOrderIds = openWorkItems
+      .filter((item) => item.kind === "work-order")
+      .map((item) => item.key.slice("work-order:".length));
+    if (workOrderIds.length === 0) return;
+
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase
+        .from("work_orders")
+        .select("id, status")
+        .in("id", workOrderIds);
+      if (cancelled || error || !data) return;
+      const updates = new Map(
+        data
+          .filter((row): row is { id: string; status: string } =>
+            Boolean(row.id && row.status),
+          )
+          .map((row) => [
+            `work-order:${row.id}`,
+            { status: row.status.replaceAll("_", " ") },
+          ]),
+      );
+      syncTabStatuses(updates);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // Re-run whenever the menu opens; the ids captured above are already
+    // reactive through openWorkItems.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, openWorkItems.map((item) => item.key).join(",")]);
 
   const totalOpenWork = tabs.filter((item) => !item.pinned).length;
   const deviceNeedsAttention =

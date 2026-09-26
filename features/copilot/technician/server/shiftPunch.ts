@@ -35,7 +35,7 @@ type PunchEventRow = {
   created_at: string | null;
 };
 
-async function loadActiveShiftId(
+export async function loadActiveShiftId(
   supabase: TechnicianWorkScope["supabase"],
   shopId: string,
   userIds: readonly string[],

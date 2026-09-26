@@ -17,6 +17,7 @@ import {
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { cn } from "@/features/shared/utils/cn";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { useTabs } from "./TabsProvider";
 import {
   visibleOpenWorkItems,
@@ -87,8 +88,10 @@ export default function TabsBar({ subdued = false }: TabsBarProps) {
     closeTab,
     closeOthers,
     closeAll,
+    syncTabStatuses,
   } = useTabs();
   const pathname = usePathname() || "/";
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [openWorkOpen, setOpenWorkOpen] = useState(false);
   const [actionsOpen, setActionsOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -118,6 +121,43 @@ export default function TabsBar({ subdued = false }: TabsBarProps) {
         .includes(normalized),
     );
   }, [query, workItems]);
+
+  // Status text here is a snapshot written the last time each record's own
+  // page was open (see MobileWorkOrderClient/Client.tsx), so it can go
+  // stale the moment that job finishes elsewhere. Refresh work-order entries
+  // from the database whenever this dropdown opens instead of trusting it.
+  useEffect(() => {
+    if (!openWorkOpen) return;
+    const workOrderIds = workItems
+      .filter((item) => item.kind === "work-order")
+      .map((item) => item.key.slice("work-order:".length));
+    if (workOrderIds.length === 0) return;
+
+    let cancelled = false;
+    void (async () => {
+      const { data, error } = await supabase
+        .from("work_orders")
+        .select("id, status")
+        .in("id", workOrderIds);
+      if (cancelled || error || !data) return;
+      const updates = new Map(
+        data
+          .filter((row): row is { id: string; status: string } =>
+            Boolean(row.id && row.status),
+          )
+          .map((row) => [
+            `work-order:${row.id}`,
+            { status: row.status.replaceAll("_", " ") },
+          ]),
+      );
+      syncTabStatuses(updates);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [openWorkOpen, workItems.map((item) => item.key).join(",")]);
 
   useEffect(() => {
     const onPointerDown = (event: PointerEvent) => {

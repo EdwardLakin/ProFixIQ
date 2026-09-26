@@ -17,6 +17,7 @@ const mocks = vi.hoisted(() => ({
   saveOfflineSnapshot: vi.fn(async () => undefined),
   search: "",
   updateActiveTab: vi.fn(),
+  canonicalizeActiveTab: vi.fn(),
 }));
 
 vi.mock("next/navigation", () => ({
@@ -41,7 +42,10 @@ vi.mock("@/features/shared/hooks/useTabState", async () => {
 });
 
 vi.mock("@/features/shared/components/tabs/TabsProvider", () => ({
-  useTabs: () => ({ updateActiveTab: mocks.updateActiveTab }),
+  useTabs: () => ({
+    updateActiveTab: mocks.updateActiveTab,
+    canonicalizeActiveTab: mocks.canonicalizeActiveTab,
+  }),
 }));
 
 vi.mock("@/features/shared/lib/supabase/client", () => {
