@@ -448,7 +448,7 @@
   border: 1px solid var(--theme-border-soft);
   border-radius: 1.35rem;
   padding: 0.9rem;
-  background: color-mix(in srgb, var(--theme-surface-panel) 96%, transparent);
+  background: color-mix(in srgb, var(--mobile-surface-panel, var(--theme-surface-panel)) 96%, transparent);
   box-shadow: 0 16px 42px rgba(3, 13, 32, 0.08);
 }
 
@@ -511,7 +511,7 @@
   border: 1px solid var(--theme-border-soft);
   border-radius: 1.35rem;
   padding: 0.9rem;
-  background: color-mix(in srgb, var(--theme-surface-panel) 96%, transparent);
+  background: color-mix(in srgb, var(--mobile-surface-panel, var(--theme-surface-panel)) 96%, transparent);
   box-shadow: 0 16px 42px rgba(3, 13, 32, 0.08);
 }
 
@@ -675,7 +675,7 @@ a.field-hub-module:hover {
   overflow: hidden;
   border: 1px solid var(--theme-border-soft);
   border-radius: 1.35rem;
-  background: var(--theme-surface-panel);
+  background: var(--mobile-surface-panel, var(--theme-surface-panel));
   color: var(--theme-text-primary);
   box-shadow: 0 28px 80px rgba(1, 7, 19, 0.36);
 }
@@ -921,7 +921,7 @@ a.field-hub-module:hover {
   border: 1px solid var(--theme-border-soft);
   border-radius: 1rem;
   padding: 0.75rem;
-  background: var(--theme-surface-panel);
+  background: var(--mobile-surface-panel, var(--theme-surface-panel));
   color: var(--theme-text-primary);
   font-size: 0.76rem;
   font-weight: 800;
@@ -937,7 +937,7 @@ a.field-hub-module:hover {
   border: 1px solid var(--theme-border-soft);
   border-radius: 1.35rem;
   padding: 0.85rem;
-  background: color-mix(in srgb, var(--theme-surface-panel) 92%, transparent);
+  background: color-mix(in srgb, var(--mobile-surface-panel, var(--theme-surface-panel)) 92%, transparent);
   box-shadow: var(--mobile-shadow);
 }
 

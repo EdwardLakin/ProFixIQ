@@ -333,7 +333,7 @@ function VisitCard({
     (action?.toStatus === "working" || action?.toStatus === "completed");
 
   return (
-    <article className="overflow-hidden rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] shadow-card">
+    <article className="overflow-hidden rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] shadow-card">
       <header className="border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -1031,7 +1031,7 @@ export default function MobileServiceShell({
       ) : null}
 
       {loading && !snapshot ? (
-        <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
+        <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4">
           <div className="h-5 w-36 animate-pulse rounded bg-[color:var(--theme-surface-subtle)]" />
           <div className="h-20 animate-pulse rounded-2xl bg-[color:var(--theme-surface-subtle)]" />
           <div className="h-12 animate-pulse rounded-2xl bg-[color:var(--theme-surface-subtle)]" />
@@ -1074,7 +1074,7 @@ export default function MobileServiceShell({
           ) : null}
         </>
       ) : (
-        <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5 text-center shadow-card">
+        <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-5 text-center shadow-card">
           <div className="mx-auto inline-grid h-12 w-12 place-items-center rounded-2xl bg-[color:var(--theme-surface-subtle)] text-[color:var(--accent-copper)]">
             <Truck className="h-6 w-6" />
           </div>

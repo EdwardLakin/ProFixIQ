@@ -280,7 +280,7 @@ export default function RapidServiceIntake() {
   if (settingsLoading) {
     return (
       <main className="mx-auto w-full max-w-3xl px-3 py-4 sm:px-4">
-        <div className="h-32 animate-pulse rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]" />
+        <div className="h-32 animate-pulse rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))]" />
       </main>
     );
   }
@@ -314,7 +314,7 @@ export default function RapidServiceIntake() {
         />
       ) : null}
 
-      <section className="relative space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
+      <section className="relative space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4 shadow-card">
         <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
           <UserRound className="h-4 w-4" /> Customer
         </div>
@@ -367,7 +367,7 @@ export default function RapidServiceIntake() {
         ) : null}
       </section>
 
-      <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
+      <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4 shadow-card">
         <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
           <Wrench className="h-4 w-4" /> Vehicle & concern
         </div>
@@ -399,7 +399,7 @@ export default function RapidServiceIntake() {
       </section>
 
       {configuredServiceModel === "both" ? (
-        <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
+        <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4 shadow-card">
           <div className="text-xs font-extrabold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
             Service location
           </div>
@@ -431,7 +431,7 @@ export default function RapidServiceIntake() {
       ) : null}
 
       {serviceMode === "mobile" ? (
-        <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
+        <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4 shadow-card">
           <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
             <MapPin className="h-4 w-4" /> Where
           </div>
@@ -465,7 +465,7 @@ export default function RapidServiceIntake() {
           </div>
         </section>
       ) : (
-        <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
+        <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4 shadow-card">
           <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
             <MapPin className="h-4 w-4" /> At the shop
           </div>
@@ -476,7 +476,7 @@ export default function RapidServiceIntake() {
         </section>
       )}
 
-      <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
+      <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4 shadow-card">
         <div className="flex items-center gap-2 text-xs font-extrabold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
           <Clock3 className="h-4 w-4" /> ETA & price
         </div>

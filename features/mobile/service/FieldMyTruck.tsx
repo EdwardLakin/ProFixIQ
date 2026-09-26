@@ -112,7 +112,7 @@ function RecordForm({
     );
 
   return (
-    <details className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]">
+    <details className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))]">
       <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 font-extrabold">
         <span>{title}</span>
         <Plus aria-hidden className="h-5 w-5 text-[color:var(--accent-copper)]" />
@@ -264,7 +264,7 @@ function RecordRow({
   busy: boolean;
 }) {
   return (
-    <article className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-3">
+    <article className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-3">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <div className="truncate font-extrabold">{record.title}</div>
@@ -489,7 +489,7 @@ export default function FieldMyTruck() {
               ],
             ].map(([Icon, label, value]) => {
               const CardIcon = Icon as typeof Gauge;
-              return <div key={String(label)} className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card"><CardIcon className="h-5 w-5 text-sky-400" /><div className="mt-3 text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">{String(label)}</div><div className="mt-1 text-lg font-black">{String(value)}</div></div>;
+              return <div key={String(label)} className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4 shadow-card"><CardIcon className="h-5 w-5 text-sky-400" /><div className="mt-3 text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">{String(label)}</div><div className="mt-1 text-lg font-black">{String(value)}</div></div>;
             })}
           </section>
 

@@ -62,7 +62,7 @@ export default function TruckStockPanel({
 
   return (
     <div className="space-y-4">
-      <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
+      <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4">
         <div className="grid gap-3 sm:grid-cols-[1fr_auto]">
           <label className="text-sm font-semibold">
             Repair line
@@ -120,7 +120,7 @@ export default function TruckStockPanel({
       </section>
 
       {identityDraft ? (
-        <section className="rounded-3xl border border-[color:var(--accent-copper)] bg-[color:var(--theme-surface-panel)] p-4">
+        <section className="rounded-3xl border border-[color:var(--accent-copper)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4">
           <div className="flex items-center gap-2 text-sm font-bold">
             <Barcode className="h-4 w-4 text-[color:var(--accent-copper)]" />
             Confirm new canonical part
@@ -169,7 +169,7 @@ export default function TruckStockPanel({
             <article
               key={part.partId}
               className={[
-                "rounded-2xl border bg-[color:var(--theme-surface-panel)] p-4",
+                "rounded-2xl border bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4",
                 selectedPartId === part.partId
                   ? "border-[color:var(--accent-copper)]"
                   : "border-[color:var(--theme-border-soft)]",

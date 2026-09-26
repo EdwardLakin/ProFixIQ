@@ -175,9 +175,9 @@ export default function MobileServiceFollowupQueue() {
       ) : null}
 
       {loading && items.length === 0 ? (
-        <div className="h-36 animate-pulse rounded-3xl bg-[color:var(--theme-surface-panel)]" />
+        <div className="h-36 animate-pulse rounded-3xl bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))]" />
       ) : items.length === 0 ? (
-        <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-6 text-center shadow-card">
+        <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-6 text-center shadow-card">
           <Sparkles className="mx-auto h-8 w-8 text-sky-400" />
           <h2 className="mt-2 text-lg font-extrabold">Nothing waiting</h2>
           <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
@@ -192,7 +192,7 @@ export default function MobileServiceFollowupQueue() {
             return (
               <article
                 key={item.id}
-                className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card"
+                className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4 shadow-card"
               >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">

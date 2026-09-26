@@ -93,7 +93,7 @@ export default function MobileServiceFollowup({
         </div>
       </header>
 
-      <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
+      <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4 shadow-card">
         <textarea
           autoFocus
           rows={3}

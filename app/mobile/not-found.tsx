@@ -3,7 +3,7 @@ import Link from "next/link";
 export default function MobileNotFound() {
   return (
     <div className="mx-auto flex min-h-[60vh] w-full max-w-xl items-center px-4 py-10">
-      <section className="w-full rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5 text-center shadow-[var(--theme-shadow-medium)]">
+      <section className="w-full rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-5 text-center shadow-[var(--theme-shadow-medium)]">
         <div className="text-[0.65rem] font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
           ProFixIQ mobile
         </div>
