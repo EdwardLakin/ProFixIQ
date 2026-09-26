@@ -60,6 +60,27 @@ function setVar(
   }
 }
 
+// Unlike `setVar`, this never substitutes a JS-computed fallback: it either
+// applies the shop's explicit customization or removes any previous inline
+// override entirely, letting the variable fall through to its CSS-authored
+// `:root` / `data-theme-mode` default. `--theme-surface-panel` backs card
+// and panel backgrounds across the mobile app, which the light/dark mode
+// system already keeps in sync with that default; applying a fallback here
+// would fight that, whereas leaving it unset preserves today's behavior for
+// every shop that hasn't customized `card_background`.
+function setVarOrClear(
+  root: HTMLElement,
+  name: string,
+  value: string | null | undefined,
+) {
+  const finalValue = String(value ?? "").trim();
+  if (finalValue) {
+    root.style.setProperty(name, finalValue);
+  } else {
+    root.style.removeProperty(name);
+  }
+}
+
 function setRadiusVars(root: HTMLElement, scale: string | null | undefined) {
   const value = String(scale ?? "").trim().toLowerCase();
 
@@ -353,6 +374,18 @@ export default function BrandThemeBoot() {
       profile.surface_2_background,
       "var(--theme-surface-page)",
     );
+
+    // The mobile app's card/panel backgrounds (`app/mobile/*.css`) read
+    // `--theme-surface-panel` directly rather than `--theme-card-bg`, so a
+    // shop's configured card background previously never reached them --
+    // only its configured text colors did (via --theme-text-primary below).
+    // A shop customized for a light card surface (e.g. a white card with
+    // dark ink text) would then get that dark ink text rendered over the
+    // mobile app's unrelated, always-dark default panel background,
+    // producing near-invisible text. Keeping this variable in sync with
+    // the same `card_background` value fixes that mismatch without
+    // changing anything for shops that haven't customized their branding.
+    setVarOrClear(root, "--theme-surface-panel", profile.card_background);
 
     setVar(root, "--theme-text-primary", profile.text_primary, "var(--theme-text-inverse)");
     setVar(root, "--theme-text-secondary", profile.text_secondary, "var(--theme-text-muted)");
