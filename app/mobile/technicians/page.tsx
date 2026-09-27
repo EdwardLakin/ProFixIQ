@@ -218,7 +218,7 @@ export default function MobileTechniciansPage() {
           {Array.from({ length: 4 }).map((_, index) => (
             <div
               key={index}
-              className="h-40 animate-pulse rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))]"
+              className="h-40 animate-pulse rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]"
             />
           ))}
         </div>
@@ -355,7 +355,7 @@ function TechStat({
   icon: LucideIcon;
 }) {
   return (
-    <div className="bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] px-3 py-3">
+    <div className="bg-[color:var(--theme-surface-panel)] px-3 py-3">
       <div className="flex items-center justify-between gap-2">
         <div className="text-[0.6rem] font-bold uppercase tracking-[0.13em] text-[color:var(--theme-text-muted)]">
           {label}

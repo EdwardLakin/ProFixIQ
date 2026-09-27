@@ -77,7 +77,7 @@ export default function TruckHistoryPanel({
           return (
             <article
               key={use.stockMoveId}
-              className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4"
+              className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -127,7 +127,7 @@ export default function TruckHistoryPanel({
           return (
             <article
               key={movement.id}
-              className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4"
+              className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4"
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">

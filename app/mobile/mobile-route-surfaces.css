@@ -18,7 +18,7 @@
 .mobile-command-route :is(.shadow-card, .glass-card) {
   border-color: color-mix(in srgb, var(--theme-border-strong) 68%, transparent) !important;
   background:
-    linear-gradient(145deg, color-mix(in srgb, var(--mobile-surface-panel, var(--theme-surface-panel)) 97%, white 3%), var(--mobile-surface-panel, var(--theme-surface-panel))) !important;
+    linear-gradient(145deg, color-mix(in srgb, var(--theme-surface-panel) 97%, white 3%), var(--theme-surface-panel)) !important;
   box-shadow: var(--mobile-shadow) !important;
   backdrop-filter: blur(18px);
 }
@@ -213,7 +213,7 @@
 
 .mobile-command-route--appointments main > div > section {
   border-radius: 1rem !important;
-  background: var(--mobile-surface-panel, var(--theme-surface-panel)) !important;
+  background: var(--theme-surface-panel) !important;
   box-shadow: var(--mobile-shadow) !important;
 }
 
@@ -238,7 +238,7 @@
 .mobile-command-route--workforce section.grid > :is(a, div) {
   min-height: 6.5rem;
   border-color: color-mix(in srgb, var(--theme-border-strong) 68%, transparent) !important;
-  background: var(--mobile-surface-panel, var(--theme-surface-panel)) !important;
+  background: var(--theme-surface-panel) !important;
   box-shadow: var(--mobile-shadow);
 }
 
@@ -282,7 +282,7 @@
   position: relative;
   overflow: hidden;
   border-color: color-mix(in srgb, var(--theme-border-strong) 68%, transparent) !important;
-  background: var(--mobile-surface-panel, var(--theme-surface-panel)) !important;
+  background: var(--theme-surface-panel) !important;
   box-shadow: var(--mobile-shadow);
 }
 
@@ -396,7 +396,7 @@
 
 .mobile-command-route--technicians article {
   border-color: color-mix(in srgb, var(--theme-border-strong) 68%, transparent) !important;
-  background: var(--mobile-surface-panel, var(--theme-surface-panel)) !important;
+  background: var(--theme-surface-panel) !important;
   box-shadow: var(--mobile-shadow) !important;
 }
 

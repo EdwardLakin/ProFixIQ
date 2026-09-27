@@ -73,7 +73,7 @@ export default function MobileChatThreadPage() {
 
   return (
     <main className="flex min-h-[calc(100dvh-3.75rem-env(safe-area-inset-top,0px))] flex-col overflow-hidden">
-      <header className="flex min-h-16 items-center gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] px-3 py-2 shadow-sm">
+      <header className="flex min-h-16 items-center gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 shadow-sm">
         <Link
           href="/mobile/messages"
           aria-label="Return to messages"

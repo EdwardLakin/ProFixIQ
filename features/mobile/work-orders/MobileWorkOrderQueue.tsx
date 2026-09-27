@@ -729,7 +729,7 @@ export default function MobileWorkOrderQueue({
         </span>
       </div>
 
-      <section className="mt-3 overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] shadow-[var(--mobile-shadow)]">
+      <section className="mt-3 overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] shadow-[var(--mobile-shadow)]">
         {!lockStatus ? (
           <div className="flex items-center gap-2 overflow-x-auto px-3 py-3 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <Filter
@@ -804,7 +804,7 @@ export default function MobileWorkOrderQueue({
           Array.from({ length: 3 }).map((_, index) => (
             <div
               key={index}
-              className="h-32 animate-pulse rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))]"
+              className="h-32 animate-pulse rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]"
             />
           ))
         ) : filteredRows.length === 0 ? (
