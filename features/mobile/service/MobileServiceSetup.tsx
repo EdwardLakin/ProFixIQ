@@ -229,7 +229,7 @@ export default function MobileServiceSetup() {
   if (!settingsLoaded) {
     return (
       <main className="mx-auto w-full max-w-2xl px-3 pb-8 pt-3 sm:px-4">
-        <div className="h-40 animate-pulse rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))]" />
+        <div className="h-40 animate-pulse rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]" />
       </main>
     );
   }
@@ -272,7 +272,7 @@ export default function MobileServiceSetup() {
         </div>
       </header>
 
-      <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4 shadow-card">
+      <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
         <h2 className="font-extrabold">
           {standaloneFieldWorkspace
             ? "Standalone Field workspace"
@@ -321,7 +321,7 @@ export default function MobileServiceSetup() {
           </p>
         </section>
       ) : (
-        <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4 shadow-card">
+        <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
           <div className="flex items-center gap-2">
             <UsersRound className="h-5 w-5" />
             <h2 className="font-extrabold">Field team</h2>
@@ -394,7 +394,7 @@ export default function MobileServiceSetup() {
         </section>
       )}
 
-      <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4 shadow-card">
+      <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
         <div className="flex items-center gap-2">
           <Truck className="h-5 w-5" />
           <h2 className="font-extrabold">Service vehicle</h2>
@@ -447,7 +447,7 @@ export default function MobileServiceSetup() {
       canConfigure &&
       fieldTeam.length > 0 &&
       fieldVehicles.length > 0 ? (
-        <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4 shadow-card">
+        <section className="space-y-3 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
           <div className="flex items-center gap-2">
             <UsersRound className="h-5 w-5" />
             <h2 className="font-extrabold">Field truck assignments</h2>
@@ -489,7 +489,7 @@ export default function MobileServiceSetup() {
         </section>
       ) : null}
 
-      <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4 shadow-card">
+      <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
         <label className="block text-xs text-[color:var(--theme-text-secondary)]">
           Default time reserved for a call
           <select

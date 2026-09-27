@@ -108,7 +108,7 @@ function MobileHomeFreshness({
   return (
     <>
       {children}
-      <section className="mx-4 mb-24 mt-3 flex items-center justify-between gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
+      <section className="mx-4 mb-24 mt-3 flex items-center justify-between gap-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)]">
         <div className="min-w-0">
           <div>
             {liveStatus === "live"
@@ -391,7 +391,7 @@ export default function MobileHome() {
   if (loading) {
     return (
       <main className="min-h-screen overflow-x-hidden bg-[color:var(--theme-surface-page)] px-4 py-16 text-center text-[color:var(--theme-text-primary)]">
-        <div className="mx-auto h-10 w-56 animate-pulse rounded-lg bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))]" />
+        <div className="mx-auto h-10 w-56 animate-pulse rounded-lg bg-[color:var(--theme-surface-panel)]" />
       </main>
     );
   }
@@ -450,7 +450,7 @@ export default function MobileHome() {
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[color:var(--theme-surface-page)] px-4 py-12 text-center text-[color:var(--theme-text-primary)]">
-      <div className="mx-auto max-w-md rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-6">
+      <div className="mx-auto max-w-md rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-6">
         <div className="text-xs uppercase tracking-[0.2em] text-[color:var(--accent-copper)]">
           ProFixIQ mobile
         </div>

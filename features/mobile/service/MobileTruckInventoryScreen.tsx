@@ -88,7 +88,7 @@ export default function MobileTruckInventoryScreen(props: Props) {
 
   return (
     <main className="mx-auto min-h-screen w-full max-w-4xl space-y-4 px-3 py-4 text-[color:var(--theme-text-primary)] sm:px-4">
-      <header className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4 shadow-card">
+      <header className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
         <div className="flex items-start justify-between gap-3">
           <div>
             <Link
@@ -138,7 +138,7 @@ export default function MobileTruckInventoryScreen(props: Props) {
       ) : null}
 
       {snapshot?.canManageParts && (snapshot.trucks ?? []).length > 0 ? (
-        <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-3">
+        <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-3">
           <label className="text-sm font-semibold">
             Service truck
             <select
@@ -167,7 +167,7 @@ export default function MobileTruckInventoryScreen(props: Props) {
               className={[
                 "min-h-16 rounded-2xl border px-2 py-2 text-xs font-bold",
                 view === key
-                  ? "border-[color:var(--accent-copper)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))]"
+                  ? "border-[color:var(--accent-copper)] bg-[color:var(--theme-surface-panel)]"
                   : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)]",
               ].join(" ")}
             >
@@ -179,13 +179,13 @@ export default function MobileTruckInventoryScreen(props: Props) {
       ) : null}
 
       {loading && !snapshot ? (
-        <div className="flex min-h-48 items-center justify-center rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))]">
+        <div className="flex min-h-48 items-center justify-center rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]">
           <Loader2 className="h-6 w-6 animate-spin" />
         </div>
       ) : null}
 
       {snapshot && !snapshot.truck ? (
-        <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-6 text-center">
+        <section className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-6 text-center">
           <Truck className="mx-auto h-8 w-8 text-[color:var(--theme-text-muted)]" />
           <h2 className="mt-3 text-lg font-bold">Assign a service truck</h2>
           <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">

@@ -82,7 +82,7 @@ export default function MobileServiceCallHandoff({
         </div>
       ) : null}
 
-      <section className="space-y-2 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))] p-4 shadow-card">
+      <section className="space-y-2 rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4 shadow-card">
         <button
           type="button"
           disabled={busy || !visitId}

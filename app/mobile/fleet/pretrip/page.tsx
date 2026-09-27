@@ -138,7 +138,7 @@ export default function MobilePretripIndexPage() {
           [0, 1, 2].map((item) => (
             <div
               key={item}
-              className="h-24 animate-pulse rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))]"
+              className="h-24 animate-pulse rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]"
             />
           ))
         ) : visibleUnits.length === 0 ? (

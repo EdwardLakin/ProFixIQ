@@ -221,7 +221,7 @@ export default function MobileFleetServiceRequestsPage() {
           [0, 1, 2].map((item) => (
             <div
               key={item}
-              className="h-36 animate-pulse rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))]"
+              className="h-36 animate-pulse rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]"
             />
           ))
         ) : visibleRequests.length === 0 ? (

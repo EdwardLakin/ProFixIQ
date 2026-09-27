@@ -209,7 +209,7 @@ export default function MobileCustomerProfilePage() {
       <div className="flex items-center justify-between gap-2">
         <Link
           href="/mobile/work-orders"
-          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-1 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--mobile-surface-panel,var(--theme-surface-panel))]"
+          className="rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-1 text-xs text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-panel)]"
         >
           ← Work orders
         </Link>
