@@ -26,28 +26,78 @@
 /* Mobile keeps its own neutral ProFixIQ surface/text theme, independent of
  * any shop's brand color customization. Brand Studio is designed around
  * the desktop dashboard, and BrandThemeBoot applies a shop's configured
- * text/card colors globally via inline custom properties on <html> --
- * correct for desktop, but a shop with a light brand palette (e.g. a white
- * card with dark ink text, meant to pair with its own light card
- * background) collides with mobile's hardcoded-dark chrome (header,
- * sidebar, hero panels), producing near-invisible dark-on-dark text.
- * Re-declaring these variables here (higher specificity than the plain
- * `:root`/inline declarations they'd otherwise inherit) keeps mobile
- * looking like its own always-dark header/sidebar, while still responding
- * to the user's own light/dark choice in Settings via the mode-qualified
- * override below. */
+ * colors globally via inline custom properties on <html> -- correct for
+ * desktop, but a shop with a light brand palette (e.g. a white card with
+ * dark ink text, meant to pair with its own light surfaces) collides with
+ * mobile's hardcoded-dark chrome (header, sidebar, hero panels) and with
+ * any *other* brand-controlled surface a shared component (not just
+ * mobile's own CSS) might pair mobile's now-neutral text against --
+ * `--theme-surface-2`, `--theme-card-bg`, input/button surfaces, etc. --
+ * producing the same near-invisible-text bug via a different variable
+ * pair. Re-declaring the complete set of brand-controlled surface/text
+ * tokens here (higher specificity than the plain `:root`/inline
+ * declarations they'd otherwise inherit) keeps every mobile surface a
+ * matched, neutral, ProFixIQ-native pair, while still responding to the
+ * user's own light/dark choice in Settings via the mode-qualified override
+ * below. Left untouched: pure accent/brand hue tokens (--brand-primary,
+ * --accent-copper*, etc.) used for icons and CTAs, which aren't part of
+ * this contrast defect and are fine to stay shop-branded. */
 .profixiq-mobile-command {
   --theme-text-primary: #f8fbff !important;
   --theme-text-secondary: #c3d2e8 !important;
   --theme-text-muted: #8295b2 !important;
+
+  --theme-app-bg: #050b16 !important;
+  --theme-app-bg-secondary: #081225 !important;
+
+  --theme-sidebar-bg: #030914 !important;
+  --theme-sidebar-text: #dce7f8 !important;
+  --theme-sidebar-active-text: #ffffff !important;
+
+  --theme-header-bg: #050b16 !important;
+  --theme-header-text: #f8fbff !important;
+
+  --theme-card-bg: #0d172a !important;
+  --theme-card-border: #243b61 !important;
   --theme-surface-panel: #0d172a !important;
+  --theme-surface-2: #111f36 !important;
+
+  --theme-button-primary-text: #ffffff !important;
+  --theme-button-secondary-bg: #14243d !important;
+  --theme-button-secondary-text: #eaf2ff !important;
+
+  --theme-input-bg: #091426 !important;
+  --theme-input-border: #2b466f !important;
+  --theme-input-text: #f8fbff !important;
 }
 
 html[data-theme-mode="light"] .profixiq-mobile-command {
   --theme-text-primary: #0f172a !important;
   --theme-text-secondary: #475569 !important;
   --theme-text-muted: #64748b !important;
+
+  --theme-app-bg: #f8fafc !important;
+  --theme-app-bg-secondary: #e2e8f0 !important;
+
+  --theme-sidebar-bg: #e8eef7 !important;
+  --theme-sidebar-text: #0f172a !important;
+  --theme-sidebar-active-text: #ffffff !important;
+
+  --theme-header-bg: rgba(255, 255, 255, 0.94) !important;
+  --theme-header-text: #0f172a !important;
+
+  --theme-card-bg: rgba(255, 255, 255, 0.96) !important;
+  --theme-card-border: rgba(59, 99, 140, 0.28) !important;
   --theme-surface-panel: rgba(255, 255, 255, 0.94) !important;
+  --theme-surface-2: rgba(239, 246, 255, 0.84) !important;
+
+  --theme-button-primary-text: #ffffff !important;
+  --theme-button-secondary-bg: #e2e8f0 !important;
+  --theme-button-secondary-text: #0f172a !important;
+
+  --theme-input-bg: rgba(255, 255, 255, 0.98) !important;
+  --theme-input-border: rgba(59, 99, 140, 0.42) !important;
+  --theme-input-text: #0f172a !important;
 }
 
 .profixiq-mobile-command *,
