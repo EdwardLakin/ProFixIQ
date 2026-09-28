@@ -155,6 +155,8 @@ export async function sendTechnicianCopilotMessage(input: {
   const { error: insertError } = await input.supabase.from("messages").insert({
     conversation_id: input.conversationId,
     sender_id: input.actorUserId,
+    sender_participant_id: access.actorParticipant.id,
+    sender_kind: access.actorParticipant.participant_kind,
     client_message_id: input.clientMessageId,
     recipients,
     content: input.content,
