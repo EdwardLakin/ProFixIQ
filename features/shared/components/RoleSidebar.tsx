@@ -20,6 +20,7 @@ import { ChevronDown, ChevronRight } from "lucide-react";
 import { canonicalizeRole } from "@/features/shared/lib/rbac";
 import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
+import { useNavigationQueueIndicators, type NavigationQueueKey } from "@/features/shared/hooks/useNavigationQueueIndicators";
 
 const GROUP_ORDER = [
   "Dashboard",
@@ -98,6 +99,20 @@ export default function RoleSidebar({
     technicianCopilotAvailable,
     userEmail,
   ]);
+
+  const queueIndicators = useNavigationQueueIndicators(
+    Boolean(role),
+    tiles.some((tile) => tile.href === "/work-orders/fleet-requests"),
+  );
+  const queueKeyByHref: Record<string, NavigationQueueKey> = {
+    "/work-orders/fleet-requests": "fleetIntake",
+    "/work-orders/quote-review": "quoteReview",
+    "/work-orders/view": "workOrders",
+    "/parts": "parts",
+    "/parts/requests": "parts",
+    "/billing": "billing",
+  };
+  const hasQueue = (href: string) => Boolean(queueIndicators[queueKeyByHref[href]]);
 
   const canonicalActiveTile = useMemo(
     () => getCanonicalActiveTile(pathname, tiles),
@@ -225,6 +240,14 @@ export default function RoleSidebar({
                 </span>
               </span>
 
+              <span className="ml-auto flex items-center gap-2">
+                {groupTiles.some((tile) => hasQueue(tile.href)) ? (
+                  <span
+                    aria-label={`${group} has outstanding work`}
+                    title="Outstanding work"
+                    className="h-2 w-2 rounded-full bg-amber-500"
+                  />
+                ) : null}
               {open ? (
                 <ChevronDown
                   className="h-3.5 w-3.5"
@@ -244,6 +267,7 @@ export default function RoleSidebar({
                   }}
                 />
               )}
+              </span>
             </button>
 
             {open ? (
@@ -285,6 +309,13 @@ export default function RoleSidebar({
                         {t.title}
                       </span>
 
+                      {hasQueue(t.href) ? (
+                        <span
+                          aria-label={`${t.title} has outstanding work`}
+                          title="Outstanding work"
+                          className="ml-auto h-2 w-2 shrink-0 rounded-full bg-amber-500"
+                        />
+                      ) : null}
                       {t.cta ? (
                         <span
                           className="text-[0.68rem]"
