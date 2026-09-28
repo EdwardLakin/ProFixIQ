@@ -59,6 +59,7 @@ type Props = {
   open: boolean;
   onClose: () => void;
   seedConversationId?: string | null;
+  seedRequestId?: number;
   startNew?: boolean;
   initialCustomerId?: string | null;
   contextOverride?: ComposeContext | null;
@@ -136,6 +137,7 @@ export default function InboxModal({
   open,
   onClose,
   seedConversationId = null,
+  seedRequestId = 0,
   startNew = false,
   initialCustomerId = null,
   contextOverride = null,
@@ -232,7 +234,7 @@ export default function InboxModal({
 
   useEffect(() => {
     pendingSeedRef.current = open && !startNew ? seedConversationId : null;
-  }, [open, seedConversationId, startNew]);
+  }, [open, seedConversationId, seedRequestId, startNew]);
 
   const loadConversations = useCallback(async () => {
     const res = await fetch("/api/chat/my-conversations", {
