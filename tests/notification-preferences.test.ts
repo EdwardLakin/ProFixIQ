@@ -25,6 +25,8 @@ describe("notification preferences", () => {
     expect(source).toContain('const conversations = (await response');
     expect(source).toContain("preferences.messagePopups");
     expect(source).toContain("preferences.assistantPopups");
+    expect(source).toContain("inboxUnreadCount={inboxUnreadCount}");
+    expect(source).toContain("preferences.navigationIndicators");
     const realtimeSection = source.split('const channel = supabase')[1].split('cleanup = () =>')[0];
     expect(realtimeSection).not.toContain('toast.info("New inbox message"');
   });
