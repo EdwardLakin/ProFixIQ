@@ -26,7 +26,7 @@ import { isOutsideDesktopAppShell } from "@/features/shared/lib/routes/shellBoun
 import OpsNotificationsBell from "@/features/shared/components/OpsNotificationsBell";
 import NotificationPreferencesButton from "@/features/shared/components/NotificationPreferencesButton";
 import { useNotificationPreferences } from "@/features/shared/hooks/useNotificationPreferences";
-import { claimNotificationPopup } from "@/features/shared/lib/claimNotificationPopup";
+import { claimNotificationPopup, isNewAssistantAction } from "@/features/shared/lib/claimNotificationPopup";
 import { isDefaultOpsOperatorEmail } from "@/features/ops/lib/operatorAccess";
 import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
 import {
@@ -397,9 +397,8 @@ export default function AppShell({
         if (!action.id) continue;
         const unseen = !known.has(action.id);
         known.add(action.id);
-        const createdAt = Date.parse(action.createdAt);
         if (active && initialized && unseen &&
-            Number.isFinite(createdAt) && createdAt > baselineAt &&
+            isNewAssistantAction(action.createdAt, baselineAt) &&
             popupPreferencesRef.current.userId === userId &&
             !popupPreferencesRef.current.loading &&
             popupPreferencesRef.current.assistantPopups &&
