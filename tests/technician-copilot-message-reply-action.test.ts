@@ -135,6 +135,8 @@ describe("sendTechnicianCopilotMessage", () => {
     expect(insertCalls[0]).toMatchObject({
       conversation_id: conversationId,
       sender_id: technicianUserId,
+      sender_participant_id: "tech-participant",
+      sender_kind: "staff",
       client_message_id: "turn-1",
       content: "On it, five minutes out.",
       recipients: [dispatcherUserId],

@@ -24,6 +24,10 @@ import { useActiveBrand } from "@/features/branding/hooks/useActiveBrand";
 import { isBillingAttentionStatus } from "@/features/stripe/lib/stripe/subscriptionStatus";
 import { isOutsideDesktopAppShell } from "@/features/shared/lib/routes/shellBoundaries";
 import OpsNotificationsBell from "@/features/shared/components/OpsNotificationsBell";
+import NotificationPreferencesButton from "@/features/shared/components/NotificationPreferencesButton";
+import { useNotificationPreferences } from "@/features/shared/hooks/useNotificationPreferences";
+import { claimNotificationPopup } from "@/features/shared/lib/claimNotificationPopup";
+import { useAssistantPendingPopups } from "@/features/shared/hooks/useAssistantPendingPopups";
 import { isDefaultOpsOperatorEmail } from "@/features/ops/lib/operatorAccess";
 import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
 import {
@@ -73,7 +77,9 @@ type AppShellInitialIdentity = {
 };
 
 type InboxConversationSummary = {
+  conversation: { id: string };
   unread_count?: number | null;
+  latest_message?: { id: string; sender_id: string | null } | null;
 };
 
 function daysUntil(iso: string | null): number | null {
@@ -124,7 +130,33 @@ export default function AppShell({
   const [chatOpen, setChatOpen] = useState(false);
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [incomingConvoId, setIncomingConvoId] = useState<string | null>(null);
+  const [incomingConvoRequestId, setIncomingConvoRequestId] = useState(0);
   const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
+  const inboxKnownMessages = useRef<Map<string, string>>(new Map());
+  const inboxInitialized = useRef(false);
+  const pendingRealtimeMessageIds = useRef<Set<string>>(new Set());
+  const inboxRequestGeneration = useRef(0);
+  const {
+    preferences,
+    loading: preferencesLoading,
+    saving: preferencesSaving,
+    loadError: preferencesLoadError,
+    update: updatePreferences,
+  } = useNotificationPreferences(userId);
+  // Ref is updated during render, so a response that started before the user
+  // disabled popups cannot use an obsolete callback closure to show a toast.
+  const popupPreferencesRef = useRef({
+    userId,
+    loading: preferencesLoading,
+    messagePopups: preferences.messagePopups,
+    assistantPopups: preferences.assistantPopups,
+  });
+  popupPreferencesRef.current = {
+    userId,
+    loading: preferencesLoading,
+    messagePopups: preferences.messagePopups,
+    assistantPopups: preferences.assistantPopups,
+  };
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const punchRef = useRef<HTMLDivElement | null>(null);
@@ -148,6 +180,7 @@ export default function AppShell({
   const billingHref = "/dashboard/owner/settings#billing";
 
   const loadInboxUnreadCount = useCallback(async () => {
+    const generation = ++inboxRequestGeneration.current;
     if (!userId || !isAppRoute) {
       setInboxUnreadCount(0);
       return;
@@ -156,19 +189,57 @@ export default function AppShell({
     const response = await fetch("/api/chat/my-conversations", {
       credentials: "include",
     }).catch(() => null);
-    if (!response?.ok) return;
+    if (!response?.ok || generation !== inboxRequestGeneration.current) return;
 
     const conversations = (await response
       .json()
       .catch(() => [])) as InboxConversationSummary[];
-    const count = Array.isArray(conversations)
-      ? conversations.reduce(
-          (sum, row) => sum + Math.max(0, Number(row.unread_count ?? 0)),
-          0,
-        )
-      : 0;
+    if (!Array.isArray(conversations) || generation !== inboxRequestGeneration.current ||
+        popupPreferencesRef.current.userId !== userId) return;
+    const count = conversations.reduce(
+      (sum, row) => sum + Math.max(0, Number(row.unread_count ?? 0)),
+      0,
+    );
+    // The server has already filtered conversation membership and unread
+    // deliveries. Never show popups directly from a broad realtime event.
+    const known = inboxKnownMessages.current;
+    // Preferences still loading: leave `known` untouched for any message
+    // seen this poll, so a later poll (once preferences resolve) still
+    // finds it unseen instead of having silently recorded it as seen while
+    // popups were unevaluable.
+    const preferencesReady = !popupPreferencesRef.current.loading;
+    for (const row of conversations) {
+      const message = row.latest_message;
+      if (!message?.id) continue;
+      const unseen = known.get(row.conversation.id) !== message.id;
+      if (preferencesReady) known.set(row.conversation.id, message.id);
+      if (
+        preferencesReady &&
+        (inboxInitialized.current || pendingRealtimeMessageIds.current.has(message.id)) &&
+        unseen && row.unread_count &&
+        message.sender_id !== userId &&
+        popupPreferencesRef.current.userId === userId &&
+        popupPreferencesRef.current.messagePopups &&
+        claimNotificationPopup(userId, "message", message.id)
+      ) {
+        toast.info("New inbox message", {
+          description: "A customer or teammate sent a message.",
+          action: {
+            label: "Open conversation",
+            onClick: () => {
+              setIncomingConvoId(row.conversation.id);
+              setIncomingConvoRequestId((value) => value + 1);
+              setChatOpen(true);
+            },
+          },
+        });
+      }
+    }
+    if (generation !== inboxRequestGeneration.current || popupPreferencesRef.current.userId !== userId) return;
+    pendingRealtimeMessageIds.current.clear();
+    inboxInitialized.current = true;
     setInboxUnreadCount(count);
-  }, [isAppRoute, userId]);
+  }, [isAppRoute, userId, preferencesLoading, preferences.messagePopups]);
 
   useEffect(() => {
     setUserId(initialIdentity?.userId ?? null);
@@ -186,7 +257,6 @@ export default function AppShell({
     if (!isAppRoute) return;
 
     let active = true;
-    let cleanup: (() => void) | null = null;
 
     (async () => {
       const {
@@ -257,55 +327,10 @@ export default function AppShell({
           console.error("Failed to load profile/shop for AppShell", err);
         }
       }
-
-      if (!active) return;
-      const channel = supabase
-        .channel("app-shell-messages")
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "messages",
-          },
-          (payload) => {
-            if (!active) return;
-            const raw = payload.new as unknown;
-            const msg =
-              raw as Database["public"]["Tables"]["messages"]["Row"] & {
-                recipients?: string[] | null;
-              };
-
-            if (msg.sender_id === uid && msg.sender_kind === "staff") return;
-            if (Array.isArray(msg.recipients) && !msg.recipients.includes(uid))
-              return;
-
-            setIncomingConvoId(msg.conversation_id);
-            setInboxUnreadCount((count) => Math.max(count + 1, 1));
-            window.dispatchEvent(
-              new CustomEvent("profixiq:inbox-refresh", {
-                detail: { conversationId: msg.conversation_id },
-              }),
-            );
-            toast.info("New inbox message", {
-              description: "A customer or teammate sent a message.",
-              action: {
-                label: "Open inbox",
-                onClick: () => setChatOpen(true),
-              },
-            });
-          },
-        )
-        .subscribe();
-
-      cleanup = () => {
-        supabase.removeChannel(channel);
-      };
     })();
 
     return () => {
       active = false;
-      cleanup?.();
     };
   }, [
     supabase,
@@ -315,6 +340,73 @@ export default function AppShell({
     initialIdentity?.shopId,
     initialIdentity?.userId,
   ]);
+
+  // Kept in its own effect, keyed only on userId, so it subscribes as soon
+  // as identity is known instead of waiting behind profile/shop lookups
+  // (closing the gap where an arriving message was invisible to both the
+  // channel and a concurrently-failing first fetch), and so it does not
+  // resubscribe merely because role/email/shopId settle on a later render.
+  useEffect(() => {
+    if (!isAppRoute || !userId) return;
+
+    let active = true;
+    const channel = supabase
+      .channel("app-shell-messages")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+        },
+        (payload) => {
+          if (!active) return;
+          const raw = payload.new as unknown;
+          const msg =
+            raw as Database["public"]["Tables"]["messages"]["Row"] & {
+              recipients?: string[] | null;
+            };
+
+          if (msg.sender_id === userId && msg.sender_kind === "staff") return;
+          if (
+            Array.isArray(msg.recipients) &&
+            !msg.recipients.includes(userId)
+          )
+            return;
+
+          // Realtime is only an invalidation signal. The authorized
+          // conversations endpoint decides whether the event is visible.
+          // Remember events during a failed initial baseline fetch so the
+          // next successful authorized read can still surface them.
+          if (msg.id) pendingRealtimeMessageIds.current.add(msg.id);
+          window.dispatchEvent(
+            new CustomEvent("profixiq:inbox-refresh", {
+              detail: { conversationId: msg.conversation_id },
+            }),
+          );
+        },
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, isAppRoute, userId]);
+
+  useEffect(() => {
+    inboxRequestGeneration.current += 1;
+    inboxKnownMessages.current = new Map();
+    pendingRealtimeMessageIds.current = new Set();
+    inboxInitialized.current = false;
+  }, [userId]);
+
+  useAssistantPendingPopups({
+    userId,
+    enabled: isAppRoute && canUseOperationsAssistant,
+    loading: preferencesLoading,
+    popupsEnabled: preferences.assistantPopups,
+  });
 
   useEffect(() => {
     if (!isAppRoute || !userId) {
@@ -535,6 +627,9 @@ export default function AppShell({
             <RoleSidebar
               initialRole={role}
               initialEmail={userEmail}
+              showQueueIndicators={!preferencesLoading && preferences.navigationIndicators}
+              inboxUnreadCount={inboxUnreadCount}
+              userId={userId}
             />
 
             <div className="mt-auto h-12 border-t border-[color:var(--theme-border-soft)]" />
@@ -580,6 +675,15 @@ export default function AppShell({
               <BillingBadge />
 
               {userId && canSeeAgentConsole ? <OpsNotificationsBell /> : null}
+              {userId ? (
+                <NotificationPreferencesButton
+                  preferences={preferences}
+                  loading={preferencesLoading}
+                  saving={preferencesSaving}
+                  loadError={preferencesLoadError}
+                  update={updatePreferences}
+                />
+              ) : null}
 
               {userId ? (
                 <ActionButton
@@ -609,7 +713,7 @@ export default function AppShell({
 
               <ActionButton onClick={() => setChatOpen(true)} title="Inbox">
                 <span>Inbox</span>
-                {inboxUnreadCount > 0 ? (
+                {!preferencesLoading && preferences.navigationIndicators && inboxUnreadCount > 0 ? (
                   <span className="ml-0.5 rounded-full bg-[var(--accent-copper-soft)] px-1.5 py-0.5 text-[10px] font-bold leading-none text-[color:var(--theme-text-on-accent)]">
                     {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
                   </span>
@@ -686,8 +790,18 @@ export default function AppShell({
               <NavItem href="/dashboard" label="Dashboard" />
               <NavItem href="/work-orders" label="Work Orders" />
               <NavItem href="/inspections" label="Inspections" />
-              <NavItem href="/chat" label="Inbox" badge={inboxUnreadCount} />
+              <NavItem href="/chat" label="Inbox" badge={!preferencesLoading && preferences.navigationIndicators ? inboxUnreadCount : 0} />
               <NavItem href="/mobile/appointments" label="Schedule" />
+              {userId ? (
+                <NotificationPreferencesButton
+                  mobile
+                  preferences={preferences}
+                  loading={preferencesLoading}
+                  saving={preferencesSaving}
+                  loadError={preferencesLoadError}
+                  update={updatePreferences}
+                />
+              ) : null}
 
               <button
                 type="button"
@@ -719,6 +833,7 @@ export default function AppShell({
           setIncomingConvoId(null);
         }}
         seedConversationId={incomingConvoId}
+        seedRequestId={incomingConvoRequestId}
       />
 
       {userId ? (

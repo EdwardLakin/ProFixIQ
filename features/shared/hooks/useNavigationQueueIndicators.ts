@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useVisibilityPolling } from "@/features/shared/hooks/useVisibilityPolling";
 
@@ -26,7 +26,8 @@ export function indicatorsFromNotifications(items: Notification[]): QueueIndicat
     items.filter((item) => !item.status || item.status === "active").map((item) => item.code),
   );
   return {
-    quoteReview: codes.has("quote_waiting"),
+    // The producer emits approval_waiting for overdue awaiting_approval work.
+    quoteReview: codes.has("approval_waiting"),
     workOrders: codes.has("work_order_on_hold_too_long") ||
       codes.has("work_order_waiting_too_long") ||
       codes.has("active_job_running_too_long"),
@@ -39,16 +40,35 @@ export function hasPendingFleetIntake(items: FleetRequest[]): boolean {
   return items.some((item) => !item.workOrder && !TERMINAL.has(item.status ?? ""));
 }
 
-/** A single visibility-aware refresh cycle; no per-pill polling. */
+/** One visibility-aware refresh cycle, with independently gated feeds. */
 export function useNavigationQueueIndicators(
   enabled: boolean,
   includeFleetIntake: boolean,
+  includeNotifications = true,
+  scopeKey = "",
 ): QueueIndicators {
-  const [indicators, setIndicators] = useState<QueueIndicators>({});
+  const [snapshot, setSnapshot] = useState<{ scope: string; indicators: QueueIndicators }>({
+    scope: "", indicators: {},
+  });
+  // Invalidate any in-flight result when a feed is disabled or the role changes.
+  const version = useRef(0);
+  const feedKey = enabled ? `${scopeKey}:${includeFleetIntake}:${includeNotifications}` : "";
+  const currentFeedKey = useRef(feedKey);
+  if (currentFeedKey.current !== feedKey) {
+    currentFeedKey.current = feedKey;
+    version.current += 1;
+  }
+
+  useEffect(() => {
+    setSnapshot({ scope: feedKey, indicators: {} });
+  }, [feedKey]);
 
   const refresh = useCallback(async () => {
+    const generation = version.current;
     const [notificationResult, fleetResult] = await Promise.allSettled([
-      fetch("/api/planner/notifications", { cache: "no-store" }),
+      includeNotifications
+        ? fetch("/api/planner/notifications", { cache: "no-store" })
+        : Promise.resolve(null),
       includeFleetIntake
         ? fetch("/api/fleet/service-requests", {
             method: "POST",
@@ -58,16 +78,21 @@ export function useNavigationQueueIndicators(
           })
         : Promise.resolve(null),
     ]);
+    if (generation !== version.current) return;
 
-    if (notificationResult.status === "fulfilled" && notificationResult.value.ok) {
+    if (notificationResult.status === "fulfilled" && notificationResult.value?.ok) {
       const body = await notificationResult.value.json().catch(() => null) as
         | { notifications?: Notification[] }
         | null;
       const notifications = body?.notifications;
+      if (generation !== version.current) return;
       if (Array.isArray(notifications)) {
-        setIndicators((previous) => ({
-          ...previous,
-          ...indicatorsFromNotifications(notifications),
+        setSnapshot((previous) => ({
+          scope: feedKey,
+          indicators: {
+            ...(previous.scope === feedKey ? previous.indicators : {}),
+            ...indicatorsFromNotifications(notifications),
+          },
         }));
       }
     }
@@ -77,20 +102,32 @@ export function useNavigationQueueIndicators(
         | { requests?: FleetRequest[] }
         | null;
       const requests = body?.requests;
+      if (generation !== version.current) return;
       if (Array.isArray(requests)) {
-        setIndicators((previous) => ({
-          ...previous,
-          fleetIntake: hasPendingFleetIntake(requests),
+        setSnapshot((previous) => ({
+          scope: feedKey,
+          indicators: {
+            ...(previous.scope === feedKey ? previous.indicators : {}),
+            fleetIntake: hasPendingFleetIntake(requests),
+          },
         }));
       }
     }
     // An unavailable or unauthorized feed never invents a positive badge.
-  }, [includeFleetIntake]);
+  }, [feedKey, includeFleetIntake, includeNotifications]);
+
+  // The polling helper intentionally keeps its timer when the callback changes.
+  // Give a new identity/feed an immediate first read instead of waiting 60s.
+  useEffect(() => {
+    if (!enabled || (!includeFleetIntake && !includeNotifications)) return;
+    if (document.visibilityState === "visible") void refresh();
+  }, [enabled, feedKey, includeFleetIntake, includeNotifications, refresh]);
 
   useVisibilityPolling({
-    enabled,
+    enabled: enabled && (includeFleetIntake || includeNotifications),
     intervalMs: 60_000,
     onTick: refresh,
+    runOnMount: false,
   });
-  return enabled ? indicators : {};
+  return enabled && snapshot.scope === feedKey ? snapshot.indicators : {};
 }

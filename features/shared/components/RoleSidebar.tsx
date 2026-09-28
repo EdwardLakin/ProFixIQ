@@ -17,7 +17,7 @@ import {
 } from "@/features/shared/lib/ownerSidebarNav";
 import { cn } from "@/features/shared/utils/cn";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { canonicalizeRole } from "@/features/shared/lib/rbac";
+import { canAccessAssistantNotifications, canonicalizeRole } from "@/features/shared/lib/rbac";
 import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
 import { useNavigationQueueIndicators, type NavigationQueueKey } from "@/features/shared/hooks/useNavigationQueueIndicators";
@@ -57,9 +57,15 @@ function getCanonicalActiveTile(pathname: string, tiles: Tile[]): Tile | null {
 export default function RoleSidebar({
   initialRole = null,
   initialEmail = null,
+  showQueueIndicators = true,
+  inboxUnreadCount = 0,
+  userId = null,
 }: {
   initialRole?: string | null;
   initialEmail?: string | null;
+  showQueueIndicators?: boolean;
+  inboxUnreadCount?: number;
+  userId?: string | null;
 }) {
   const pathname = usePathname();
 
@@ -100,10 +106,6 @@ export default function RoleSidebar({
     userEmail,
   ]);
 
-  const queueIndicators = useNavigationQueueIndicators(
-    Boolean(role),
-    tiles.some((tile) => tile.href === "/work-orders/fleet-requests"),
-  );
   const queueKeyByHref: Record<string, NavigationQueueKey> = {
     "/work-orders/fleet-requests": "fleetIntake",
     "/work-orders/quote-review": "quoteReview",
@@ -112,6 +114,19 @@ export default function RoleSidebar({
     "/parts/requests": "parts",
     "/billing": "billing",
   };
+  const hasFleetIntakeTile = tiles.some(
+    (tile) => tile.href === "/work-orders/fleet-requests",
+  );
+  const hasNotificationTile = tiles.some(
+    (tile) => tile.href !== "/work-orders/fleet-requests" &&
+      Boolean(queueKeyByHref[tile.href]),
+  );
+  const queueIndicators = useNavigationQueueIndicators(
+    Boolean(role && userId) && showQueueIndicators,
+    hasFleetIntakeTile,
+    hasNotificationTile && canAccessAssistantNotifications(role),
+    `${userId ?? ""}:${role ?? ""}`,
+  );
   const hasQueue = (href: string) => Boolean(queueIndicators[queueKeyByHref[href]]);
 
   const canonicalActiveTile = useMemo(
@@ -241,6 +256,10 @@ export default function RoleSidebar({
               </span>
 
               <span className="ml-auto flex items-center gap-2">
+                {showQueueIndicators && groupTiles.some((tile) => tile.href === "/chat") && inboxUnreadCount > 0 ? (
+                  <span aria-label="Unread messages" title="Unread messages"
+                    className="h-2 w-2 rounded-full bg-sky-500" />
+                ) : null}
                 {groupTiles.some((tile) => hasQueue(tile.href)) ? (
                   <span
                     aria-label={`${group} has outstanding work`}
@@ -309,6 +328,11 @@ export default function RoleSidebar({
                         {t.title}
                       </span>
 
+                      {showQueueIndicators && t.href === "/chat" && inboxUnreadCount > 0 ? (
+                        <span aria-label={`${inboxUnreadCount} unread messages`}
+                          title={`${inboxUnreadCount} unread messages`}
+                          className="ml-auto h-2 w-2 shrink-0 rounded-full bg-sky-500" />
+                      ) : null}
                       {hasQueue(t.href) ? (
                         <span
                           aria-label={`${t.title} has outstanding work`}

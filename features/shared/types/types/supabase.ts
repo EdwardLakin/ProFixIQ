@@ -31738,6 +31738,7 @@ export type Database = {
         }
         Returns: Json
       }
+      shop_assistant_notification_clock: { Args: never; Returns: string }
       shop_assistant_place_purchase_order_atomic: {
         Args: {
           p_action_id: string
