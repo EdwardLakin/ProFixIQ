@@ -24,3 +24,11 @@ export function claimNotificationPopup(userId: string, category: string, id: str
     return true;
   }
 }
+
+/** Only actions created after subscription starts qualify as new.
+ * An older action entering the endpoint's limited result window is not new.
+ */
+export function isNewAssistantAction(createdAt: string, baselineAt: number): boolean {
+  const created = Date.parse(createdAt);
+  return Number.isFinite(created) && created > baselineAt;
+}
