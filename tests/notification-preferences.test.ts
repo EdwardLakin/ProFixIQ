@@ -51,9 +51,11 @@ describe("notification preferences", () => {
     expect(notifier).toContain('resolveMobileHref(href) ?? "/mobile/assistant"');
     expect(mobile).toContain("<MobileAssistantNotificationListener />");
     expect(listener).toContain("useAssistantPendingPopups({");
+    expect(listener).toContain("resolveCanonicalStaffProfile");
+    expect(listener).toContain('canonicalizeRole(role) !== "mechanic"');
     expect(route).toContain('"shop_assistant_notification_clock"');
     expect(migration).toContain("clock_timestamp()");
-    expect(source).toMatch(/<NotificationPreferencesButton\\s+mobile\\b/);
+    expect(source).toMatch(/<NotificationPreferencesButton\s+mobile\b/);
     const inbox = readFileSync("features/chat/components/InboxModal.tsx", "utf8");
     expect(inbox).toContain("pendingSeedRef.current = null;");
     expect(inbox).toContain("seedRequestId");
