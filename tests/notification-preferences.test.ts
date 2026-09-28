@@ -42,10 +42,14 @@ describe("notification preferences", () => {
     expect(source).toContain("preferences.assistantPopups");
     expect(source).toContain("inboxUnreadCount={inboxUnreadCount}");
     expect(source).toContain("preferences.navigationIndicators");
+    expect(source).toContain("preferences.navigationIndicators && inboxUnreadCount > 0");
+    expect(source).toContain('resolveMobileHref(href) ?? "/mobile/assistant"');
+    expect(source).toContain("performance.now() - subscriptionStartedAt");
     expect(source).toContain('badge={!preferencesLoading && preferences.navigationIndicators ? inboxUnreadCount : 0}');
     const inbox = readFileSync("features/chat/components/InboxModal.tsx", "utf8");
-    expect(inbox).toContain("data.some((row) => row.conversation.id === seedConversationId)");
-    expect(inbox).toContain("return seedConversationId;");
+    expect(inbox).toContain("data.some((row) => row.conversation.id === pendingSeed)");
+    expect(inbox).toContain("pendingSeedRef.current = null;");
+    expect(inbox).toContain("return pendingSeed;");
     expect(source).toMatch(/<NotificationPreferencesButton\s+mobile\b/);
     expect(source).toContain("isNewAssistantAction(action.createdAt, baseline)");
     const prefs = readFileSync("features/shared/hooks/useNotificationPreferences.ts", "utf8");
