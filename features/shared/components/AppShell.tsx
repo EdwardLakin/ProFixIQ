@@ -382,32 +382,62 @@ export default function AppShell({
     inboxInitialized.current = false;
   }, [userId]);
 
-  // Confirmations are durable assistant actions. Baseline existing items
-  // silently, then toast only newly observed pending action IDs.
+  // Establish a server-clock baseline before polling pending confirmations.
+  // This avoids treating older actions as new when device clocks are skewed.
   useEffect(() => {
     if (!isAppRoute || !userId || !canUseOperationsAssistant ||
         preferencesLoading || !preferences.assistantPopups) return;
     let active = true;
-    const baselineAt = Date.now();
+    let generation = 0;
+    let baselineAt: number | null = null;
+    let baselineRequest: Promise<number | null> | null = null;
     const known = new Set<string>();
+
+    const getBaseline = async (): Promise<number | null> => {
+      if (baselineAt !== null) return baselineAt;
+      if (!baselineRequest) {
+        baselineRequest = (async () => {
+          const response = await fetch("/api/shop-assistant/actions/pending?baseline=1", {
+            cache: "no-store",
+          }).catch(() => null);
+          if (!response?.ok) return null;
+          const body = await response.json().catch(() => null) as
+            | { ok?: boolean; serverNow?: string }
+            | null;
+          const timestamp = Date.parse(body?.serverNow ?? "");
+          return body?.ok === true && Number.isFinite(timestamp) ? timestamp : null;
+        })();
+      }
+      const result = await baselineRequest;
+      if (result === null) {
+        baselineRequest = null; // Retry independently of the pending-action request.
+      } else {
+        baselineAt = result;
+      }
+      return result;
+    };
+
     const load = async () => {
       if (document.visibilityState !== "visible") return;
+      const requestId = ++generation;
+      const baseline = await getBaseline();
+      if (!active || requestId !== generation || baseline === null) return;
       const response = await fetch("/api/shop-assistant/actions/pending", {
         cache: "no-store",
       }).catch(() => null);
-      if (!active || !response?.ok) return;
+      if (!active || requestId !== generation || !response?.ok) return;
       const payload = await response.json().catch(() => null) as
         | { ok?: boolean; actions?: Array<{
           id: string; threadId: string; createdAt: string; preview?: { title?: string };
         }> }
         | null;
-      if (!active || payload?.ok !== true || !Array.isArray(payload.actions)) return;
+      if (!active || requestId !== generation ||
+          payload?.ok !== true || !Array.isArray(payload.actions)) return;
       for (const action of payload.actions) {
         if (!action.id) continue;
         const unseen = !known.has(action.id);
         known.add(action.id);
-        if (active && unseen &&
-            isNewAssistantAction(action.createdAt, baselineAt) &&
+        if (unseen && isNewAssistantAction(action.createdAt, baseline) &&
             popupPreferencesRef.current.userId === userId &&
             !popupPreferencesRef.current.loading &&
             popupPreferencesRef.current.assistantPopups &&
@@ -432,6 +462,7 @@ export default function AppShell({
     document.addEventListener("visibilitychange", visibility);
     return () => {
       active = false;
+      generation += 1;
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", visibility);
     };
