@@ -40,7 +40,7 @@ describe("notification preferences", () => {
     expect(source).toContain("preferences.assistantPopups");
     expect(source).toContain("inboxUnreadCount={inboxUnreadCount}");
     expect(source).toContain("preferences.navigationIndicators");
-    expect(source).toContain("<NotificationPreferencesButton\\n                  mobile");
+    expect(source).toMatch(/<NotificationPreferencesButton\\s+mobile\\b/);
     expect(source).toContain("isNewAssistantAction(action.createdAt, baselineAt)");
     const prefs = readFileSync("features/shared/hooks/useNotificationPreferences.ts", "utf8");
     expect(prefs).toContain('event !== "USER_UPDATED"');
