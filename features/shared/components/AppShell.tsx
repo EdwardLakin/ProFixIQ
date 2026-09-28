@@ -26,8 +26,8 @@ import { isOutsideDesktopAppShell } from "@/features/shared/lib/routes/shellBoun
 import OpsNotificationsBell from "@/features/shared/components/OpsNotificationsBell";
 import NotificationPreferencesButton from "@/features/shared/components/NotificationPreferencesButton";
 import { useNotificationPreferences } from "@/features/shared/hooks/useNotificationPreferences";
-import { claimNotificationPopup, isNewAssistantAction } from "@/features/shared/lib/claimNotificationPopup";
-import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
+import { claimNotificationPopup } from "@/features/shared/lib/claimNotificationPopup";
+import { useAssistantPendingPopups } from "@/features/shared/hooks/useAssistantPendingPopups";
 import { isDefaultOpsOperatorEmail } from "@/features/ops/lib/operatorAccess";
 import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
 import {
@@ -163,8 +163,6 @@ export default function AppShell({
 
   const isAppRoute =
     !initialOutsideDesktopShell && !isOutsideDesktopAppShell(pathname);
-  const currentPathRef = useRef(pathname);
-  currentPathRef.current = pathname;
 
   const canSeeAgentConsole = isDefaultOpsOperatorEmail(userEmail);
   const canonicalRole = canonicalizeRole(role);
@@ -387,98 +385,12 @@ export default function AppShell({
     inboxInitialized.current = false;
   }, [userId]);
 
-  // Establish a server-clock baseline before polling pending confirmations.
-  // This avoids treating older actions as new when device clocks are skewed.
-  useEffect(() => {
-    if (!isAppRoute || !userId || !canUseOperationsAssistant ||
-        preferencesLoading || !preferences.assistantPopups) return;
-    let active = true;
-    let generation = 0;
-    let baselineAt: number | null = null;
-    // Monotonic elapsed time preserves the original subscription boundary
-    // across failed baseline requests without comparing client and DB clocks.
-    const subscriptionStartedAt = performance.now();
-    let baselineRequest: Promise<number | null> | null = null;
-    const known = new Set<string>();
-
-    const getBaseline = async (): Promise<number | null> => {
-      if (baselineAt !== null) return baselineAt;
-      if (!baselineRequest) {
-        baselineRequest = (async () => {
-          const response = await fetch("/api/shop-assistant/actions/pending?baseline=1", {
-            cache: "no-store",
-          }).catch(() => null);
-          if (!response?.ok) return null;
-          const body = await response.json().catch(() => null) as
-            | { ok?: boolean; serverNow?: string }
-            | null;
-          const timestamp = Date.parse(body?.serverNow ?? "");
-          return body?.ok === true && Number.isFinite(timestamp) ? timestamp : null;
-        })();
-      }
-      const result = await baselineRequest;
-      if (result === null) {
-        baselineRequest = null; // Retry independently of the pending-action request.
-      } else {
-        baselineAt = result - (performance.now() - subscriptionStartedAt);
-      }
-      return baselineAt;
-    };
-
-    const load = async () => {
-      if (document.visibilityState !== "visible") return;
-      const requestId = ++generation;
-      const baseline = await getBaseline();
-      if (!active || requestId !== generation || baseline === null) return;
-      const response = await fetch("/api/shop-assistant/actions/pending", {
-        cache: "no-store",
-      }).catch(() => null);
-      if (!active || requestId !== generation || !response?.ok) return;
-      const payload = await response.json().catch(() => null) as
-        | { ok?: boolean; actions?: Array<{
-          id: string; threadId: string; createdAt: string; preview?: { title?: string };
-        }> }
-        | null;
-      if (!active || requestId !== generation ||
-          payload?.ok !== true || !Array.isArray(payload.actions)) return;
-      for (const action of payload.actions) {
-        if (!action.id) continue;
-        const unseen = !known.has(action.id);
-        known.add(action.id);
-        if (unseen && isNewAssistantAction(action.createdAt, baseline) &&
-            popupPreferencesRef.current.userId === userId &&
-            !popupPreferencesRef.current.loading &&
-            popupPreferencesRef.current.assistantPopups &&
-            claimNotificationPopup(userId, "assistant", action.id)) {
-          toast.info("ProFix Operations needs your confirmation", {
-            description: action.preview?.title ?? "An action is waiting for review.",
-            action: {
-              label: "Review",
-              onClick: () => {
-                const href = action.threadId
-                  ? `/assistant?threadId=${encodeURIComponent(action.threadId)}`
-                  : "/assistant";
-                router.push(currentPathRef.current.startsWith("/mobile")
-                  ? (resolveMobileHref(href) ?? "/mobile/assistant")
-                  : href);
-              },
-            },
-          });
-        }
-      }
-    };
-    void load();
-    const timer = window.setInterval(() => { void load(); }, 45_000);
-    const visibility = () => { if (document.visibilityState === "visible") void load(); };
-    document.addEventListener("visibilitychange", visibility);
-    return () => {
-      active = false;
-      generation += 1;
-      window.clearInterval(timer);
-      document.removeEventListener("visibilitychange", visibility);
-    };
-  }, [isAppRoute, userId, canUseOperationsAssistant,
-      preferencesLoading, preferences.assistantPopups, router]);
+  useAssistantPendingPopups({
+    userId,
+    enabled: isAppRoute && canUseOperationsAssistant,
+    loading: preferencesLoading,
+    popupsEnabled: preferences.assistantPopups,
+  });
 
   useEffect(() => {
     if (!isAppRoute || !userId) {
