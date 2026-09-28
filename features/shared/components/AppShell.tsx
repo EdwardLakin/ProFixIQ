@@ -139,6 +139,20 @@ export default function AppShell({
     loadError: preferencesLoadError,
     update: updatePreferences,
   } = useNotificationPreferences(userId);
+  // Ref is updated during render, so a response that started before the user
+  // disabled popups cannot use an obsolete callback closure to show a toast.
+  const popupPreferencesRef = useRef({
+    userId,
+    loading: preferencesLoading,
+    messagePopups: preferences.messagePopups,
+    assistantPopups: preferences.assistantPopups,
+  });
+  popupPreferencesRef.current = {
+    userId,
+    loading: preferencesLoading,
+    messagePopups: preferences.messagePopups,
+    assistantPopups: preferences.assistantPopups,
+  };
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const punchRef = useRef<HTMLDivElement | null>(null);
@@ -175,7 +189,8 @@ export default function AppShell({
     const conversations = (await response
       .json()
       .catch(() => [])) as InboxConversationSummary[];
-    if (!Array.isArray(conversations)) return;
+    if (!Array.isArray(conversations) ||
+        popupPreferencesRef.current.userId !== userId) return;
     const count = conversations.reduce(
       (sum, row) => sum + Math.max(0, Number(row.unread_count ?? 0)),
       0,
@@ -190,8 +205,10 @@ export default function AppShell({
       known.set(row.conversation.id, message.id);
       if (
         inboxInitialized.current && unseen && row.unread_count &&
-        message.sender_id !== userId && !preferencesLoading &&
-        preferences.messagePopups &&
+        message.sender_id !== userId &&
+        popupPreferencesRef.current.userId === userId &&
+        !popupPreferencesRef.current.loading &&
+        popupPreferencesRef.current.messagePopups &&
         claimNotificationPopup(userId, "message", message.id)
       ) {
         toast.info("New inbox message", {
@@ -206,6 +223,7 @@ export default function AppShell({
         });
       }
     }
+    if (popupPreferencesRef.current.userId !== userId) return;
     inboxInitialized.current = true;
     setInboxUnreadCount(count);
   }, [isAppRoute, userId, preferencesLoading, preferences.messagePopups]);
@@ -361,6 +379,7 @@ export default function AppShell({
         preferencesLoading || !preferences.assistantPopups) return;
     let active = true;
     let initialized = false;
+    const baselineAt = Date.now();
     const known = new Set<string>();
     const load = async () => {
       if (document.visibilityState !== "visible") return;
@@ -370,7 +389,7 @@ export default function AppShell({
       if (!active || !response?.ok) return;
       const payload = await response.json().catch(() => null) as
         | { ok?: boolean; actions?: Array<{
-          id: string; threadId: string; preview?: { title?: string };
+          id: string; threadId: string; createdAt: string; preview?: { title?: string };
         }> }
         | null;
       if (!active || payload?.ok !== true || !Array.isArray(payload.actions)) return;
@@ -378,7 +397,12 @@ export default function AppShell({
         if (!action.id) continue;
         const unseen = !known.has(action.id);
         known.add(action.id);
-        if (initialized && unseen &&
+        const createdAt = Date.parse(action.createdAt);
+        if (active && initialized && unseen &&
+            Number.isFinite(createdAt) && createdAt > baselineAt &&
+            popupPreferencesRef.current.userId === userId &&
+            !popupPreferencesRef.current.loading &&
+            popupPreferencesRef.current.assistantPopups &&
             claimNotificationPopup(userId, "assistant", action.id)) {
           toast.info("ProFix Operations needs your confirmation", {
             description: action.preview?.title ?? "An action is waiting for review.",
