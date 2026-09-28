@@ -36,12 +36,14 @@ describe("notification preferences", () => {
     expect(source).toContain("preferences.messagePopups");
     expect(source).toContain("popupPreferencesRef.current.messagePopups");
     expect(source).toContain("popupPreferencesRef.current.assistantPopups");
-    expect(source).toContain("isNewAssistantAction(action.createdAt, baselineAt)");
+    expect(source).toContain("isNewAssistantAction(action.createdAt, baseline)");
+    expect(source).toContain("requestId !== generation");
+    expect(source).toContain('fetch("/api/shop-assistant/actions/pending?baseline=1"');
     expect(source).toContain("preferences.assistantPopups");
     expect(source).toContain("inboxUnreadCount={inboxUnreadCount}");
     expect(source).toContain("preferences.navigationIndicators");
-    expect(source).toMatch(/<NotificationPreferencesButton\\s+mobile\\b/);
-    expect(source).toContain("isNewAssistantAction(action.createdAt, baselineAt)");
+    expect(source).toMatch(/<NotificationPreferencesButton\s+mobile\b/);
+    expect(source).toContain("isNewAssistantAction(action.createdAt, baseline)");
     const prefs = readFileSync("features/shared/hooks/useNotificationPreferences.ts", "utf8");
     expect(prefs).toContain('event !== "USER_UPDATED"');
     expect(prefs).toContain('window.addEventListener("focus", onFocus)');
