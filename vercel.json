@@ -5,6 +5,10 @@
       "schedule": "17 3 * * *"
     },
     {
+      "path": "/api/internal/payments/expire-stale-receipts",
+      "schedule": "47 3 * * *"
+    },
+    {
       "path": "/api/internal/observability/health",
       "schedule": "7 * * * *"
     },

@@ -1,16 +1,16 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-09-23T20:25:57.819Z
+Generated: 2026-09-28T15:55:13.278Z
 
 ## Summary
-- Total route count: **509**
-- Routes exporting GET: **186**
-- Routes exporting POST: **340**
+- Total route count: **523**
+- Routes exporting GET: **190**
+- Routes exporting POST: **352**
 - Routes exporting PUT: **12**
 - Routes exporting PATCH: **34**
 - Routes exporting DELETE: **15**
-- Routes with service-role pattern: **25**
-- Routes using requireShopScopedApiAccess: **204**
+- Routes with service-role pattern: **26**
+- Routes using requireShopScopedApiAccess: **210**
 - Routes with auth.getUser references: **121**
 
 ## High-Risk Routes
@@ -29,6 +29,7 @@ Generated: 2026-09-23T20:25:57.819Z
 - `app/api/branding/invoice-design/route.ts` | methods: GET, POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/branding/user-preferences/reset/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/branding/user-preferences/route.ts` | methods: GET, POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/chatbot/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary
 - `app/api/copilot/technician/chat/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/copilot/technician/session/route.ts` | methods: GET, POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/copilot/technician/speech/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
@@ -128,6 +129,7 @@ Generated: 2026-09-23T20:25:57.819Z
 ## Service-Role Route List
 - `app/api/admin/reset-user-password/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/auth/sign-in/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_with_shop_identifier_input_or_reference
+- `app/api/chatbot/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary
 - `app/api/demo/shop-boost/run/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_with_shop_identifier_input_or_reference
 - `app/api/fleet/evidence/[evidenceId]/route.ts` | methods: GET | riskFlags: service_role_without_shop_reference_on_staff_route
 - `app/api/fleet/pretrip/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_with_shop_identifier_input_or_reference
@@ -197,6 +199,7 @@ Generated: 2026-09-23T20:25:57.819Z
 - `app/api/integrations/quickbooks/invoice/[id]/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/integrations/quickbooks/status/route.ts` | methods: GET | riskFlags: none
 - `app/api/maintenance/suggestions/dismiss/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/mobile/fleet/service-requests/access/route.ts` | methods: GET | riskFlags: none
 - `app/api/mobile/home-payload/route.ts` | methods: GET | riskFlags: none
 - `app/api/mobile/service-visits/[id]/work-order/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/mobile/service-visits/active/route.ts` | methods: GET | riskFlags: none

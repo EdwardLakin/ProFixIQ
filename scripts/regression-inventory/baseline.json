@@ -2673,6 +2673,16 @@
       "expiresOn": "2026-10-28"
     },
     {
+      "fingerprint": "cf4e2c225cedc65a21e8",
+      "rule": "dynamic-storage-bucket",
+      "severity": "warning",
+      "domain": "financial",
+      "file": "features/invoices/server/expireAbandonedReceiptAttachments.ts",
+      "subject": "dynamic storage bucket",
+      "message": "Dynamic storage bucket cannot be inventoried statically",
+      "expiresOn": "2026-10-28"
+    },
+    {
       "fingerprint": "f250ec7909f7a5a09935",
       "rule": "dynamic-storage-bucket",
       "severity": "warning",
