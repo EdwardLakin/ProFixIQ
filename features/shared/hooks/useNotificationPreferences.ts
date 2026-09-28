@@ -40,10 +40,12 @@ export function useNotificationPreferences(userId: string | null) {
   );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState(false);
 
   useEffect(() => {
     let active = true;
     setPreferences({ ...DEFAULT_NOTIFICATION_PREFERENCES });
+    setLoadError(false);
     if (!userId) {
       setLoading(false);
       return;
@@ -55,16 +57,24 @@ export function useNotificationPreferences(userId: string | null) {
         setPreferences(parseNotificationPreferences(
           data.user.user_metadata?.[METADATA_KEY],
         ));
+      } else {
+        // A failed read must not silently re-enable popups a user turned off.
+        setPreferences({ ...DEFAULT_NOTIFICATION_PREFERENCES, messagePopups: false, assistantPopups: false });
+        setLoadError(true);
       }
       setLoading(false);
     }).catch(() => {
-      if (active) setLoading(false);
+      if (active) {
+        setPreferences({ ...DEFAULT_NOTIFICATION_PREFERENCES, messagePopups: false, assistantPopups: false });
+        setLoadError(true);
+        setLoading(false);
+      }
     });
     return () => { active = false; };
   }, [supabase, userId]);
 
   const update = useCallback(async (key: keyof NotificationPreferences, enabled: boolean) => {
-    if (!userId || saving) return;
+    if (!userId || saving || loadError) return;
     const previous = preferences;
     const next = { ...preferences, [key]: enabled };
     setPreferences(next);
@@ -82,7 +92,7 @@ export function useNotificationPreferences(userId: string | null) {
     } finally {
       setSaving(false);
     }
-  }, [preferences, saving, supabase, userId]);
+  }, [loadError, preferences, saving, supabase, userId]);
 
-  return { preferences, loading, saving, update };
+  return { preferences, loading, saving, loadError, update };
 }
