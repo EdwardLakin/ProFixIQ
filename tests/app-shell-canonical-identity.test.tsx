@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   routerRefresh: vi.fn(),
   routerReplace: vi.fn(),
   getSession: vi.fn(),
+  getUser: vi.fn(),
+  updateUser: vi.fn(),
   signOut: vi.fn(),
   resolveCanonicalStaffProfile: vi.fn(),
   from: vi.fn(),
@@ -47,6 +49,8 @@ vi.mock("@/features/shared/lib/supabase/client", () => ({
   createBrowserSupabase: () => ({
     auth: {
       getSession: mocks.getSession,
+      getUser: mocks.getUser,
+      updateUser: mocks.updateUser,
       signOut: mocks.signOut,
     },
     from: mocks.from,
@@ -165,6 +169,8 @@ describe("AppShell canonical identity handoff", () => {
     vi.clearAllMocks();
     mocks.pathname = "/dashboard";
     mocks.fetchMobileShiftState.mockResolvedValue(null);
+    mocks.getUser.mockResolvedValue({ data: { user: { id: "auth-user-id", user_metadata: {} } }, error: null });
+    mocks.updateUser.mockResolvedValue({ data: { user: { id: "auth-user-id" } }, error: null });
     mocks.from.mockImplementation(() => {
       const query = {
         select: vi.fn(),
