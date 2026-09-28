@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { isNewAssistantAction } from "@/features/shared/lib/claimNotificationPopup";
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   parseNotificationPreferences,
@@ -16,6 +17,14 @@ describe("notification preferences", () => {
     expect(parseNotificationPreferences({ messagePopups: "false" }).messagePopups).toBe(true);
   });
 
+  it("does not mistake older actions entering the limited pending window for new actions", () => {
+    const baseline = Date.parse("2026-09-28T04:00:00Z");
+    expect(isNewAssistantAction("2026-09-28T03:00:00Z", baseline)).toBe(false);
+    expect(isNewAssistantAction("2026-09-28T04:00:00Z", baseline)).toBe(false);
+    expect(isNewAssistantAction("2026-09-28T04:00:01Z", baseline)).toBe(true);
+    expect(isNewAssistantAction("invalid", baseline)).toBe(false);
+  });
+
   it("never emits a message popup from an unverified realtime payload", () => {
     const source = readFileSync("features/shared/components/AppShell.tsx", "utf8");
     expect(source).toContain("inboxInitialized.current && unseen");
@@ -24,6 +33,9 @@ describe("notification preferences", () => {
     expect(source).toContain('fetch("/api/shop-assistant/actions/pending"');
     expect(source).toContain('const conversations = (await response');
     expect(source).toContain("preferences.messagePopups");
+    expect(source).toContain("popupPreferencesRef.current.messagePopups");
+    expect(source).toContain("popupPreferencesRef.current.assistantPopups");
+    expect(source).toContain("isNewAssistantAction(action.createdAt, baselineAt)");
     expect(source).toContain("preferences.assistantPopups");
     expect(source).toContain("inboxUnreadCount={inboxUnreadCount}");
     expect(source).toContain("preferences.navigationIndicators");
