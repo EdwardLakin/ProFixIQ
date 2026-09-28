@@ -1,22 +1,28 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { useNotificationPreferences } from "@/features/shared/hooks/useNotificationPreferences";
 import { useAssistantPendingPopups } from "@/features/shared/hooks/useAssistantPendingPopups";
+import { useInboxPendingPopups } from "@/features/shared/hooks/useInboxPendingPopups";
 import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 import {
   canAccessShopAssistant,
   canonicalizeRole,
 } from "@/features/shared/lib/rbac";
 
-/** Dedicated /mobile routes do not mount AppShell. The authorized pending
- * endpoint is the final access boundary; 401/403 stops further polling.
- * Role is resolved the same way AppShell resolves it, so mobile popup
+/** Dedicated /mobile routes do not mount AppShell, so both assistant and
+ * message popups need their own listeners here. Combined into one component
+ * so the two share a single auth/userId resolution and a single
+ * notification-preferences read instead of each duplicating both. Role is
+ * resolved the same way AppShell resolves it, so mobile assistant-popup
  * eligibility (canUseOperationsAssistant) matches the desktop shell exactly
  * -- in particular, mechanics use the separate Technician Copilot surface
- * and must not receive these assistant popups here either. */
-export default function MobileAssistantNotificationListener() {
+ * and must not receive assistant popups here either. Mobile already renders
+ * its own unread badge (MobileBottomNav), so the inbox side is popup-only. */
+export default function MobileNotificationListeners() {
+  const router = useRouter();
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [userId, setUserId] = useState<string | null>(null);
   const [role, setRole] = useState<string | null>(null);
@@ -67,5 +73,16 @@ export default function MobileAssistantNotificationListener() {
     loading,
     popupsEnabled: preferences.assistantPopups,
   });
+
+  useInboxPendingPopups({
+    userId,
+    enabled: Boolean(userId),
+    loading,
+    popupsEnabled: preferences.messagePopups,
+    onOpenConversation: (conversationId) => {
+      router.push(`/mobile/messages/${encodeURIComponent(conversationId)}`);
+    },
+  });
+
   return null;
 }

@@ -258,7 +258,7 @@ export default function InboxModal({
         ? curr
         : data[0]?.conversation.id ?? null;
     });
-  }, [seedConversationId, startNew]);
+  }, [startNew]);
 
   const loadMessages = useCallback(async (conversationId: string) => {
     const res = await fetch("/api/chat/get-messages", {

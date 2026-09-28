@@ -29,15 +29,12 @@ describe("notification preferences", () => {
     const source = readFileSync("features/shared/components/AppShell.tsx", "utf8");
     const notifier = readFileSync("features/shared/hooks/useAssistantPendingPopups.ts", "utf8");
     const mobile = readFileSync("components/layout/MobileShell.tsx", "utf8");
-    const listener = readFileSync(
-      "features/shared/components/MobileAssistantNotificationListener.tsx", "utf8",
+    const listeners = readFileSync(
+      "features/shared/components/MobileNotificationListeners.tsx", "utf8",
     );
     const route = readFileSync("app/api/shop-assistant/actions/pending/route.ts", "utf8");
     const migration = readFileSync(
       "supabase/migrations/20260928150000_shop_assistant_notification_clock.sql", "utf8",
-    );
-    const messageListener = readFileSync(
-      "features/shared/components/MobileMessageNotificationListener.tsx", "utf8",
     );
     const inboxPopups = readFileSync(
       "features/shared/hooks/useInboxPendingPopups.ts", "utf8",
@@ -55,28 +52,38 @@ describe("notification preferences", () => {
     expect(notifier).toContain("performance.now() - subscriptionStartedAt");
     expect(notifier).toContain("requestId !== generation");
     expect(notifier).toContain('resolveMobileHref(href) ?? "/mobile/assistant"');
-    expect(mobile).toContain("<MobileAssistantNotificationListener />");
-    expect(listener).toContain("useAssistantPendingPopups({");
-    expect(listener).toContain("resolveCanonicalStaffProfile");
-    expect(listener).toContain('canonicalizeRole(role) !== "mechanic"');
+    expect(mobile).toContain("<MobileNotificationListeners />");
+    expect(mobile).not.toContain(
+      "{!fieldSurface && !fieldVerificationPending ? <MobileNotificationListeners",
+    );
+    expect(listeners).toContain("useAssistantPendingPopups({");
+    expect(listeners).toContain("useInboxPendingPopups({");
+    expect(listeners).toContain("resolveCanonicalStaffProfile");
+    expect(listeners).toContain('canonicalizeRole(role) !== "mechanic"');
+    expect(listeners).toContain("/mobile/messages/");
+    // A single auth/userId resolution and a single useNotificationPreferences
+    // call are shared by both listeners, not duplicated per popup type.
+    expect(listeners.match(/useNotificationPreferences\(/g)?.length).toBe(1);
+    expect(listeners.match(/supabase\.auth\.getUser\(/g)?.length).toBe(1);
     expect(route).toContain('"shop_assistant_notification_clock"');
     expect(route).not.toContain("as never");
     expect(migration).toContain("clock_timestamp()");
     expect(notifier).toContain("BASELINE_COMMIT_LAG_MS");
-    expect(mobile).toContain("<MobileMessageNotificationListener />");
-    expect(mobile).not.toContain(
-      "{!fieldSurface && !fieldVerificationPending ? <MobileAssistantNotificationListener",
-    );
-    expect(messageListener).toContain("useInboxPendingPopups({");
-    expect(messageListener).toContain("/mobile/messages/");
     expect(inboxPopups).toContain('claimNotificationPopup(userId, "message", message.id)');
     expect(source).toContain('.channel("app-shell-messages")');
     expect(source).toContain("}, [supabase, isAppRoute, userId]);");
     expect(source).toMatch(/<NotificationPreferencesButton\s+mobile\b/);
+    // A message seen while preferences are still loading must not be
+    // recorded as known, or it can never trigger a popup once loading ends.
+    expect(source).toContain("if (preferencesReady) known.set(row.conversation.id, message.id);");
     const inbox = readFileSync("features/chat/components/InboxModal.tsx", "utf8");
     expect(inbox).toContain("pendingSeedRef.current = null;");
     expect(inbox).toContain("seedRequestId");
     expect(inbox).toContain("[open, loadConversations, seedRequestId]");
+    // loadConversations reads pendingSeedRef.current, not seedConversationId
+    // directly, so seedConversationId must not be a dependency (it forced an
+    // unnecessary callback-identity churn on every popup).
+    expect(inbox).toContain("}, [startNew]);");
     expect(source).toContain("setIncomingConvoRequestId((value) => value + 1)");
     const prefs = readFileSync("features/shared/hooks/useNotificationPreferences.ts", "utf8");
     expect(prefs).toContain('event !== "USER_UPDATED"');

@@ -6,8 +6,7 @@ import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 
 import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
-import MobileAssistantNotificationListener from "@/features/shared/components/MobileAssistantNotificationListener";
-import MobileMessageNotificationListener from "@/features/shared/components/MobileMessageNotificationListener";
+import MobileNotificationListeners from "@/features/shared/components/MobileNotificationListeners";
 import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
 import FieldWorkspaceShell from "@/features/mobile/service/FieldWorkspaceShell";
 import {
@@ -430,8 +429,7 @@ export function MobileShell({ children, title }: Props) {
           navigates into Field Service should still receive confirmation and
           message popups, and keeping these mounted avoids resetting their
           subscription baseline on every surface switch. */}
-      <MobileAssistantNotificationListener />
-      <MobileMessageNotificationListener />
+      <MobileNotificationListeners />
       <TechnicianCopilotShell shouldCheck surface="mobile" />
     </>
   );

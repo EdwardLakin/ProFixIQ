@@ -203,17 +203,22 @@ export default function AppShell({
     // The server has already filtered conversation membership and unread
     // deliveries. Never show popups directly from a broad realtime event.
     const known = inboxKnownMessages.current;
+    // Preferences still loading: leave `known` untouched for any message
+    // seen this poll, so a later poll (once preferences resolve) still
+    // finds it unseen instead of having silently recorded it as seen while
+    // popups were unevaluable.
+    const preferencesReady = !popupPreferencesRef.current.loading;
     for (const row of conversations) {
       const message = row.latest_message;
       if (!message?.id) continue;
       const unseen = known.get(row.conversation.id) !== message.id;
-      known.set(row.conversation.id, message.id);
+      if (preferencesReady) known.set(row.conversation.id, message.id);
       if (
+        preferencesReady &&
         (inboxInitialized.current || pendingRealtimeMessageIds.current.has(message.id)) &&
         unseen && row.unread_count &&
         message.sender_id !== userId &&
         popupPreferencesRef.current.userId === userId &&
-        !popupPreferencesRef.current.loading &&
         popupPreferencesRef.current.messagePopups &&
         claimNotificationPopup(userId, "message", message.id)
       ) {
