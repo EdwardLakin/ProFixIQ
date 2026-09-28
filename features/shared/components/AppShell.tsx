@@ -132,7 +132,7 @@ export default function AppShell({
   const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
   const inboxKnownMessages = useRef<Set<string>>(new Set());
   const inboxInitialized = useRef(false);
-  const { preferences, loading: preferencesLoading, saving: preferencesSaving, update: updatePreferences } =
+  const { preferences, loading: preferencesLoading, saving: preferencesSaving, loadError: preferencesLoadError, update: updatePreferences } =
     useNotificationPreferences(userId);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
@@ -672,6 +672,7 @@ export default function AppShell({
                   preferences={preferences}
                   loading={preferencesLoading}
                   saving={preferencesSaving}
+                  loadError={preferencesLoadError}
                   update={updatePreferences}
                 />
               ) : null}
