@@ -130,6 +130,7 @@ export default function AppShell({
   const [chatOpen, setChatOpen] = useState(false);
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [incomingConvoId, setIncomingConvoId] = useState<string | null>(null);
+  const [incomingConvoRequestId, setIncomingConvoRequestId] = useState(0);
   const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
   const inboxKnownMessages = useRef<Map<string, string>>(new Map());
   const inboxInitialized = useRef(false);
@@ -162,6 +163,8 @@ export default function AppShell({
 
   const isAppRoute =
     !initialOutsideDesktopShell && !isOutsideDesktopAppShell(pathname);
+  const currentPathRef = useRef(pathname);
+  currentPathRef.current = pathname;
 
   const canSeeAgentConsole = isDefaultOpsOperatorEmail(userEmail);
   const canonicalRole = canonicalizeRole(role);
@@ -222,6 +225,7 @@ export default function AppShell({
             label: "Open conversation",
             onClick: () => {
               setIncomingConvoId(row.conversation.id);
+              setIncomingConvoRequestId((value) => value + 1);
               setChatOpen(true);
             },
           },
@@ -454,7 +458,7 @@ export default function AppShell({
                 const href = action.threadId
                   ? `/assistant?threadId=${encodeURIComponent(action.threadId)}`
                   : "/assistant";
-                router.push(pathname.startsWith("/mobile")
+                router.push(currentPathRef.current.startsWith("/mobile")
                   ? (resolveMobileHref(href) ?? "/mobile/assistant")
                   : href);
               },
@@ -474,7 +478,7 @@ export default function AppShell({
       document.removeEventListener("visibilitychange", visibility);
     };
   }, [isAppRoute, userId, canUseOperationsAssistant,
-      preferencesLoading, preferences.assistantPopups, pathname, router]);
+      preferencesLoading, preferences.assistantPopups, router]);
 
   useEffect(() => {
     if (!isAppRoute || !userId) {
@@ -901,6 +905,7 @@ export default function AppShell({
           setIncomingConvoId(null);
         }}
         seedConversationId={incomingConvoId}
+        seedRequestId={incomingConvoRequestId}
       />
 
       {userId ? (
