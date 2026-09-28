@@ -15,7 +15,7 @@ export function claimNotificationPopup(userId: string, category: string, id: str
     );
     if (fresh.some(([value]) => value === key)) return false;
     const next = Object.fromEntries(
-      [...fresh, [key, now]].slice(-MAX_ENTRIES),
+      [...fresh, [key, now] as [string, number]].slice(-MAX_ENTRIES),
     );
     window.localStorage.setItem(KEY, JSON.stringify(next));
     return true;
