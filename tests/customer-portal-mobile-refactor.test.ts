@@ -41,16 +41,18 @@ describe("customer portal mobile refactor", () => {
       key: "completed",
       complete: true,
     });
+    // Payment alone is deliberately NOT a completion signal: an invoiced,
+    // paid work order stays "ready for pickup" until the vehicle is
+    // actually collected (pickedUpAt), never jumping straight to "completed".
     expect(
       toPortalWorkOrderStatus({
-        status: "awaiting_approval",
-        approvalState: "pending",
+        status: "invoiced",
         paymentStatus: "paid",
         paidAt: "2026-08-04T12:00:00.000Z",
       }),
     ).toMatchObject({
-      key: "completed",
-      complete: true,
+      key: "ready_for_pickup",
+      complete: false,
       actionRequired: false,
     });
   });

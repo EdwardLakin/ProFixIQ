@@ -7,6 +7,7 @@ export const CANONICAL_WORK_ORDER_OPERATIONAL_STAGES = [
   "in_progress",
   "quality_check",
   "ready",
+  "awaiting_pickup",
   "closed",
 ] as const;
 
@@ -25,6 +26,7 @@ export const WORK_ORDER_OPERATIONAL_STAGE_LABELS: Record<
   in_progress: "In progress",
   quality_check: "Quality check",
   ready: "Ready",
+  awaiting_pickup: "Awaiting pickup",
   closed: "Closed",
 };
 
@@ -54,11 +56,13 @@ const LEGACY_STAGE_ALIASES: Record<string, WorkOrderOperationalStage> = {
   ready_to_invoice: "ready",
   ready: "ready",
   completed: "ready",
-  invoiced: "closed",
+  invoiced: "awaiting_pickup",
+  awaiting_pickup: "awaiting_pickup",
   done: "closed",
   cancelled: "closed",
   canceled: "closed",
   closed: "closed",
+  picked_up: "closed",
 };
 
 export function normalizeWorkOrderOperationalStage(
@@ -110,6 +114,7 @@ export function toCustomerSafeWorkOrderStatus(
     case "quality_check":
       return "in_service";
     case "ready":
+    case "awaiting_pickup":
       return "ready";
     case "closed":
       return "closed";

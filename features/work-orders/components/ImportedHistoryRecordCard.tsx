@@ -36,6 +36,9 @@ export type ImportedHistoryRecordLike = {
   source_external_id?: string | null;
   source_row_id?: string | null;
   imported_from_session_id?: string | null;
+  picked_up_at?: string | null;
+  collected_by_type?: string | null;
+  collected_by_name?: string | null;
   vehicles?: VehicleLike;
 };
 
@@ -197,6 +200,20 @@ export function ImportedHistoryRecordCard({
               }
             />
             <Detail label="Amount" value={moneyParts.join(" • ") || "—"} />
+            {row.picked_up_at ? (
+              <Detail
+                label="Picked up"
+                value={[
+                  new Date(row.picked_up_at).toLocaleString(),
+                  row.collected_by_type
+                    ? row.collected_by_type.replaceAll("_", " ")
+                    : null,
+                  row.collected_by_name,
+                ]
+                  .filter(Boolean)
+                  .join(" • ")}
+              />
+            ) : null}
           </div>
           <div className="rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm leading-6 text-[color:var(--theme-text-primary)]">
             <div className="mb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">

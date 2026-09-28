@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 type InvoiceVersionSummary = {
   id: string;
@@ -53,15 +54,87 @@ export default function RecordManualPayment({
   );
   const [reference, setReference] = useState("");
   const [note, setNote] = useState("");
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptPreviewUrl, setReceiptPreviewUrl] = useState<string | null>(
+    null,
+  );
+  const [receiptStoragePath, setReceiptStoragePath] = useState<string | null>(
+    null,
+  );
+  const [receiptUploading, setReceiptUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const supabase = useMemo(() => createBrowserSupabase(), []);
 
   useEffect(() => {
     setAmount(String(Math.max(0, outstandingTotal).toFixed(2)));
   }, [outstandingTotal]);
 
+  useEffect(() => {
+    return () => {
+      if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
+    };
+  }, [receiptPreviewUrl]);
+
+  async function handleReceiptSelected(file: File | null): Promise<void> {
+    if (!file) return;
+    setReceiptUploading(true);
+    try {
+      const ext = file.name.includes(".")
+        ? file.name.split(".").pop()
+        : file.type === "application/pdf"
+          ? "pdf"
+          : "jpg";
+      const clientMutationId =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `${Date.now()}`;
+      const path = `wo/${workOrderId}/payments/${clientMutationId}_receipt.${ext}`;
+      const { error } = await supabase.storage
+        .from("payment-receipts")
+        .upload(path, file, { contentType: file.type || undefined });
+      if (error) throw error;
+
+      if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
+      setReceiptFile(file);
+      setReceiptPreviewUrl(URL.createObjectURL(file));
+      setReceiptStoragePath(path);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Could not upload the receipt. You can still record the payment without it.",
+      );
+    } finally {
+      setReceiptUploading(false);
+    }
+  }
+
+  function clearReceipt(): void {
+    if (receiptPreviewUrl) URL.revokeObjectURL(receiptPreviewUrl);
+    setReceiptFile(null);
+    setReceiptPreviewUrl(null);
+    setReceiptStoragePath(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }
+
+  async function handleRemoveReceipt(): Promise<void> {
+    // Only reachable while the upload is still unlinked (no payment has been
+    // submitted yet), so it's safe to delete the object outright rather than
+    // leaving an orphaned private file behind.
+    if (receiptStoragePath) {
+      await supabase.storage
+        .from("payment-receipts")
+        .remove([receiptStoragePath])
+        .catch(() => undefined);
+    }
+    clearReceipt();
+  }
+
   const parsedAmount = useMemo(() => Number(amount), [amount]);
   const canSubmit =
     !disabled &&
     !busy &&
+    !receiptUploading &&
     Number.isFinite(parsedAmount) &&
     parsedAmount > 0 &&
     parsedAmount <= outstandingTotal + 0.01;
@@ -87,6 +160,7 @@ export default function RecordManualPayment({
           reference: reference.trim() || null,
           note: note.trim() || null,
           idempotencyKey,
+          receiptStoragePath,
         }),
       });
       const body = (await response.json().catch(() => null)) as
@@ -104,6 +178,7 @@ export default function RecordManualPayment({
       setOpen(false);
       setReference("");
       setNote("");
+      clearReceipt();
       onPosted?.(body.invoice_version);
     } catch (error) {
       toast.error(
@@ -191,6 +266,57 @@ export default function RecordManualPayment({
               className="desktop-input mt-1 w-full px-3 py-2 text-sm"
             />
           </label>
+
+          <div className="mt-3">
+            <div className="text-xs text-[color:var(--theme-text-secondary)]">
+              Payment receipt (optional)
+            </div>
+            {receiptPreviewUrl ? (
+              <div className="mt-1 flex items-center gap-2">
+                {receiptFile?.type === "application/pdf" ? (
+                  <a
+                    href={receiptPreviewUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-emerald-300 underline"
+                  >
+                    {receiptFile.name}
+                  </a>
+                ) : (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={receiptPreviewUrl}
+                    alt="Receipt preview"
+                    className="h-14 w-14 rounded-lg border border-[color:var(--theme-border-soft)] object-cover"
+                  />
+                )}
+                <button
+                  type="button"
+                  onClick={() => void handleRemoveReceipt()}
+                  className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-1 text-[11px] text-[color:var(--theme-text-primary)]"
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,application/pdf"
+                capture="environment"
+                disabled={receiptUploading}
+                onChange={(event) =>
+                  void handleReceiptSelected(event.target.files?.[0] ?? null)
+                }
+                className="mt-1 block w-full text-xs text-[color:var(--theme-text-secondary)]"
+              />
+            )}
+            {receiptUploading ? (
+              <div className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
+                Uploading…
+              </div>
+            ) : null}
+          </div>
 
           <div className="mt-4 flex justify-end gap-2">
             <button

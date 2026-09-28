@@ -24,6 +24,10 @@ type PortalWorkOrderStatusInput = {
   invoiceSentAt?: string | null;
   paymentStatus?: string | null;
   paidAt?: string | null;
+  /** Vehicle handover is independent of payment: a customer can collect the
+   * vehicle before, at, or after the invoice is settled. Once set, this is
+   * the single strongest signal that the visit is over. */
+  pickedUpAt?: string | null;
 };
 
 function normalize(value: string | null | undefined): string {
@@ -96,16 +100,22 @@ export function toPortalWorkOrderStatus(
   const approvalState = normalize(input.approvalState);
   const paymentStatus = normalize(input.paymentStatus);
 
-  if (paymentStatus === "paid" || Boolean(input.paidAt)) {
+  if (Boolean(input.pickedUpAt)) {
     return {
       key: "completed",
-      label: "Completed",
+      label: "Picked up",
       nextStep:
-        "This service visit is paid and remains available in your history.",
+        "This service visit is complete and remains available in your history.",
       actionRequired: false,
       complete: true,
     };
   }
+
+  // Payment alone is deliberately NOT a completion signal: work completed,
+  // invoice paid, and vehicle picked up are three separate events, and a
+  // paid vehicle still sitting at the shop must stay on the customer's
+  // active list until pickedUpAt is actually set above.
+  const isPaid = paymentStatus === "paid" || Boolean(input.paidAt);
 
   if (
     status === "awaiting_approval" ||
@@ -169,10 +179,12 @@ export function toPortalWorkOrderStatus(
     return {
       key: "ready_for_pickup",
       label: "Ready for pickup",
-      nextStep: input.invoiceSentAt
-        ? "Your invoice is available. Contact the shop if you need to arrange pickup."
-        : "The shop will confirm pickup details with you.",
-      actionRequired: Boolean(input.invoiceSentAt),
+      nextStep: isPaid
+        ? "Your invoice is paid. Contact the shop to arrange pickup."
+        : input.invoiceSentAt
+          ? "Your invoice is available. Contact the shop if you need to arrange pickup."
+          : "The shop will confirm pickup details with you.",
+      actionRequired: Boolean(input.invoiceSentAt) && !isPaid,
       complete: false,
     };
   }

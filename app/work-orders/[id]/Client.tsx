@@ -12,6 +12,7 @@ import {
   BrainCircuit,
   CircleDollarSign,
   Clock3,
+  KeyRound,
   ListChecks,
   MessageSquareText,
   Plus,
@@ -23,6 +24,7 @@ import type { Database } from "@shared/types/types/supabase";
 
 import PreviousPageButton from "@shared/components/ui/PreviousPageButton";
 import FocusedJobModal from "@/features/work-orders/components/workorders/FocusedJobModal";
+import MarkAsPickedUpModal from "@/features/work-orders/components/workorders/MarkAsPickedUpModal";
 import DeleteOrVoidLineModal from "@/features/work-orders/components/workorders/DeleteOrVoidLineModal";
 import AddJobModal from "@/features/work-orders/components/workorders/AddJobModal";
 import VoiceContextSetter from "@/features/shared/voice/VoiceContextSetter";
@@ -1241,6 +1243,43 @@ export default function WorkOrderIdClient(): JSX.Element {
   });
 
   const canDeleteLine = currentActor.canManageWorkOrders;
+  const canConfirmPickup = currentActor.canManageWorkOrders;
+  const [showPickupModal, setShowPickupModal] = useState(false);
+  const pickupEligible =
+    !!wo &&
+    !wo.archived_at &&
+    !wo.picked_up_at &&
+    ["completed", "ready_to_invoice", "invoiced"].includes(wo.status ?? "");
+  const handleReversePickup = useCallback(async () => {
+    if (!wo?.id) return;
+    const reason = window.prompt(
+      "Reason for reversing this pickup confirmation (required for audit trail):",
+      "",
+    );
+    if (!reason || !reason.trim()) {
+      toast.error("A reason is required to reverse a pickup confirmation.");
+      return;
+    }
+    try {
+      const response = await fetch(
+        `/api/work-orders/${wo.id}/reverse-pickup`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ reason: reason.trim() }),
+        },
+      );
+      const result = await response.json().catch(() => null);
+      if (!response.ok || !result?.ok) {
+        toast.error(result?.error ?? "Failed to reverse the pickup confirmation.");
+        return;
+      }
+      toast.success("Pickup confirmation reversed.");
+      fetchAll();
+    } catch {
+      toast.error("Could not reach the server. Pickup was not reversed.");
+    }
+  }, [wo?.id, fetchAll]);
   const openFinancialWorkspace = useCallback(() => {
     setShowWoContext(true);
     window.requestAnimationFrame(() => {
@@ -2364,6 +2403,89 @@ export default function WorkOrderIdClient(): JSX.Element {
                     />
                   </WorkOrderWorkspaceModule>
                 ) : null}
+                {canConfirmPickup && (pickupEligible || wo.picked_up_at) ? (
+                  <WorkOrderWorkspaceModule
+                    module="vehicleHandover"
+                    className={cn(PANEL_VARIANTS.secondary, "p-3")}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                        <KeyRound className="h-3.5 w-3.5" />
+                        Vehicle handover
+                      </span>
+                    </div>
+                    {wo.picked_up_at ? (
+                      <div className="mt-2 space-y-1.5 text-xs">
+                        <div className="font-semibold text-emerald-600 dark:text-emerald-400">
+                          Picked up {format(new Date(wo.picked_up_at), "PPpp")}
+                        </div>
+                        <div className="text-muted-foreground">
+                          Collected by:{" "}
+                          {wo.collected_by_type === "customer"
+                            ? "Customer"
+                            : wo.collected_by_type === "fleet_driver"
+                              ? `Fleet driver${wo.collected_by_name ? ` — ${wo.collected_by_name}` : ""}`
+                              : wo.collected_by_type === "authorized_representative"
+                                ? `Authorized representative${wo.collected_by_name ? ` — ${wo.collected_by_name}` : ""}`
+                                : "—"}
+                        </div>
+                        {wo.pickup_released_unpaid ? (
+                          <div className="text-amber-600 dark:text-amber-400">
+                            Released with an outstanding balance
+                            {wo.pickup_release_reason
+                              ? `: ${wo.pickup_release_reason}`
+                              : ""}
+                          </div>
+                        ) : null}
+                        {wo.pickup_notes ? (
+                          <div className="text-muted-foreground">
+                            Notes: {wo.pickup_notes}
+                          </div>
+                        ) : null}
+                        <button
+                          type="button"
+                          onClick={() => void handleReversePickup()}
+                          className="mt-1 text-[11px] font-medium text-red-600 hover:underline dark:text-red-400"
+                        >
+                          Reverse pickup confirmation
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        <div className="space-y-1 text-xs text-muted-foreground">
+                          <div>
+                            Invoice:{" "}
+                            <span className="font-semibold text-foreground">
+                              {wo.payment_status === "paid"
+                                ? "PAID"
+                                : wo.status === "invoiced"
+                                  ? "ISSUED"
+                                  : "PENDING"}
+                            </span>
+                          </div>
+                          <div>Vehicle: AWAITING PICKUP</div>
+                          {wo.outstanding_balance ? (
+                            <div>
+                              Outstanding balance:{" "}
+                              {Number(wo.outstanding_balance).toLocaleString(
+                                undefined,
+                                { style: "currency", currency: "USD" },
+                              )}
+                            </div>
+                          ) : null}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowPickupModal(true)}
+                          className="inline-flex min-h-9 items-center gap-1.5 rounded-full bg-[var(--brand-primary,#C1663B)] px-3 py-1.5 text-xs font-semibold text-white hover:opacity-90"
+                        >
+                          <KeyRound className="h-3.5 w-3.5" />
+                          Mark as Picked Up
+                        </button>
+                      </div>
+                    )}
+                  </WorkOrderWorkspaceModule>
+                ) : null}
                   <WorkOrderWorkspaceModule
                     module="timeline"
                     className={cn(PANEL_VARIANTS.secondary, "p-2")}
@@ -2839,6 +2961,17 @@ export default function WorkOrderIdClient(): JSX.Element {
           onClose={() => setAddJobOpen(false)}
           workOrderId={wo.id}
           onJobAdded={() => void fetchAll()}
+        />
+      ) : null}
+
+      {canConfirmPickup && wo?.id ? (
+        <MarkAsPickedUpModal
+          isOpen={showPickupModal}
+          onClose={() => setShowPickupModal(false)}
+          workOrderId={wo.id}
+          outstandingBalance={wo.outstanding_balance}
+          paymentStatus={wo.payment_status}
+          onPickedUp={() => void fetchAll()}
         />
       ) : null}
     </div>

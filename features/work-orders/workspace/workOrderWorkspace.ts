@@ -65,6 +65,10 @@ export const WORK_ORDER_WORKSPACE_MODULES = {
     anchorId: "work-order-workspace-financials",
     label: "Financials",
   },
+  vehicleHandover: {
+    anchorId: "work-order-workspace-vehicle-handover",
+    label: "Vehicle handover",
+  },
   timeline: {
     anchorId: "work-order-workspace-timeline",
     label: "Timeline",

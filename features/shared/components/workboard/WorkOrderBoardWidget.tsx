@@ -6,6 +6,7 @@ import {
   ArrowRight,
   CheckCircle2,
   Clock3,
+  KeyRound,
   Package,
   RefreshCw,
   Wrench,
@@ -33,6 +34,7 @@ const stageIcon: Partial<Record<WorkOrderBoardStage, typeof Clock3>> = {
   in_progress: Wrench,
   quality_check: Wrench,
   ready: CheckCircle2,
+  awaiting_pickup: KeyRound,
   closed: CheckCircle2,
 };
 

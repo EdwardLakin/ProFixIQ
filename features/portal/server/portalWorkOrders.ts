@@ -32,6 +32,7 @@ type WorkOrderSummaryRow = Pick<
   | "invoice_total"
   | "payment_status"
   | "paid_at"
+  | "picked_up_at"
   | "vehicle_year"
   | "vehicle_make"
   | "vehicle_model"
@@ -152,7 +153,7 @@ export async function listPortalWorkOrdersForCustomer({
   const { data: workOrders, error: workOrderError } = await supabase
     .from("work_orders")
     .select(
-      "id,custom_id,shop_id,customer_id,vehicle_id,advisor_id,status,approval_state,created_at,updated_at,scheduled_at,expected_completion_at,invoice_sent_at,invoice_total,payment_status,paid_at,vehicle_year,vehicle_make,vehicle_model,vehicle_unit_number,vehicle_license_plate,external_id",
+      "id,custom_id,shop_id,customer_id,vehicle_id,advisor_id,status,approval_state,created_at,updated_at,scheduled_at,expected_completion_at,invoice_sent_at,invoice_total,payment_status,paid_at,picked_up_at,vehicle_year,vehicle_make,vehicle_model,vehicle_unit_number,vehicle_license_plate,external_id",
     )
     .eq("shop_id", shopId)
     .eq("customer_id", customerId)
@@ -276,6 +277,7 @@ export async function listPortalWorkOrdersForCustomer({
       invoiceSentAt: workOrder.invoice_sent_at,
       paymentStatus: workOrder.payment_status,
       paidAt: workOrder.paid_at,
+      pickedUpAt: workOrder.picked_up_at,
     });
     const vehicle = vehiclePresentation(
       workOrder,

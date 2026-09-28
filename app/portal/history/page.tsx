@@ -32,6 +32,8 @@ type HistoryLite = Pick<
   | "shop_supplies"
   | "total"
   | "payment_state"
+  | "picked_up_at"
+  | "collected_by_type"
 >;
 
 type VehicleLite = Pick<
@@ -98,7 +100,7 @@ export default async function HistoryPage() {
     const { data: historyRows, error: historyErr } = await supabase
       .from("history")
       .select(
-        "id, customer_id, vehicle_id, service_date, description, notes, created_at, work_order_number, invoice_number, symptom, cause, correction, labor_sale, parts_sale, shop_supplies, total, payment_state",
+        "id, customer_id, vehicle_id, service_date, description, notes, created_at, work_order_number, invoice_number, symptom, cause, correction, labor_sale, parts_sale, shop_supplies, total, payment_state, picked_up_at, collected_by_type",
       )
       .eq("customer_id", customer.id)
       .order("service_date", { ascending: false })
@@ -208,6 +210,11 @@ export default async function HistoryPage() {
                           ) : null}
                           {item.payment_state ? (
                             <span className="capitalize">{item.payment_state}</span>
+                          ) : null}
+                          {item.picked_up_at ? (
+                            <span>
+                              Picked up {fmtDate(item.picked_up_at)}
+                            </span>
                           ) : null}
                         </div>
                       </div>

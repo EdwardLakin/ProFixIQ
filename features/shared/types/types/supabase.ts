@@ -7555,6 +7555,8 @@ export type Database = {
           assigned_tech_name: string | null
           cause: string | null
           closed_at: string | null
+          collected_by_name: string | null
+          collected_by_type: string | null
           correction: string | null
           created_at: string | null
           customer_id: string
@@ -7571,8 +7573,10 @@ export type Database = {
           opened_at: string | null
           parts_sale: number | null
           payment_state: string | null
+          picked_up_at: string | null
           priority: string | null
           service_date: string
+          shop_id: string | null
           shop_supplies: number | null
           source_external_id: string | null
           source_payload: Json
@@ -7593,6 +7597,8 @@ export type Database = {
           assigned_tech_name?: string | null
           cause?: string | null
           closed_at?: string | null
+          collected_by_name?: string | null
+          collected_by_type?: string | null
           correction?: string | null
           created_at?: string | null
           customer_id: string
@@ -7609,8 +7615,10 @@ export type Database = {
           opened_at?: string | null
           parts_sale?: number | null
           payment_state?: string | null
+          picked_up_at?: string | null
           priority?: string | null
           service_date?: string
+          shop_id?: string | null
           shop_supplies?: number | null
           source_external_id?: string | null
           source_payload?: Json
@@ -7631,6 +7639,8 @@ export type Database = {
           assigned_tech_name?: string | null
           cause?: string | null
           closed_at?: string | null
+          collected_by_name?: string | null
+          collected_by_type?: string | null
           correction?: string | null
           created_at?: string | null
           customer_id?: string
@@ -7647,8 +7657,10 @@ export type Database = {
           opened_at?: string | null
           parts_sale?: number | null
           payment_state?: string | null
+          picked_up_at?: string | null
           priority?: string | null
           service_date?: string
+          shop_id?: string | null
           shop_supplies?: number | null
           source_external_id?: string | null
           source_payload?: Json
@@ -13662,6 +13674,115 @@ export type Database = {
           },
           {
             foreignKeyName: "payment_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      payment_receipt_attachments: {
+        Row: {
+          client_mutation_id: string | null
+          content_type: string | null
+          created_at: string
+          file_size: number | null
+          id: string
+          invoice_version_id: string | null
+          payment_event_id: string | null
+          shop_id: string
+          storage_bucket: string
+          storage_path: string
+          uploaded_by_user_id: string | null
+          work_order_id: string
+        }
+        Insert: {
+          client_mutation_id?: string | null
+          content_type?: string | null
+          created_at?: string
+          file_size?: number | null
+          id?: string
+          invoice_version_id?: string | null
+          payment_event_id?: string | null
+          shop_id: string
+          storage_bucket: string
+          storage_path: string
+          uploaded_by_user_id?: string | null
+          work_order_id: string
+        }
+        Update: {
+          client_mutation_id?: string | null
+          content_type?: string | null
+          created_at?: string
+          file_size?: number | null
+          id?: string
+          invoice_version_id?: string | null
+          payment_event_id?: string | null
+          shop_id?: string
+          storage_bucket?: string
+          storage_path?: string
+          uploaded_by_user_id?: string | null
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payment_receipt_attachments_invoice_version_id_fkey"
+            columns: ["invoice_version_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_versions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_receipt_attachments_payment_event_id_fkey"
+            columns: ["payment_event_id"]
+            isOneToOne: false
+            referencedRelation: "payment_events"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_receipt_attachments_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_receipt_attachments_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "payment_receipt_attachments_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "payment_receipt_attachments_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "payment_receipt_attachments_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "payment_receipt_attachments_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "payment_receipt_attachments_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
@@ -26507,6 +26628,8 @@ export type Database = {
           archived_at: string | null
           archived_by_user_id: string | null
           assigned_tech: string | null
+          collected_by_name: string | null
+          collected_by_type: string | null
           created_at: string | null
           created_by: string | null
           custom_id: string | null
@@ -26558,6 +26681,12 @@ export type Database = {
           paid_at: string | null
           parts_total: number | null
           payment_status: string
+          picked_up_at: string | null
+          picked_up_by_user_id: string | null
+          pickup_notes: string | null
+          pickup_release_authorized_by_user_id: string | null
+          pickup_release_reason: string | null
+          pickup_released_unpaid: boolean
           portal_submitted_at: string | null
           priority: number | null
           quote: Json | null
@@ -26598,6 +26727,8 @@ export type Database = {
           archived_at?: string | null
           archived_by_user_id?: string | null
           assigned_tech?: string | null
+          collected_by_name?: string | null
+          collected_by_type?: string | null
           created_at?: string | null
           created_by?: string | null
           custom_id?: string | null
@@ -26649,6 +26780,12 @@ export type Database = {
           paid_at?: string | null
           parts_total?: number | null
           payment_status?: string
+          picked_up_at?: string | null
+          picked_up_by_user_id?: string | null
+          pickup_notes?: string | null
+          pickup_release_authorized_by_user_id?: string | null
+          pickup_release_reason?: string | null
+          pickup_released_unpaid?: boolean
           portal_submitted_at?: string | null
           priority?: number | null
           quote?: Json | null
@@ -26689,6 +26826,8 @@ export type Database = {
           archived_at?: string | null
           archived_by_user_id?: string | null
           assigned_tech?: string | null
+          collected_by_name?: string | null
+          collected_by_type?: string | null
           created_at?: string | null
           created_by?: string | null
           custom_id?: string | null
@@ -26740,6 +26879,12 @@ export type Database = {
           paid_at?: string | null
           parts_total?: number | null
           payment_status?: string
+          picked_up_at?: string | null
+          picked_up_by_user_id?: string | null
+          pickup_notes?: string | null
+          pickup_release_authorized_by_user_id?: string | null
+          pickup_release_reason?: string | null
+          pickup_released_unpaid?: boolean
           portal_submitted_at?: string | null
           priority?: number | null
           quote?: Json | null
@@ -27906,6 +28051,8 @@ export type Database = {
           advisor_name: string | null
           assigned_summary: string | null
           assigned_tech_count: number | null
+          collected_by_name: string | null
+          collected_by_type: string | null
           custom_id: string | null
           customer_id: string | null
           display_name: string | null
@@ -27922,6 +28069,7 @@ export type Database = {
           jobs_waiting_parts: number | null
           overall_stage: string | null
           parts_blocker_count: number | null
+          picked_up_at: string | null
           portal_stage_label: string | null
           portal_status_note: string | null
           priority: number | null
@@ -27982,6 +28130,8 @@ export type Database = {
           advisor_name: string | null
           assigned_summary: string | null
           assigned_tech_count: number | null
+          collected_by_name: string | null
+          collected_by_type: string | null
           custom_id: string | null
           customer_id: string | null
           display_name: string | null
@@ -27998,6 +28148,7 @@ export type Database = {
           jobs_waiting_parts: number | null
           overall_stage: string | null
           parts_blocker_count: number | null
+          picked_up_at: string | null
           portal_stage_label: string | null
           portal_status_note: string | null
           priority: number | null
@@ -28050,6 +28201,8 @@ export type Database = {
           advisor_name: string | null
           assigned_summary: string | null
           assigned_tech_count: number | null
+          collected_by_name: string | null
+          collected_by_type: string | null
           custom_id: string | null
           customer_id: string | null
           display_name: string | null
@@ -28064,6 +28217,7 @@ export type Database = {
           jobs_waiting_parts: number | null
           overall_stage: string | null
           parts_blocker_count: number | null
+          picked_up_at: string | null
           portal_stage_label: string | null
           portal_status_note: string | null
           priority: number | null
@@ -29282,6 +29436,8 @@ export type Database = {
           archived_at: string | null
           archived_by_user_id: string | null
           assigned_tech: string | null
+          collected_by_name: string | null
+          collected_by_type: string | null
           created_at: string | null
           created_by: string | null
           custom_id: string | null
@@ -29333,6 +29489,12 @@ export type Database = {
           paid_at: string | null
           parts_total: number | null
           payment_status: string
+          picked_up_at: string | null
+          picked_up_by_user_id: string | null
+          pickup_notes: string | null
+          pickup_release_authorized_by_user_id: string | null
+          pickup_release_reason: string | null
+          pickup_released_unpaid: boolean
           portal_submitted_at: string | null
           priority: number | null
           quote: Json | null
@@ -30021,6 +30183,20 @@ export type Database = {
         Args: { p_notification_id: string }
         Returns: undefined
       }
+      mark_work_order_picked_up_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_collected_by_name?: string
+          p_collected_by_type: string
+          p_notes?: string
+          p_override_unpaid?: boolean
+          p_release_reason?: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       mark_work_order_ready_atomic: {
         Args: {
           p_actor_user_id: string
@@ -30693,6 +30869,10 @@ export type Database = {
         }
         Returns: Json
       }
+      payment_receipt_object_in_shop: {
+        Args: { p_work_order_id: string }
+        Returns: boolean
+      }
       plan_user_limit:
         | { Args: { p_plan: string }; Returns: number }
         | {
@@ -31057,6 +31237,15 @@ export type Database = {
           p_note: string
           p_quote_line_ids: string[]
           p_reason_code: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
+      reverse_work_order_pickup_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_reason: string
           p_shop_id: string
           p_work_order_id: string
         }
