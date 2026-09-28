@@ -90,6 +90,7 @@ export default function MobileSignInPage() {
       heroTitle={heroTitle}
       heroDescription={heroDescription}
       highlights={["Touch-ready", "Role protected", "Offline resilient"]}
+      backHref="/sign-in"
     >
       <div className="mb-6">
         <div className="mb-4 inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-[color:color-mix(in_srgb,var(--accent-copper)_14%,transparent)] text-[var(--accent-copper)]">

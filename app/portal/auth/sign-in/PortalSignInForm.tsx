@@ -11,6 +11,7 @@ import {
   type PortalSurface,
 } from "@/features/auth/lib/portalSurfaceRouting";
 import {
+  fleetAccessChooserHref,
   toFleetInternalHref,
   toFleetPublicHref,
 } from "@/features/fleet/lib/fleetProductRouting";
@@ -36,11 +37,9 @@ export default function PortalSignInForm({
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const isFleet = portalType === "fleet";
-  const primarySiteOrigin =
-    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
-    "https://profixiq.com";
-  const accessChooserHref =
-    isFleet && productHost ? `${primarySiteOrigin}/sign-in` : "/sign-in";
+  const accessChooserHref = isFleet
+    ? fleetAccessChooserHref(productHost)
+    : "/sign-in";
   const forgotPasswordHref = isFleet
     ? "/forgot-password?surface=fleet"
     : "/forgot-password?surface=customer&redirect=%2Fportal";

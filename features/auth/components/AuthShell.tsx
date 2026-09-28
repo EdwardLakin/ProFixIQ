@@ -53,7 +53,15 @@ export default function AuthShell({
       <div className="pointer-events-none absolute -right-28 bottom-10 h-80 w-80 rounded-full bg-[rgba(11,183,255,0.09)] blur-3xl" />
 
       <header className="relative z-10 flex h-16 items-center justify-between border-b border-[color:var(--theme-border-soft)] bg-[color:color-mix(in_srgb,var(--theme-surface-overlay)_82%,transparent)] px-4 backdrop-blur-xl sm:px-7">
-        <Link href={backHref} className="inline-flex items-center gap-3" aria-label="ProFixIQ home">
+        <Link
+          href={backHref}
+          className="inline-flex items-center gap-3"
+          aria-label="ProFixIQ home"
+          // Opts out of MobileShell's click guard: on /mobile/sign-in, backHref
+          // resolves to the same route, so the guard would otherwise treat this
+          // as a no-op instead of really navigating to the app chooser.
+          data-mobile-route-bypass="true"
+        >
           <ProFixIQMark className="h-9 w-9" />
           <ProFixIQWordmark className="text-xl text-[color:var(--theme-text-primary)] sm:text-2xl" />
           <span className="hidden h-5 w-px bg-[color:var(--theme-border-strong)] sm:block" />
