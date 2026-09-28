@@ -236,13 +236,18 @@ export default function InboxModal({
 
     const data = (await res.json()) as ConversationPayload[];
     setRows(data);
-    setActiveConversationId(
-      (curr) =>
-        curr ??
-        (startNew
-          ? null
-          : seedConversationId ?? data[0]?.conversation.id ?? null),
-    );
+    setActiveConversationId((curr) => {
+      if (startNew) return null;
+      // An explicit popup target takes precedence over the previously opened
+      // conversation, but only if the authorized inbox returned that record.
+      if (seedConversationId &&
+          data.some((row) => row.conversation.id === seedConversationId)) {
+        return seedConversationId;
+      }
+      return curr && data.some((row) => row.conversation.id === curr)
+        ? curr
+        : data[0]?.conversation.id ?? null;
+    });
   }, [seedConversationId, startNew]);
 
   const loadMessages = useCallback(async (conversationId: string) => {
