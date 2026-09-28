@@ -9,6 +9,7 @@ type Props = {
   loading: boolean;
   saving: boolean;
   loadError: boolean;
+  mobile?: boolean;
   update: (key: keyof NotificationPreferences, enabled: boolean) => Promise<void>;
 };
 
@@ -26,7 +27,7 @@ const OPTIONS: {
 ];
 
 export default function NotificationPreferencesButton({
-  preferences, loading, saving, loadError, update,
+  preferences, loading, saving, loadError, mobile = false, update,
 }: Props) {
   const [open, setOpen] = useState(false);
 
@@ -44,7 +45,7 @@ export default function NotificationPreferencesButton({
       </button>
       {open ? (
         <div role="group" aria-label="Notification preferences"
-          className="absolute right-0 z-50 mt-2 w-[min(22rem,90vw)] space-y-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4 shadow-xl">
+          className={`absolute right-0 z-50 w-[min(22rem,90vw)] space-y-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4 shadow-xl ${mobile ? "bottom-full mb-2" : "mt-2"}`}>
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">My notifications</h2>
             <button type="button" onClick={() => setOpen(false)}
