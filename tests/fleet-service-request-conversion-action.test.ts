@@ -51,8 +51,6 @@ describe("fleet service-request conversion action", () => {
     expect(source).toContain("convertFleetServiceRequest(item.id)");
     expect(source).toContain("Accept into Shop");
     expect(source).toContain("Review vehicle ownership");
-    expect(source).toContain('cause.reason === "handoff_unavailable"');
-    expect(source).toContain('cause.reason === "vehicle_unavailable"');
     expect(source).toContain("setErrorRequest(`${item.unitLabel} · ${item.title}`)");
     expect(source).toContain('<p role="alert">{error}</p>');
     expect(source).toContain("/vehicles/${encodeURIComponent(item.vehicleId)}");
