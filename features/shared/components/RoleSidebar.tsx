@@ -57,9 +57,13 @@ function getCanonicalActiveTile(pathname: string, tiles: Tile[]): Tile | null {
 export default function RoleSidebar({
   initialRole = null,
   initialEmail = null,
+  showQueueIndicators = true,
+  inboxUnreadCount = 0,
 }: {
   initialRole?: string | null;
   initialEmail?: string | null;
+  showQueueIndicators?: boolean;
+  inboxUnreadCount?: number;
 }) {
   const pathname = usePathname();
 
@@ -101,7 +105,7 @@ export default function RoleSidebar({
   ]);
 
   const queueIndicators = useNavigationQueueIndicators(
-    Boolean(role),
+    Boolean(role) && showQueueIndicators,
     tiles.some((tile) => tile.href === "/work-orders/fleet-requests"),
   );
   const queueKeyByHref: Record<string, NavigationQueueKey> = {
@@ -241,6 +245,10 @@ export default function RoleSidebar({
               </span>
 
               <span className="ml-auto flex items-center gap-2">
+                {showQueueIndicators && groupTiles.some((tile) => tile.href === "/chat") && inboxUnreadCount > 0 ? (
+                  <span aria-label="Unread messages" title="Unread messages"
+                    className="h-2 w-2 rounded-full bg-sky-500" />
+                ) : null}
                 {groupTiles.some((tile) => hasQueue(tile.href)) ? (
                   <span
                     aria-label={`${group} has outstanding work`}
@@ -309,6 +317,11 @@ export default function RoleSidebar({
                         {t.title}
                       </span>
 
+                      {showQueueIndicators && t.href === "/chat" && inboxUnreadCount > 0 ? (
+                        <span aria-label={`${inboxUnreadCount} unread messages`}
+                          title={`${inboxUnreadCount} unread messages`}
+                          className="ml-auto h-2 w-2 shrink-0 rounded-full bg-sky-500" />
+                      ) : null}
                       {hasQueue(t.href) ? (
                         <span
                           aria-label={`${t.title} has outstanding work`}
