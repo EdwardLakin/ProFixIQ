@@ -8,6 +8,7 @@ type Props = {
   preferences: NotificationPreferences;
   loading: boolean;
   saving: boolean;
+  loadError: boolean;
   update: (key: keyof NotificationPreferences, enabled: boolean) => Promise<void>;
 };
 
@@ -25,7 +26,7 @@ const OPTIONS: {
 ];
 
 export default function NotificationPreferencesButton({
-  preferences, loading, saving, update,
+  preferences, loading, saving, loadError, update,
 }: Props) {
   const [open, setOpen] = useState(false);
 
@@ -39,7 +40,7 @@ export default function NotificationPreferencesButton({
         className="app-shell-action inline-flex h-8 items-center gap-1.5 rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2.5 text-xs text-[color:var(--theme-text-primary)]"
       >
         <Bell className="h-4 w-4" />
-        <span className="hidden lg:inline">Notifications</span>
+        <span className="sr-only">Notifications</span>
       </button>
       {open ? (
         <div role="group" aria-label="Notification preferences"
@@ -66,13 +67,15 @@ export default function NotificationPreferencesButton({
               <input
                 type="checkbox"
                 checked={preferences[key]}
-                disabled={loading || saving}
+                disabled={loading || saving || loadError}
                 onChange={(event) => void update(key, event.target.checked)}
                 className="h-4 w-4 shrink-0 accent-[var(--brand-primary,#C1663B)]"
               />
             </label>
           ))}
-          {!loading && !saving ? (
+          {loadError ? (
+            <span role="alert" className="text-[11px] text-red-600">Preferences could not be loaded. Popups are off until your settings can be verified. Refresh to retry.</span>
+          ) : !loading && !saving ? (
             <span className="flex items-center gap-1 text-[10px] text-[color:var(--theme-text-muted)]">
               <Check className="h-3 w-3" /> Saved to your account
             </span>
