@@ -822,6 +822,16 @@ export default function AppShell({
               <NavItem href="/inspections" label="Inspections" />
               <NavItem href="/chat" label="Inbox" badge={inboxUnreadCount} />
               <NavItem href="/mobile/appointments" label="Schedule" />
+              {userId ? (
+                <NotificationPreferencesButton
+                  mobile
+                  preferences={preferences}
+                  loading={preferencesLoading}
+                  saving={preferencesSaving}
+                  loadError={preferencesLoadError}
+                  update={updatePreferences}
+                />
+              ) : null}
 
               <button
                 type="button"
