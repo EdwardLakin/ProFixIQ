@@ -116,10 +116,18 @@ export function useNavigationQueueIndicators(
     // An unavailable or unauthorized feed never invents a positive badge.
   }, [feedKey, includeFleetIntake, includeNotifications]);
 
+  // The polling helper intentionally keeps its timer when the callback changes.
+  // Give a new identity/feed an immediate first read instead of waiting 60s.
+  useEffect(() => {
+    if (!enabled || (!includeFleetIntake && !includeNotifications)) return;
+    if (document.visibilityState === "visible") void refresh();
+  }, [enabled, feedKey, includeFleetIntake, includeNotifications, refresh]);
+
   useVisibilityPolling({
     enabled: enabled && (includeFleetIntake || includeNotifications),
     intervalMs: 60_000,
     onTick: refresh,
+    runOnMount: false,
   });
   return enabled && snapshot.scope === feedKey ? snapshot.indicators : {};
 }
