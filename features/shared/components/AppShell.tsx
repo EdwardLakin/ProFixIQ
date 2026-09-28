@@ -27,6 +27,7 @@ import OpsNotificationsBell from "@/features/shared/components/OpsNotificationsB
 import NotificationPreferencesButton from "@/features/shared/components/NotificationPreferencesButton";
 import { useNotificationPreferences } from "@/features/shared/hooks/useNotificationPreferences";
 import { claimNotificationPopup, isNewAssistantAction } from "@/features/shared/lib/claimNotificationPopup";
+import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
 import { isDefaultOpsOperatorEmail } from "@/features/ops/lib/operatorAccess";
 import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
 import {
@@ -390,6 +391,9 @@ export default function AppShell({
     let active = true;
     let generation = 0;
     let baselineAt: number | null = null;
+    // Monotonic elapsed time preserves the original subscription boundary
+    // across failed baseline requests without comparing client and DB clocks.
+    const subscriptionStartedAt = performance.now();
     let baselineRequest: Promise<number | null> | null = null;
     const known = new Set<string>();
 
@@ -412,9 +416,9 @@ export default function AppShell({
       if (result === null) {
         baselineRequest = null; // Retry independently of the pending-action request.
       } else {
-        baselineAt = result;
+        baselineAt = result - (performance.now() - subscriptionStartedAt);
       }
-      return result;
+      return baselineAt;
     };
 
     const load = async () => {
@@ -446,11 +450,14 @@ export default function AppShell({
             description: action.preview?.title ?? "An action is waiting for review.",
             action: {
               label: "Review",
-              onClick: () => router.push(
-                action.threadId
+              onClick: () => {
+                const href = action.threadId
                   ? `/assistant?threadId=${encodeURIComponent(action.threadId)}`
-                  : "/assistant",
-              ),
+                  : "/assistant";
+                router.push(pathname.startsWith("/mobile")
+                  ? (resolveMobileHref(href) ?? "/mobile/assistant")
+                  : href);
+              },
             },
           });
         }
@@ -467,7 +474,7 @@ export default function AppShell({
       document.removeEventListener("visibilitychange", visibility);
     };
   }, [isAppRoute, userId, canUseOperationsAssistant,
-      preferencesLoading, preferences.assistantPopups, router]);
+      preferencesLoading, preferences.assistantPopups, pathname, router]);
 
   useEffect(() => {
     if (!isAppRoute || !userId) {
@@ -774,7 +781,7 @@ export default function AppShell({
 
               <ActionButton onClick={() => setChatOpen(true)} title="Inbox">
                 <span>Inbox</span>
-                {inboxUnreadCount > 0 ? (
+                {!preferencesLoading && preferences.navigationIndicators && inboxUnreadCount > 0 ? (
                   <span className="ml-0.5 rounded-full bg-[var(--accent-copper-soft)] px-1.5 py-0.5 text-[10px] font-bold leading-none text-[color:var(--theme-text-on-accent)]">
                     {inboxUnreadCount > 99 ? "99+" : inboxUnreadCount}
                   </span>
