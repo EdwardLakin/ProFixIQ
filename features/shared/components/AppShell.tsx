@@ -24,6 +24,9 @@ import { useActiveBrand } from "@/features/branding/hooks/useActiveBrand";
 import { isBillingAttentionStatus } from "@/features/stripe/lib/stripe/subscriptionStatus";
 import { isOutsideDesktopAppShell } from "@/features/shared/lib/routes/shellBoundaries";
 import OpsNotificationsBell from "@/features/shared/components/OpsNotificationsBell";
+import NotificationPreferencesButton from "@/features/shared/components/NotificationPreferencesButton";
+import { useNotificationPreferences } from "@/features/shared/hooks/useNotificationPreferences";
+import { claimNotificationPopup } from "@/features/shared/lib/claimNotificationPopup";
 import { isDefaultOpsOperatorEmail } from "@/features/ops/lib/operatorAccess";
 import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
 import {
@@ -73,7 +76,9 @@ type AppShellInitialIdentity = {
 };
 
 type InboxConversationSummary = {
+  conversation: { id: string };
   unread_count?: number | null;
+  latest_message?: { id: string; sender_id: string | null } | null;
 };
 
 function daysUntil(iso: string | null): number | null {
@@ -125,6 +130,15 @@ export default function AppShell({
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [incomingConvoId, setIncomingConvoId] = useState<string | null>(null);
   const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
+  const inboxKnownMessages = useRef<Map<string, string>>(new Map());
+  const inboxInitialized = useRef(false);
+  const {
+    preferences,
+    loading: preferencesLoading,
+    saving: preferencesSaving,
+    loadError: preferencesLoadError,
+    update: updatePreferences,
+  } = useNotificationPreferences(userId);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const punchRef = useRef<HTMLDivElement | null>(null);
@@ -161,14 +175,40 @@ export default function AppShell({
     const conversations = (await response
       .json()
       .catch(() => [])) as InboxConversationSummary[];
-    const count = Array.isArray(conversations)
-      ? conversations.reduce(
-          (sum, row) => sum + Math.max(0, Number(row.unread_count ?? 0)),
-          0,
-        )
-      : 0;
+    if (!Array.isArray(conversations)) return;
+    const count = conversations.reduce(
+      (sum, row) => sum + Math.max(0, Number(row.unread_count ?? 0)),
+      0,
+    );
+    // The server has already filtered conversation membership and unread
+    // deliveries. Never show popups directly from a broad realtime event.
+    const known = inboxKnownMessages.current;
+    for (const row of conversations) {
+      const message = row.latest_message;
+      if (!message?.id) continue;
+      const unseen = known.get(row.conversation.id) !== message.id;
+      known.set(row.conversation.id, message.id);
+      if (
+        inboxInitialized.current && unseen && row.unread_count &&
+        message.sender_id !== userId && !preferencesLoading &&
+        preferences.messagePopups &&
+        claimNotificationPopup(userId, "message", message.id)
+      ) {
+        toast.info("New inbox message", {
+          description: "A customer or teammate sent a message.",
+          action: {
+            label: "Open conversation",
+            onClick: () => {
+              setIncomingConvoId(row.conversation.id);
+              setChatOpen(true);
+            },
+          },
+        });
+      }
+    }
+    inboxInitialized.current = true;
     setInboxUnreadCount(count);
-  }, [isAppRoute, userId]);
+  }, [isAppRoute, userId, preferencesLoading, preferences.messagePopups]);
 
   useEffect(() => {
     setUserId(initialIdentity?.userId ?? null);
@@ -280,20 +320,13 @@ export default function AppShell({
             if (Array.isArray(msg.recipients) && !msg.recipients.includes(uid))
               return;
 
-            setIncomingConvoId(msg.conversation_id);
-            setInboxUnreadCount((count) => Math.max(count + 1, 1));
+            // Realtime is only an invalidation signal. The authorized
+            // conversations endpoint decides whether the event is visible.
             window.dispatchEvent(
               new CustomEvent("profixiq:inbox-refresh", {
                 detail: { conversationId: msg.conversation_id },
               }),
             );
-            toast.info("New inbox message", {
-              description: "A customer or teammate sent a message.",
-              action: {
-                label: "Open inbox",
-                onClick: () => setChatOpen(true),
-              },
-            });
           },
         )
         .subscribe();
@@ -315,6 +348,64 @@ export default function AppShell({
     initialIdentity?.shopId,
     initialIdentity?.userId,
   ]);
+
+  useEffect(() => {
+    inboxKnownMessages.current = new Map();
+    inboxInitialized.current = false;
+  }, [userId]);
+
+  // Confirmations are durable assistant actions. Baseline existing items
+  // silently, then toast only newly observed pending action IDs.
+  useEffect(() => {
+    if (!isAppRoute || !userId || !canUseOperationsAssistant ||
+        preferencesLoading || !preferences.assistantPopups) return;
+    let active = true;
+    let initialized = false;
+    const known = new Set<string>();
+    const load = async () => {
+      if (document.visibilityState !== "visible") return;
+      const response = await fetch("/api/shop-assistant/actions/pending", {
+        cache: "no-store",
+      }).catch(() => null);
+      if (!active || !response?.ok) return;
+      const payload = await response.json().catch(() => null) as
+        | { ok?: boolean; actions?: Array<{
+          id: string; threadId: string; preview?: { title?: string };
+        }> }
+        | null;
+      if (!active || payload?.ok !== true || !Array.isArray(payload.actions)) return;
+      for (const action of payload.actions) {
+        if (!action.id) continue;
+        const unseen = !known.has(action.id);
+        known.add(action.id);
+        if (initialized && unseen &&
+            claimNotificationPopup(userId, "assistant", action.id)) {
+          toast.info("ProFix Operations needs your confirmation", {
+            description: action.preview?.title ?? "An action is waiting for review.",
+            action: {
+              label: "Review",
+              onClick: () => router.push(
+                action.threadId
+                  ? `/assistant?threadId=${encodeURIComponent(action.threadId)}`
+                  : "/assistant",
+              ),
+            },
+          });
+        }
+      }
+      initialized = true;
+    };
+    void load();
+    const timer = window.setInterval(() => { void load(); }, 45_000);
+    const visibility = () => { if (document.visibilityState === "visible") void load(); };
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", visibility);
+    };
+  }, [isAppRoute, userId, canUseOperationsAssistant,
+      preferencesLoading, preferences.assistantPopups, router]);
 
   useEffect(() => {
     if (!isAppRoute || !userId) {
@@ -535,6 +626,8 @@ export default function AppShell({
             <RoleSidebar
               initialRole={role}
               initialEmail={userEmail}
+              showQueueIndicators={!preferencesLoading && preferences.navigationIndicators}
+              inboxUnreadCount={inboxUnreadCount}
             />
 
             <div className="mt-auto h-12 border-t border-[color:var(--theme-border-soft)]" />
@@ -580,6 +673,15 @@ export default function AppShell({
               <BillingBadge />
 
               {userId && canSeeAgentConsole ? <OpsNotificationsBell /> : null}
+              {userId ? (
+                <NotificationPreferencesButton
+                  preferences={preferences}
+                  loading={preferencesLoading}
+                  saving={preferencesSaving}
+                  loadError={preferencesLoadError}
+                  update={updatePreferences}
+                />
+              ) : null}
 
               {userId ? (
                 <ActionButton
