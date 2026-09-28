@@ -132,6 +132,8 @@ export default function AppShell({
   const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
   const inboxKnownMessages = useRef<Map<string, string>>(new Map());
   const inboxInitialized = useRef(false);
+  const pendingRealtimeMessageIds = useRef<Set<string>>(new Set());
+  const inboxRequestGeneration = useRef(0);
   const {
     preferences,
     loading: preferencesLoading,
@@ -176,6 +178,7 @@ export default function AppShell({
   const billingHref = "/dashboard/owner/settings#billing";
 
   const loadInboxUnreadCount = useCallback(async () => {
+    const generation = ++inboxRequestGeneration.current;
     if (!userId || !isAppRoute) {
       setInboxUnreadCount(0);
       return;
@@ -184,12 +187,12 @@ export default function AppShell({
     const response = await fetch("/api/chat/my-conversations", {
       credentials: "include",
     }).catch(() => null);
-    if (!response?.ok) return;
+    if (!response?.ok || generation !== inboxRequestGeneration.current) return;
 
     const conversations = (await response
       .json()
       .catch(() => [])) as InboxConversationSummary[];
-    if (!Array.isArray(conversations) ||
+    if (!Array.isArray(conversations) || generation !== inboxRequestGeneration.current ||
         popupPreferencesRef.current.userId !== userId) return;
     const count = conversations.reduce(
       (sum, row) => sum + Math.max(0, Number(row.unread_count ?? 0)),
@@ -204,7 +207,8 @@ export default function AppShell({
       const unseen = known.get(row.conversation.id) !== message.id;
       known.set(row.conversation.id, message.id);
       if (
-        inboxInitialized.current && unseen && row.unread_count &&
+        (inboxInitialized.current || pendingRealtimeMessageIds.current.has(message.id)) &&
+        unseen && row.unread_count &&
         message.sender_id !== userId &&
         popupPreferencesRef.current.userId === userId &&
         !popupPreferencesRef.current.loading &&
@@ -223,7 +227,8 @@ export default function AppShell({
         });
       }
     }
-    if (popupPreferencesRef.current.userId !== userId) return;
+    if (generation !== inboxRequestGeneration.current || popupPreferencesRef.current.userId !== userId) return;
+    pendingRealtimeMessageIds.current.clear();
     inboxInitialized.current = true;
     setInboxUnreadCount(count);
   }, [isAppRoute, userId, preferencesLoading, preferences.messagePopups]);
@@ -340,6 +345,9 @@ export default function AppShell({
 
             // Realtime is only an invalidation signal. The authorized
             // conversations endpoint decides whether the event is visible.
+            // Remember events during a failed initial baseline fetch so the
+            // next successful authorized read can still surface them.
+            if (msg.id) pendingRealtimeMessageIds.current.add(msg.id);
             window.dispatchEvent(
               new CustomEvent("profixiq:inbox-refresh", {
                 detail: { conversationId: msg.conversation_id },
@@ -368,7 +376,9 @@ export default function AppShell({
   ]);
 
   useEffect(() => {
+    inboxRequestGeneration.current += 1;
     inboxKnownMessages.current = new Map();
+    pendingRealtimeMessageIds.current = new Set();
     inboxInitialized.current = false;
   }, [userId]);
 
@@ -378,7 +388,6 @@ export default function AppShell({
     if (!isAppRoute || !userId || !canUseOperationsAssistant ||
         preferencesLoading || !preferences.assistantPopups) return;
     let active = true;
-    let initialized = false;
     const baselineAt = Date.now();
     const known = new Set<string>();
     const load = async () => {
@@ -397,7 +406,7 @@ export default function AppShell({
         if (!action.id) continue;
         const unseen = !known.has(action.id);
         known.add(action.id);
-        if (active && initialized && unseen &&
+        if (active && unseen &&
             isNewAssistantAction(action.createdAt, baselineAt) &&
             popupPreferencesRef.current.userId === userId &&
             !popupPreferencesRef.current.loading &&
@@ -416,7 +425,6 @@ export default function AppShell({
           });
         }
       }
-      initialized = true;
     };
     void load();
     const timer = window.setInterval(() => { void load(); }, 45_000);
