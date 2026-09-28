@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 
 import { TechnicianCopilotShell } from "@/features/copilot/technician/components/TechnicianCopilotShell";
+import MobileAssistantNotificationListener from "@/features/shared/components/MobileAssistantNotificationListener";
 import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
 import FieldWorkspaceShell from "@/features/mobile/service/FieldWorkspaceShell";
 import {
@@ -424,6 +425,7 @@ export function MobileShell({ children, title }: Props) {
   return (
     <>
       {mobileSurface}
+      {!fieldSurface && !fieldVerificationPending ? <MobileAssistantNotificationListener /> : null}
       <TechnicianCopilotShell shouldCheck surface="mobile" />
     </>
   );
