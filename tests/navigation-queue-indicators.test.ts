@@ -29,7 +29,8 @@ describe("navigation queue indicators", () => {
     expect(sidebar).toContain("hasNotificationTile && canAccessAssistantNotifications(role)");
     expect(hook).toContain("includeNotifications");
     expect(hook).toContain('includeNotifications\n        ? fetch("/api/planner/notifications"');
-    expect(hook).toContain("setIndicators({})");
+    expect(hook).toContain("setSnapshot({ scope: feedKey, indicators: {} })");
+    expect(hook).toContain("snapshot.scope === feedKey");
     expect(hook).toContain("generation !== version.current");
   });
 
