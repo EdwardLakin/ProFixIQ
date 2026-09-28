@@ -63,10 +63,11 @@ export function useNavigationQueueIndicators(
       const body = await notificationResult.value.json().catch(() => null) as
         | { notifications?: Notification[] }
         | null;
-      if (Array.isArray(body?.notifications)) {
+      const notifications = body?.notifications;
+      if (Array.isArray(notifications)) {
         setIndicators((previous) => ({
           ...previous,
-          ...indicatorsFromNotifications(body.notifications),
+          ...indicatorsFromNotifications(notifications),
         }));
       }
     }
@@ -75,10 +76,11 @@ export function useNavigationQueueIndicators(
       const body = await fleetResult.value.json().catch(() => null) as
         | { requests?: FleetRequest[] }
         | null;
-      if (Array.isArray(body?.requests)) {
+      const requests = body?.requests;
+      if (Array.isArray(requests)) {
         setIndicators((previous) => ({
           ...previous,
-          fleetIntake: hasPendingFleetIntake(body.requests),
+          fleetIntake: hasPendingFleetIntake(requests),
         }));
       }
     }
