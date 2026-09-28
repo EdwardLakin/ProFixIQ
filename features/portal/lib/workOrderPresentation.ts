@@ -24,6 +24,10 @@ type PortalWorkOrderStatusInput = {
   invoiceSentAt?: string | null;
   paymentStatus?: string | null;
   paidAt?: string | null;
+  /** Vehicle handover is independent of payment: a customer can collect the
+   * vehicle before, at, or after the invoice is settled. Once set, this is
+   * the single strongest signal that the visit is over. */
+  pickedUpAt?: string | null;
 };
 
 function normalize(value: string | null | undefined): string {
@@ -95,6 +99,17 @@ export function toPortalWorkOrderStatus(
   const status = normalize(input.status);
   const approvalState = normalize(input.approvalState);
   const paymentStatus = normalize(input.paymentStatus);
+
+  if (Boolean(input.pickedUpAt)) {
+    return {
+      key: "completed",
+      label: "Picked up",
+      nextStep:
+        "This service visit is complete and remains available in your history.",
+      actionRequired: false,
+      complete: true,
+    };
+  }
 
   if (paymentStatus === "paid" || Boolean(input.paidAt)) {
     return {

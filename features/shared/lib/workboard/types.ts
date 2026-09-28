@@ -55,6 +55,10 @@ export type WorkOrderBoardRow = {
   jobs_open?: number;
   jobs_blocked?: number;
   jobs_waiting_parts?: number;
+
+  picked_up_at?: string | null;
+  collected_by_type?: string | null;
+  collected_by_name?: string | null;
 };
 
 export type WorkOrderBoardVariant = "shop" | "fleet" | "portal";

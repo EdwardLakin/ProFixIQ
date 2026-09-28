@@ -36,6 +36,7 @@ import { useWorkspaceCapabilities } from "@/features/workspace/authorization/use
 import { signVehiclePhotoPaths } from "@/features/shared/lib/storage/vehiclePhotoBuckets";
 
 import { WorkOrderAssignedSummary } from "@/features/work-orders/components/WorkOrderAssignedSummary";
+import MarkAsPickedUpModal from "@/features/work-orders/components/workorders/MarkAsPickedUpModal";
 import {
   WORK_ORDER_OPERATIONAL_STAGE_LABELS,
   normalizeWorkOrderOperationalStage,
@@ -223,6 +224,15 @@ function stageAccent(status: WorkOrderOperationalStage): {
     };
   }
 
+  if (status === "awaiting_pickup") {
+    return {
+      badge:
+        "border-fuchsia-500/45 bg-fuchsia-500/10 text-fuchsia-700 dark:text-fuchsia-100",
+      border: "border-fuchsia-500/25",
+      progress: "bg-fuchsia-400",
+    };
+  }
+
   if (status === "closed") {
     return {
       badge:
@@ -289,6 +299,9 @@ export default function WorkOrdersView(): JSX.Element {
   const [isSeededShop, setIsSeededShop] = useState(false);
 
   const [assigningFor, setAssigningFor] = useState<string | null>(null);
+  const [pickupModalForId, setPickupModalForId] = useState<string | null>(
+    null,
+  );
   const [techs, setTechs] = useState<
     Array<Pick<Profile, "id" | "full_name" | "role">>
   >([]);
@@ -436,7 +449,16 @@ export default function WorkOrdersView(): JSX.Element {
       const defaultStatuses = isSeededShop
         ? SEEDED_DEFAULT_STATUSES
         : ACTIVE_WORK_ORDER_STATUSES;
-      query = query.in("status", [...defaultStatuses]).is("archived_at", null);
+      // `invoiced` is deliberately not part of ACTIVE_WORK_ORDER_STATUSES (a
+      // shared contract other surfaces rely on for "open repair" counts), but
+      // an invoiced work order awaiting vehicle pickup is still active work
+      // for this list. Broaden only this page's default view with an OR
+      // rather than adding 'invoiced' to the shared canonical set.
+      query = query
+        .is("archived_at", null)
+        .or(
+          `status.in.(${defaultStatuses.join(",")}),and(status.eq.invoiced,picked_up_at.is.null)`,
+        );
     } else {
       query = query.eq("status", status).is("archived_at", null);
     }
@@ -1623,6 +1645,23 @@ export default function WorkOrdersView(): JSX.Element {
 
                       {canArchive &&
                       !row.archived_at &&
+                      !row.picked_up_at &&
+                      operationalStage === "awaiting_pickup" ? (
+                        <button
+                          type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setPickupModalForId(row.id);
+                          }}
+                          className="ml-auto rounded-lg border border-fuchsia-500/40 bg-fuchsia-500/10 px-3 py-1.5 text-xs font-semibold text-fuchsia-700 transition hover:bg-fuchsia-500/15 dark:text-fuchsia-100"
+                          title="Confirm the customer has collected this vehicle"
+                        >
+                          Mark as Picked Up
+                        </button>
+                      ) : null}
+
+                      {canArchive &&
+                      !row.archived_at &&
                       canonicalStatus !== "cancelled" &&
                       canonicalStatus !== "invoiced" ? (
                         <button
@@ -1721,6 +1760,19 @@ export default function WorkOrdersView(): JSX.Element {
           </section>
         )}
       </div>
+
+      {pickupModalForId ? (
+        <MarkAsPickedUpModal
+          isOpen={!!pickupModalForId}
+          onClose={() => setPickupModalForId(null)}
+          workOrderId={pickupModalForId}
+          outstandingBalance={
+            rows.find((row) => row.id === pickupModalForId)
+              ?.outstanding_balance
+          }
+          onPickedUp={() => void load()}
+        />
+      ) : null}
     </div>
   );
 }

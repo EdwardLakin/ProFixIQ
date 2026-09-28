@@ -14,6 +14,7 @@ import CustomerPaymentButton from "@/features/stripe/components/CustomerPaymentB
 import { WorkOrderInvoiceDownloadButton } from "@work-orders/components/WorkOrderInvoiceDownloadButton";
 import SyncInvoiceToQuickBooksButton from "@/features/integrations/quickbooks/components/SyncInvoiceToQuickBooksButton";
 import RecordManualPayment from "@/features/invoices/components/RecordManualPayment";
+import MarkAsPickedUpModal from "@/features/work-orders/components/workorders/MarkAsPickedUpModal";
 import InvoicePricingEditor from "@/features/invoices/components/InvoicePricingEditor";
 import { invoiceDisplayIdentity } from "@/features/invoices/lib/invoiceDisplayIdentity";
 import { useTabs } from "@/features/shared/components/tabs/TabsProvider";
@@ -330,6 +331,16 @@ export default function InvoicePreviewPageClient({
   const [canonicalInvoiceTotal, setCanonicalInvoiceTotal] = useState<number>(0);
   const [snapshotWarning, setSnapshotWarning] = useState<string | null>(null);
 
+  const [pickupInfo, setPickupInfo] = useState<{
+    status: string | null;
+    archivedAt: string | null;
+    outstandingBalance: number | null;
+    pickedUpAt: string | null;
+    collectedByType: string | null;
+    collectedByName: string | null;
+  } | null>(null);
+  const [showPickupModal, setShowPickupModal] = useState(false);
+
   const [reviewLoading, setReviewLoading] = useState(false);
   const [reviewOk, setReviewOk] = useState<boolean>(false);
   const [reviewIssues, setReviewIssues] = useState<ReviewIssue[]>([]);
@@ -482,6 +493,87 @@ export default function InvoicePreviewPageClient({
       setInspectionPdfLoading(false);
     }
   }, [supabase, workOrderId]);
+
+  const [pickupRefreshKey, setPickupRefreshKey] = useState(0);
+  const [receiptRefreshKey, setReceiptRefreshKey] = useState(0);
+  const [receiptUrl, setReceiptUrl] = useState<string | null>(null);
+
+  // -------------------------------------------------------------------
+  // Payment receipt attachment (optional, linked once a manual payment with
+  // an uploaded receipt has been recorded).
+  // -------------------------------------------------------------------
+  useEffect(() => {
+    if (!workOrderId) return;
+    let cancelled = false;
+
+    (async () => {
+      const { data, error } = await supabase
+        .from("payment_receipt_attachments")
+        .select("storage_bucket, storage_path")
+        .eq("work_order_id", workOrderId)
+        .not("payment_event_id", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (cancelled || error || !data) {
+        if (!cancelled) setReceiptUrl(null);
+        return;
+      }
+
+      const { data: signed } = await supabase.storage
+        .from(data.storage_bucket)
+        .createSignedUrl(data.storage_path, 3600);
+
+      if (!cancelled) setReceiptUrl(signed?.signedUrl ?? null);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, workOrderId, receiptRefreshKey]);
+
+  // -------------------------------------------------------------------
+  // Vehicle handover state. Kept separate from the WO fetch below so the
+  // pickup confirmation flow can refresh just this slice without disturbing
+  // the existing invoice-loading query and its typed row shape.
+  // -------------------------------------------------------------------
+  useEffect(() => {
+    if (!workOrderId) return;
+    let cancelled = false;
+
+    (async () => {
+      const { data, error } = await supabase
+        .from("work_orders")
+        .select(
+          "status, archived_at, outstanding_balance, picked_up_at, collected_by_type, collected_by_name",
+        )
+        .eq("id", workOrderId)
+        .maybeSingle();
+
+      if (cancelled) return;
+      if (error || !data) {
+        setPickupInfo(null);
+        return;
+      }
+
+      setPickupInfo({
+        status: data.status ?? null,
+        archivedAt: data.archived_at ?? null,
+        outstandingBalance:
+          data.outstanding_balance != null
+            ? Number(data.outstanding_balance)
+            : null,
+        pickedUpAt: data.picked_up_at ?? null,
+        collectedByType: data.collected_by_type ?? null,
+        collectedByName: data.collected_by_name ?? null,
+      });
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [supabase, workOrderId, pickupRefreshKey]);
 
   // -------------------------------------------------------------------
   // Load shop/stripe + WO + optional customer/vehicle/lines (when not provided)
@@ -1090,17 +1182,33 @@ export default function InvoicePreviewPageClient({
                   ? "Paid in full"
                   : "Invoice issued"}
               </span>
-            ) : !canManageInvoice ? (
-              <span className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
-                Read-only access
+            ) : null}
+
+            {activeInvoiceVersion && pickupInfo ? (
+              <span
+                className={
+                  pickupInfo.pickedUpAt
+                    ? "text-[0.7rem] text-emerald-300"
+                    : "text-[0.7rem] text-fuchsia-300"
+                }
+              >
+                Vehicle: {pickupInfo.pickedUpAt ? "PICKED UP" : "AWAITING PICKUP"}
               </span>
-            ) : reviewLoading ? (
-              <span className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">Reviewing…</span>
-            ) : reviewOk ? (
-              <span className="text-[0.7rem] text-emerald-300">Invoice ready</span>
-            ) : (
-              <span className="text-[0.7rem] text-amber-300">Missing required info</span>
-            )}
+            ) : null}
+
+            {!activeInvoiceVersion ? (
+              !canManageInvoice ? (
+                <span className="text-[0.7rem] text-[color:var(--theme-text-muted)]">
+                  Read-only access
+                </span>
+              ) : reviewLoading ? (
+                <span className="text-[0.7rem] text-[color:var(--theme-text-secondary)]">Reviewing…</span>
+              ) : reviewOk ? (
+                <span className="text-[0.7rem] text-emerald-300">Invoice ready</span>
+              ) : (
+                <span className="text-[0.7rem] text-amber-300">Missing required info</span>
+              )
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -1165,12 +1273,26 @@ export default function InvoicePreviewPageClient({
                 workOrderId={workOrderId}
                 currency={invoiceCurrency}
                 outstandingTotal={outstandingTotal}
-                onPosted={(invoiceVersion) =>
+                onPosted={(invoiceVersion) => {
                   setActiveInvoiceVersion((current) =>
                     current ? { ...current, ...invoiceVersion } : current,
-                  )
-                }
+                  );
+                  setReceiptRefreshKey((key) => key + 1);
+                }}
               />
+            ) : null}
+
+            {activeInvoiceVersion &&
+            canManageInvoice &&
+            pickupInfo &&
+            !pickupInfo.pickedUpAt ? (
+              <button
+                type="button"
+                onClick={() => setShowPickupModal(true)}
+                className="rounded-full border border-fuchsia-400/50 bg-fuchsia-500/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.14em] text-fuchsia-200 hover:bg-fuchsia-500/20"
+              >
+                Mark as Picked Up
+              </button>
             ) : null}
 
             {canManageInvoice &&
@@ -1402,6 +1524,19 @@ export default function InvoicePreviewPageClient({
                         <span>Balance</span>
                         <span>{formatInvoiceMoney(outstandingTotal, invoiceCurrency)}</span>
                       </div>
+                      {receiptUrl ? (
+                        <div className="flex justify-between gap-3 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
+                          <span>Receipt</span>
+                          <a
+                            href={receiptUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-[var(--accent-copper-light)] underline"
+                          >
+                            View attachment
+                          </a>
+                        </div>
+                      ) : null}
                     </>
                   ) : null}
                 </div>
@@ -1572,8 +1707,32 @@ export default function InvoicePreviewPageClient({
               Draft preview is available for review. Sending remains blocked until required information is complete.
             </div>
           ) : null}
+
+          {activeInvoiceVersion && pickupInfo?.pickedUpAt ? (
+            <div className="mt-3 rounded-xl border border-[var(--metal-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-[0.75rem] text-[color:var(--theme-text-secondary)]">
+              Vehicle picked up{" "}
+              {new Date(pickupInfo.pickedUpAt).toLocaleString()}
+              {pickupInfo.collectedByType
+                ? ` — ${pickupInfo.collectedByType.replaceAll("_", " ")}${
+                    pickupInfo.collectedByName
+                      ? ` (${pickupInfo.collectedByName})`
+                      : ""
+                  }`
+                : ""}
+            </div>
+          ) : null}
         </div>
       </div>
+
+      {workOrderId && canManageInvoice ? (
+        <MarkAsPickedUpModal
+          isOpen={showPickupModal}
+          onClose={() => setShowPickupModal(false)}
+          workOrderId={workOrderId}
+          outstandingBalance={pickupInfo?.outstandingBalance}
+          onPickedUp={() => setPickupRefreshKey((key) => key + 1)}
+        />
+      ) : null}
     </div>
   );
 }

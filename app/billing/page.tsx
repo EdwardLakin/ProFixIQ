@@ -9,6 +9,7 @@ import { toast } from "sonner";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 import { InvoiceCsvImportCard } from "@/features/billing/components/InvoiceCsvImportCard";
 import { invoiceDisplayIdentity } from "@/features/invoices/lib/invoiceDisplayIdentity";
+import MarkAsPickedUpModal from "@/features/work-orders/components/workorders/MarkAsPickedUpModal";
 
 type DB = Database;
 type WorkOrder = DB["public"]["Tables"]["work_orders"]["Row"];
@@ -146,6 +147,9 @@ export default function BillingPage(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [rows, setRows] = useState<Row[]>([]);
+  const [pickupModalForId, setPickupModalForId] = useState<string | null>(
+    null,
+  );
   const [historicalInvoices, setHistoricalInvoices] = useState<
     HistoricalInvoiceRow[]
   >([]);
@@ -754,6 +758,25 @@ export default function BillingPage(): JSX.Element {
                     ) : null}
                   </div>
 
+                  {statusLower === "invoiced" ? (
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-fuchsia-400/30 bg-fuchsia-500/10 px-3 py-2 text-xs font-semibold text-fuchsia-100">
+                      <span>
+                        {r.picked_up_at
+                          ? `Picked up ${format(new Date(r.picked_up_at), "PP")}`
+                          : "Awaiting pickup"}
+                      </span>
+                      {!r.picked_up_at ? (
+                        <button
+                          type="button"
+                          onClick={() => setPickupModalForId(r.id)}
+                          className="rounded-full border border-fuchsia-300/50 bg-fuchsia-500/15 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.12em] text-fuchsia-50 hover:bg-fuchsia-500/25"
+                        >
+                          Mark as Picked Up
+                        </button>
+                      ) : null}
+                    </div>
+                  ) : null}
+
                   <div className="mt-4 grid grid-cols-2 gap-3">
                     <div className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-3">
                       <div className="text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
@@ -1071,6 +1094,19 @@ export default function BillingPage(): JSX.Element {
             </div>
           ) : null}
         </section>
+      ) : null}
+
+      {pickupModalForId ? (
+        <MarkAsPickedUpModal
+          isOpen={!!pickupModalForId}
+          onClose={() => setPickupModalForId(null)}
+          workOrderId={pickupModalForId}
+          outstandingBalance={
+            rows.find((row) => row.id === pickupModalForId)
+              ?.outstanding_balance
+          }
+          onPickedUp={() => void load()}
+        />
       ) : null}
     </div>
   );

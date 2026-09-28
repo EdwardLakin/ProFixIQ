@@ -193,6 +193,9 @@ type WorkspaceHistoryRow = Pick<
   | "opened_at"
   | "closed_at"
   | "source_system"
+  | "picked_up_at"
+  | "collected_by_type"
+  | "collected_by_name"
 >;
 
 type WorkspaceInvoiceRow = Pick<
@@ -942,6 +945,13 @@ function buildTimeline(input: {
         row.historical_status,
         row.source_system,
         row.odometer === null ? null : `Odometer: ${row.odometer}`,
+        row.picked_up_at
+          ? `Picked up ${new Date(row.picked_up_at).toLocaleDateString()}${
+              row.collected_by_type
+                ? ` (${row.collected_by_type.replaceAll("_", " ")})`
+                : ""
+            }`
+          : null,
       ]
         .filter(Boolean)
         .join(" · ") || null,
@@ -1459,7 +1469,7 @@ export async function loadVehicleWorkspaceSnapshot(input: {
     input.supabase
       .from("history")
       .select(
-        "id,customer_id,work_order_id,work_order_number,historical_status,description,odometer,service_date,opened_at,closed_at,source_system",
+        "id,customer_id,work_order_id,work_order_number,historical_status,description,odometer,service_date,opened_at,closed_at,source_system,picked_up_at,collected_by_type,collected_by_name",
       )
       .eq("vehicle_id", input.vehicleId)
       .order("service_date", { ascending: false })

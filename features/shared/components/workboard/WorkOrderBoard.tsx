@@ -9,6 +9,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Clock3,
+  KeyRound,
   Package,
   Plus,
   RefreshCw,
@@ -79,6 +80,12 @@ const stages: Array<{
     label: "Ready",
     icon: CheckCircle2,
     tone: "text-lime-600",
+  },
+  {
+    key: "awaiting_pickup",
+    label: "Awaiting pickup",
+    icon: KeyRound,
+    tone: "text-fuchsia-600",
   },
   {
     key: "closed",
@@ -183,6 +190,16 @@ function BoardCard({
             Ready
           </span>
         ) : null}
+        {row.overall_stage === "awaiting_pickup" ? (
+          <span className="rounded bg-fuchsia-500/15 px-1.5 py-0.5 font-semibold text-fuchsia-700 dark:text-fuchsia-200">
+            Awaiting pickup
+          </span>
+        ) : null}
+        {row.picked_up_at ? (
+          <span className="rounded bg-slate-500/15 px-1.5 py-0.5 font-semibold text-slate-700 dark:text-slate-200">
+            Picked up {timeAgoLabel(row.time_in_stage_seconds ?? null)} ago
+          </span>
+        ) : null}
       </div>
       <dl className="mt-3 grid grid-cols-[78px_1fr] gap-x-2 gap-y-1 text-xs">
         <dt className="text-[color:var(--theme-text-muted)]">Technician</dt>
@@ -206,22 +223,24 @@ function BoardCard({
       </dl>
       <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-[color:var(--theme-surface-subtle)]">
         <div
-          className={`h-full rounded-full ${row.overall_stage === "ready" || row.overall_stage === "closed" ? "bg-emerald-500" : "bg-[var(--brand-primary,#C1663B)]"}`}
+          className={`h-full rounded-full ${row.overall_stage === "ready" || row.overall_stage === "awaiting_pickup" || row.overall_stage === "closed" ? "bg-emerald-500" : "bg-[var(--brand-primary,#C1663B)]"}`}
           style={{ width: `${Math.min(100, Math.max(0, row.progress_pct))}%` }}
         />
       </div>
       <div className="mt-3 flex min-h-9 items-center justify-center gap-2 rounded-lg border border-[var(--brand-primary,#C1663B)]/45 text-xs font-semibold text-[var(--brand-primary,#C1663B)]">
         {row.overall_stage === "closed"
           ? "View history"
-          : row.overall_stage === "ready"
-            ? "Review invoice"
-            : row.overall_stage === "waiting"
-              ? "Open blocker"
-              : row.overall_stage === "authorized"
-                ? "Dispatch"
-                : row.overall_stage === "intake"
-                  ? "Continue intake"
-                  : "Open work order"}
+          : row.overall_stage === "awaiting_pickup"
+            ? "Mark as picked up"
+            : row.overall_stage === "ready"
+              ? "Review invoice"
+              : row.overall_stage === "waiting"
+                ? "Open blocker"
+                : row.overall_stage === "authorized"
+                  ? "Dispatch"
+                  : row.overall_stage === "intake"
+                    ? "Continue intake"
+                    : "Open work order"}
         <ChevronRight className="h-3.5 w-3.5" />
       </div>
     </article>

@@ -16,7 +16,7 @@ import {
 } from "@/features/work-orders/lib/operational-stage";
 
 const migration = readFileSync(
-  "supabase/migrations/20260801221903_correct_work_order_lifecycle_review_findings.sql",
+  "supabase/migrations/20260928030000_board_awaiting_pickup_stage.sql",
   "utf8",
 );
 const workOrderList = readFileSync(
@@ -25,7 +25,12 @@ const workOrderList = readFileSync(
 );
 
 describe("protected canonical work-order lifecycle", () => {
-  it("defines exactly the protected nine-stage sequence", () => {
+  it("defines exactly the protected ten-stage sequence", () => {
+    // Extended by one intentional stage: an invoiced work order no longer
+    // buckets straight into "closed" (that mapping only ever matched
+    // 'invoiced'/'cancelled' in practice, since 'closed' and 'canceled' are
+    // not legal work_orders.status values) - it now sits in a distinct
+    // "awaiting_pickup" stage until vehicle handover is confirmed.
     expect(CANONICAL_WORK_ORDER_OPERATIONAL_STAGES).toEqual([
       "intake",
       "estimate",
@@ -35,6 +40,7 @@ describe("protected canonical work-order lifecycle", () => {
       "in_progress",
       "quality_check",
       "ready",
+      "awaiting_pickup",
       "closed",
     ]);
 

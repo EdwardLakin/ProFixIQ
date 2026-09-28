@@ -95,6 +95,12 @@ export function stageAccent(
         badge: "bg-lime-500/15 text-lime-200 border-lime-500/30",
         progress: "bg-lime-400",
       };
+    case "awaiting_pickup":
+      return {
+        border: "border-fuchsia-500/55",
+        badge: "bg-fuchsia-500/15 text-fuchsia-200 border-fuchsia-500/30",
+        progress: "bg-fuchsia-400",
+      };
     case "closed":
       return {
         border: "border-[color:var(--theme-border-soft)]",

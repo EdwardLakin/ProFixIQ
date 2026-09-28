@@ -51,6 +51,11 @@ export const WORK_ORDER_BOARD_STAGE_SURFACES: Record<
     card: "border-lime-500/30 bg-lime-500/[0.075]",
     count: "bg-lime-500/15 text-lime-800 dark:text-lime-200",
   },
+  awaiting_pickup: {
+    column: "border-fuchsia-500/25 bg-fuchsia-500/[0.055]",
+    card: "border-fuchsia-500/30 bg-fuchsia-500/[0.075]",
+    count: "bg-fuchsia-500/15 text-fuchsia-800 dark:text-fuchsia-200",
+  },
   closed: {
     column: "border-slate-500/25 bg-slate-500/[0.055]",
     card: "border-slate-500/30 bg-slate-500/[0.075]",

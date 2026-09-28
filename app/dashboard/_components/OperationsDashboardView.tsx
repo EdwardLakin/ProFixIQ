@@ -99,6 +99,7 @@ export default async function OperationsDashboardView() {
     ["In progress", flowCount("in progress"), "in_progress"],
     ["Quality check", flowCount("quality check"), "quality_check"],
     ["Ready", flowCount("ready"), "ready"],
+    ["Awaiting pickup", flowCount("awaiting pickup"), "awaiting_pickup"],
     ["Closed", payload.topSummary.completedToday, "closed"],
   ] as const;
 

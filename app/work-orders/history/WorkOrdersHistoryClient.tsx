@@ -54,6 +54,9 @@ type Row = Pick<
   | "source_row_id"
   | "source_system"
   | "imported_from_session_id"
+  | "picked_up_at"
+  | "collected_by_type"
+  | "collected_by_name"
 > & {
   customers: Pick<
     CustomerRow,
@@ -129,7 +132,7 @@ export default function WorkOrdersHistoryClient(): JSX.Element {
     let query = supabase
       .from("history")
       .select(
-        "id, customer_id, vehicle_id, work_order_id, service_date, description, notes, created_at, work_order_number, invoice_number, historical_status, payment_state, approval_state, odometer, advisor_name, assigned_tech_name, labor_hours, labor_sale, parts_sale, shop_supplies, discount, tax, total, symptom, cause, correction, source_system, source_external_id, source_row_id, imported_from_session_id, customers:customers(first_name,last_name,email,phone), vehicles:vehicles(year,make,model,license_plate,vin,unit_number)",
+        "id, customer_id, vehicle_id, work_order_id, service_date, description, notes, created_at, work_order_number, invoice_number, historical_status, payment_state, approval_state, odometer, advisor_name, assigned_tech_name, labor_hours, labor_sale, parts_sale, shop_supplies, discount, tax, total, symptom, cause, correction, source_system, source_external_id, source_row_id, imported_from_session_id, picked_up_at, collected_by_type, collected_by_name, customers:customers(first_name,last_name,email,phone), vehicles:vehicles(year,make,model,license_plate,vin,unit_number)",
       )
       .order("service_date", { ascending: false })
       .limit(300);

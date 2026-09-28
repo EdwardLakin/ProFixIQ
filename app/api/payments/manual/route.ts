@@ -35,6 +35,9 @@ type Body = {
   note?: string | null;
   receivedAt?: string | null;
   idempotencyKey?: string;
+  /** Storage path of a receipt already uploaded (before the payment_event
+   * exists) to the payment-receipts bucket via the browser client. */
+  receiptStoragePath?: string | null;
 };
 
 export async function POST(req: Request) {
@@ -149,6 +152,34 @@ export async function POST(req: Request) {
         note: body?.note?.trim() || null,
       },
     });
+
+    const receiptStoragePath = body?.receiptStoragePath?.trim();
+    if (receiptStoragePath) {
+      const paymentEventId = (result.payment_event as { id?: string } | null)
+        ?.id;
+      if (paymentEventId) {
+        // Best-effort link: the receipt is already safely stored regardless,
+        // and a failed link here must not undo or misreport the payment that
+        // already succeeded above.
+        await admin
+          .from("payment_receipt_attachments")
+          .update({
+            payment_event_id: paymentEventId,
+            invoice_version_id: invoiceVersion.id,
+          })
+          .eq("shop_id", access.profile.shop_id)
+          .eq("storage_bucket", "payment-receipts")
+          .eq("storage_path", receiptStoragePath)
+          .then(
+            () => undefined,
+            (linkError: unknown) =>
+              console.warn(
+                "[payments/manual] failed to link receipt attachment:",
+                linkError,
+              ),
+          );
+      }
+    }
 
     return NextResponse.json({ ok: true, ...result });
   } catch (error: unknown) {
