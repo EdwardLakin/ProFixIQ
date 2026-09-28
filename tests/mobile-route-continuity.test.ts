@@ -121,6 +121,14 @@ describe("mobile route continuity", () => {
     expect(menu).toContain('router.replace("/mobile/sign-in")');
     expect(signIn).not.toContain('href="/sign-in"');
     expect(signIn).toContain('backHref="/sign-in"');
+
+    // AuthShell's own header link must opt out of MobileShell's click guard,
+    // since resolveMobileHref("/sign-in") maps back to "/mobile/sign-in" — the
+    // guard would otherwise treat the logo's backHref as a same-route no-op.
+    const authShell = read("features/auth/components/AuthShell.tsx");
+    expect(authShell).toContain('data-mobile-route-bypass="true"');
+    const shell = read("components/layout/MobileShell.tsx");
+    expect(shell).toContain('anchor.dataset.mobileRouteBypass === "true"');
   });
 
   it("uses deterministic mobile back routes instead of browser history", () => {

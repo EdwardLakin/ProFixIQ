@@ -1,5 +1,18 @@
 export const FLEET_PRODUCT_ORIGIN = "https://fleet.profixiq.com";
 
+const PRIMARY_SITE_ORIGIN =
+  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+  "https://profixiq.com";
+
+/**
+ * On the Fleet product host, a relative "/sign-in" is rewritten back to
+ * "/portal/auth/fleet-sign-in" by Fleet's own product routing, so the app
+ * chooser must be reached through an absolute primary-site URL instead.
+ */
+export function fleetAccessChooserHref(productHost: boolean): string {
+  return productHost ? `${PRIMARY_SITE_ORIGIN}/sign-in` : "/sign-in";
+}
+
 const FLEET_PRODUCT_HOSTNAMES = new Set([
   "fleet.profixiq.com",
   "fleet.localhost",

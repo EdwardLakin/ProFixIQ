@@ -2,11 +2,14 @@ import { Suspense } from "react";
 import { headers } from "next/headers";
 import PortalSignInForm from "../sign-in/PortalSignInForm";
 import AuthShell from "@/features/auth/components/AuthShell";
-import { isFleetProductHostname } from "@/features/fleet/lib/fleetProductRouting";
+import {
+  fleetAccessChooserHref,
+  isFleetProductHostname,
+} from "@/features/fleet/lib/fleetProductRouting";
 
 const FLEET_BLUE = "#38BDF8";
 
-function FleetLoadingCard() {
+function FleetLoadingCard({ productHost }: { productHost: boolean }) {
   return (
     <AuthShell
       productLabel="ProFixIQ Fleet"
@@ -14,7 +17,7 @@ function FleetLoadingCard() {
       heroDescription="Asset readiness, preventive maintenance, service decisions, and repair history in one dedicated Fleet workspace."
       highlights={["Fleet control tower", "Maintenance planning", "Connected repair history"]}
       cardClassName="rounded-2xl border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 backdrop-blur-md sm:p-6"
-      backHref="/sign-in"
+      backHref={fleetAccessChooserHref(productHost)}
     >
       <div>
         <div
@@ -46,7 +49,7 @@ export default async function FleetPortalSignInPage() {
     );
 
   return (
-    <Suspense fallback={<FleetLoadingCard />}>
+    <Suspense fallback={<FleetLoadingCard productHost={productHost} />}>
       <PortalSignInForm portalType="fleet" productHost={productHost} />
     </Suspense>
   );
