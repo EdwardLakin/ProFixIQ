@@ -851,7 +851,7 @@ export default function AppShell({
               <NavItem href="/dashboard" label="Dashboard" />
               <NavItem href="/work-orders" label="Work Orders" />
               <NavItem href="/inspections" label="Inspections" />
-              <NavItem href="/chat" label="Inbox" badge={inboxUnreadCount} />
+              <NavItem href="/chat" label="Inbox" badge={!preferencesLoading && preferences.navigationIndicators ? inboxUnreadCount : 0} />
               <NavItem href="/mobile/appointments" label="Schedule" />
               {userId ? (
                 <NotificationPreferencesButton
