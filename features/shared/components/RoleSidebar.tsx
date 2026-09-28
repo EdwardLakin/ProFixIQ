@@ -17,7 +17,7 @@ import {
 } from "@/features/shared/lib/ownerSidebarNav";
 import { cn } from "@/features/shared/utils/cn";
 import { ChevronDown, ChevronRight } from "lucide-react";
-import { canonicalizeRole } from "@/features/shared/lib/rbac";
+import { canAccessAssistantNotifications, canonicalizeRole } from "@/features/shared/lib/rbac";
 import { WORKSPACE_CAPABILITIES } from "@/features/workspace/authorization/capabilities";
 import { useWorkspaceCapabilities } from "@/features/workspace/authorization/useWorkspaceCapabilities";
 import { useNavigationQueueIndicators, type NavigationQueueKey } from "@/features/shared/hooks/useNavigationQueueIndicators";
@@ -104,10 +104,6 @@ export default function RoleSidebar({
     userEmail,
   ]);
 
-  const queueIndicators = useNavigationQueueIndicators(
-    Boolean(role) && showQueueIndicators,
-    tiles.some((tile) => tile.href === "/work-orders/fleet-requests"),
-  );
   const queueKeyByHref: Record<string, NavigationQueueKey> = {
     "/work-orders/fleet-requests": "fleetIntake",
     "/work-orders/quote-review": "quoteReview",
@@ -116,6 +112,18 @@ export default function RoleSidebar({
     "/parts/requests": "parts",
     "/billing": "billing",
   };
+  const hasFleetIntakeTile = tiles.some(
+    (tile) => tile.href === "/work-orders/fleet-requests",
+  );
+  const hasNotificationTile = tiles.some(
+    (tile) => tile.href !== "/work-orders/fleet-requests" &&
+      Boolean(queueKeyByHref[tile.href]),
+  );
+  const queueIndicators = useNavigationQueueIndicators(
+    Boolean(role) && showQueueIndicators,
+    hasFleetIntakeTile,
+    hasNotificationTile && canAccessAssistantNotifications(role),
+  );
   const hasQueue = (href: string) => Boolean(queueIndicators[queueKeyByHref[href]]);
 
   const canonicalActiveTile = useMemo(
