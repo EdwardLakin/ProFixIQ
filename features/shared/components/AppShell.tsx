@@ -252,7 +252,6 @@ export default function AppShell({
     if (!isAppRoute) return;
 
     let active = true;
-    let cleanup: (() => void) | null = null;
 
     (async () => {
       const {
@@ -323,51 +322,10 @@ export default function AppShell({
           console.error("Failed to load profile/shop for AppShell", err);
         }
       }
-
-      if (!active) return;
-      const channel = supabase
-        .channel("app-shell-messages")
-        .on(
-          "postgres_changes",
-          {
-            event: "INSERT",
-            schema: "public",
-            table: "messages",
-          },
-          (payload) => {
-            if (!active) return;
-            const raw = payload.new as unknown;
-            const msg =
-              raw as Database["public"]["Tables"]["messages"]["Row"] & {
-                recipients?: string[] | null;
-              };
-
-            if (msg.sender_id === uid && msg.sender_kind === "staff") return;
-            if (Array.isArray(msg.recipients) && !msg.recipients.includes(uid))
-              return;
-
-            // Realtime is only an invalidation signal. The authorized
-            // conversations endpoint decides whether the event is visible.
-            // Remember events during a failed initial baseline fetch so the
-            // next successful authorized read can still surface them.
-            if (msg.id) pendingRealtimeMessageIds.current.add(msg.id);
-            window.dispatchEvent(
-              new CustomEvent("profixiq:inbox-refresh", {
-                detail: { conversationId: msg.conversation_id },
-              }),
-            );
-          },
-        )
-        .subscribe();
-
-      cleanup = () => {
-        supabase.removeChannel(channel);
-      };
     })();
 
     return () => {
       active = false;
-      cleanup?.();
     };
   }, [
     supabase,
@@ -377,6 +335,59 @@ export default function AppShell({
     initialIdentity?.shopId,
     initialIdentity?.userId,
   ]);
+
+  // Kept in its own effect, keyed only on userId, so it subscribes as soon
+  // as identity is known instead of waiting behind profile/shop lookups
+  // (closing the gap where an arriving message was invisible to both the
+  // channel and a concurrently-failing first fetch), and so it does not
+  // resubscribe merely because role/email/shopId settle on a later render.
+  useEffect(() => {
+    if (!isAppRoute || !userId) return;
+
+    let active = true;
+    const channel = supabase
+      .channel("app-shell-messages")
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "messages",
+        },
+        (payload) => {
+          if (!active) return;
+          const raw = payload.new as unknown;
+          const msg =
+            raw as Database["public"]["Tables"]["messages"]["Row"] & {
+              recipients?: string[] | null;
+            };
+
+          if (msg.sender_id === userId && msg.sender_kind === "staff") return;
+          if (
+            Array.isArray(msg.recipients) &&
+            !msg.recipients.includes(userId)
+          )
+            return;
+
+          // Realtime is only an invalidation signal. The authorized
+          // conversations endpoint decides whether the event is visible.
+          // Remember events during a failed initial baseline fetch so the
+          // next successful authorized read can still surface them.
+          if (msg.id) pendingRealtimeMessageIds.current.add(msg.id);
+          window.dispatchEvent(
+            new CustomEvent("profixiq:inbox-refresh", {
+              detail: { conversationId: msg.conversation_id },
+            }),
+          );
+        },
+      )
+      .subscribe();
+
+    return () => {
+      active = false;
+      supabase.removeChannel(channel);
+    };
+  }, [supabase, isAppRoute, userId]);
 
   useEffect(() => {
     inboxRequestGeneration.current += 1;

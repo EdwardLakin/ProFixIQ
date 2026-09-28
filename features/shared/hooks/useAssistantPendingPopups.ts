@@ -6,6 +6,11 @@ import { toast } from "sonner";
 import { claimNotificationPopup, isNewAssistantAction } from "@/features/shared/lib/claimNotificationPopup";
 import { resolveMobileHref } from "@/features/mobile/navigation/mobile-route-continuity";
 
+// See getBaseline() below: backdates the server-clock baseline past ordinary
+// transaction commit latency so a row whose transaction started just before
+// the baseline read, but committed after it, is not permanently suppressed.
+const BASELINE_COMMIT_LAG_MS = 3_000;
+
 type Options = {
   userId: string | null;
   enabled: boolean;
@@ -51,7 +56,16 @@ export function useAssistantPendingPopups({
       }
       const result = await baselineRequest;
       if (result === null) baselineRequest = null;
-      else baselineAt = result - (performance.now() - subscriptionStartedAt);
+      else {
+        // clock_timestamp() reads at query time, but shop_assistant_actions.created_at
+        // is set at the inserting transaction's start (Postgres now()). A transaction
+        // that begins just before this read can still commit after it, so its row's
+        // created_at can land at or before the baseline. BASELINE_COMMIT_LAG_MS backdates
+        // the boundary past ordinary commit latency to close that window; claimNotificationPopup
+        // and the `known` set already de-duplicate, so re-admitting a just-shown action here
+        // is harmless.
+        baselineAt = result - (performance.now() - subscriptionStartedAt) - BASELINE_COMMIT_LAG_MS;
+      }
       return baselineAt;
     };
 

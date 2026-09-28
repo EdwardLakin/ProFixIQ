@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     // Keep authorization identical for baseline and action requests.
     if (new URL(request.url).searchParams.get("baseline") === "1") {
       const { data: dbNow, error: clockError } = await actor.supabase.rpc(
-        "shop_assistant_notification_clock" as never,
+        "shop_assistant_notification_clock",
       );
       if (clockError || typeof dbNow !== "string") {
         throw new Error(clockError?.message ?? "Database clock unavailable");

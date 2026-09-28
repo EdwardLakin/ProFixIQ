@@ -36,6 +36,12 @@ describe("notification preferences", () => {
     const migration = readFileSync(
       "supabase/migrations/20260928150000_shop_assistant_notification_clock.sql", "utf8",
     );
+    const messageListener = readFileSync(
+      "features/shared/components/MobileMessageNotificationListener.tsx", "utf8",
+    );
+    const inboxPopups = readFileSync(
+      "features/shared/hooks/useInboxPendingPopups.ts", "utf8",
+    );
     expect(source).toContain("pendingRealtimeMessageIds.current.has(message.id)");
     expect(source).toContain("generation !== inboxRequestGeneration.current");
     expect(source).toContain('claimNotificationPopup(userId, "message", message.id)');
@@ -54,7 +60,18 @@ describe("notification preferences", () => {
     expect(listener).toContain("resolveCanonicalStaffProfile");
     expect(listener).toContain('canonicalizeRole(role) !== "mechanic"');
     expect(route).toContain('"shop_assistant_notification_clock"');
+    expect(route).not.toContain("as never");
     expect(migration).toContain("clock_timestamp()");
+    expect(notifier).toContain("BASELINE_COMMIT_LAG_MS");
+    expect(mobile).toContain("<MobileMessageNotificationListener />");
+    expect(mobile).not.toContain(
+      "{!fieldSurface && !fieldVerificationPending ? <MobileAssistantNotificationListener",
+    );
+    expect(messageListener).toContain("useInboxPendingPopups({");
+    expect(messageListener).toContain("/mobile/messages/");
+    expect(inboxPopups).toContain('claimNotificationPopup(userId, "message", message.id)');
+    expect(source).toContain('.channel("app-shell-messages")');
+    expect(source).toContain("}, [supabase, isAppRoute, userId]);");
     expect(source).toMatch(/<NotificationPreferencesButton\s+mobile\b/);
     const inbox = readFileSync("features/chat/components/InboxModal.tsx", "utf8");
     expect(inbox).toContain("pendingSeedRef.current = null;");
@@ -64,7 +81,9 @@ describe("notification preferences", () => {
     const prefs = readFileSync("features/shared/hooks/useNotificationPreferences.ts", "utf8");
     expect(prefs).toContain('event !== "USER_UPDATED"');
     expect(prefs).toContain('window.addEventListener("focus", onFocus)');
-    const realtimeSection = source.split("const channel = supabase")[1].split("cleanup = () =>")[0];
+    const realtimeSection = source
+      .split("const channel = supabase")[1]
+      .split("}, [supabase, isAppRoute, userId]);")[0];
     expect(realtimeSection).not.toContain('toast.info("New inbox message"');
   });
 });
