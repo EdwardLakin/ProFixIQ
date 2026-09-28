@@ -27,7 +27,8 @@ describe("notification preferences", () => {
 
   it("never emits a message popup from an unverified realtime payload", () => {
     const source = readFileSync("features/shared/components/AppShell.tsx", "utf8");
-    expect(source).toContain("inboxInitialized.current && unseen");
+    expect(source).toContain("pendingRealtimeMessageIds.current.has(message.id)");
+    expect(source).toContain("generation !== inboxRequestGeneration.current");
     expect(source).toContain('claimNotificationPopup(userId, "message", message.id)');
     expect(source).toContain('claimNotificationPopup(userId, "assistant", action.id)');
     expect(source).toContain('fetch("/api/shop-assistant/actions/pending"');
@@ -39,6 +40,11 @@ describe("notification preferences", () => {
     expect(source).toContain("preferences.assistantPopups");
     expect(source).toContain("inboxUnreadCount={inboxUnreadCount}");
     expect(source).toContain("preferences.navigationIndicators");
+    expect(source).toContain("<NotificationPreferencesButton\\n                  mobile");
+    expect(source).toContain("isNewAssistantAction(action.createdAt, baselineAt)");
+    const prefs = readFileSync("features/shared/hooks/useNotificationPreferences.ts", "utf8");
+    expect(prefs).toContain('event !== "USER_UPDATED"');
+    expect(prefs).toContain('window.addEventListener("focus", onFocus)');
     const realtimeSection = source.split('const channel = supabase')[1].split('cleanup = () =>')[0];
     expect(realtimeSection).not.toContain('toast.info("New inbox message"');
   });
