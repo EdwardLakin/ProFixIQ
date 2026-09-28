@@ -651,6 +651,7 @@ export default function AppShell({
               initialEmail={userEmail}
               showQueueIndicators={!preferencesLoading && preferences.navigationIndicators}
               inboxUnreadCount={inboxUnreadCount}
+              userId={userId}
             />
 
             <div className="mt-auto h-12 border-t border-[color:var(--theme-border-soft)]" />
