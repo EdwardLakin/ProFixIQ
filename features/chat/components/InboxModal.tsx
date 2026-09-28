@@ -281,8 +281,6 @@ export default function InboxModal({
 
     const sessionPromise = supabase.auth.getSession();
     void sessionPromise.then(({ data }) => setMe(data.session?.user.id ?? null));
-    void loadConversations().catch(() => undefined);
-
     void fetch("/api/chat/users", { credentials: "include" })
       .then((r) => r.json())
       .then((json: { users?: Participant[]; customers?: CustomerOption[] }) => {
@@ -295,7 +293,14 @@ export default function InboxModal({
         setCustomers(Array.isArray(json?.customers) ? json.customers : []);
       })
       .catch(() => undefined);
-  }, [open, supabase, loadConversations]);
+  }, [open, supabase]);
+
+  // A repeated popup for the already-seeded conversation must trigger a fresh
+  // authorized load even if the modal is already open and the ID is unchanged.
+  useEffect(() => {
+    if (!open) return;
+    void loadConversations().catch(() => undefined);
+  }, [open, loadConversations, seedRequestId]);
 
   useEffect(() => {
     if (!startNew || !initialCustomerId) {
