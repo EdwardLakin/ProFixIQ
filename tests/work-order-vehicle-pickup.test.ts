@@ -187,6 +187,41 @@ describe("vehicle pickup lifecycle: work order, invoice, payment stay independen
     expect(ACTIVE_WORK_ORDER_STATUSES).not.toContain("invoiced");
   });
 
+  it("populates history.symptom on the pickup-created row, matching the paid trigger's own complaint/description aggregation", () => {
+    const migration = read(
+      "supabase/migrations/20260928070000_pickup_history_symptom_parity.sql",
+    );
+    expect(migration).toContain(
+      "create or replace function public.sync_picked_up_work_order_history()",
+    );
+    expect(migration).toContain("v_symptoms text;");
+    expect(migration).toContain(
+      "nullif(pg_catalog.btrim(wol.complaint), ''),\n        nullif(pg_catalog.btrim(wol.description), '')",
+    );
+    // symptom is written on the pickup-created insert, alongside cause/correction.
+    expect(migration).toMatch(/odometer,\s*\n\s*symptom,\s*\n\s*cause,/);
+    expect(migration).toMatch(/v_odometer,\s*\n\s*v_symptoms,\s*\n\s*v_causes,/);
+  });
+
+  it("sweeps abandoned (never-linked) receipt uploads instead of leaving them in storage indefinitely", () => {
+    const server = read(
+      "features/invoices/server/expireAbandonedReceiptAttachments.ts",
+    );
+    const route = read(
+      "app/api/internal/payments/expire-stale-receipts/route.ts",
+    );
+    const vercelConfig = read("vercel.json");
+
+    expect(server).toContain('.is("payment_event_id", null)');
+    // The delete is guarded the same way, so a receipt linked to a real
+    // payment between select and delete is never removed from storage.
+    expect(server).toContain('.is("payment_event_id", null)\n        .select("id")');
+    expect(server).toContain("storage");
+    expect(route).toContain("requireInternalApiSecret");
+    expect(route).toContain("expireAbandonedReceiptAttachments");
+    expect(vercelConfig).toContain("/api/internal/payments/expire-stale-receipts");
+  });
+
   it("adds receipt capture to manual POS payments, linked to the payment event rather than a generic attachment", () => {
     const component = read(
       "features/invoices/components/RecordManualPayment.tsx",
