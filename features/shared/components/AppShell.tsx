@@ -130,10 +130,15 @@ export default function AppShell({
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [incomingConvoId, setIncomingConvoId] = useState<string | null>(null);
   const [inboxUnreadCount, setInboxUnreadCount] = useState(0);
-  const inboxKnownMessages = useRef<Set<string>>(new Set());
+  const inboxKnownMessages = useRef<Map<string, string>>(new Map());
   const inboxInitialized = useRef(false);
-  const { preferences, loading: preferencesLoading, saving: preferencesSaving, loadError: preferencesLoadError, update: updatePreferences } =
-    useNotificationPreferences(userId);
+  const {
+    preferences,
+    loading: preferencesLoading,
+    saving: preferencesSaving,
+    loadError: preferencesLoadError,
+    update: updatePreferences,
+  } = useNotificationPreferences(userId);
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const punchRef = useRef<HTMLDivElement | null>(null);
@@ -181,8 +186,8 @@ export default function AppShell({
     for (const row of conversations) {
       const message = row.latest_message;
       if (!message?.id) continue;
-      const unseen = !known.has(message.id);
-      known.add(message.id);
+      const unseen = known.get(row.conversation.id) !== message.id;
+      known.set(row.conversation.id, message.id);
       if (
         inboxInitialized.current && unseen && row.unread_count &&
         message.sender_id !== userId && !preferencesLoading &&
@@ -345,7 +350,7 @@ export default function AppShell({
   ]);
 
   useEffect(() => {
-    inboxKnownMessages.current = new Set();
+    inboxKnownMessages.current = new Map();
     inboxInitialized.current = false;
   }, [userId]);
 
