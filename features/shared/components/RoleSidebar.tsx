@@ -59,11 +59,13 @@ export default function RoleSidebar({
   initialEmail = null,
   showQueueIndicators = true,
   inboxUnreadCount = 0,
+  userId = null,
 }: {
   initialRole?: string | null;
   initialEmail?: string | null;
   showQueueIndicators?: boolean;
   inboxUnreadCount?: number;
+  userId?: string | null;
 }) {
   const pathname = usePathname();
 
@@ -120,9 +122,10 @@ export default function RoleSidebar({
       Boolean(queueKeyByHref[tile.href]),
   );
   const queueIndicators = useNavigationQueueIndicators(
-    Boolean(role) && showQueueIndicators,
+    Boolean(role && userId) && showQueueIndicators,
     hasFleetIntakeTile,
     hasNotificationTile && canAccessAssistantNotifications(role),
+    `${userId ?? ""}:${role ?? ""}`,
   );
   const hasQueue = (href: string) => Boolean(queueIndicators[queueKeyByHref[href]]);
 
