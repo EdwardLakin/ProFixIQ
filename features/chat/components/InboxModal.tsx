@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
@@ -148,6 +148,8 @@ export default function InboxModal({
   const [activeConversationId, setActiveConversationId] = useState<
     string | null
   >(null);
+  // A popup seed is a one-time navigation intent, not a pinned conversation.
+  const pendingSeedRef = useRef<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [users, setUsers] = useState<Participant[]>([]);
   const [customers, setCustomers] = useState<CustomerOption[]>([]);
@@ -228,6 +230,10 @@ export default function InboxModal({
     ],
   );
 
+  useEffect(() => {
+    pendingSeedRef.current = open && !startNew ? seedConversationId : null;
+  }, [open, seedConversationId, startNew]);
+
   const loadConversations = useCallback(async () => {
     const res = await fetch("/api/chat/my-conversations", {
       credentials: "include",
@@ -240,9 +246,11 @@ export default function InboxModal({
       if (startNew) return null;
       // An explicit popup target takes precedence over the previously opened
       // conversation, but only if the authorized inbox returned that record.
-      if (seedConversationId &&
-          data.some((row) => row.conversation.id === seedConversationId)) {
-        return seedConversationId;
+      const pendingSeed = pendingSeedRef.current;
+      if (pendingSeed &&
+          data.some((row) => row.conversation.id === pendingSeed)) {
+        pendingSeedRef.current = null;
+        return pendingSeed;
       }
       return curr && data.some((row) => row.conversation.id === curr)
         ? curr
