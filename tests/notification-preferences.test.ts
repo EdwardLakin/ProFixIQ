@@ -57,6 +57,7 @@ describe("notification preferences", () => {
     const inbox = readFileSync("features/chat/components/InboxModal.tsx", "utf8");
     expect(inbox).toContain("pendingSeedRef.current = null;");
     expect(inbox).toContain("seedRequestId");
+    expect(inbox).toContain("[open, loadConversations, seedRequestId]");
     expect(source).toContain("setIncomingConvoRequestId((value) => value + 1)");
     const prefs = readFileSync("features/shared/hooks/useNotificationPreferences.ts", "utf8");
     expect(prefs).toContain('event !== "USER_UPDATED"');
