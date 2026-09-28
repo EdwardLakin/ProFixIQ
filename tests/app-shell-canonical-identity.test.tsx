@@ -12,6 +12,7 @@ const mocks = vi.hoisted(() => ({
   getSession: vi.fn(),
   getUser: vi.fn(),
   updateUser: vi.fn(),
+  onAuthStateChange: vi.fn(),
   signOut: vi.fn(),
   resolveCanonicalStaffProfile: vi.fn(),
   from: vi.fn(),
@@ -51,6 +52,7 @@ vi.mock("@/features/shared/lib/supabase/client", () => ({
       getSession: mocks.getSession,
       getUser: mocks.getUser,
       updateUser: mocks.updateUser,
+      onAuthStateChange: mocks.onAuthStateChange,
       signOut: mocks.signOut,
     },
     from: mocks.from,
@@ -171,6 +173,7 @@ describe("AppShell canonical identity handoff", () => {
     mocks.fetchMobileShiftState.mockResolvedValue(null);
     mocks.getUser.mockResolvedValue({ data: { user: { id: "auth-user-id", user_metadata: {} } }, error: null });
     mocks.updateUser.mockResolvedValue({ data: { user: { id: "auth-user-id" } }, error: null });
+    mocks.onAuthStateChange.mockReturnValue({ data: { subscription: { unsubscribe: vi.fn() } } });
     mocks.from.mockImplementation(() => {
       const query = {
         select: vi.fn(),
