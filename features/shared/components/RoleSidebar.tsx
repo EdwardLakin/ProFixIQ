@@ -57,9 +57,11 @@ function getCanonicalActiveTile(pathname: string, tiles: Tile[]): Tile | null {
 export default function RoleSidebar({
   initialRole = null,
   initialEmail = null,
+  showQueueIndicators = true,
 }: {
   initialRole?: string | null;
   initialEmail?: string | null;
+  showQueueIndicators?: boolean;
 }) {
   const pathname = usePathname();
 
@@ -101,7 +103,7 @@ export default function RoleSidebar({
   ]);
 
   const queueIndicators = useNavigationQueueIndicators(
-    Boolean(role),
+    Boolean(role) && showQueueIndicators,
     tiles.some((tile) => tile.href === "/work-orders/fleet-requests"),
   );
   const queueKeyByHref: Record<string, NavigationQueueKey> = {
