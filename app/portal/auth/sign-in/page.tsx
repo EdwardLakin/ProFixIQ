@@ -9,7 +9,10 @@ const COPPER = "#C57A4A";
 
 function LoadingCard({ label }: { label: string }) {
   return (
-    <AuthShell cardClassName="rounded-2xl border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 backdrop-blur-md sm:p-6">
+    <AuthShell
+      backHref="/sign-in"
+      cardClassName="rounded-2xl border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 backdrop-blur-md sm:p-6"
+    >
       <div>
         <div
           className="inline-flex items-center rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1 text-[11px] uppercase tracking-[0.2em]"

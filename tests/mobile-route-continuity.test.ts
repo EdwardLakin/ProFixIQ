@@ -120,6 +120,7 @@ describe("mobile route continuity", () => {
     expect(menu).toContain('href="/mobile/offline"');
     expect(menu).toContain('router.replace("/mobile/sign-in")');
     expect(signIn).not.toContain('href="/sign-in"');
+    expect(signIn).toContain('backHref="/sign-in"');
   });
 
   it("uses deterministic mobile back routes instead of browser history", () => {

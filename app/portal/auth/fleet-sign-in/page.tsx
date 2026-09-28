@@ -14,6 +14,7 @@ function FleetLoadingCard() {
       heroDescription="Asset readiness, preventive maintenance, service decisions, and repair history in one dedicated Fleet workspace."
       highlights={["Fleet control tower", "Maintenance planning", "Connected repair history"]}
       cardClassName="rounded-2xl border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 backdrop-blur-md sm:p-6"
+      backHref="/sign-in"
     >
       <div>
         <div
