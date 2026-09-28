@@ -45,11 +45,14 @@ export function useNavigationQueueIndicators(
   enabled: boolean,
   includeFleetIntake: boolean,
   includeNotifications = true,
+  scopeKey = "",
 ): QueueIndicators {
-  const [indicators, setIndicators] = useState<QueueIndicators>({});
+  const [snapshot, setSnapshot] = useState<{ scope: string; indicators: QueueIndicators }>({
+    scope: "", indicators: {},
+  });
   // Invalidate any in-flight result when a feed is disabled or the role changes.
   const version = useRef(0);
-  const feedKey = enabled ? `${includeFleetIntake}:${includeNotifications}` : "";
+  const feedKey = enabled ? `${scopeKey}:${includeFleetIntake}:${includeNotifications}` : "";
   const currentFeedKey = useRef(feedKey);
   if (currentFeedKey.current !== feedKey) {
     currentFeedKey.current = feedKey;
@@ -57,7 +60,7 @@ export function useNavigationQueueIndicators(
   }
 
   useEffect(() => {
-    setIndicators({});
+    setSnapshot({ scope: feedKey, indicators: {} });
   }, [feedKey]);
 
   const refresh = useCallback(async () => {
@@ -84,9 +87,12 @@ export function useNavigationQueueIndicators(
       const notifications = body?.notifications;
       if (generation !== version.current) return;
       if (Array.isArray(notifications)) {
-        setIndicators((previous) => ({
-          ...previous,
-          ...indicatorsFromNotifications(notifications),
+        setSnapshot((previous) => ({
+          scope: feedKey,
+          indicators: {
+            ...(previous.scope === feedKey ? previous.indicators : {}),
+            ...indicatorsFromNotifications(notifications),
+          },
         }));
       }
     }
@@ -98,19 +104,22 @@ export function useNavigationQueueIndicators(
       const requests = body?.requests;
       if (generation !== version.current) return;
       if (Array.isArray(requests)) {
-        setIndicators((previous) => ({
-          ...previous,
-          fleetIntake: hasPendingFleetIntake(requests),
+        setSnapshot((previous) => ({
+          scope: feedKey,
+          indicators: {
+            ...(previous.scope === feedKey ? previous.indicators : {}),
+            fleetIntake: hasPendingFleetIntake(requests),
+          },
         }));
       }
     }
     // An unavailable or unauthorized feed never invents a positive badge.
-  }, [includeFleetIntake, includeNotifications]);
+  }, [feedKey, includeFleetIntake, includeNotifications]);
 
   useVisibilityPolling({
     enabled: enabled && (includeFleetIntake || includeNotifications),
     intervalMs: 60_000,
     onTick: refresh,
   });
-  return enabled ? indicators : {};
+  return enabled && snapshot.scope === feedKey ? snapshot.indicators : {};
 }
