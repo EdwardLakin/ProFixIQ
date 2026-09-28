@@ -55,11 +55,13 @@ export default function ShopFleetRequestInbox({
   const [convertingId, setConvertingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [errorActionHref, setErrorActionHref] = useState<string | null>(null);
+  const [errorRequest, setErrorRequest] = useState<string | null>(null);
 
   async function load(signal?: AbortSignal) {
     setLoading(true);
     setError(null);
     setErrorActionHref(null);
+    setErrorRequest(null);
     try {
       const response = await fetch("/api/fleet/service-requests", {
         method: "POST",
@@ -111,6 +113,7 @@ export default function ShopFleetRequestInbox({
     setConvertingId(item.id);
     setError(null);
     setErrorActionHref(null);
+    setErrorRequest(null);
     try {
       const workOrderId = await convertFleetServiceRequest(item.id);
       router.push(`${workOrderBasePath}/${encodeURIComponent(workOrderId)}`);
@@ -120,9 +123,12 @@ export default function ShopFleetRequestInbox({
           ? cause.message
           : "Unable to create the work order";
       setError(message);
+      setErrorRequest(`${item.unitLabel} · ${item.title}`);
       if (
         cause instanceof FleetServiceRequestConversionError &&
-        cause.reason === "ownership_conflict"
+        (cause.reason === "ownership_conflict" ||
+          cause.reason === "handoff_unavailable" ||
+          cause.reason === "vehicle_unavailable")
       ) {
         setErrorActionHref(
           `/vehicles/${encodeURIComponent(item.vehicleId)}`,
@@ -200,7 +206,12 @@ export default function ShopFleetRequestInbox({
 
         {error ? (
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-red-400/20 bg-red-400/10 p-4 text-sm text-red-700 dark:text-red-200">
-            <p>{error}</p>
+            <div className="min-w-0 space-y-1">
+              {errorRequest ? (
+                <p className="text-xs font-semibold">{errorRequest}</p>
+              ) : null}
+              <p role="alert">{error}</p>
+            </div>
             {errorActionHref ? (
               <Link
                 href={errorActionHref}
