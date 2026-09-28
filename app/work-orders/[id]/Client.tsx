@@ -2970,6 +2970,7 @@ export default function WorkOrderIdClient(): JSX.Element {
           onClose={() => setShowPickupModal(false)}
           workOrderId={wo.id}
           outstandingBalance={wo.outstanding_balance}
+          paymentStatus={wo.payment_status}
           onPickedUp={() => void fetchAll()}
         />
       ) : null}

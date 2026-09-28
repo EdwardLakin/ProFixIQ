@@ -25,6 +25,13 @@ type MarkAsPickedUpModalProps = {
   employeeName?: string | null;
   /** Outstanding balance on the active invoice, if any. Drives the unpaid-release path. */
   outstandingBalance?: number | null;
+  /**
+   * work_orders.payment_status. A work order can be ready for pickup before
+   * any invoice balance has even been computed (payment_status stays
+   * 'unpaid' with no outstanding_balance row yet), so this - not just a
+   * positive balance - is what should surface the unpaid-release path.
+   */
+  paymentStatus?: string | null;
   onPickedUp?: (result: MarkAsPickedUpResult) => void;
 };
 
@@ -39,6 +46,7 @@ export default function MarkAsPickedUpModal({
   workOrderId,
   employeeName,
   outstandingBalance,
+  paymentStatus,
   onPickedUp,
 }: MarkAsPickedUpModalProps) {
   const [collectedByType, setCollectedByType] =
@@ -50,7 +58,8 @@ export default function MarkAsPickedUpModal({
   const [releaseReason, setReleaseReason] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const hasOutstandingBalance = (outstandingBalance ?? 0) > 0.01;
+  const hasOutstandingBalance =
+    (outstandingBalance ?? 0) > 0.01 || (paymentStatus ?? "unpaid") !== "paid";
 
   useEffect(() => {
     if (!isOpen) return;
@@ -63,6 +72,10 @@ export default function MarkAsPickedUpModal({
   }, [isOpen]);
 
   const handleSubmit = async () => {
+    if (collectedByType !== "customer" && !collectedByName.trim()) {
+      toast.error("Enter the name of the person collecting the vehicle.");
+      return;
+    }
     if (hasOutstandingBalance && !overrideUnpaid) {
       toast.error(
         "This invoice has an outstanding balance. Confirm the unpaid release below to continue.",

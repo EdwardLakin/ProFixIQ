@@ -168,8 +168,10 @@ export async function POST(req: Request) {
             invoice_version_id: invoiceVersion.id,
           })
           .eq("shop_id", access.profile.shop_id)
+          .eq("work_order_id", workOrderId)
           .eq("storage_bucket", "payment-receipts")
           .eq("storage_path", receiptStoragePath)
+          .is("payment_event_id", null)
           .then(
             () => undefined,
             (linkError: unknown) =>

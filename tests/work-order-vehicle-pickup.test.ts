@@ -20,14 +20,16 @@ describe("vehicle pickup lifecycle: work order, invoice, payment stay independen
     ).toMatchObject({ key: "completed", label: "Picked up", complete: true });
 
     // Paying in full must never imply pickup, and vice versa - the two
-    // remain independent signals in the portal status derivation.
+    // remain independent signals in the portal status derivation. A paid,
+    // invoiced work order stays "ready for pickup" until the vehicle is
+    // actually collected.
     expect(
       toPortalWorkOrderStatus({
         status: "invoiced",
         paymentStatus: "paid",
         paidAt: "2026-09-28T18:00:00.000Z",
       }),
-    ).toMatchObject({ key: "completed", label: "Completed", complete: true });
+    ).toMatchObject({ key: "ready_for_pickup", complete: false });
 
     expect(
       toPortalWorkOrderStatus({ status: "invoiced" }),

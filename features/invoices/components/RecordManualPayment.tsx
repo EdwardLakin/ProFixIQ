@@ -117,6 +117,19 @@ export default function RecordManualPayment({
     if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
+  async function handleRemoveReceipt(): Promise<void> {
+    // Only reachable while the upload is still unlinked (no payment has been
+    // submitted yet), so it's safe to delete the object outright rather than
+    // leaving an orphaned private file behind.
+    if (receiptStoragePath) {
+      await supabase.storage
+        .from("payment-receipts")
+        .remove([receiptStoragePath])
+        .catch(() => undefined);
+    }
+    clearReceipt();
+  }
+
   const parsedAmount = useMemo(() => Number(amount), [amount]);
   const canSubmit =
     !disabled &&
@@ -279,7 +292,7 @@ export default function RecordManualPayment({
                 )}
                 <button
                   type="button"
-                  onClick={clearReceipt}
+                  onClick={() => void handleRemoveReceipt()}
                   className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-1 text-[11px] text-[color:var(--theme-text-primary)]"
                 >
                   Remove

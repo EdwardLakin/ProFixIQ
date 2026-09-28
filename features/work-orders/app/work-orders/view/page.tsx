@@ -1770,6 +1770,9 @@ export default function WorkOrdersView(): JSX.Element {
             rows.find((row) => row.id === pickupModalForId)
               ?.outstanding_balance
           }
+          paymentStatus={
+            rows.find((row) => row.id === pickupModalForId)?.payment_status
+          }
           onPickedUp={() => void load()}
         />
       ) : null}

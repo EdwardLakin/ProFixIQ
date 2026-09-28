@@ -335,6 +335,7 @@ export default function InvoicePreviewPageClient({
     status: string | null;
     archivedAt: string | null;
     outstandingBalance: number | null;
+    paymentStatus: string | null;
     pickedUpAt: string | null;
     collectedByType: string | null;
     collectedByName: string | null;
@@ -503,7 +504,12 @@ export default function InvoicePreviewPageClient({
   // an uploaded receipt has been recorded).
   // -------------------------------------------------------------------
   useEffect(() => {
-    if (!workOrderId) return;
+    // Scoped to the active invoice version: a voided/superseded invoice's
+    // receipt must not be presented as evidence for its replacement.
+    if (!workOrderId || !activeInvoiceVersion?.id) {
+      setReceiptUrl(null);
+      return;
+    }
     let cancelled = false;
 
     (async () => {
@@ -511,6 +517,7 @@ export default function InvoicePreviewPageClient({
         .from("payment_receipt_attachments")
         .select("storage_bucket, storage_path")
         .eq("work_order_id", workOrderId)
+        .eq("invoice_version_id", activeInvoiceVersion.id)
         .not("payment_event_id", "is", null)
         .order("created_at", { ascending: false })
         .limit(1)
@@ -531,7 +538,7 @@ export default function InvoicePreviewPageClient({
     return () => {
       cancelled = true;
     };
-  }, [supabase, workOrderId, receiptRefreshKey]);
+  }, [supabase, workOrderId, activeInvoiceVersion?.id, receiptRefreshKey]);
 
   // -------------------------------------------------------------------
   // Vehicle handover state. Kept separate from the WO fetch below so the
@@ -546,7 +553,7 @@ export default function InvoicePreviewPageClient({
       const { data, error } = await supabase
         .from("work_orders")
         .select(
-          "status, archived_at, outstanding_balance, picked_up_at, collected_by_type, collected_by_name",
+          "status, archived_at, outstanding_balance, payment_status, picked_up_at, collected_by_type, collected_by_name",
         )
         .eq("id", workOrderId)
         .maybeSingle();
@@ -564,6 +571,7 @@ export default function InvoicePreviewPageClient({
           data.outstanding_balance != null
             ? Number(data.outstanding_balance)
             : null,
+        paymentStatus: data.payment_status ?? null,
         pickedUpAt: data.picked_up_at ?? null,
         collectedByType: data.collected_by_type ?? null,
         collectedByName: data.collected_by_name ?? null,
@@ -1730,6 +1738,7 @@ export default function InvoicePreviewPageClient({
           onClose={() => setShowPickupModal(false)}
           workOrderId={workOrderId}
           outstandingBalance={pickupInfo?.outstandingBalance}
+          paymentStatus={pickupInfo?.paymentStatus}
           onPickedUp={() => setPickupRefreshKey((key) => key + 1)}
         />
       ) : null}

@@ -111,16 +111,11 @@ export function toPortalWorkOrderStatus(
     };
   }
 
-  if (paymentStatus === "paid" || Boolean(input.paidAt)) {
-    return {
-      key: "completed",
-      label: "Completed",
-      nextStep:
-        "This service visit is paid and remains available in your history.",
-      actionRequired: false,
-      complete: true,
-    };
-  }
+  // Payment alone is deliberately NOT a completion signal: work completed,
+  // invoice paid, and vehicle picked up are three separate events, and a
+  // paid vehicle still sitting at the shop must stay on the customer's
+  // active list until pickedUpAt is actually set above.
+  const isPaid = paymentStatus === "paid" || Boolean(input.paidAt);
 
   if (
     status === "awaiting_approval" ||
@@ -184,10 +179,12 @@ export function toPortalWorkOrderStatus(
     return {
       key: "ready_for_pickup",
       label: "Ready for pickup",
-      nextStep: input.invoiceSentAt
-        ? "Your invoice is available. Contact the shop if you need to arrange pickup."
-        : "The shop will confirm pickup details with you.",
-      actionRequired: Boolean(input.invoiceSentAt),
+      nextStep: isPaid
+        ? "Your invoice is paid. Contact the shop to arrange pickup."
+        : input.invoiceSentAt
+          ? "Your invoice is available. Contact the shop if you need to arrange pickup."
+          : "The shop will confirm pickup details with you.",
+      actionRequired: Boolean(input.invoiceSentAt) && !isPaid,
       complete: false,
     };
   }
