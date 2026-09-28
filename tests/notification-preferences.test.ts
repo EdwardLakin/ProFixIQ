@@ -25,37 +25,43 @@ describe("notification preferences", () => {
     expect(isNewAssistantAction("invalid", baseline)).toBe(false);
   });
 
-  it("never emits a message popup from an unverified realtime payload", () => {
+  it("keeps message popups on authorized reads and shares assistant delivery across shells", () => {
     const source = readFileSync("features/shared/components/AppShell.tsx", "utf8");
+    const notifier = readFileSync("features/shared/hooks/useAssistantPendingPopups.ts", "utf8");
+    const mobile = readFileSync("components/layout/MobileShell.tsx", "utf8");
+    const listener = readFileSync(
+      "features/shared/components/MobileAssistantNotificationListener.tsx", "utf8",
+    );
+    const route = readFileSync("app/api/shop-assistant/actions/pending/route.ts", "utf8");
+    const migration = readFileSync(
+      "supabase/migrations/20260928150000_shop_assistant_notification_clock.sql", "utf8",
+    );
     expect(source).toContain("pendingRealtimeMessageIds.current.has(message.id)");
     expect(source).toContain("generation !== inboxRequestGeneration.current");
     expect(source).toContain('claimNotificationPopup(userId, "message", message.id)');
-    expect(source).toContain('claimNotificationPopup(userId, "assistant", action.id)');
-    expect(source).toContain('fetch("/api/shop-assistant/actions/pending"');
-    expect(source).toContain('const conversations = (await response');
-    expect(source).toContain("preferences.messagePopups");
-    expect(source).toContain("popupPreferencesRef.current.messagePopups");
-    expect(source).toContain("popupPreferencesRef.current.assistantPopups");
-    expect(source).toContain("isNewAssistantAction(action.createdAt, baseline)");
-    expect(source).toContain("requestId !== generation");
-    expect(source).toContain('fetch("/api/shop-assistant/actions/pending?baseline=1"');
-    expect(source).toContain("preferences.assistantPopups");
-    expect(source).toContain("inboxUnreadCount={inboxUnreadCount}");
-    expect(source).toContain("preferences.navigationIndicators");
+    expect(source).toContain("useAssistantPendingPopups({");
     expect(source).toContain("preferences.navigationIndicators && inboxUnreadCount > 0");
-    expect(source).toContain('resolveMobileHref(href) ?? "/mobile/assistant"');
-    expect(source).toContain("performance.now() - subscriptionStartedAt");
-    expect(source).toContain('badge={!preferencesLoading && preferences.navigationIndicators ? inboxUnreadCount : 0}');
+    expect(source).toContain(
+      'badge={!preferencesLoading && preferences.navigationIndicators ? inboxUnreadCount : 0}',
+    );
+    expect(notifier).toContain('claimNotificationPopup(userId, "assistant", action.id)');
+    expect(notifier).toContain('fetch("/api/shop-assistant/actions/pending?baseline=1"');
+    expect(notifier).toContain("performance.now() - subscriptionStartedAt");
+    expect(notifier).toContain("requestId !== generation");
+    expect(notifier).toContain('resolveMobileHref(href) ?? "/mobile/assistant"');
+    expect(mobile).toContain("<MobileAssistantNotificationListener />");
+    expect(listener).toContain("useAssistantPendingPopups({");
+    expect(route).toContain('"shop_assistant_notification_clock"');
+    expect(migration).toContain("clock_timestamp()");
+    expect(source).toMatch(/<NotificationPreferencesButton\\s+mobile\\b/);
     const inbox = readFileSync("features/chat/components/InboxModal.tsx", "utf8");
-    expect(inbox).toContain("data.some((row) => row.conversation.id === pendingSeed)");
     expect(inbox).toContain("pendingSeedRef.current = null;");
-    expect(inbox).toContain("return pendingSeed;");
-    expect(source).toMatch(/<NotificationPreferencesButton\s+mobile\b/);
-    expect(source).toContain("isNewAssistantAction(action.createdAt, baseline)");
+    expect(inbox).toContain("seedRequestId");
+    expect(source).toContain("setIncomingConvoRequestId((value) => value + 1)");
     const prefs = readFileSync("features/shared/hooks/useNotificationPreferences.ts", "utf8");
     expect(prefs).toContain('event !== "USER_UPDATED"');
     expect(prefs).toContain('window.addEventListener("focus", onFocus)');
-    const realtimeSection = source.split('const channel = supabase')[1].split('cleanup = () =>')[0];
+    const realtimeSection = source.split("const channel = supabase")[1].split("cleanup = () =>")[0];
     expect(realtimeSection).not.toContain('toast.info("New inbox message"');
   });
 });
