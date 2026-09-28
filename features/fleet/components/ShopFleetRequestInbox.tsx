@@ -126,9 +126,7 @@ export default function ShopFleetRequestInbox({
       setErrorRequest(`${item.unitLabel} · ${item.title}`);
       if (
         cause instanceof FleetServiceRequestConversionError &&
-        (cause.reason === "ownership_conflict" ||
-          cause.reason === "handoff_unavailable" ||
-          cause.reason === "vehicle_unavailable")
+        cause.reason === "ownership_conflict"
       ) {
         setErrorActionHref(
           `/vehicles/${encodeURIComponent(item.vehicleId)}`,
