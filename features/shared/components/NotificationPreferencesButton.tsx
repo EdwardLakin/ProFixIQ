@@ -45,7 +45,7 @@ export default function NotificationPreferencesButton({
       </button>
       {open ? (
         <div role="group" aria-label="Notification preferences"
-          className={`absolute right-0 z-50 w-[min(22rem,90vw)] space-y-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4 shadow-xl ${mobile ? "bottom-full mb-2" : "mt-2"}`}>
+          className={`absolute z-50 w-[min(22rem,90vw)] space-y-3 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4 shadow-xl ${mobile ? "bottom-full left-1/2 mb-2 -translate-x-1/2" : "right-0 mt-2"}`}>
           <div className="flex items-center justify-between">
             <h2 className="text-sm font-semibold">My notifications</h2>
             <button type="button" onClick={() => setOpen(false)}
