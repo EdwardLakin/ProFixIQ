@@ -22,6 +22,13 @@ const legacyDecline = fs.readFileSync(
   path.join(root, "app/api/work-orders/quotes/[id]/decline/route.ts"),
   "utf8",
 );
+const sentCheckFix = fs.readFileSync(
+  path.join(
+    root,
+    "supabase/migrations/20260929000000_shop_recorded_decisions_skip_sent_check.sql",
+  ),
+  "utf8",
+);
 
 describe("shop quote decision contract", () => {
   it("accepts all three advisor decisions and records the shop source", () => {
@@ -57,5 +64,29 @@ describe("shop quote decision contract", () => {
     expect(legacyDecline).toContain("applyWorkOrderQuoteLineDecision");
     expect(legacyDecline).toContain('decisionSource: "shop"');
     expect(legacyDecline).not.toContain('.update({ status: "declined"');
+  });
+
+  it("lets a shop-recorded (phone/in-person/email) decision skip the customer-sent precondition", () => {
+    // Regression: "Classic Shop Approval" delegated straight into the
+    // customer-portal engine, which rejected any quote line that had never
+    // been sent to the customer -- exactly the case a phone approval exists
+    // to cover. The fix flags the delegated call so only shop-recorded
+    // decisions bypass that precondition; ordinary customer/portal decisions
+    // must still be rejected (see the SQL contract test and the runtime
+    // integration in tests/security/quote-review-shop-recorded-sent-check.runtime.sql).
+    expect(sentCheckFix).toContain("profixiq.quote_decision_shop_recorded");
+    expect(sentCheckFix).toContain("Quote line has not been sent to the customer.");
+    expect(sentCheckFix).toContain(
+      "set_config(\\'profixiq.quote_decision_shop_recorded\\', \\'true\\', true)",
+    );
+    expect(sentCheckFix).toContain(
+      "apply_customer_quote_decision_engine_atomic(uuid,uuid,uuid[],text,boolean,uuid,uuid,text,timestamptz)",
+    );
+    expect(sentCheckFix).toContain(
+      "apply_shop_quote_decision_atomic(uuid,uuid,uuid[],text,uuid,text,text,text,timestamptz)",
+    );
+    expect(sentCheckFix).toContain(
+      "shop_assistant_record_approval_decision_atomic(uuid,uuid,uuid,uuid,uuid[],boolean,text,text,text)",
+    );
   });
 });
