@@ -32,6 +32,7 @@ export async function POST(req: Request) {
       email,
       source: workOrderId ? "work_order" : "customer_account",
       createdBy: access.authUserId,
+      createdByProfileId: access.profile.id,
     });
     return NextResponse.json({ ok: true });
   } catch (error) {
