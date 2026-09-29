@@ -242,26 +242,53 @@ describe("vehicle pickup lifecycle: work order, invoice, payment stay independen
   it("lets mark_work_order_picked_up_atomic's own write through the financial-lock guard instead of raising WORK_ORDER_FINANCIALLY_LOCKED", () => {
     // mark_work_order_picked_up_atomic requires status in ('completed',
     // 'ready_to_invoice', 'invoiced'), but 'invoiced' is exactly the status
-    // that trips work_order_is_financially_locked, so without every column
-    // this RPC writes on its allow-list, guard_financially_locked_work_order
-    // rejected the pickup update before the RPC could ever return
-    // successfully on an already-invoiced work order - the normal case.
+    // that trips work_order_is_financially_locked, so without an exemption
+    // for the RPC's own write-boundary flag, guard_financially_locked_
+    // work_order rejected the pickup update before the RPC could ever return
+    // successfully on an already-invoiced work order - the normal case. The
+    // guard trusts the exact same app.work_order_pickup_writing flag the
+    // write-boundary trigger already trusts, rather than a static allow-list
+    // of column names, so the exemption is scoped to that one already-
+    // reviewed RPC's own transaction instead of any future write to those
+    // columns. Runtime behavior (RPC succeeds and reverses cleanly on a
+    // locked work order; a raw write bypassing the RPC, and an ordinary
+    // operational field, are both still rejected) is exercised in
+    // tests/security/vehicle-pickup-financial-lock.runtime.sql.
     const migration = read(
       "supabase/migrations/20260929010000_allow_vehicle_pickup_after_financial_lock.sql",
     );
     expect(migration).toContain(
       "create or replace function public.guard_financially_locked_work_order()",
     );
-    expect(migration).toContain("'picked_up_at',");
-    expect(migration).toContain("'picked_up_by_user_id',");
-    expect(migration).toContain("'collected_by_type',");
-    expect(migration).toContain("'collected_by_name',");
-    expect(migration).toContain("'pickup_notes',");
-    expect(migration).toContain("'pickup_released_unpaid',");
-    expect(migration).toContain("'pickup_release_reason',");
-    expect(migration).toContain("'pickup_release_authorized_by_user_id'");
-    // The prior allow-list (invoice-delivery metadata) must stay intact.
+    expect(migration).toContain(
+      "if coalesce(current_setting('app.work_order_pickup_writing', true), '0') = '1' then",
+    );
+    // The prior allow-list (invoice-delivery metadata) must stay intact and
+    // unexpanded - the pickup columns are exempted by the write-boundary
+    // flag, not added here.
     expect(migration).toContain("'invoice_sent_at',");
     expect(migration).toContain("'invoice_url',");
+    expect(migration).not.toContain("'picked_up_at',");
+    expect(migration).not.toContain("'collected_by_type',");
+
+    const runtimeTest = read(
+      "tests/security/vehicle-pickup-financial-lock.runtime.sql",
+    );
+    expect(runtimeTest).toContain("mark_work_order_picked_up_atomic(");
+    expect(runtimeTest).toContain("reverse_work_order_pickup_atomic(");
+    expect(runtimeTest).toContain("work_order_is_financially_locked(");
+    expect(runtimeTest).toContain(
+      "Regression: a direct write to picked_up_at outside mark_work_order_picked_up_atomic must be rejected",
+    );
+    expect(runtimeTest).toContain(
+      "Regression: an ordinary operational field must still be rejected",
+    );
+
+    const workflow = read(
+      ".github/workflows/supabase-clean-replay-audit.yml",
+    );
+    expect(workflow).toContain(
+      "tests/security/vehicle-pickup-financial-lock.runtime.sql",
+    );
   });
 });
