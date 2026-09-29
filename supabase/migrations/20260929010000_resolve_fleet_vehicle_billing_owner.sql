@@ -62,8 +62,8 @@ begin
   -- canonical owner) is authorized the same way the conversion RPC already
   -- authorizes them for accepting the underlying request; see
   -- 20260905193000_allow_field_operator_fleet_request_intake.sql.
-  select vehicle.*, profile.role
-  into v_vehicle, v_actor_role
+  select vehicle.*
+  into v_vehicle
   from public.vehicles vehicle
   join public.profiles profile
     on profile.shop_id = vehicle.shop_id
@@ -83,6 +83,11 @@ begin
       errcode = '42501',
       message = 'PFX_FLEET_VEHICLE_UNAVAILABLE';
   end if;
+
+  select profile.role
+  into v_actor_role
+  from public.profiles profile
+  where profile.id = v_user_id;
 
   select fleet.name, fleet.customer_id
   into v_fleet_name, v_fleet_customer_id
