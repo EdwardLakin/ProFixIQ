@@ -3,6 +3,7 @@
 import { useEffect, useId, useState } from "react";
 import { AlertTriangle, CheckCircle2, X } from "lucide-react";
 
+import { describeAccount } from "@/features/fleet/lib/fleetHandoffDiagnosis";
 import {
   diagnoseFleetVehicleBillingOwner,
   applyFleetVehicleBillingOwner,
@@ -150,7 +151,10 @@ export default function ResolveFleetVehicleBillingOwnerModal({
                       Current billing account
                     </span>
                     <span className="font-semibold">
-                      {resolution.previousCustomerName ?? "None on file"}
+                      {describeAccount(
+                        resolution.previousCustomerName,
+                        resolution.previousCustomerId,
+                      )}
                     </span>
                   </div>
                   <div className="mt-2 flex items-center justify-between gap-3 text-xs">
@@ -158,7 +162,10 @@ export default function ResolveFleetVehicleBillingOwnerModal({
                       Fleet billing account
                     </span>
                     <span className="font-semibold">
-                      {resolution.resolvedCustomerName ?? "Unnamed account"}
+                      {describeAccount(
+                        resolution.resolvedCustomerName,
+                        resolution.resolvedCustomerId,
+                      )}
                     </span>
                   </div>
                 </div>

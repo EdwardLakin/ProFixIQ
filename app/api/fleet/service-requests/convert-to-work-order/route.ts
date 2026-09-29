@@ -3,6 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { isFleetProductHostname } from "@/features/fleet/lib/fleetProductRouting";
 import { canAcceptFleetServiceRequests } from "@/features/fleet/lib/shopFleetRequestIntake";
 import { mapFleetServiceRequestError } from "@/features/fleet/lib/fleetServiceRequestError";
+import {
+  parseDiagnosisRow,
+  refineHandoffFailure,
+  type FleetHandoffDiagnosis,
+} from "@/features/fleet/lib/fleetHandoffDiagnosis";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 
 type ConvertBody = {
@@ -77,12 +82,40 @@ export async function POST(req: NextRequest) {
         "[service-requests/convert-to-work-order] rpc error",
         error,
       );
-      const failure = mapFleetServiceRequestError(
+      const mapped = mapFleetServiceRequestError(
         error,
         "Failed to create a structured work order from this request.",
       );
+
+      // The conversion RPC reports several unrelated blockers as one
+      // handoff failure. Establish which one applies so the UI only offers
+      // billing-owner recovery when that is really the problem.
+      let diagnosis: FleetHandoffDiagnosis | null = null;
+      if (
+        mapped.reason === "handoff_unavailable" ||
+        mapped.reason === "ownership_conflict"
+      ) {
+        const { data: diagnosisData, error: diagnosisError } =
+          await access.supabase.rpc("diagnose_fleet_service_request_handoff", {
+            p_service_request_id: body.serviceRequestId,
+          });
+        if (diagnosisError) {
+          console.error(
+            "[service-requests/convert-to-work-order] diagnosis error",
+            diagnosisError,
+          );
+        } else {
+          diagnosis = parseDiagnosisRow(diagnosisData);
+        }
+      }
+
+      const failure = refineHandoffFailure(mapped, diagnosis);
       return NextResponse.json(
-        { error: failure.error, reason: failure.reason },
+        {
+          error: failure.error,
+          reason: failure.reason,
+          ...(diagnosis ? { diagnosis } : {}),
+        },
         { status: failure.status },
       );
     }
