@@ -18,8 +18,8 @@ export async function POST(req: Request) {
   const customerId = String(body?.customerId ?? "").trim();
   const workOrderId = String(body?.workOrderId ?? "").trim();
 
-  if (!email || !customerId || !workOrderId) {
-    return NextResponse.json({ ok: false, error: "Customer and work order are required." }, { status: 400 });
+  if (!email || !customerId) {
+    return NextResponse.json({ ok: false, error: "Customer and email are required." }, { status: 400 });
   }
 
   const supabase = createServerSupabaseRoute();
@@ -40,9 +40,9 @@ export async function POST(req: Request) {
     await issueCustomerPortalInvite({
       shopId: profile.shop_id,
       customerId,
-      workOrderId,
+      workOrderId: workOrderId || null,
       email,
-      source: "work_order",
+      source: workOrderId ? "work_order" : "customer_account",
       createdBy: user.id,
     });
     return NextResponse.json({ ok: true });
