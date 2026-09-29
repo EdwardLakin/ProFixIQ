@@ -14,7 +14,7 @@ type FleetInvite = {
   delivery_status: string | null; delivery_reserved_until: string | null;
 };
 type Access = {
-  ok: boolean; email: string; customerActive: boolean;
+  ok: boolean; email: string; customerActive: boolean; canViewFleet: boolean;
   customer: { status: string; invite: CustomerInvite | null };
   fleets: { id: string; name: string; active: boolean; invites: FleetInvite[] }[];
 };
@@ -117,13 +117,13 @@ export function CustomerPortalAccess({ customerId }: { customerId: string }) {
           </button>
           {!access.customerActive ? <p className="mt-2 text-xs text-amber-400">Archived or merged customer; invitations unavailable.</p> : null}
         </div>
-        <div className={panel}>
+        {access.canViewFleet ? <div className={panel}>
           <div className="flex items-center gap-2 font-semibold"><Truck className="h-4 w-4 text-[var(--accent-copper)]" /> Fleet Portal</div>
           {access.fleets.length ? access.fleets.map((fleet) => {
             const matching = fleet.invites.filter((invite) => invite.email.toLowerCase() === access.email.toLowerCase() && invite.role === "manager");
             const accepted = matching.find((invite) => !!invite.accepted_at && !invite.revoked_at);
             const invite = latestFleetInvite(fleet.invites);
-            const pending = invite && !invite.revoked_at && !invite.accepted_at && new Date(invite.expires_at) > new Date();
+            const reusable = invite && !invite.revoked_at && !invite.accepted_at;
             const reserved = !!invite?.delivery_reserved_until && new Date(invite.delivery_reserved_until) > new Date() &&
               (invite.delivery_status === "sending" || invite.delivery_status === "accepted");
             const status = accepted ? "Active" : !invite ? "Not invited" : invite.revoked_at ? "Revoked" :
@@ -134,12 +134,12 @@ export function CustomerPortalAccess({ customerId }: { customerId: string }) {
               <p className="text-sm font-semibold">{fleet.name} · {status}</p>
               {invite ? <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Invited: {fmt(invite.created_at)} · {accepted ? `Activated: ${fmt(accepted.accepted_at)}` : `Expires: ${fmt(invite.expires_at)}`}</p> : null}
               <button type="button" className={`${button} mt-3`} disabled={!!sending || !access.email || !access.customerActive || !fleet.active || !!accepted || reserved}
-                onClick={() => void sendFleet(fleet.id, pending || invite ? invite : undefined)}>
+                onClick={() => void sendFleet(fleet.id, reusable ? invite : undefined)}>
                 <MailPlus className="h-4 w-4" /> {sending === fleet.id ? "Sending…" : accepted ? "Fleet access active" : reserved ? "Delivery in progress" : invite ? "Resend fleet invite" : "Send fleet invite"}
               </button>
             </div>;
           }) : <p className="mt-2 text-xs text-[color:var(--theme-text-secondary)]">No connected Fleet. Create or connect the relationship in Fleet before inviting members.</p>}
-        </div>
+        </div> : null}
       </div> : null}
     </section>
   );
