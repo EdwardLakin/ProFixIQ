@@ -2,8 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
-import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { issueCustomerPortalInvite } from "@/features/portal/server/customerPortalInvites";
 
 type Body = {
@@ -22,28 +21,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Customer and email are required." }, { status: 400 });
   }
 
-  const supabase = createServerSupabaseRoute();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
-
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("shop_id, role")
-    .eq("id", user.id)
-    .maybeSingle();
-  const capabilities = getActorCapabilities({ role: profile?.role });
-  if (!profile?.shop_id || !capabilities.canInvitePortalCustomers) {
-    return NextResponse.json({ ok: false, error: "You do not have permission to invite portal customers." }, { status: 403 });
-  }
+  const access = await requireShopScopedApiAccess({ requiredCapability: "canInvitePortalCustomers" });
+  if (!access.ok) return access.response;
 
   try {
     await issueCustomerPortalInvite({
-      shopId: profile.shop_id,
+      shopId: access.profile.shop_id,
       customerId,
       workOrderId: workOrderId || null,
       email,
       source: workOrderId ? "work_order" : "customer_account",
-      createdBy: user.id,
+      createdBy: access.authUserId,
     });
     return NextResponse.json({ ok: true });
   } catch (error) {
