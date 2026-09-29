@@ -10,6 +10,8 @@ export type FleetServiceRequestFailureReason =
   | "replay_conflict"
   | "billing_unavailable"
   | "vehicle_unavailable"
+  | "enrollment_missing"
+  | "stale_conflict"
   | "unexpected";
 
 export type FleetServiceRequestFailure = {
@@ -90,11 +92,32 @@ export function mapFleetServiceRequestError(
     };
   }
 
-  if (/PFX_WORK_ORDER_VEHICLE_NOT_FOUND/i.test(message)) {
+  if (
+    /PFX_WORK_ORDER_VEHICLE_NOT_FOUND/i.test(message) ||
+    /PFX_FLEET_VEHICLE_UNAVAILABLE/i.test(message)
+  ) {
     return {
       error: "The vehicle linked to this service request is no longer available.",
       status: 409,
       reason: "vehicle_unavailable",
+    };
+  }
+
+  if (/PFX_FLEET_VEHICLE_ENROLLMENT_MISSING/i.test(message)) {
+    return {
+      error:
+        "This unit isn't actively enrolled in the Fleet that filed this request, so its billing owner can't be resolved automatically here. Check the unit's Fleet enrollment.",
+      status: 409,
+      reason: "enrollment_missing",
+    };
+  }
+
+  if (/PFX_FLEET_BILLING_OWNER_STALE/i.test(message)) {
+    return {
+      error:
+        "This unit's billing owner changed since you reviewed it. Close this and try again to see the current details.",
+      status: 409,
+      reason: "stale_conflict",
     };
   }
 
