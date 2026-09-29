@@ -229,7 +229,7 @@ function ExtendControl({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-orange-500/30 bg-orange-500/5 p-2">
+    <div className="flex min-w-0 max-w-full flex-col gap-2 rounded-lg border border-orange-500/30 bg-orange-500/5 p-2">
       <div className="flex flex-col gap-2 sm:flex-row">
         <select
           value={durationHours}
@@ -252,7 +252,7 @@ function ExtendControl({
           />
         ) : null}
       </div>
-      {error ? <p className="text-[11px] font-semibold text-red-300">{error}</p> : null}
+      {error ? <p role="alert" className="max-w-full break-words text-[11px] font-semibold text-red-300">{error}</p> : null}
       <div className="flex gap-2">
         <button
           type="button"
@@ -302,7 +302,7 @@ function RevokeButton({ profileId, onDone }: { profileId: string; onDone: () => 
       >
         {submitting ? "Revoking…" : "Revoke"}
       </button>
-      {error ? <p className="text-[11px] font-semibold text-red-300">{error}</p> : null}
+      {error ? <p role="alert" className="max-w-full break-words text-[11px] font-semibold text-red-300">{error}</p> : null}
     </div>
   );
 }
@@ -385,7 +385,7 @@ function ApproveRequestControl({
           />
         ) : null}
       </div>
-      {error ? <p className="text-[11px] font-semibold text-red-300">{error}</p> : null}
+      {error ? <p role="alert" className="max-w-full break-words text-[11px] font-semibold text-red-300">{error}</p> : null}
       <div className="flex gap-2">
         <button
           type="button"
@@ -435,7 +435,7 @@ function DismissRequestButton({ requestId, onDone }: { requestId: string; onDone
       >
         {submitting ? "Dismissing…" : "Dismiss"}
       </button>
-      {error ? <p className="text-[11px] font-semibold text-red-300">{error}</p> : null}
+      {error ? <p role="alert" className="max-w-full break-words text-[11px] font-semibold text-red-300">{error}</p> : null}
     </div>
   );
 }
