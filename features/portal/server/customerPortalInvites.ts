@@ -5,7 +5,7 @@ import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
 import { sendPortalInviteEmail } from "@/features/email/server";
 import { getActiveBrandForRender } from "@/features/branding/server/getActiveBrandForRender";
 
-type InviteSource = "work_order" | "qr";
+type InviteSource = "work_order" | "qr" | "customer_account";
 
 function siteUrl(): string {
   const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/$/, "");
