@@ -37,11 +37,13 @@ export async function GET(_req: Request, context: Context) {
   const canViewFleet = getActorCapabilities({ role: access.profile.role }).canInviteFleetMembers;
   const email = customer.email?.trim().toLowerCase() ?? "";
   const fleetIds = canViewFleet ? (fleets.data ?? []).map((fleet) => fleet.id) : [];
+  // Escape ILIKE wildcards: email matching must remain exact apart from case.
+  const exactEmailPattern = email.replace(/[\\%_]/g, "\\  const fleetIds = canViewFleet ? (fleets.data ?? []).map((fleet) => fleet.id) : [];");
   const fleetInvites = fleetIds.length
     ? await supabaseAdmin.from("fleet_portal_invites")
         .select("id,fleet_id,email,role,created_at,expires_at,accepted_at,revoked_at,delivery_status,delivery_reserved_until")
         .eq("shop_id", access.profile.shop_id).in("fleet_id", fleetIds)
-        .eq("email", email).eq("role", "manager")
+        .ilike("email", exactEmailPattern).eq("role", "manager")
         .order("created_at", { ascending: false }).limit(100)
     : { data: [], error: null };
   if (fleetInvites.error) return NextResponse.json({ error: "Fleet access could not be loaded." }, { status: 500 });
