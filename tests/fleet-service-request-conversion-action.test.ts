@@ -50,10 +50,10 @@ describe("fleet service-request conversion action", () => {
     expect(shopPage).toContain("SHOP_FLEET_REQUEST_INTAKE_ROLES");
     expect(source).toContain("convertFleetServiceRequest(item.id)");
     expect(source).toContain("Accept into Shop");
-    expect(source).toContain("Review vehicle ownership");
+    expect(source).toContain("Resolve billing owner");
+    expect(source).toContain("ResolveFleetVehicleBillingOwnerModal");
     expect(source).toContain("setErrorRequest(`${item.unitLabel} · ${item.title}`)");
     expect(source).toContain('<p role="alert">{error}</p>');
-    expect(source).toContain("/vehicles/${encodeURIComponent(item.vehicleId)}");
     expect(source).toContain("payload?.canManage");
     expect(fleetPage).not.toContain("convertFleetServiceRequest");
     expect(fleetPage).not.toContain("Create work order");

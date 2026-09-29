@@ -31212,6 +31212,20 @@ export type Database = {
         Args: { p_vehicle_id: string }
         Returns: string
       }
+      resolve_fleet_vehicle_billing_owner: {
+        Args: { p_apply?: boolean; p_vehicle_id: string }
+        Returns: {
+          already_aligned: boolean
+          applied: boolean
+          fleet_id: string
+          fleet_name: string
+          previous_customer_id: string
+          previous_customer_name: string
+          resolved_customer_id: string
+          resolved_customer_name: string
+          vehicle_id: string
+        }[]
+      }
       respond_fleet_defect_clarification: {
         Args: {
           p_clarification_id: string

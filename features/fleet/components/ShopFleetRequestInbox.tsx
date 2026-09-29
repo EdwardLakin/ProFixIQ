@@ -10,10 +10,15 @@ import {
   convertFleetServiceRequest,
   FleetServiceRequestConversionError,
 } from "@/features/fleet/lib/convertFleetServiceRequest";
+import ResolveFleetVehicleBillingOwnerModal from "@/features/fleet/components/ResolveFleetVehicleBillingOwnerModal";
+import type { FleetServiceRequestFailureReason } from "@/features/fleet/lib/fleetServiceRequestError";
 import type {
   FleetServiceRequestItem,
   FleetServiceRequestsPayload,
 } from "@/features/fleet/types/serviceRequests";
+
+const BILLING_OWNER_RECOVERABLE_REASONS: readonly FleetServiceRequestFailureReason[] =
+  ["ownership_conflict", "handoff_unavailable"];
 
 type Filter = "pending" | "converted" | "all";
 
@@ -54,14 +59,21 @@ export default function ShopFleetRequestInbox({
   const [loading, setLoading] = useState(true);
   const [convertingId, setConvertingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [errorActionHref, setErrorActionHref] = useState<string | null>(null);
+  const [errorReason, setErrorReason] =
+    useState<FleetServiceRequestFailureReason | null>(null);
   const [errorRequest, setErrorRequest] = useState<string | null>(null);
+  const [errorItem, setErrorItem] = useState<FleetServiceRequestItem | null>(
+    null,
+  );
+  const [resolvingItem, setResolvingItem] =
+    useState<FleetServiceRequestItem | null>(null);
 
   async function load(signal?: AbortSignal) {
     setLoading(true);
     setError(null);
-    setErrorActionHref(null);
+    setErrorReason(null);
     setErrorRequest(null);
+    setErrorItem(null);
     try {
       const response = await fetch("/api/fleet/service-requests", {
         method: "POST",
@@ -112,8 +124,9 @@ export default function ShopFleetRequestInbox({
   async function acceptRequest(item: FleetServiceRequestItem) {
     setConvertingId(item.id);
     setError(null);
-    setErrorActionHref(null);
+    setErrorReason(null);
     setErrorRequest(null);
+    setErrorItem(null);
     try {
       const workOrderId = await convertFleetServiceRequest(item.id);
       router.push(`${workOrderBasePath}/${encodeURIComponent(workOrderId)}`);
@@ -124,16 +137,18 @@ export default function ShopFleetRequestInbox({
           : "Unable to create the work order";
       setError(message);
       setErrorRequest(`${item.unitLabel} · ${item.title}`);
-      if (
-        cause instanceof FleetServiceRequestConversionError &&
-        cause.reason === "ownership_conflict"
-      ) {
-        setErrorActionHref(
-          `/vehicles/${encodeURIComponent(item.vehicleId)}`,
-        );
+      setErrorItem(item);
+      if (cause instanceof FleetServiceRequestConversionError) {
+        setErrorReason(cause.reason);
       }
       setConvertingId(null);
     }
+  }
+
+  function handleBillingOwnerResolved() {
+    const item = resolvingItem;
+    setResolvingItem(null);
+    if (item) void acceptRequest(item);
   }
 
   return (
@@ -210,13 +225,16 @@ export default function ShopFleetRequestInbox({
               ) : null}
               <p role="alert">{error}</p>
             </div>
-            {errorActionHref ? (
-              <Link
-                href={errorActionHref}
+            {errorItem &&
+            errorReason &&
+            BILLING_OWNER_RECOVERABLE_REASONS.includes(errorReason) ? (
+              <button
+                type="button"
+                onClick={() => setResolvingItem(errorItem)}
                 className="inline-flex min-h-9 items-center rounded-lg border border-red-400/30 bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
               >
-                Review vehicle ownership
-              </Link>
+                Resolve billing owner
+              </button>
             ) : null}
           </div>
         ) : null}
@@ -299,6 +317,15 @@ export default function ShopFleetRequestInbox({
           ))}
         </div>
       </section>
+
+      {resolvingItem ? (
+        <ResolveFleetVehicleBillingOwnerModal
+          vehicleId={resolvingItem.vehicleId}
+          unitLabel={`${resolvingItem.unitLabel} · ${resolvingItem.title}`}
+          onClose={() => setResolvingItem(null)}
+          onResolved={handleBillingOwnerResolved}
+        />
+      ) : null}
     </main>
   );
 }
