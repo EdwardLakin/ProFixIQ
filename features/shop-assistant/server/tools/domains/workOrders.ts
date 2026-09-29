@@ -472,28 +472,6 @@ export const recordApprovalDecisionTool = defineShopAssistantTool({
         "More than 500 approval items are pending. Select a smaller reviewed set before recording a decision.",
       );
     }
-    if (
-      input.decision === "approve" &&
-      quoteRows.some((row) => {
-        const status = String(row.status ?? "").toLowerCase();
-        return (
-          !row.sent_to_customer_at &&
-          ![
-            "sent",
-            "ready_to_send",
-            "quoted",
-            "approved",
-            "converted",
-          ].includes(status)
-        );
-      })
-    ) {
-      throw new ShopAssistantHttpError(
-        409,
-        "At least one selected quote item has not been sent or made ready for customer approval yet.",
-      );
-    }
-
     const label = workOrder.custom_id
       ? `WO #${workOrder.custom_id}`
       : `WO ${workOrder.id.slice(0, 8)}`;
