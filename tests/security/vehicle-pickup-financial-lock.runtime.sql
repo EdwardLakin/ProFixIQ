@@ -62,11 +62,15 @@ update public.profiles
 set shop_id = '9f200000-0000-4000-8000-000000000002'
 where id = '9f100000-0000-4000-8000-000000000001';
 
-insert into public.work_orders (id, shop_id, status)
+-- payment_status = 'paid' keeps this test on the plain happy path -- the RPC's
+-- separate unpaid-release override flow (PICKUP_UNPAID_BALANCE_REQUIRES_OVERRIDE)
+-- is a distinct, already-covered concern, not what this regression is about.
+insert into public.work_orders (id, shop_id, status, payment_status)
 values (
   '9f300000-0000-4000-8000-000000000003',
   '9f200000-0000-4000-8000-000000000002',
-  'completed'
+  'completed',
+  'paid'
 );
 
 insert into public.invoices (id, shop_id, work_order_id, invoice_number, status)
