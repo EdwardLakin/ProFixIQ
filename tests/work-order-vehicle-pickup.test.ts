@@ -238,4 +238,30 @@ describe("vehicle pickup lifecycle: work order, invoice, payment stay independen
     expect(migration).toContain("payment_event_id uuid references public.payment_events(id)");
     expect(migration).toContain("uq_payment_receipt_attachments_client_mutation");
   });
+
+  it("lets mark_work_order_picked_up_atomic's own write through the financial-lock guard instead of raising WORK_ORDER_FINANCIALLY_LOCKED", () => {
+    // mark_work_order_picked_up_atomic requires status in ('completed',
+    // 'ready_to_invoice', 'invoiced'), but 'invoiced' is exactly the status
+    // that trips work_order_is_financially_locked, so without every column
+    // this RPC writes on its allow-list, guard_financially_locked_work_order
+    // rejected the pickup update before the RPC could ever return
+    // successfully on an already-invoiced work order - the normal case.
+    const migration = read(
+      "supabase/migrations/20260929010000_allow_vehicle_pickup_after_financial_lock.sql",
+    );
+    expect(migration).toContain(
+      "create or replace function public.guard_financially_locked_work_order()",
+    );
+    expect(migration).toContain("'picked_up_at',");
+    expect(migration).toContain("'picked_up_by_user_id',");
+    expect(migration).toContain("'collected_by_type',");
+    expect(migration).toContain("'collected_by_name',");
+    expect(migration).toContain("'pickup_notes',");
+    expect(migration).toContain("'pickup_released_unpaid',");
+    expect(migration).toContain("'pickup_release_reason',");
+    expect(migration).toContain("'pickup_release_authorized_by_user_id'");
+    // The prior allow-list (invoice-delivery metadata) must stay intact.
+    expect(migration).toContain("'invoice_sent_at',");
+    expect(migration).toContain("'invoice_url',");
+  });
 });
