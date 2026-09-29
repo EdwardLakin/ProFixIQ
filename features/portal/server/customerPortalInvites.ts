@@ -22,6 +22,8 @@ export async function issueCustomerPortalInvite(input: {
   workOrderId?: string | null;
   enrollmentCampaignId?: string | null;
   createdBy?: string | null;
+  /** Canonical profiles.id for email_logs.created_by; auth ID above belongs to the invite row. */
+  createdByProfileId?: string | null;
 }) {
   const email = input.email.trim().toLowerCase();
   const { data: customer, error: customerError } = await supabaseAdmin
@@ -142,7 +144,7 @@ export async function issueCustomerPortalInvite(input: {
     brandLogoUrl: brand?.logoUrl ?? null,
     brandPrimaryColor: brand?.colors.primary ?? null,
     brandSecondaryColor: brand?.colors.secondary ?? null,
-    createdBy: input.createdBy ?? null,
+    createdBy: input.createdByProfileId ?? null,
     portalType: "customer",
   });
 
