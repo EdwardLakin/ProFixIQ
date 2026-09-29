@@ -351,3 +351,19 @@ describe("ops nav and page wiring", () => {
     expect(page).not.toContain("is_internal_staff");
   });
 });
+
+
+describe("demo temporary password policy", () => {
+  it("generates passwords with every required character class", async () => {
+    const { generateTempPassword } = await import("@/features/ops/server/demoAccess");
+    const passwords = Array.from({ length: 200 }, () => generateTempPassword());
+    for (const password of passwords) {
+      expect(password).toHaveLength(32);
+      expect(password).toMatch(/[a-z]/);
+      expect(password).toMatch(/[A-Z]/);
+      expect(password).toMatch(/[0-9]/);
+      expect(password).toMatch(/[^a-zA-Z0-9]/);
+    }
+    expect(new Set(passwords).size).toBe(passwords.length);
+  });
+});
