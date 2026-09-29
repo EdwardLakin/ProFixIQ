@@ -15,17 +15,15 @@ function safeColor(value: string | null | undefined, fallback: string) {
   return /^#[0-9a-f]{6}$/i.test(candidate) ? candidate : fallback;
 }
 
-function roundMoney(value: number) {
-  return Math.round((value + Number.EPSILON) * 100) / 100;
-}
-
+// Formats with Intl directly (no pre-rounding) so the amount matches how the
+// customer portal renders the same total, including half-cent totals.
 export function formatUsd(value: string | number | null | undefined): string {
   const n = typeof value === "string" ? Number(value) : value;
   if (typeof n !== "number" || !Number.isFinite(n)) return "";
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency: "USD",
-  }).format(roundMoney(n));
+  }).format(n);
 }
 
 export function quoteReadyContent(input: {
@@ -203,6 +201,7 @@ export async function sendQuoteReadyEmail(input: {
     createdBy: input.createdBy,
     subject: content.subject,
     content,
+    fromName: process.env.SENDGRID_FROM_NAME?.trim() || null,
     // Keep the portal link direct instead of a sendgrid.net redirect.
     disableClickTracking: true,
     metadata: {

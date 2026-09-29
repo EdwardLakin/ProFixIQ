@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import {
   formatUsd,
@@ -8,6 +9,13 @@ describe("quote ready email", () => {
   it("formats float-drifted totals as currency", () => {
     expect(formatUsd(1691.6400000000003)).toBe("$1,691.64");
     expect(formatUsd("1691.6400000000003")).toBe("$1,691.64");
+    // Same rendering as the portal's Intl.NumberFormat for half-cent totals.
+    expect(formatUsd(4.515)).toBe(
+      new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+      }).format(4.515),
+    );
     expect(formatUsd(null)).toBe("");
     expect(formatUsd("not a number")).toBe("");
   });
@@ -44,5 +52,23 @@ describe("quote ready email", () => {
     expect(content.html).not.toContain("javascript:");
     expect(content.html).toContain("a=1&amp;b=2");
     expect(content.html).not.toContain("Estimate total");
+  });
+});
+
+describe("sendDynamicTemplateEmail sender and template scoping", () => {
+  const src = readFileSync(
+    "features/email/server/sendDynamicTemplateEmail.ts",
+    "utf8",
+  );
+
+  it("does not read SENDGRID_FROM_NAME in the shared helper", () => {
+    expect(src).not.toContain("SENDGRID_FROM_NAME");
+    expect(src).toContain("input.fromName");
+  });
+
+  it("resolves and logs a template id only for the template path", () => {
+    expect(src).toContain(
+      "const templateId = input.content ? null : getTemplateId(input.templateKey);",
+    );
   });
 });
