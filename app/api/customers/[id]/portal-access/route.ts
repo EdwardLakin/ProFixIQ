@@ -55,6 +55,7 @@ export async function GET(_req: Request, context: Context) {
     ok: true,
     email,
     customerActive: customer.active && !customer.merged_into_customer_id,
+    canViewFleet,
     customer: { status: customerStatus, invite: accepted ?? latest },
     fleets: (canViewFleet ? fleets.data ?? [] : []).map((fleet) => ({
       ...fleet,
