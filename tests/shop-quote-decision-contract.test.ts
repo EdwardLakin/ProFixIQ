@@ -29,6 +29,14 @@ const sentCheckFix = fs.readFileSync(
   ),
   "utf8",
 );
+const shopAssistantWorkOrders = fs.readFileSync(
+  path.join(root, "features/shop-assistant/server/tools/domains/workOrders.ts"),
+  "utf8",
+);
+const quoteReviewView = fs.readFileSync(
+  path.join(root, "features/work-orders/quote-review/QuoteReviewView.tsx"),
+  "utf8",
+);
 
 describe("shop quote decision contract", () => {
   it("accepts all three advisor decisions and records the shop source", () => {
@@ -87,6 +95,27 @@ describe("shop quote decision contract", () => {
     );
     expect(sentCheckFix).toContain(
       "shop_assistant_record_approval_decision_atomic(uuid,uuid,uuid,uuid,uuid[],boolean,text,text,text)",
+    );
+  });
+
+  it("does not re-block shop-recorded approval at the Shop Assistant preview layer", () => {
+    // The preview step used to hard-fail with a 409 for any not-yet-sent
+    // quote line before the RPC (which now allows it) ever ran, making the
+    // database fix unreachable through the assistant tool.
+    expect(shopAssistantWorkOrders).not.toContain(
+      "has not been sent or made ready for customer approval yet",
+    );
+  });
+
+  it("decouples the Quote Review Approve button from send-eligibility", () => {
+    // The Approve button used to reuse canSendLine (digital-send readiness),
+    // which also disabled it for states like "pending_parts" that a phone
+    // approval never needed to be gated on. canRecordShopApproval only blocks
+    // already-decided (or pricing-quarantined) lines.
+    expect(quoteReviewView).toContain("function canRecordShopApproval(line");
+    expect(quoteReviewView).toContain("disabled={!canRecordShopApproval(line)}");
+    expect(quoteReviewView).not.toContain(
+      "disabled={!canSendLine(line) && !isSentForDecision(line)}",
     );
   });
 });
