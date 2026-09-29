@@ -280,6 +280,20 @@ jobs:
             -f tests/security/quote-review-cost-and-sell.runtime.sql \
             2>&1 | tee quote-review-cost-and-sell-runtime.log
 
+      - name: Execute Quote Review shop-recorded sent-check regression integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/quote-review-shop-recorded-sent-check.runtime.sql \
+            2>&1 | tee quote-review-shop-recorded-sent-check-runtime.log
+
       - name: Execute Customer Account Center runtime integration
         shell: bash
         env:
@@ -732,6 +746,7 @@ jobs:
             parts-request-purchase-order-locking-runtime.log
             fleet-service-request-ownership-runtime.log
             quote-review-cost-and-sell-runtime.log
+            quote-review-shop-recorded-sent-check-runtime.log
             p0-001-relation-boundaries-runtime.log
             p0-002-rpc-privileges-runtime.log
             p0-002-stock-move-signature-compat-runtime.log

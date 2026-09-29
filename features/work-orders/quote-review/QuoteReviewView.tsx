@@ -444,6 +444,26 @@ function canSendLine(line: EditableQuoteLine): boolean {
   return SEND_READY_STATUSES.has(status) || SEND_READY_STAGES.has(stage);
 }
 
+// A shop-recorded decision (phone/in-person/email) never requires the line to
+// have been sent to the customer digitally -- that precondition only applies
+// to the customer/portal decision path. Gate the Approve button on whether
+// the line has already been decided (or is pricing-quarantined), not on
+// send-eligibility.
+const TERMINAL_APPROVAL_STATUSES = new Set([
+  "approved",
+  "converted",
+  "declined",
+  "deferred",
+  "rejected",
+  "cancelled",
+]);
+
+function canRecordShopApproval(line: EditableQuoteLine): boolean {
+  if (quoteLinePartsPricingSanitization(line).customerPricingQuarantined) return false;
+  const status = safeTrim(line.status).toLowerCase();
+  return !TERMINAL_APPROVAL_STATUSES.has(status);
+}
+
 function activeWorkLine(line: WorkOrderLine): boolean {
   const approval = safeTrim(line.approval_state).toLowerCase();
   const status = safeTrim(line.status).toLowerCase();
@@ -1457,7 +1477,7 @@ export default function QuoteReviewView(props: {
                             </button>
                             {!line.sent_to_customer_at && canSendLine(line) ? <span className="rounded-xl border border-emerald-300/35 bg-emerald-400/10 px-3 py-2 text-xs font-semibold text-emerald-100">Will send</span> : null}
                             {!commercialEditingDisabled ? <>
-                              <button type="button" disabled={!canSendLine(line) && !isSentForDecision(line)} onClick={() => openDecisionDialog(line, "approve")} className="rounded-xl border border-emerald-300/40 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-100 disabled:opacity-45">Approve</button>
+                              <button type="button" disabled={!canRecordShopApproval(line)} onClick={() => openDecisionDialog(line, "approve")} className="rounded-xl border border-emerald-300/40 bg-emerald-500/15 px-3 py-2 text-xs font-semibold text-emerald-100 disabled:opacity-45">Approve</button>
                               <button type="button" onClick={() => openDecisionDialog(line, "defer")} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)]">Defer</button>
                               <button type="button" onClick={() => openDecisionDialog(line, "decline")} className="rounded-xl border border-red-400/45 bg-red-500/10 px-3 py-2 text-xs font-semibold text-red-100">Decline</button>
                               {canDeleteQuoteLine ? (
