@@ -26,13 +26,17 @@ export async function issueCustomerPortalInvite(input: {
   const email = input.email.trim().toLowerCase();
   const { data: customer, error: customerError } = await supabaseAdmin
     .from("customers")
-    .select("id, shop_id, email")
+    .select("id, shop_id, email, active, merged_into_customer_id")
     .eq("id", input.customerId)
     .eq("shop_id", input.shopId)
     .maybeSingle();
 
   if (customerError || !customer?.id || customer.email?.trim().toLowerCase() !== email) {
     throw new Error("Customer invite identity could not be verified.");
+  }
+
+  if (input.source === "customer_account" && (!customer.active || customer.merged_into_customer_id)) {
+    throw new Error("Archived or merged customer accounts cannot receive portal invitations.");
   }
 
   if (input.workOrderId) {
@@ -60,6 +64,22 @@ export async function issueCustomerPortalInvite(input: {
     .maybeSingle();
 
   let inviteId = existingInvite?.id ?? null;
+  if (inviteId && input.source === "customer_account") {
+    // A resend must renew its database acceptance window, not merely its email link.
+    // Conditional predicates avoid extending a concurrently accepted or revoked invitation.
+    const { data: renewed, error: renewalError } = await supabaseAdmin
+      .from("customer_portal_invites")
+      .update({ expires_at: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000).toISOString() })
+      .eq("id", inviteId)
+      .eq("shop_id", input.shopId)
+      .eq("customer_id", customer.id)
+      .is("accepted_at", null)
+      .is("revoked_at", null)
+      .gt("expires_at", now.toISOString())
+      .select("id")
+      .maybeSingle();
+    if (renewalError || !renewed?.id) throw new Error("Invitation changed while resending. Reload portal access and retry.");
+  }
   if (!inviteId) {
     const { data: createdInvite, error: inviteError } = await supabaseAdmin
       .from("customer_portal_invites")
