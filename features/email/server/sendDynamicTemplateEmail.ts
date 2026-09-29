@@ -19,6 +19,8 @@ type SendDynamicTemplateEmailInput = {
   createdBy?: string | null;
   metadata?: Json;
   disableClickTracking?: boolean;
+  // Display name for the From header. Unset keeps the address-only default.
+  fromName?: string | null;
 };
 
 export type EmailDeliveryResult =
@@ -62,9 +64,11 @@ export async function sendDynamicTemplateEmail(
   ensureSendGridConfigured();
 
   const supabase = getAdminClient();
-  const templateId = getTemplateId(input.templateKey);
+  // Inline content is not rendered by a SendGrid template: record and require
+  // a template id only for the dynamic-template path.
+  const templateId = input.content ? null : getTemplateId(input.templateKey);
   const fromEmail = requiredEnv("SENDGRID_FROM_EMAIL");
-  const fromName = process.env.SENDGRID_FROM_NAME?.trim();
+  const fromName = input.fromName?.trim();
   const from = fromName ? { email: fromEmail, name: fromName } : fromEmail;
   const to = input.to.trim().toLowerCase();
 
@@ -133,7 +137,7 @@ export async function sendDynamicTemplateEmail(
       : {
           to,
           from,
-          templateId,
+          templateId: getTemplateId(input.templateKey),
           dynamicTemplateData: input.dynamicTemplateData ?? {},
           customArgs,
           ...(input.subject ? { subject: input.subject } : {}),
