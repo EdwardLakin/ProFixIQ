@@ -62,15 +62,15 @@ update public.profiles
 set shop_id = '9f200000-0000-4000-8000-000000000002'
 where id = '9f100000-0000-4000-8000-000000000001';
 
--- payment_status = 'paid' keeps this test on the plain happy path -- the RPC's
--- separate unpaid-release override flow (PICKUP_UNPAID_BALANCE_REQUIRES_OVERRIDE)
--- is a distinct, already-covered concern, not what this regression is about.
-insert into public.work_orders (id, shop_id, status, payment_status)
+-- work_orders.payment_status is not set here: invoice_versions_sync_financial_rollup
+-- (20260714013300) recomputes and overwrites it from the invoice version's
+-- lifecycle_status/paid_total on every insert/update below, so any value
+-- assigned on this row would just be clobbered.
+insert into public.work_orders (id, shop_id, status)
 values (
   '9f300000-0000-4000-8000-000000000003',
   '9f200000-0000-4000-8000-000000000002',
-  'completed',
-  'paid'
+  'completed'
 );
 
 insert into public.invoices (id, shop_id, work_order_id, invoice_number, status)
@@ -82,12 +82,19 @@ values (
   'issued'
 );
 
--- A non-draft invoice version is what work_order_financial_lock_state reads
--- to derive 'locked' -- this is the financially-locked precondition, not the
--- work_orders.status column itself.
+-- A non-draft invoice version is what work_order_financial_lock_state reads to
+-- derive 'locked' (lifecycle_status <> 'draft' -- independent of work_orders.
+-- status). lifecycle_status = 'paid' with paid_total = total is used, rather
+-- than 'issued', so invoice_versions_sync_financial_rollup's after-insert
+-- rollup lands work_orders.payment_status on 'paid': that keeps this test on
+-- the plain happy path instead of the RPC's separate unpaid-release override
+-- flow (PICKUP_UNPAID_BALANCE_REQUIRES_OVERRIDE), which is a distinct,
+-- already-covered concern, not what this regression is about. outstanding_
+-- total is a generated column (greatest(total - paid_total + refunded_total,
+-- 0)), so it is left out of this insert and computes to 0 here.
 insert into public.invoice_versions (
   id, shop_id, work_order_id, invoice_id, version_number,
-  lifecycle_status, currency, subtotal, total, snapshot, snapshot_hash, issued_at
+  lifecycle_status, currency, subtotal, total, paid_total, snapshot, snapshot_hash, issued_at
 )
 values (
   '9f500000-0000-4000-8000-000000000005',
@@ -95,8 +102,9 @@ values (
   '9f300000-0000-4000-8000-000000000003',
   '9f400000-0000-4000-8000-000000000004',
   1,
-  'issued',
+  'paid',
   'CAD',
+  100.00,
   100.00,
   100.00,
   '{}'::jsonb,
