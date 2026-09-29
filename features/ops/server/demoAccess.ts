@@ -1,6 +1,6 @@
 import "server-only";
 
-import { randomBytes } from "node:crypto";
+import { randomInt } from "node:crypto";
 import { requireOpsOperatorPageAccess } from "@/features/ops/server/operator-access";
 import { getDemoShopId } from "@/features/shared/lib/server/demo-shop";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
@@ -81,8 +81,24 @@ export function computeDemoAccessState(expiresAt: string): DemoAccessState {
   return "active";
 }
 
-function generateTempPassword(): string {
-  return randomBytes(18).toString("base64url");
+const PASSWORD_GROUPS = [
+  "abcdefghijklmnopqrstuvwxyz",
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZ",
+  "0123456789",
+  "!@#$%^&*()_+-=",
+] as const;
+const PASSWORD_ALPHABET = PASSWORD_GROUPS.join("");
+
+export function generateTempPassword(): string {
+  const characters = PASSWORD_GROUPS.map((group) => group[randomInt(group.length)]);
+  while (characters.length < 32) {
+    characters.push(PASSWORD_ALPHABET[randomInt(PASSWORD_ALPHABET.length)]);
+  }
+  for (let i = characters.length - 1; i > 0; i -= 1) {
+    const j = randomInt(i + 1);
+    [characters[i], characters[j]] = [characters[j], characters[i]];
+  }
+  return characters.join("");
 }
 
 async function fetchLastSignInAt(
