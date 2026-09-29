@@ -38,7 +38,7 @@ export async function GET(_req: Request, context: Context) {
   const email = customer.email?.trim().toLowerCase() ?? "";
   const fleetIds = canViewFleet ? (fleets.data ?? []).map((fleet) => fleet.id) : [];
   // Escape ILIKE wildcards: email matching must remain exact apart from case.
-  const exactEmailPattern = email.replace(/[\\%_]/g, (character) => `\\${character}`);
+  const exactEmailPattern = email.replace(/[\\%_]/g, (character: string) => `\\${character}`);
   const fleetInvites = fleetIds.length
     ? await supabaseAdmin.from("fleet_portal_invites")
         .select("id,fleet_id,email,role,created_at,expires_at,accepted_at,revoked_at,delivery_status,delivery_reserved_until")
