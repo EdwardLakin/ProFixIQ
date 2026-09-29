@@ -18,6 +18,7 @@ type SendDynamicTemplateEmailInput = {
   } | null;
   createdBy?: string | null;
   metadata?: Json;
+  disableClickTracking?: boolean;
 };
 
 export type EmailDeliveryResult =
@@ -63,6 +64,8 @@ export async function sendDynamicTemplateEmail(
   const supabase = getAdminClient();
   const templateId = getTemplateId(input.templateKey);
   const fromEmail = requiredEnv("SENDGRID_FROM_EMAIL");
+  const fromName = process.env.SENDGRID_FROM_NAME?.trim();
+  const from = fromName ? { email: fromEmail, name: fromName } : fromEmail;
   const to = input.to.trim().toLowerCase();
 
   const { data: suppression, error: suppressionError } = await supabase
@@ -118,15 +121,18 @@ export async function sendDynamicTemplateEmail(
     const message: MailDataRequired = input.content
       ? {
           to,
-          from: fromEmail,
+          from,
           subject: input.subject?.trim() || "A message from ProFixIQ",
           text: input.content.text,
           html: input.content.html,
           customArgs,
+          ...(input.disableClickTracking
+            ? { trackingSettings: { clickTracking: { enable: false } } }
+            : {}),
         }
       : {
           to,
-          from: fromEmail,
+          from,
           templateId,
           dynamicTemplateData: input.dynamicTemplateData ?? {},
           customArgs,
