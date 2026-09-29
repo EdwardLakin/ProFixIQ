@@ -27,9 +27,15 @@ async function callBillingOwnerRoute(
   fleetId: string,
   method: "GET" | "POST",
   fetchImpl: typeof fetch,
+  expected?: { previousCustomerId: string | null; resolvedCustomerId: string },
 ): Promise<FleetVehicleBillingOwnerResolution> {
+  const params = new URLSearchParams({ fleetId });
+  if (expected) {
+    params.set("previousCustomerId", expected.previousCustomerId ?? "");
+    params.set("resolvedCustomerId", expected.resolvedCustomerId);
+  }
   const response = await fetchImpl(
-    `/api/fleet/vehicles/${encodeURIComponent(vehicleId)}/billing-owner?fleetId=${encodeURIComponent(fleetId)}`,
+    `/api/fleet/vehicles/${encodeURIComponent(vehicleId)}/billing-owner?${params.toString()}`,
     { method },
   );
   const body = (await response.json().catch(() => ({}))) as Partial<
@@ -56,11 +62,17 @@ export async function diagnoseFleetVehicleBillingOwner(
   return callBillingOwnerRoute(vehicleId, fleetId, "GET", fetchImpl);
 }
 
-/** Realigns vehicles.customer_id to fleetId's billing account. */
+/**
+ * Realigns vehicles.customer_id to fleetId's billing account. The expected
+ * previous/resolved customer must be the values the caller just diagnosed,
+ * so the RPC can reject a confirmation that no longer matches the current
+ * state (see PFX_FLEET_BILLING_OWNER_STALE).
+ */
 export async function applyFleetVehicleBillingOwner(
   vehicleId: string,
   fleetId: string,
+  expected: { previousCustomerId: string | null; resolvedCustomerId: string },
   fetchImpl: typeof fetch = fetch,
 ): Promise<FleetVehicleBillingOwnerResolution> {
-  return callBillingOwnerRoute(vehicleId, fleetId, "POST", fetchImpl);
+  return callBillingOwnerRoute(vehicleId, fleetId, "POST", fetchImpl, expected);
 }

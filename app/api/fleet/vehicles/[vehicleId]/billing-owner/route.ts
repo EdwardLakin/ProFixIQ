@@ -71,9 +71,40 @@ async function resolveBillingOwner(
     );
   }
 
+  // Confirming a fix requires the exact previous/resolved customer the
+  // caller diagnosed, so the RPC can reject a confirmation that no longer
+  // matches the current state (see PFX_FLEET_BILLING_OWNER_STALE).
+  // previousCustomerId is sent as "" when the vehicle had no prior customer,
+  // to distinguish "explicitly null" from "not supplied".
+  const resolvedCustomerId = req.nextUrl.searchParams.get("resolvedCustomerId");
+  const previousCustomerIdParam = req.nextUrl.searchParams.get(
+    "previousCustomerId",
+  );
+  if (apply && (!resolvedCustomerId || previousCustomerIdParam === null)) {
+    return NextResponse.json(
+      {
+        error:
+          "resolvedCustomerId and previousCustomerId are required to confirm this change.",
+      },
+      { status: 400 },
+    );
+  }
+  const previousCustomerId = previousCustomerIdParam
+    ? previousCustomerIdParam
+    : undefined;
+
   const { data, error } = await access.supabase.rpc(
     "resolve_fleet_vehicle_billing_owner",
-    { p_vehicle_id: vehicleId, p_fleet_id: fleetId, p_apply: apply },
+    {
+      p_vehicle_id: vehicleId,
+      p_fleet_id: fleetId,
+      p_apply: apply,
+      p_expected_resolved_customer_id: apply
+        ? (resolvedCustomerId ?? undefined)
+        : undefined,
+      p_expect_previous_customer: apply,
+      p_expected_previous_customer_id: apply ? previousCustomerId : undefined,
+    },
   );
 
   const row = firstRow(data);

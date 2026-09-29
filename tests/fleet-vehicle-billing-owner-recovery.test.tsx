@@ -93,7 +93,8 @@ describe("resolving a Fleet unit's billing owner from the Shop inbox", () => {
       }
 
       if (
-        url === `/api/fleet/vehicles/${VEHICLE_ID}/billing-owner?fleetId=fleet-1` &&
+        url ===
+          `/api/fleet/vehicles/${VEHICLE_ID}/billing-owner?fleetId=fleet-1&previousCustomerId=customer-old&resolvedCustomerId=customer-new` &&
         method === "POST"
       ) {
         return jsonResponse({

@@ -61,10 +61,14 @@ export default function ResolveFleetVehicleBillingOwnerModal({
   }, [vehicleId, fleetId]);
 
   async function applyFix() {
+    if (!resolution) return;
     setStatus("applying");
     setError(null);
     try {
-      const result = await applyFleetVehicleBillingOwner(vehicleId, fleetId);
+      const result = await applyFleetVehicleBillingOwner(vehicleId, fleetId, {
+        previousCustomerId: resolution.previousCustomerId,
+        resolvedCustomerId: resolution.resolvedCustomerId,
+      });
       setResolution(result);
       setStatus("resolved");
     } catch (cause) {

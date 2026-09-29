@@ -18,10 +18,24 @@ begin;
 -- that filed the request (reassigned since, or the failure is unrelated to
 -- billing at all, e.g. malformed request lines), and blindly realigning
 -- against "any" active enrollment could bill the wrong customer.
+--
+-- p_expected_resolved_customer_id and p_expect_previous_customer /
+-- p_expected_previous_customer_id let the caller confirm exactly what it
+-- diagnosed: when applying (p_apply = true), the mutation is rejected if the
+-- current, freshly-locked state no longer matches — closing a
+-- confirm-stale-preview race where the vehicle owner or Fleet billing
+-- account changed between the GET preview and the POST confirmation.
+-- previous_customer_id is nullable (a vehicle can have no prior customer),
+-- so a null expected value alone can't distinguish "confirm it's still
+-- null" from "don't check this field" — p_expect_previous_customer makes
+-- that explicit instead of overloading null.
 create function public.resolve_fleet_vehicle_billing_owner(
   p_vehicle_id uuid,
   p_fleet_id uuid,
-  p_apply boolean default false
+  p_apply boolean default false,
+  p_expected_resolved_customer_id uuid default null,
+  p_expect_previous_customer boolean default false,
+  p_expected_previous_customer_id uuid default null
 )
 returns table (
   already_aligned boolean,
@@ -40,6 +54,7 @@ set search_path = ''
 as $function$
 declare
   v_user_id uuid := auth.uid();
+  v_profile_id uuid;
   v_actor_role text;
   v_vehicle public.vehicles%rowtype;
   v_fleet_name text;
@@ -50,6 +65,28 @@ declare
   v_applied boolean := false;
 begin
   if v_user_id is null then
+    raise exception using
+      errcode = '42501',
+      message = 'PFX_FLEET_VEHICLE_UNAVAILABLE';
+  end if;
+
+  -- Imported/legacy staff can retain a canonical profiles.id distinct from
+  -- their auth subject and link through profiles.user_id instead (the same
+  -- two-step resolution features/shared/lib/authenticated-profile.ts uses),
+  -- so check both identity shapes rather than only profiles.id.
+  select profile.id, profile.role
+  into v_profile_id, v_actor_role
+  from public.profiles profile
+  where profile.id = v_user_id;
+
+  if v_profile_id is null then
+    select profile.id, profile.role
+    into v_profile_id, v_actor_role
+    from public.profiles profile
+    where profile.user_id = v_user_id;
+  end if;
+
+  if v_profile_id is null then
     raise exception using
       errcode = '42501',
       message = 'PFX_FLEET_VEHICLE_UNAVAILABLE';
@@ -66,8 +103,8 @@ begin
   into v_vehicle
   from public.vehicles vehicle
   join public.profiles profile
-    on profile.shop_id = vehicle.shop_id
-   and profile.id = v_user_id
+    on profile.id = v_profile_id
+   and profile.shop_id = vehicle.shop_id
    and (
      profile.role in ('owner', 'admin', 'manager', 'advisor')
      or public.mobile_profile_has_field_service_access(
@@ -83,11 +120,6 @@ begin
       errcode = '42501',
       message = 'PFX_FLEET_VEHICLE_UNAVAILABLE';
   end if;
-
-  select profile.role
-  into v_actor_role
-  from public.profiles profile
-  where profile.id = v_user_id;
 
   select fleet.name, fleet.customer_id
   into v_fleet_name, v_fleet_customer_id
@@ -112,17 +144,35 @@ begin
       message = 'Fleet billing account is unavailable';
   end if;
 
+  -- Scoped to the vehicle's own shop: this is a SECURITY DEFINER read that
+  -- bypasses customer RLS, so it must never resolve a customer name across
+  -- tenants even if a caller supplies (or a stale row briefly holds) an ID
+  -- belonging to another shop.
   select customer.name into v_previous_customer_name
   from public.customers customer
-  where customer.id = v_vehicle.customer_id;
+  where customer.id = v_vehicle.customer_id
+    and customer.shop_id = v_vehicle.shop_id;
 
   select customer.name into v_resolved_customer_name
   from public.customers customer
-  where customer.id = v_fleet_customer_id;
+  where customer.id = v_fleet_customer_id
+    and customer.shop_id = v_vehicle.shop_id;
 
   v_already_aligned := v_vehicle.customer_id is not distinct from v_fleet_customer_id;
 
   if not v_already_aligned and p_apply then
+    if (
+      p_expect_previous_customer
+      and p_expected_previous_customer_id is distinct from v_vehicle.customer_id
+    ) or (
+      p_expected_resolved_customer_id is not null
+      and p_expected_resolved_customer_id is distinct from v_fleet_customer_id
+    ) then
+      raise exception using
+        errcode = '40001',
+        message = 'PFX_FLEET_BILLING_OWNER_STALE';
+    end if;
+
     update public.vehicles
     set customer_id = v_fleet_customer_id
     where id = v_vehicle.id;
@@ -159,9 +209,9 @@ begin
 end;
 $function$;
 
-revoke all on function public.resolve_fleet_vehicle_billing_owner(uuid, uuid, boolean)
+revoke all on function public.resolve_fleet_vehicle_billing_owner(uuid, uuid, boolean, uuid, boolean, uuid)
   from public, anon;
-grant execute on function public.resolve_fleet_vehicle_billing_owner(uuid, uuid, boolean)
+grant execute on function public.resolve_fleet_vehicle_billing_owner(uuid, uuid, boolean, uuid, boolean, uuid)
   to authenticated, service_role;
 
 commit;
