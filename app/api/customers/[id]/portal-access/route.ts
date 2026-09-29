@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 
 type Context = { params: Promise<{ id: string }> };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -33,16 +34,20 @@ export async function GET(_req: Request, context: Context) {
   ]);
   if (customerInvites.error || fleets.error) return NextResponse.json({ error: "Portal access could not be loaded." }, { status: 500 });
 
-  const fleetIds = (fleets.data ?? []).map((fleet) => fleet.id);
+  const canViewFleet = getActorCapabilities({ role: access.profile.role }).canInviteFleetMembers;
+  const email = customer.email?.trim().toLowerCase() ?? "";
+  const fleetIds = canViewFleet ? (fleets.data ?? []).map((fleet) => fleet.id) : [];
+  // Escape ILIKE wildcards: email matching must remain exact apart from case.
+  const exactEmailPattern = email.replace(/[\\%_]/g, (character: string) => `\\${character}`);
   const fleetInvites = fleetIds.length
     ? await supabaseAdmin.from("fleet_portal_invites")
         .select("id,fleet_id,email,role,created_at,expires_at,accepted_at,revoked_at,delivery_status,delivery_reserved_until")
         .eq("shop_id", access.profile.shop_id).in("fleet_id", fleetIds)
+        .ilike("email", exactEmailPattern).eq("role", "manager")
         .order("created_at", { ascending: false }).limit(100)
     : { data: [], error: null };
   if (fleetInvites.error) return NextResponse.json({ error: "Fleet access could not be loaded." }, { status: 500 });
 
-  const email = customer.email?.trim().toLowerCase() ?? "";
   const matching = (customerInvites.data ?? []).filter((invite) => invite.email.toLowerCase() === email);
   const accepted = matching.find((invite) => invite.accepted_at && !invite.revoked_at);
   const latest = matching[0] ?? null;
@@ -52,8 +57,9 @@ export async function GET(_req: Request, context: Context) {
     ok: true,
     email,
     customerActive: customer.active && !customer.merged_into_customer_id,
+    canViewFleet,
     customer: { status: customerStatus, invite: accepted ?? latest },
-    fleets: (fleets.data ?? []).map((fleet) => ({
+    fleets: (canViewFleet ? fleets.data ?? [] : []).map((fleet) => ({
       ...fleet,
       invites: (fleetInvites.data ?? []).filter((invite) => invite.fleet_id === fleet.id),
     })),
