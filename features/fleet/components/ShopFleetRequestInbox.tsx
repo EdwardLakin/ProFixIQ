@@ -321,6 +321,7 @@ export default function ShopFleetRequestInbox({
       {resolvingItem ? (
         <ResolveFleetVehicleBillingOwnerModal
           vehicleId={resolvingItem.vehicleId}
+          fleetId={resolvingItem.fleetId}
           unitLabel={`${resolvingItem.unitLabel} · ${resolvingItem.title}`}
           onClose={() => setResolvingItem(null)}
           onResolved={handleBillingOwnerResolved}

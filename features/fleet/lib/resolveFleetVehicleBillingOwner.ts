@@ -24,11 +24,12 @@ export type FleetVehicleBillingOwnerResolution = {
 
 async function callBillingOwnerRoute(
   vehicleId: string,
+  fleetId: string,
   method: "GET" | "POST",
   fetchImpl: typeof fetch,
 ): Promise<FleetVehicleBillingOwnerResolution> {
   const response = await fetchImpl(
-    `/api/fleet/vehicles/${encodeURIComponent(vehicleId)}/billing-owner`,
+    `/api/fleet/vehicles/${encodeURIComponent(vehicleId)}/billing-owner?fleetId=${encodeURIComponent(fleetId)}`,
     { method },
   );
   const body = (await response.json().catch(() => ({}))) as Partial<
@@ -49,15 +50,17 @@ async function callBillingOwnerRoute(
 /** Read-only preview: does not change vehicles.customer_id. */
 export async function diagnoseFleetVehicleBillingOwner(
   vehicleId: string,
+  fleetId: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<FleetVehicleBillingOwnerResolution> {
-  return callBillingOwnerRoute(vehicleId, "GET", fetchImpl);
+  return callBillingOwnerRoute(vehicleId, fleetId, "GET", fetchImpl);
 }
 
-/** Realigns vehicles.customer_id to the vehicle's Fleet billing account. */
+/** Realigns vehicles.customer_id to fleetId's billing account. */
 export async function applyFleetVehicleBillingOwner(
   vehicleId: string,
+  fleetId: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<FleetVehicleBillingOwnerResolution> {
-  return callBillingOwnerRoute(vehicleId, "POST", fetchImpl);
+  return callBillingOwnerRoute(vehicleId, fleetId, "POST", fetchImpl);
 }

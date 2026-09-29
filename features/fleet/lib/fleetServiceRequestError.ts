@@ -11,7 +11,6 @@ export type FleetServiceRequestFailureReason =
   | "billing_unavailable"
   | "vehicle_unavailable"
   | "enrollment_missing"
-  | "enrollment_ambiguous"
   | "unexpected";
 
 export type FleetServiceRequestFailure = {
@@ -106,18 +105,9 @@ export function mapFleetServiceRequestError(
   if (/PFX_FLEET_VEHICLE_ENROLLMENT_MISSING/i.test(message)) {
     return {
       error:
-        "This unit isn't actively enrolled in a Fleet, so its billing owner can't be resolved automatically. Add it to a Fleet first.",
+        "This unit isn't actively enrolled in the Fleet that filed this request, so its billing owner can't be resolved automatically here. Check the unit's Fleet enrollment.",
       status: 409,
       reason: "enrollment_missing",
-    };
-  }
-
-  if (/PFX_FLEET_VEHICLE_ENROLLMENT_AMBIGUOUS/i.test(message)) {
-    return {
-      error:
-        "This unit is actively enrolled in more than one Fleet, so its billing owner can't be resolved automatically. Fix the duplicate enrollment first.",
-      status: 409,
-      reason: "enrollment_ambiguous",
     };
   }
 

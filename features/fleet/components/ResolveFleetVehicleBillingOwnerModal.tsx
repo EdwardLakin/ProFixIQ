@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { AlertTriangle, CheckCircle2, X } from "lucide-react";
 
 import {
@@ -9,26 +9,26 @@ import {
   FleetVehicleBillingOwnerError,
   type FleetVehicleBillingOwnerResolution,
 } from "@/features/fleet/lib/resolveFleetVehicleBillingOwner";
-import type { FleetServiceRequestFailureReason } from "@/features/fleet/lib/fleetServiceRequestError";
 
 type Status = "loading" | "ready" | "blocked" | "applying" | "resolved";
 
 export default function ResolveFleetVehicleBillingOwnerModal({
   vehicleId,
+  fleetId,
   unitLabel,
   onClose,
   onResolved,
 }: {
   vehicleId: string;
+  fleetId: string;
   unitLabel: string;
   onClose: () => void;
   onResolved: () => void;
 }) {
+  const titleId = useId();
   const [status, setStatus] = useState<Status>("loading");
   const [resolution, setResolution] =
     useState<FleetVehicleBillingOwnerResolution | null>(null);
-  const [blockedReason, setBlockedReason] =
-    useState<FleetServiceRequestFailureReason | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -37,18 +37,20 @@ export default function ResolveFleetVehicleBillingOwnerModal({
       setStatus("loading");
       setError(null);
       try {
-        const result = await diagnoseFleetVehicleBillingOwner(vehicleId);
+        const result = await diagnoseFleetVehicleBillingOwner(
+          vehicleId,
+          fleetId,
+        );
         if (cancelled) return;
         setResolution(result);
         setStatus("ready");
       } catch (cause) {
         if (cancelled) return;
-        if (cause instanceof FleetVehicleBillingOwnerError) {
-          setBlockedReason(cause.reason);
-          setError(cause.message);
-        } else {
-          setError("Unable to look up this unit's billing owner.");
-        }
+        setError(
+          cause instanceof FleetVehicleBillingOwnerError
+            ? cause.message
+            : "Unable to look up this unit's billing owner.",
+        );
         setStatus("blocked");
       }
     }
@@ -56,35 +58,41 @@ export default function ResolveFleetVehicleBillingOwnerModal({
     return () => {
       cancelled = true;
     };
-  }, [vehicleId]);
+  }, [vehicleId, fleetId]);
 
   async function applyFix() {
     setStatus("applying");
     setError(null);
     try {
-      const result = await applyFleetVehicleBillingOwner(vehicleId);
+      const result = await applyFleetVehicleBillingOwner(vehicleId, fleetId);
       setResolution(result);
       setStatus("resolved");
     } catch (cause) {
-      if (cause instanceof FleetVehicleBillingOwnerError) {
-        setBlockedReason(cause.reason);
-        setError(cause.message);
-      } else {
-        setError("Unable to resolve this unit's billing owner.");
-      }
+      setError(
+        cause instanceof FleetVehicleBillingOwnerError
+          ? cause.message
+          : "Unable to resolve this unit's billing owner.",
+      );
       setStatus("blocked");
     }
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-md rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 text-[color:var(--theme-text-primary)]">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="flex max-h-[calc(100dvh-2rem)] w-full max-w-md flex-col overflow-y-auto rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 text-[color:var(--theme-text-primary)]"
+      >
         <div className="flex items-start justify-between gap-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[var(--accent-copper)]">
               Resolve billing owner
             </p>
-            <h2 className="mt-1 text-lg font-semibold">{unitLabel}</h2>
+            <h2 id={titleId} className="mt-1 text-lg font-semibold">
+              {unitLabel}
+            </h2>
           </div>
           <button
             type="button"
@@ -106,16 +114,7 @@ export default function ResolveFleetVehicleBillingOwnerModal({
           {status === "blocked" ? (
             <div className="flex items-start gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3">
               <AlertTriangle className="mt-0.5 h-4 w-4 flex-none text-amber-600 dark:text-amber-300" />
-              <div className="space-y-2">
-                <p role="alert">{error}</p>
-                {blockedReason === "enrollment_missing" ||
-                blockedReason === "enrollment_ambiguous" ? (
-                  <p className="text-xs text-[color:var(--theme-text-secondary)]">
-                    Fix this unit&apos;s Fleet enrollment, then try accepting
-                    the request again.
-                  </p>
-                ) : null}
-              </div>
+              <p role="alert">{error}</p>
             </div>
           ) : null}
 
@@ -126,7 +125,10 @@ export default function ResolveFleetVehicleBillingOwnerModal({
                 <p>
                   This unit&apos;s billing owner already matches{" "}
                   <span className="font-semibold">{resolution.fleetName}</span>
-                  &apos;s account. You can retry accepting the request.
+                  &apos;s account. If accepting the request still fails after
+                  a retry, the problem isn&apos;t this unit&apos;s billing
+                  owner — check the request&apos;s service lines or contact
+                  support.
                 </p>
               </div>
             ) : (

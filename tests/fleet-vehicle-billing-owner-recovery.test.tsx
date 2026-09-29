@@ -76,7 +76,7 @@ describe("resolving a Fleet unit's billing owner from the Shop inbox", () => {
       }
 
       if (
-        url === `/api/fleet/vehicles/${VEHICLE_ID}/billing-owner` &&
+        url === `/api/fleet/vehicles/${VEHICLE_ID}/billing-owner?fleetId=fleet-1` &&
         method === "GET"
       ) {
         return jsonResponse({
@@ -93,7 +93,7 @@ describe("resolving a Fleet unit's billing owner from the Shop inbox", () => {
       }
 
       if (
-        url === `/api/fleet/vehicles/${VEHICLE_ID}/billing-owner` &&
+        url === `/api/fleet/vehicles/${VEHICLE_ID}/billing-owner?fleetId=fleet-1` &&
         method === "POST"
       ) {
         return jsonResponse({

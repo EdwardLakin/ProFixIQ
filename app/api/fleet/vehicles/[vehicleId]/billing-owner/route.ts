@@ -46,6 +46,7 @@ function toResponseBody(row: BillingOwnerRow) {
 }
 
 async function resolveBillingOwner(
+  req: NextRequest,
   context: RouteContext,
   apply: boolean,
 ): Promise<NextResponse> {
@@ -62,16 +63,17 @@ async function resolveBillingOwner(
   }
 
   const { vehicleId } = await context.params;
-  if (!vehicleId) {
+  const fleetId = req.nextUrl.searchParams.get("fleetId");
+  if (!vehicleId || !fleetId) {
     return NextResponse.json(
-      { error: "vehicleId is required." },
+      { error: "vehicleId and fleetId are required." },
       { status: 400 },
     );
   }
 
   const { data, error } = await access.supabase.rpc(
     "resolve_fleet_vehicle_billing_owner",
-    { p_vehicle_id: vehicleId, p_apply: apply },
+    { p_vehicle_id: vehicleId, p_fleet_id: fleetId, p_apply: apply },
   );
 
   const row = firstRow(data);
@@ -90,9 +92,9 @@ async function resolveBillingOwner(
   return NextResponse.json(toResponseBody(row));
 }
 
-export async function GET(_req: NextRequest, context: RouteContext) {
+export async function GET(req: NextRequest, context: RouteContext) {
   try {
-    return await resolveBillingOwner(context, false);
+    return await resolveBillingOwner(req, context, false);
   } catch (err) {
     console.error("[fleet/vehicles/billing-owner] unexpected error", err);
     return NextResponse.json(
@@ -102,9 +104,9 @@ export async function GET(_req: NextRequest, context: RouteContext) {
   }
 }
 
-export async function POST(_req: NextRequest, context: RouteContext) {
+export async function POST(req: NextRequest, context: RouteContext) {
   try {
-    return await resolveBillingOwner(context, true);
+    return await resolveBillingOwner(req, context, true);
   } catch (err) {
     console.error("[fleet/vehicles/billing-owner] unexpected error", err);
     return NextResponse.json(

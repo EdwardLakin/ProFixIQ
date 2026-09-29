@@ -31213,7 +31213,7 @@ export type Database = {
         Returns: string
       }
       resolve_fleet_vehicle_billing_owner: {
-        Args: { p_apply?: boolean; p_vehicle_id: string }
+        Args: { p_apply?: boolean; p_fleet_id: string; p_vehicle_id: string }
         Returns: {
           already_aligned: boolean
           applied: boolean
