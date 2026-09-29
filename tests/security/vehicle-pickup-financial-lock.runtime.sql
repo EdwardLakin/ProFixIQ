@@ -15,6 +15,17 @@
 -- the same locked work order -- for a pickup column with the write-boundary
 -- flag unset, and for an ordinary operational field regardless of the flag
 -- -- is still rejected exactly as before.
+--
+-- work_orders_status_check (schema baseline) only permits status in ('new',
+-- 'awaiting', 'awaiting_approval', 'queued', 'in_progress', 'on_hold',
+-- 'planned', 'completed') -- 'ready_to_invoice'/'invoiced' are not valid
+-- work_orders.status values anywhere in this migration history, even though
+-- mark_work_order_picked_up_atomic's own readiness check also accepts them;
+-- those two branches of that check are unreachable given the current schema.
+-- 'completed' is the one status both that check and the CHECK constraint
+-- agree on, so it -- combined with a non-draft invoice_version, which is
+-- what actually drives work_order_is_financially_locked, independent of
+-- work_orders.status -- is what reproduces the real, reachable regression.
 
 begin;
 
@@ -55,7 +66,7 @@ insert into public.work_orders (id, shop_id, status)
 values (
   '9f300000-0000-4000-8000-000000000003',
   '9f200000-0000-4000-8000-000000000002',
-  'invoiced'
+  'completed'
 );
 
 insert into public.invoices (id, shop_id, work_order_id, invoice_number, status)
