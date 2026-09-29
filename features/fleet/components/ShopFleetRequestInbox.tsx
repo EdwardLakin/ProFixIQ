@@ -10,15 +10,16 @@ import {
   convertFleetServiceRequest,
   FleetServiceRequestConversionError,
 } from "@/features/fleet/lib/convertFleetServiceRequest";
+import {
+  isBillingOwnerRecoverable,
+  type FleetHandoffDiagnosis,
+} from "@/features/fleet/lib/fleetHandoffDiagnosis";
 import ResolveFleetVehicleBillingOwnerModal from "@/features/fleet/components/ResolveFleetVehicleBillingOwnerModal";
 import type { FleetServiceRequestFailureReason } from "@/features/fleet/lib/fleetServiceRequestError";
 import type {
   FleetServiceRequestItem,
   FleetServiceRequestsPayload,
 } from "@/features/fleet/types/serviceRequests";
-
-const BILLING_OWNER_RECOVERABLE_REASONS: readonly FleetServiceRequestFailureReason[] =
-  ["ownership_conflict", "handoff_unavailable"];
 
 type Filter = "pending" | "converted" | "all";
 
@@ -37,6 +38,9 @@ function requestDate(value: string | null) {
   });
 }
 
+const recoveryLinkClass =
+  "inline-flex min-h-9 items-center rounded-lg border border-red-400/30 bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]";
+
 function isPending(item: FleetServiceRequestItem) {
   return !item.workOrder && !TERMINAL_STATUSES.has(item.status);
 }
@@ -52,6 +56,8 @@ export default function ShopFleetRequestInbox({
   workOrderBasePath?: string;
 } = {}) {
   const router = useRouter();
+  const isMobileBase = workOrderBasePath.startsWith("/mobile");
+  const customerBasePath = isMobileBase ? "/mobile/customers" : "/customers";
   const [payload, setPayload] = useState<FleetServiceRequestsPayload | null>(
     null,
   );
@@ -62,6 +68,8 @@ export default function ShopFleetRequestInbox({
   const [errorReason, setErrorReason] =
     useState<FleetServiceRequestFailureReason | null>(null);
   const [errorRequest, setErrorRequest] = useState<string | null>(null);
+  const [errorDiagnosis, setErrorDiagnosis] =
+    useState<FleetHandoffDiagnosis | null>(null);
   const [errorItem, setErrorItem] = useState<FleetServiceRequestItem | null>(
     null,
   );
@@ -74,6 +82,7 @@ export default function ShopFleetRequestInbox({
     setErrorReason(null);
     setErrorRequest(null);
     setErrorItem(null);
+    setErrorDiagnosis(null);
     try {
       const response = await fetch("/api/fleet/service-requests", {
         method: "POST",
@@ -127,6 +136,7 @@ export default function ShopFleetRequestInbox({
     setErrorReason(null);
     setErrorRequest(null);
     setErrorItem(null);
+    setErrorDiagnosis(null);
     try {
       const workOrderId = await convertFleetServiceRequest(item.id);
       router.push(`${workOrderBasePath}/${encodeURIComponent(workOrderId)}`);
@@ -140,6 +150,7 @@ export default function ShopFleetRequestInbox({
       setErrorItem(item);
       if (cause instanceof FleetServiceRequestConversionError) {
         setErrorReason(cause.reason);
+        setErrorDiagnosis(cause.diagnosis);
       }
       setConvertingId(null);
     }
@@ -225,17 +236,33 @@ export default function ShopFleetRequestInbox({
               ) : null}
               <p role="alert">{error}</p>
             </div>
-            {errorItem &&
-            errorReason &&
-            BILLING_OWNER_RECOVERABLE_REASONS.includes(errorReason) ? (
-              <button
-                type="button"
-                onClick={() => setResolvingItem(errorItem)}
-                className="inline-flex min-h-9 items-center rounded-lg border border-red-400/30 bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
-              >
-                Resolve billing owner
-              </button>
-            ) : null}
+            <div className="flex flex-wrap items-center gap-2">
+              {errorItem && isBillingOwnerRecoverable(errorReason, errorDiagnosis) ? (
+                <button
+                  type="button"
+                  onClick={() => setResolvingItem(errorItem)}
+                  className="inline-flex min-h-9 items-center rounded-lg border border-red-400/30 bg-[color:var(--theme-surface-inset)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]"
+                >
+                  Resolve billing owner
+                </button>
+              ) : null}
+              {errorDiagnosis?.vehicleId && !isMobileBase ? (
+                <Link
+                  href={`/vehicles/${encodeURIComponent(errorDiagnosis.vehicleId)}`}
+                  className={recoveryLinkClass}
+                >
+                  Open vehicle
+                </Link>
+              ) : null}
+              {errorDiagnosis?.fleetCustomerId ? (
+                <Link
+                  href={`${customerBasePath}/${encodeURIComponent(errorDiagnosis.fleetCustomerId)}`}
+                  className={recoveryLinkClass}
+                >
+                  Open Fleet billing account
+                </Link>
+              ) : null}
+            </div>
           </div>
         ) : null}
 

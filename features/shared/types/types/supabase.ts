@@ -29562,6 +29562,20 @@ export type Database = {
         Args: { p_quote_line_id: string }
         Returns: Json
       }
+      diagnose_fleet_service_request_handoff: {
+        Args: { p_service_request_id: string }
+        Returns: {
+          cause: string
+          fleet_customer_id: string
+          fleet_customer_name: string
+          fleet_id: string
+          fleet_name: string
+          unit_label: string
+          vehicle_customer_id: string
+          vehicle_customer_name: string
+          vehicle_id: string
+        }[]
+      }
       dispatch_actor_profile_id: {
         Args: { p_actor_user_id: string; p_shop_id: string }
         Returns: string

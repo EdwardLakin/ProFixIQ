@@ -12,6 +12,7 @@ export type FleetServiceRequestFailureReason =
   | "vehicle_unavailable"
   | "enrollment_missing"
   | "stale_conflict"
+  | "lines_invalid"
   | "unexpected";
 
 export type FleetServiceRequestFailure = {
