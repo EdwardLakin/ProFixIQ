@@ -32,6 +32,20 @@ describe("pre-approval Parts Request inventory selection", () => {
     );
   });
 
+  it("persists inventory choices on unapproved requests without materializing a work-order part", () => {
+    expect(inventoryRoute).toContain("RELEASED_REQUEST_STATUSES");
+    expect(inventoryRoute).toContain("|| !requestReleased");
+    expect(inventoryRoute.indexOf("!requestReleased")).toBeLessThan(
+      inventoryRoute.indexOf('"parts_attach_inventory_to_request_item_atomic"'),
+    );
+    expect(inventoryRoute).toContain("PARTS_APPROVAL_REQUIRED:");
+  });
+
+  it("can sync the row description from the picked inventory part", () => {
+    expect(inventoryRoute).toContain("body.syncDescription");
+    expect(inventoryRoute).toContain("description: clean(part.name)");
+  });
+
   it("keeps the operational attach RPC for materialized work-order lines", () => {
     expect(inventoryRoute).toContain('"parts_attach_inventory_to_request_item_atomic"');
     expect(inventoryRoute).toContain("PARTS_REQUEST_ALREADY_MAPPED");

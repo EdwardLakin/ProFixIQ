@@ -10,7 +10,7 @@ type PartRow = DB["public"]["Tables"]["parts"]["Row"] & {
 };
 
 type Body =
-  | { mode: "attach"; partId: string }
+  | { mode: "attach"; partId: string; syncDescription?: boolean }
   | {
       mode: "create";
       name: string;
@@ -41,7 +41,21 @@ const ATTACH_ERROR_MESSAGES: Record<string, string> = {
     "This part is already on a purchase order line for a different inventory item. Remove it from the PO before changing the match.",
   PARTS_REQUEST_ALREADY_MAPPED:
     "This line has already been ordered or received against its current part and can no longer be re-matched.",
+  PARTS_APPROVAL_REQUIRED:
+    "This request has not been approved yet, so the part could not be added to the work order. Save the parts quote and get approval first.",
 };
+
+// Request statuses after the approval boundary (mirrors
+// parts_request_is_operationally_released in the lifecycle migration). Before
+// that point no canonical work-order part may be materialized.
+const RELEASED_REQUEST_STATUSES = new Set([
+  "approved",
+  "partially_ordered",
+  "partially_consumed",
+  "partially_returned",
+  "fulfilled",
+  "returned",
+]);
 
 function isUuid(value: unknown): value is string {
   return typeof value === "string" &&
@@ -94,7 +108,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
   const { data: item, error: itemError } = await access.supabase
     .from("part_request_items")
     .select(
-      "id,shop_id,part_id,requested_manufacturer,quote_line_id,work_order_line_id,qty,qty_requested,quoted_price,unit_price",
+      "id,shop_id,request_id,part_id,requested_manufacturer,quote_line_id,work_order_line_id,qty,qty_requested,quoted_price,unit_price",
     )
     .eq("id", itemId)
     .eq("shop_id", access.profile.shop_id)
@@ -123,14 +137,30 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
       return NextResponse.json({ ok: false, error: "Inventory part not found." }, { status: 404 });
     }
 
-    // Quote-origin items are intentionally not linked to a work-order line until
-    // approval materializes the repair. Persist the inventory choice directly on
-    // the quote item instead of invoking the operational attach RPC, which must
-    // create a work_order_part and therefore requires a materialized line.
-    if (isUuid(item.quote_line_id) && !isUuid(item.work_order_line_id)) {
+    const { data: parentRequest, error: parentRequestError } = await access.supabase
+      .from("part_requests")
+      .select("status")
+      .eq("id", item.request_id)
+      .eq("shop_id", access.profile.shop_id)
+      .maybeSingle();
+    if (parentRequestError) {
+      return NextResponse.json({ ok: false, error: parentRequestError.message }, { status: 500 });
+    }
+    const requestReleased = RELEASED_REQUEST_STATUSES.has(
+      String(parentRequest?.status ?? "").toLowerCase(),
+    );
+
+    // Quote-origin items, and any item on a request that has not crossed the
+    // approval boundary, are intentionally not materialized as a work-order part
+    // yet. Persist the inventory choice directly on the request item instead of
+    // invoking the operational attach RPC, which creates a work-order part and is
+    // rejected with PARTS_APPROVAL_REQUIRED until the request is approved.
+    const quoteOriginUnlinked =
+      isUuid(item.quote_line_id) && !isUuid(item.work_order_line_id);
+    if ((isUuid(item.quote_line_id) && !isUuid(item.work_order_line_id)) || !requestReleased) {
       const selectedSellPrice =
         item.quoted_price ?? item.unit_price ?? part.price ?? part.default_price ?? null;
-      const { data: updatedItem, error: quoteAttachError } = await access.supabase
+      let attachUpdate = access.supabase
         .from("part_request_items")
         .update({
           part_id: part.id,
@@ -138,6 +168,9 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
             clean(part.part_number) ?? clean(part.sku),
           requested_manufacturer:
             clean(part.manufacturer) ?? clean(part.supplier),
+          ...(body.syncDescription && clean(part.name)
+            ? { description: clean(part.name) }
+            : {}),
           ...(selectedSellPrice == null
             ? {}
             : {
@@ -147,9 +180,13 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
           updated_at: new Date().toISOString(),
         })
         .eq("id", itemId)
-        .eq("shop_id", access.profile.shop_id)
-        .eq("quote_line_id", item.quote_line_id)
-        .is("work_order_line_id", null)
+        .eq("shop_id", access.profile.shop_id);
+      if (quoteOriginUnlinked) {
+        attachUpdate = attachUpdate
+          .eq("quote_line_id", item.quote_line_id as string)
+          .is("work_order_line_id", null);
+      }
+      const { data: updatedItem, error: quoteAttachError } = await attachUpdate
         .select("*")
         .maybeSingle();
 
@@ -164,19 +201,21 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
         );
       }
 
-      const sync = await syncQuoteLinePartsStatus(access.supabase, {
-        shopId: access.profile.shop_id,
-        quoteLineId: item.quote_line_id,
-      });
-      if (!sync.ok) {
-        return NextResponse.json(
-          {
-            ok: false,
-            code: "PARTS_QUOTE_SYNC_FAILED",
-            error: sync.error ?? "Inventory selection persisted but quote sync failed.",
-          },
-          { status: 409 },
-        );
+      if (isUuid(item.quote_line_id)) {
+        const sync = await syncQuoteLinePartsStatus(access.supabase, {
+          shopId: access.profile.shop_id,
+          quoteLineId: item.quote_line_id,
+        });
+        if (!sync.ok) {
+          return NextResponse.json(
+            {
+              ok: false,
+              code: "PARTS_QUOTE_SYNC_FAILED",
+              error: sync.error ?? "Inventory selection persisted but quote sync failed.",
+            },
+            { status: 409 },
+          );
+        }
       }
 
       return NextResponse.json({
@@ -207,9 +246,20 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
         : "Inventory selection did not persist.";
       return NextResponse.json({ ok: false, code, error }, { status: 409 });
     }
+    let attachedItem: unknown = attachResult.item ?? null;
+    if (body.syncDescription && clean(part.name)) {
+      const { data: describedItem } = await access.supabase
+        .from("part_request_items")
+        .update({ description: clean(part.name), updated_at: new Date().toISOString() })
+        .eq("id", itemId)
+        .eq("shop_id", access.profile.shop_id)
+        .select("*")
+        .maybeSingle();
+      if (describedItem) attachedItem = describedItem;
+    }
     return NextResponse.json({
       ok: true,
-      item: attachResult.item ?? null,
+      item: attachedItem,
       partId: attachResult.part_id,
       part,
     });

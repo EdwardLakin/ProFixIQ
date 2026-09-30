@@ -238,45 +238,85 @@ export function PartsRequestWorkbench({
   async function attachInventoryPart(
     itemId: string,
     partId: string,
-    options?: { warningAccepted?: boolean },
+    options?: {
+      warningAccepted?: boolean;
+      // Inline pick only: replace the row description with this label.
+      syncDescription?: string;
+    },
   ): Promise<void> {
+    const previous = items.find((item) => item.id === itemId) ?? null;
+    const syncedDescription = options?.syncDescription?.trim() || null;
+
     setItems((current) =>
-      current.map((item) => (item.id === itemId ? { ...item, partId } : item)),
+      current.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              partId,
+              ...(syncedDescription ? { description: syncedDescription } : {}),
+            }
+          : item,
+      ),
     );
 
-    await onResetConflictOverride?.(itemId);
+    try {
+      await onResetConflictOverride?.(itemId);
 
-    const updated = await onAttachInventory?.({
-      itemId,
-      partId,
-      warningAccepted: options?.warningAccepted,
-    });
+      const updated = await onAttachInventory?.({
+        itemId,
+        partId,
+        warningAccepted: options?.warningAccepted,
+        syncDescription: syncedDescription != null ? true : undefined,
+      });
 
-    if (updated) {
+      if (updated) {
+        setItems((current) =>
+          current.map((item) =>
+            item.id === itemId
+              ? {
+                  ...item,
+                  ...updated,
+                  // The server row only carries the last *saved* description, so
+                  // never let it clobber what the user typed or just picked.
+                  description: syncedDescription
+                    ? updated.description?.trim() || syncedDescription
+                    : item.description,
+                  partId: updated.partId ?? partId,
+                  addedToWorkOrder: updated.addedToWorkOrder ?? item.addedToWorkOrder ?? false,
+                }
+              : item,
+          ),
+        );
+      }
+    } catch (error) {
+      // The attach did not persist, so do not leave the row looking linked.
       setItems((current) =>
         current.map((item) =>
           item.id === itemId
             ? {
                 ...item,
-                ...updated,
-                partId: updated.partId ?? partId,
-                addedToWorkOrder: updated.addedToWorkOrder ?? item.addedToWorkOrder ?? false,
+                partId: previous?.partId ?? null,
+                description: previous?.description ?? item.description,
               }
             : item,
         ),
       );
+      throw error;
     }
   }
 
   // Inline combobox selection: the user explicitly picked a suggested
   // inventory match while typing in Description / Part # / Manufacturer.
   // This is never automatic — it only fires from a deliberate click/select.
+  // Picking a match also fills the Description with the inventory part name.
   async function selectInventoryMatch(
     itemId: string,
     result: PartsRequestInventoryResult,
   ): Promise<void> {
     try {
-      await attachInventoryPart(itemId, result.value);
+      await attachInventoryPart(itemId, result.value, {
+        syncDescription: result.label,
+      });
       toast.success(`Linked to ${result.label}.`);
     } catch (error) {
       toast.error(

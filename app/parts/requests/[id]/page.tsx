@@ -2524,7 +2524,11 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                           const res = await fetch(`/api/parts/requests/items/${input.itemId}/inventory`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ mode: "attach", partId: input.partId }),
+                            body: JSON.stringify({
+                              mode: "attach",
+                              partId: input.partId,
+                              syncDescription: input.syncDescription === true,
+                            }),
                           });
                           const body = await res.json().catch(() => null) as { ok?: boolean; error?: string; item?: ItemRow } | null;
                           if (!res.ok || !body?.ok) {
