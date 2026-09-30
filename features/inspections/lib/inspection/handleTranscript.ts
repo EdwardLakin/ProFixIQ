@@ -76,10 +76,10 @@ function extractAxlePhrases(text: string): string[] {
 }
 
 const SYNONYMS: Array<{ re: RegExp; tokens: string[] }> = [
-  { re: /\b(left\s*front|lf)\b/i, tokens: ["lf", "left front"] },
-  { re: /\b(right\s*front|rf)\b/i, tokens: ["rf", "right front"] },
-  { re: /\b(left\s*rear|lr)\b/i, tokens: ["lr", "left rear"] },
-  { re: /\b(right\s*rear|rr)\b/i, tokens: ["rr", "right rear"] },
+  { re: /\b(left\s*front|front\s*left|lf)\b/i, tokens: ["lf", "left front"] },
+  { re: /\b(right\s*front|front\s*right|rf)\b/i, tokens: ["rf", "right front"] },
+  { re: /\b(left\s*rear|rear\s*left|lr)\b/i, tokens: ["lr", "left rear"] },
+  { re: /\b(right\s*rear|rear\s*right|rr)\b/i, tokens: ["rr", "right rear"] },
 
   { re: /\b(front)\b/i, tokens: ["front"] },
   { re: /\b(rear)\b/i, tokens: ["rear"] },

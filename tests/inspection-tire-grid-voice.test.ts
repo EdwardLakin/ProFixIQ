@@ -48,3 +48,18 @@ describe("tire grid voice: corner resolution", () => {
     );
   });
 });
+
+describe("tire grid voice: corner never substitutes for the item", () => {
+  vi.stubGlobal("fetch", vi.fn(async () => ({ ok: false, status: 500 })));
+
+  it("does not land a non-tire finding on a tire corner item", async () => {
+    const items = [...hydraulic, "Shock absorbers (leaks/bushings)"];
+    const cmds = await interpretCommand("right rear shock leaking fail", { items });
+    const item = (cmds[0] as { item?: string } | undefined)?.item;
+    expect(item ?? "").not.toMatch(/^R?[LR][RF]? Tire|^RR /);
+  });
+
+  it("does not resolve a bare corner with no item words", async () => {
+    expect(await itemFor("right rear", hydraulic)).toBeUndefined();
+  });
+});

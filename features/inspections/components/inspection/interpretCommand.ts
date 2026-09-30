@@ -270,17 +270,18 @@ function scoreItemLabel(label: string, hint: string): number {
   // never a candidate, however well the rest of the words line up.
   const hintCorner = cornerOf(hint);
   const labelCorner = cornerOf(label);
-  if (hintCorner && labelCorner) {
-    if (hintCorner !== labelCorner) return 0;
-    score += 90;
-  }
+  if (hintCorner && labelCorner && hintCorner !== labelCorner) return 0;
 
   const hintSide = innerOuterOf(hint);
   const labelSide = innerOuterOf(label);
-  if (hintSide && labelSide) {
-    if (hintSide !== labelSide) return 0;
-    score += 30;
-  }
+  if (hintSide && labelSide && hintSide !== labelSide) return 0;
+
+  // Score contributed by words that say *what* is being measured (tread,
+  // pressure, shock...), as opposed to *where* (left/front/steer/corner
+  // codes). A corner only disambiguates between items that already match on
+  // substance: "right rear shock leaking" must not land on "RR Tire
+  // Pressure" just because both name the right rear.
+  let semantic = 0;
 
   for (const tok of ht) {
     if (tok === "lf" || tok === "rf" || tok === "lr" || tok === "rr") {
@@ -321,24 +322,38 @@ function scoreItemLabel(label: string, hint: string): number {
       tok === "hose" ||
       tok === "line"
     ) {
-      if (norm(label).includes(tok)) score += 22;
+      if (norm(label).includes(tok)) {
+        score += 22;
+        semantic += 22;
+      }
       continue;
     }
 
-    if (tok.length >= 3 && norm(label).includes(tok)) score += 4;
+    if (tok.length >= 3 && norm(label).includes(tok)) {
+      score += 4;
+      semantic += 4;
+    }
   }
 
   const h = norm(hint);
   const l = norm(label);
   if (h.includes("tread") && h.includes("depth") && l.includes("tread") && l.includes("depth")) {
     score += 20;
+    semantic += 20;
   }
   if (h.includes("slack") && h.includes("adjuster") && l.includes("slack") && l.includes("adjuster")) {
     score += 30;
+    semantic += 30;
   }
   if (h.includes("brake chamber") && l.includes("chamber")) {
     score += 28;
+    semantic += 28;
   }
+
+  if (hintCorner && semantic === 0) return 0;
+  if (hintCorner && labelCorner) score += 90;
+  if (hintSide && labelSide) score += 30;
+
 
   return score;
 }
