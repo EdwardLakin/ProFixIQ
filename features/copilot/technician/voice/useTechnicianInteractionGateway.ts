@@ -728,6 +728,18 @@ export function useTechnicianInteractionGateway({
     }
   }, [modeActive]);
 
+  // The caller closing the CoPilot (autoStart true -> false) cancels a pending
+  // resume: preemption already made `active` false, so the shell's own
+  // "stop if active" close path would not, and the mic would otherwise reopen
+  // behind a closed dialog once inspection voice lets go.
+  const prevAutoStartRef = useRef(autoStart);
+  useEffect(() => {
+    if (prevAutoStartRef.current && !autoStart) {
+      resumeAfterInspectionRef.current = false;
+    }
+    prevAutoStartRef.current = autoStart;
+  }, [autoStart]);
+
   useEffect(() => {
     if (inspectionHoldsMic || !resumeAfterInspectionRef.current) return;
     resumeAfterInspectionRef.current = false;
