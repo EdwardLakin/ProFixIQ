@@ -1,32 +1,12 @@
--- Every shop needs at least one stock location so receiving and inventory
--- movements work immediately. Existing locations and their stock history are
--- preserved; only shops without MAIN receive the default row.
-
-create or replace function private.profixiq_seed_main_stock_location()
-returns trigger
-language plpgsql
-security definer
-set search_path = pg_catalog, public
-as $$
-begin
-  insert into public.stock_locations (shop_id, code, name)
-  values (new.id, 'MAIN', 'Main Stock')
-  on conflict (shop_id, code) do nothing;
-
-  return new;
-end;
-$$;
-
-revoke all privileges on function private.profixiq_seed_main_stock_location()
-  from public, anon, authenticated, service_role;
-
-drop trigger if exists shops_seed_main_stock_location on public.shops;
-create trigger shops_seed_main_stock_location
-after insert on public.shops
-for each row
-execute function private.profixiq_seed_main_stock_location();
-
+-- Existing stock history stays attached to its current locations. Add MAIN only
+-- for shops that do not already have a case-insensitive MAIN location.
 insert into public.stock_locations (shop_id, code, name)
 select shop.id, 'MAIN', 'Main Stock'
 from public.shops as shop
+where not exists (
+  select 1
+  from public.stock_locations as location
+  where location.shop_id = shop.id
+    and upper(trim(coalesce(location.code, ''))) = 'MAIN'
+)
 on conflict (shop_id, code) do nothing;
