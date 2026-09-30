@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import {
   getOwnerPinCookieFromRequest,
+  isOwnerPinTokenCurrent,
   OWNER_PIN_PURPOSES,
   type OwnerPinPurpose,
   setOwnerPinVerifiedCookie,
@@ -38,8 +39,10 @@ async function loadOwnerAdminProfile(
   supabase: ReturnType<typeof createServerSupabaseRoute>,
   userId: string,
 ) {
-  const { profile: resolvedProfile } =
-    await resolveAuthenticatedStaffProfile(supabase, userId);
+  const { profile: resolvedProfile } = await resolveAuthenticatedStaffProfile(
+    supabase,
+    userId,
+  );
   if (!resolvedProfile) return null;
 
   const { data: completion } = await supabase
@@ -49,7 +52,9 @@ async function loadOwnerAdminProfile(
     .maybeSingle();
 
   const profile = { ...resolvedProfile, ...completion };
-  const role = String(profile.role ?? "").trim().toLowerCase();
+  const role = String(profile.role ?? "")
+    .trim()
+    .toLowerCase();
   if (role !== "owner" && role !== "admin") return null;
   return profile;
 }
@@ -85,6 +90,15 @@ export async function GET(req: Request) {
       claims.shop_id !== profile.shop_id ||
       !SETTINGS_PURPOSES.has(claims.purpose)
     ) {
+      return noStoreJson({ ok: true, verified: false });
+    }
+
+    const { data: shop, error: shopErr } = await supabase
+      .from("shops")
+      .select("owner_pin_hash")
+      .eq("id", profile.shop_id)
+      .single();
+    if (shopErr || !isOwnerPinTokenCurrent(claims, shop?.owner_pin_hash)) {
       return noStoreJson({ ok: true, verified: false });
     }
 
@@ -188,6 +202,7 @@ export async function POST(req: Request) {
       userId: user.id,
       shopId,
       purpose,
+      ownerPinHash: shop.owner_pin_hash,
     });
   } catch (err) {
     console.error("owner-pin.verify error", err);

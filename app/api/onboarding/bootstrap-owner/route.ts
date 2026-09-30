@@ -61,7 +61,7 @@ async function verifyExistingOwnerPin(args: {
   userId: string;
   shopId: string;
   pin: string;
-}): Promise<boolean> {
+}): Promise<string | null> {
   const admin = createAdminSupabase();
   const { data: shop, error } = await admin
     .from("shops")
@@ -70,10 +70,12 @@ async function verifyExistingOwnerPin(args: {
     .maybeSingle();
 
   if (error || !shop || shop.owner_id !== args.userId || !shop.owner_pin_hash) {
-    return false;
+    return null;
   }
 
-  return verifyOwnerPin(args.pin, shop.owner_pin_hash);
+  return (await verifyOwnerPin(args.pin, shop.owner_pin_hash))
+    ? shop.owner_pin_hash
+    : null;
 }
 
 async function inspectOwnedShopRecovery(
@@ -236,6 +238,7 @@ function ambiguousOwnerRecovery() {
 function successfulBootstrapResponse(args: {
   userId: string;
   shopId: string;
+  ownerPinHash: string;
   replayed?: boolean;
 }) {
   const response = NextResponse.json({
@@ -248,6 +251,7 @@ function successfulBootstrapResponse(args: {
     userId: args.userId,
     shopId: args.shopId,
     purpose: OWNER_PIN_PURPOSES.PRIVILEGED,
+    ownerPinHash: args.ownerPinHash,
   });
 }
 
@@ -306,12 +310,12 @@ export async function POST(request: Request) {
       profile.role === "owner" &&
       profile.completed_onboarding
     ) {
-      const pinVerified = await verifyExistingOwnerPin({
+      const ownerPinHash = await verifyExistingOwnerPin({
         userId: user.id,
         shopId: profile.shop_id,
         pin,
       });
-      if (!pinVerified) return invalidExistingOwnerPin();
+      if (!ownerPinHash) return invalidExistingOwnerPin();
 
       const billing = await reconcileAcquiredBilling({
         userId: user.id,
@@ -328,6 +332,7 @@ export async function POST(request: Request) {
       return successfulBootstrapResponse({
         userId: user.id,
         shopId: profile.shop_id,
+        ownerPinHash,
         replayed: true,
       });
     }
@@ -337,12 +342,12 @@ export async function POST(request: Request) {
       profile.role === "owner" &&
       !profile.completed_onboarding
     ) {
-      const pinVerified = await verifyExistingOwnerPin({
+      const ownerPinHash = await verifyExistingOwnerPin({
         userId: user.id,
         shopId: profile.shop_id,
         pin,
       });
-      if (!pinVerified) return invalidExistingOwnerPin();
+      if (!ownerPinHash) return invalidExistingOwnerPin();
 
       const billing = await reconcileAcquiredBilling({
         userId: user.id,
@@ -359,6 +364,7 @@ export async function POST(request: Request) {
       return successfulBootstrapResponse({
         userId: user.id,
         shopId: profile.shop_id,
+        ownerPinHash,
         replayed: true,
       });
     }
@@ -456,7 +462,7 @@ export async function POST(request: Request) {
       return pendingStateUnavailable(recovery.reason);
     }
 
-    const ownerPinHash = await hashOwnerPin(pin);
+    const pendingOwnerPinHash = await hashOwnerPin(pin);
     const { data: rows, error: bootstrapError } = await supabase.rpc(
       "bootstrap_owner_atomic",
       {
@@ -468,7 +474,7 @@ export async function POST(request: Request) {
         p_postal_code: postalCode,
         p_country: country,
         p_timezone: timezone,
-        p_owner_pin_hash: `${OWNER_BOOTSTRAP_PENDING_MARKER}${ownerPinHash}`,
+        p_owner_pin_hash: `${OWNER_BOOTSTRAP_PENDING_MARKER}${pendingOwnerPinHash}`,
       },
     );
     const shopId = readBootstrapShopId(rows);
@@ -492,12 +498,12 @@ export async function POST(request: Request) {
     // PIN before this request may touch billing or privileged state. Do not write
     // completed_onboarding=false again here: a duplicate request must never
     // reopen an owner another request has already finalized successfully.
-    const persistedPinVerified = await verifyExistingOwnerPin({
+    const ownerPinHash = await verifyExistingOwnerPin({
       userId: user.id,
       shopId,
       pin,
     });
-    if (!persistedPinVerified) return invalidExistingOwnerPin();
+    if (!ownerPinHash) return invalidExistingOwnerPin();
 
     const billing = await reconcileAcquiredBilling({ userId: user.id, shopId });
     if (!billing.ok) return billingUnavailable(billing.reason);
@@ -508,7 +514,11 @@ export async function POST(request: Request) {
     });
     if (!finalized.ok) return completionUnavailable(finalized.reason);
 
-    return successfulBootstrapResponse({ userId: user.id, shopId });
+    return successfulBootstrapResponse({
+      userId: user.id,
+      shopId,
+      ownerPinHash,
+    });
   } catch (error) {
     console.error("owner onboarding bootstrap unexpected failure", {
       name: error instanceof Error ? error.name : "UnknownError",
