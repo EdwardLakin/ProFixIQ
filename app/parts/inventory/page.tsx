@@ -21,7 +21,7 @@ import { GuidedImportCardLayout } from "@/features/shared/components/import/Guid
 import { GuidedImportFooterActions } from "@/features/shared/components/import/GuidedImportFooterActions";
 import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 import { loadStockOnHandByPartId } from "@/features/parts/lib/stock-on-hand";
-import { createLocation, ensureInventoryMainLocation } from "@/features/parts/lib/locations";
+import { createInventoryLocation, ensureInventoryMainLocation } from "@/features/parts/lib/locations";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -671,7 +671,7 @@ export default function InventoryPage(): JSX.Element {
     const locRows = (data as StockLoc[]) ?? [];
     setLocs(locRows);
     const defaultLocation =
-      locRows.find((location) => (location.code ?? "").toUpperCase() === "MAIN") ??
+      locRows.find((location) => (location.code ?? "").trim().toUpperCase() === "MAIN") ??
       locRows[0];
     if (defaultLocation?.id) {
       setInitLoc((current) => current || defaultLocation.id);
@@ -688,7 +688,7 @@ export default function InventoryPage(): JSX.Element {
     setLocationSaving(true);
     setLocationSaveError(null);
     try {
-      const created = (await createLocation({ shop_id: shopId, code, name })) as StockLoc;
+      const created = (await createInventoryLocation({ shop_id: shopId, code, name })) as StockLoc;
       setLocsError(null);
       setLocs((current) => [...current.filter((location) => location.id !== created.id), created].sort((a, b) => (a.code ?? "").localeCompare(b.code ?? "")));
       setInitLoc((current) => current || created.id);
