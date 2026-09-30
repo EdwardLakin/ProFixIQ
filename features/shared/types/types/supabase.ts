@@ -31888,6 +31888,7 @@ export type Database = {
       shop_id_for: { Args: { uid: string }; Returns: string }
       shop_role: { Args: { shop_id: string }; Returns: string }
       shop_role_v2: { Args: { shop_id: string }; Returns: string }
+      shop_staff_user_count: { Args: { p_shop_id: string }; Returns: number }
       shop_users_actor_can_manage: {
         Args: { target_shop_id: string }
         Returns: boolean
