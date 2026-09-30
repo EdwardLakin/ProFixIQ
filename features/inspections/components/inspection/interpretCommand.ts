@@ -233,6 +233,31 @@ function localParseUtterance(raw: string): LocalParse | null {
   return null;
 }
 
+type Corner = "lf" | "rf" | "lr" | "rr";
+
+/**
+ * Which tire corner a phrase names, whether spoken ("right front", "front
+ * left") or as a hydraulic grid label code ("RF Tread Depth"). Without this,
+ * "right front tread depth" shares no token with "RF Tread Depth" beyond
+ * "tread depth", so every corner scored the same and the first one (left
+ * front) always won.
+ */
+function cornerOf(text: string): Corner | null {
+  const t = norm(text);
+  if (/\blf\b|\b(left\s+front|front\s+left)\b/.test(t)) return "lf";
+  if (/\brf\b|\b(right\s+front|front\s+right)\b/.test(t)) return "rf";
+  if (/\blr\b|\b(left\s+rear|rear\s+left)\b/.test(t)) return "lr";
+  if (/\brr\b|\b(right\s+rear|rear\s+right)\b/.test(t)) return "rr";
+  return null;
+}
+
+function innerOuterOf(text: string): "inner" | "outer" | null {
+  const t = norm(text);
+  if (/\binner\b/.test(t)) return "inner";
+  if (/\bouter\b/.test(t)) return "outer";
+  return null;
+}
+
 function scoreItemLabel(label: string, hint: string): number {
   const lt = tokens(label);
   const ht = tokens(hint);
@@ -240,6 +265,23 @@ function scoreItemLabel(label: string, hint: string): number {
 
   const labelSet = new Set(lt);
   let score = 0;
+
+  // A named corner must match the label's corner; a different corner is
+  // never a candidate, however well the rest of the words line up.
+  const hintCorner = cornerOf(hint);
+  const labelCorner = cornerOf(label);
+  if (hintCorner && labelCorner && hintCorner !== labelCorner) return 0;
+
+  const hintSide = innerOuterOf(hint);
+  const labelSide = innerOuterOf(label);
+  if (hintSide && labelSide && hintSide !== labelSide) return 0;
+
+  // Score contributed by words that say *what* is being measured (tread,
+  // pressure, shock...), as opposed to *where* (left/front/steer/corner
+  // codes). A corner only disambiguates between items that already match on
+  // substance: "right rear shock leaking" must not land on "RR Tire
+  // Pressure" just because both name the right rear.
+  let semantic = 0;
 
   for (const tok of ht) {
     if (tok === "lf" || tok === "rf" || tok === "lr" || tok === "rr") {
@@ -280,24 +322,38 @@ function scoreItemLabel(label: string, hint: string): number {
       tok === "hose" ||
       tok === "line"
     ) {
-      if (norm(label).includes(tok)) score += 22;
+      if (norm(label).includes(tok)) {
+        score += 22;
+        semantic += 22;
+      }
       continue;
     }
 
-    if (tok.length >= 3 && norm(label).includes(tok)) score += 4;
+    if (tok.length >= 3 && norm(label).includes(tok)) {
+      score += 4;
+      semantic += 4;
+    }
   }
 
   const h = norm(hint);
   const l = norm(label);
   if (h.includes("tread") && h.includes("depth") && l.includes("tread") && l.includes("depth")) {
     score += 20;
+    semantic += 20;
   }
   if (h.includes("slack") && h.includes("adjuster") && l.includes("slack") && l.includes("adjuster")) {
     score += 30;
+    semantic += 30;
   }
   if (h.includes("brake chamber") && l.includes("chamber")) {
     score += 28;
+    semantic += 28;
   }
+
+  if (hintCorner && semantic === 0) return 0;
+  if (hintCorner && labelCorner) score += 90;
+  if (hintSide && labelSide) score += 30;
+
 
   return score;
 }
