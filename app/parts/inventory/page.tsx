@@ -21,6 +21,7 @@ import { GuidedImportCardLayout } from "@/features/shared/components/import/Guid
 import { GuidedImportFooterActions } from "@/features/shared/components/import/GuidedImportFooterActions";
 import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 import { loadStockOnHandByPartId } from "@/features/parts/lib/stock-on-hand";
+import { createInventoryLocation, ensureInventoryMainLocation } from "@/features/parts/lib/locations";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -426,6 +427,12 @@ export default function InventoryPage(): JSX.Element {
 
   // stock locations
   const [locs, setLocs] = useState<StockLoc[]>([]);
+  const [locsError, setLocsError] = useState<string | null>(null);
+  const [locationsOpen, setLocationsOpen] = useState(false);
+  const [locationCode, setLocationCode] = useState("");
+  const [locationName, setLocationName] = useState("");
+  const [locationSaving, setLocationSaving] = useState(false);
+  const [locationSaveError, setLocationSaveError] = useState<string | null>(null);
 
   // on-hand map: partId -> total qty
   const [onHand, setOnHand] = useState<Record<string, number>>({});
@@ -646,6 +653,56 @@ export default function InventoryPage(): JSX.Element {
     [supabase, shopId, locs],
   );
 
+  const loadStockLocations = useCallback(async (sid: string) => {
+    setLocsError(null);
+    await ensureInventoryMainLocation();
+    const { data, error } = await supabase
+      .from("stock_locations")
+      .select("*")
+      .eq("shop_id", sid)
+      .order("code");
+
+    if (error) {
+      setLocs([]);
+      setLocsError(error.message || "Stock locations could not be loaded.");
+      return;
+    }
+
+    const locRows = (data as StockLoc[]) ?? [];
+    setLocs(locRows);
+    const defaultLocation =
+      locRows.find((location) => (location.code ?? "").trim().toUpperCase() === "MAIN") ??
+      locRows[0];
+    if (defaultLocation?.id) {
+      setInitLoc((current) => current || defaultLocation.id);
+      setRecvLoc((current) => current || defaultLocation.id);
+      setCsvDefaultLoc((current) => current || defaultLocation.id);
+    }
+  }, [supabase]);
+
+  const createStockLocation = async () => {
+    const code = locationCode.trim().toUpperCase();
+    const name = locationName.trim();
+    if (!shopId || !code || !name || locationSaving) return;
+
+    setLocationSaving(true);
+    setLocationSaveError(null);
+    try {
+      const created = (await createInventoryLocation({ shop_id: shopId, code, name })) as StockLoc;
+      setLocsError(null);
+      setLocs((current) => [...current.filter((location) => location.id !== created.id), created].sort((a, b) => (a.code ?? "").localeCompare(b.code ?? "")));
+      setInitLoc((current) => current || created.id);
+      setRecvLoc((current) => current || created.id);
+      setCsvDefaultLoc((current) => current || created.id);
+      setLocationCode("");
+      setLocationName("");
+    } catch (error) {
+      setLocationSaveError(errMsg(error));
+    } finally {
+      setLocationSaving(false);
+    }
+  };
+
   /* boot */
   useEffect(() => {
     (async () => {
@@ -665,30 +722,11 @@ export default function InventoryPage(): JSX.Element {
       setShopId(sid);
       if (!sid) return;
 
-      const { data: l } = await supabase
-        .from("stock_locations")
-        .select("*")
-        .eq("shop_id", sid)
-        .order("code");
-
-      const locRows = (l as StockLoc[]) ?? [];
-      setLocs(locRows);
-
-      const main = locRows.find((x) => (x.code ?? "").toUpperCase() === "MAIN");
-      if (main) {
-        setInitLoc(main.id);
-        setRecvLoc(main.id);
-        setCsvDefaultLoc(main.id);
-      } else if (locRows[0]?.id) {
-        setInitLoc(locRows[0].id);
-        setRecvLoc(locRows[0].id);
-        setCsvDefaultLoc(locRows[0].id);
-      }
-
+      await loadStockLocations(sid);
       await load(sid);
     })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [supabase, load]);
+  }, [supabase, load, loadStockLocations]);
 
   /* refetch on search */
   useEffect(() => {
@@ -772,6 +810,11 @@ export default function InventoryPage(): JSX.Element {
 
     setEditOpen(false);
     await load(shopId);
+  };
+
+  const openStockLocations = () => {
+    setLocationSaveError(null);
+    setLocationsOpen(true);
   };
 
   const openReceive = (p: Part) => {
@@ -1032,6 +1075,10 @@ export default function InventoryPage(): JSX.Element {
               <Link href="/assistant?pageType=parts_inventory&pageTitle=Parts%20Inventory&experience=operations" className={btnBlue}>
                 ProFix Operations
               </Link>
+
+              <button className={btnGhost} onClick={openStockLocations} disabled={!shopId}>
+                Stock Locations{locs.length ? ` · ${locs.length}` : ""}
+              </button>
 
               <input
                 className={`${inputBase} w-72`}
@@ -1400,6 +1447,56 @@ export default function InventoryPage(): JSX.Element {
         </div>
       </Modal>
 
+      {/* Stock Locations */}
+      <Modal
+        open={locationsOpen}
+        title="Stock Locations"
+        onClose={() => setLocationsOpen(false)}
+        footer={
+          <div className="flex justify-end">
+            <button className={btnGhost} onClick={() => setLocationsOpen(false)}>
+              Done
+            </button>
+          </div>
+        }
+      >
+        <p className="mb-3 text-sm text-[color:var(--theme-text-secondary)]">
+          Stock locations identify where your shop keeps parts. Use one per stockroom, warehouse, or service truck.
+        </p>
+        {locsError ? (
+          <div role="alert" className="mb-3 rounded-lg border border-red-500/35 bg-red-950/20 p-3 text-sm text-red-200">
+            Locations could not be loaded: {locsError}
+            <button className="ml-2 underline" onClick={() => void loadStockLocations(shopId)}>Try again</button>
+          </div>
+        ) : null}
+        <div className="mb-4 max-h-[45vh] space-y-2 overflow-y-auto">
+          {locs.length ? locs.map((location) => (
+            <div key={location.id} className="flex items-center justify-between rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm">
+              <span className="font-mono text-xs">{location.code}</span>
+              <span className="font-medium">{location.name}</span>
+            </div>
+          )) : !locsError ? (
+            <div className="rounded-lg border border-amber-500/35 bg-amber-950/15 p-3 text-sm text-amber-100">
+              No stock locations yet. Add one below to receive parts.
+            </div>
+          ) : null}
+        </div>
+        <form
+          className="grid gap-3 border-t border-[color:var(--desktop-border)] pt-3 sm:grid-cols-[0.7fr_1.3fr_auto]"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void createStockLocation();
+          }}
+        >
+          <TextField label="Code" value={locationCode} onChange={setLocationCode} placeholder="MAIN, WAREHOUSE, TRUCK-1" />
+          <TextField label="Name" value={locationName} onChange={setLocationName} placeholder="Main Stock" />
+          <button className={btnBlue} type="submit" disabled={locationSaving || !locationCode.trim() || !locationName.trim()}>
+            {locationSaving ? "Saving…" : "Add"}
+          </button>
+        </form>
+        {locationSaveError ? <div role="alert" className="mt-2 text-sm text-red-300">{locationSaveError}</div> : null}
+      </Modal>
+
       {/* Receive Stock */}
       <Modal
         open={recvOpen}
@@ -1425,10 +1522,10 @@ export default function InventoryPage(): JSX.Element {
             label="Location"
             value={recvLoc}
             onChange={setRecvLoc}
-            options={locs.map((l) => ({
+            options={locs.length ? locs.map((l) => ({
               value: l.id,
               label: `${l.code ?? "LOC"} — ${l.name ?? ""}`,
-            }))}
+            })) : [{ value: "", label: locsError ? "Locations failed to load" : "No locations — add one" }]}
           />
           <NumberField
             label="Qty"
@@ -1438,6 +1535,21 @@ export default function InventoryPage(): JSX.Element {
             onChange={(v) => setRecvQty(v === "" ? "" : Math.max(0, v))}
           />
         </div>
+        {!locs.length ? (
+          <div className="mt-3 rounded-lg border border-amber-500/35 bg-amber-950/15 p-3 text-sm text-amber-100">
+            {locsError ? "Stock locations could not be loaded." : "This shop has no stock locations yet."}
+            <button
+              type="button"
+              className="ml-2 font-semibold underline"
+              onClick={() => {
+                setRecvOpen(false);
+                openStockLocations();
+              }}
+            >
+              Set up locations
+            </button>
+          </div>
+        ) : null}
       </Modal>
 
       {/* On-hand detail */}
