@@ -460,6 +460,25 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
     );
   });
 
+  it("keeps the row linked when the attach failed after it was already persisted", async () => {
+    const user = userEvent.setup();
+    const onAttachInventory = vi.fn(async () => {
+      throw Object.assign(new Error("sync failed"), { code: "PARTS_QUOTE_SYNC_FAILED" });
+    });
+
+    render(<PartsRequestWorkbench model={model(null)} onAttachInventory={onAttachInventory} />);
+
+    const descriptionField = screen.getByRole("combobox", {
+      name: /Description for Oil filter/i,
+    });
+    await user.clear(descriptionField);
+    await user.type(descriptionField, "ACD");
+    await user.click(await screen.findByRole("option", { name: /ACDelco Oil Filter/i }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("sync failed"));
+    expect(screen.getByText("Selected: ACDelco Oil Filter")).toBeInTheDocument();
+  });
+
   it("rolls the row back to unlinked when an inline attach fails", async () => {
     const user = userEvent.setup();
     const onAttachInventory = vi.fn(async () => {

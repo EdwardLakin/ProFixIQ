@@ -41,6 +41,14 @@ describe("pre-approval Parts Request inventory selection", () => {
     expect(inventoryRoute).toContain("PARTS_APPROVAL_REQUIRED:");
   });
 
+  it("rejects closed requests, preserves requested identity, and rechecks approval after the direct update", () => {
+    expect(inventoryRoute).toContain("PARTS_REQUEST_NOT_EDITABLE");
+    expect(inventoryRoute).toContain("PRE_APPROVAL_REQUEST_STATUSES");
+    expect(inventoryRoute).toContain("...(quoteOriginUnlinked");
+    expect(inventoryRoute).toContain("return attachViaRpc();");
+    expect(inventoryRoute).toContain("PARTS_DESCRIPTION_SYNC_FAILED");
+  });
+
   it("can sync the row description from the picked inventory part", () => {
     expect(inventoryRoute).toContain("body.syncDescription");
     expect(inventoryRoute).toContain("description: clean(part.name)");

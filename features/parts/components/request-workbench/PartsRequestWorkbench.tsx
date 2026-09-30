@@ -40,6 +40,12 @@ type ActiveModal =
   | { type: "confirmConflict"; itemId: string; partId?: string | null }
   | null;
 
+// Attach failures reported after the inventory selection was already persisted.
+const PARTIAL_ATTACH_ERROR_CODES = new Set([
+  "PARTS_QUOTE_SYNC_FAILED",
+  "PARTS_DESCRIPTION_SYNC_FAILED",
+]);
+
 function canRequestSupplierQuote(item: PartsRequestWorkbenchItem): boolean {
   const status = String(item.status ?? "requested").toLowerCase();
   return (
@@ -278,9 +284,12 @@ export function PartsRequestWorkbench({
                   ...updated,
                   // The server row only carries the last *saved* description, so
                   // never let it clobber what the user typed or just picked.
-                  description: syncedDescription
-                    ? updated.description?.trim() || syncedDescription
-                    : item.description,
+                  // If the user kept typing while the request was in flight,
+                  // their newer text wins over the optimistic selection.
+                  description:
+                    syncedDescription && item.description === syncedDescription
+                      ? updated.description?.trim() || syncedDescription
+                      : item.description,
                   partId: updated.partId ?? partId,
                   addedToWorkOrder: updated.addedToWorkOrder ?? item.addedToWorkOrder ?? false,
                 }
@@ -289,6 +298,12 @@ export function PartsRequestWorkbench({
         );
       }
     } catch (error) {
+      // These failures happen after the attach was already committed, so the
+      // database is linked; keep the row linked and let a reload reconcile.
+      const code = (error as { code?: unknown } | null)?.code;
+      if (typeof code === "string" && PARTIAL_ATTACH_ERROR_CODES.has(code)) {
+        throw error;
+      }
       // The attach did not persist, so do not leave the row looking linked.
       setItems((current) =>
         current.map((item) =>

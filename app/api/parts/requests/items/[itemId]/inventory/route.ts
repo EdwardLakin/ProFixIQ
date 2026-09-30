@@ -41,6 +41,8 @@ const ATTACH_ERROR_MESSAGES: Record<string, string> = {
     "This part is already on a purchase order line for a different inventory item. Remove it from the PO before changing the match.",
   PARTS_REQUEST_ALREADY_MAPPED:
     "This line has already been ordered or received against its current part and can no longer be re-matched.",
+  PARTS_REQUEST_NOT_EDITABLE:
+    "This parts request is closed (cancelled, rejected, or deferred), so its inventory match can no longer be changed.",
   PARTS_APPROVAL_REQUIRED:
     "This request has not been approved yet, so the part could not be added to the work order. Save the parts quote and get approval first.",
 };
@@ -48,6 +50,8 @@ const ATTACH_ERROR_MESSAGES: Record<string, string> = {
 // Request statuses after the approval boundary (mirrors
 // parts_request_is_operationally_released in the lifecycle migration). Before
 // that point no canonical work-order part may be materialized.
+const PRE_APPROVAL_REQUEST_STATUSES = new Set(["requested", "quoted"]);
+
 const RELEASED_REQUEST_STATUSES = new Set([
   "approved",
   "partially_ordered",
@@ -121,6 +125,11 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
   }
 
   if (body.mode === "attach") {
+    // Captured so the closures below keep the narrowed, non-null types.
+    const supabase = access.supabase;
+    const shopId = access.profile.shop_id;
+    const syncDescription = body.syncDescription === true;
+    const requestId = item.request_id;
     if (!isUuid(body.partId)) {
       return NextResponse.json({ ok: false, error: "Invalid partId." }, { status: 400 });
     }
@@ -137,38 +146,63 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
       return NextResponse.json({ ok: false, error: "Inventory part not found." }, { status: 404 });
     }
 
-    const { data: parentRequest, error: parentRequestError } = await access.supabase
-      .from("part_requests")
-      .select("status")
-      .eq("id", item.request_id)
-      .eq("shop_id", access.profile.shop_id)
-      .maybeSingle();
-    if (parentRequestError) {
-      return NextResponse.json({ ok: false, error: parentRequestError.message }, { status: 500 });
+    async function readRequestStatus(): Promise<
+      { status: string } | { error: string }
+    > {
+      const { data, error } = await supabase
+        .from("part_requests")
+        .select("status")
+        .eq("id", requestId)
+        .eq("shop_id", shopId)
+        .maybeSingle();
+      if (error) return { error: error.message };
+      return { status: String(data?.status ?? "").toLowerCase() };
     }
-    const requestReleased = RELEASED_REQUEST_STATUSES.has(
-      String(parentRequest?.status ?? "").toLowerCase(),
-    );
 
-    // Quote-origin items, and any item on a request that has not crossed the
-    // approval boundary, are intentionally not materialized as a work-order part
-    // yet. Persist the inventory choice directly on the request item instead of
-    // invoking the operational attach RPC, which creates a work-order part and is
-    // rejected with PARTS_APPROVAL_REQUIRED until the request is approved.
+    const parentRequest = await readRequestStatus();
+    if ("error" in parentRequest) {
+      return NextResponse.json({ ok: false, error: parentRequest.error }, { status: 500 });
+    }
+    const requestReleased = RELEASED_REQUEST_STATUSES.has(parentRequest.status);
+    const requestPreApproval = PRE_APPROVAL_REQUEST_STATUSES.has(parentRequest.status);
+
+    // Quote-origin items, and any item on a request that is still pre-approval,
+    // are intentionally not materialized as a work-order part yet. Persist the
+    // inventory choice directly on the request item instead of invoking the
+    // operational attach RPC, which creates a work-order part and is rejected
+    // with PARTS_APPROVAL_REQUIRED until the request is approved. Closed
+    // requests (cancelled, rejected, deferred) are never editable here.
     const quoteOriginUnlinked =
       isUuid(item.quote_line_id) && !isUuid(item.work_order_line_id);
+    if (!quoteOriginUnlinked && !requestReleased && !requestPreApproval) {
+      return NextResponse.json(
+        {
+          ok: false,
+          code: "PARTS_REQUEST_NOT_EDITABLE",
+          error: ATTACH_ERROR_MESSAGES.PARTS_REQUEST_NOT_EDITABLE,
+        },
+        { status: 409 },
+      );
+    }
     if ((isUuid(item.quote_line_id) && !isUuid(item.work_order_line_id)) || !requestReleased) {
       const selectedSellPrice =
         item.quoted_price ?? item.unit_price ?? part.price ?? part.default_price ?? null;
-      let attachUpdate = access.supabase
+      let attachUpdate = supabase
         .from("part_request_items")
         .update({
           part_id: part.id,
-          requested_part_number:
-            clean(part.part_number) ?? clean(part.sku),
-          requested_manufacturer:
-            clean(part.manufacturer) ?? clean(part.supplier),
-          ...(body.syncDescription && clean(part.name)
+          // Only quote-origin items adopt the catalog identity; for direct
+          // requests the requested part number / manufacturer stay as the
+          // technician entered them so mismatch review keeps working.
+          ...(quoteOriginUnlinked
+            ? {
+                requested_part_number:
+                  clean(part.part_number) ?? clean(part.sku),
+                requested_manufacturer:
+                  clean(part.manufacturer) ?? clean(part.supplier),
+              }
+            : {}),
+          ...(syncDescription && clean(part.name)
             ? { description: clean(part.name) }
             : {}),
           ...(selectedSellPrice == null
@@ -180,7 +214,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
           updated_at: new Date().toISOString(),
         })
         .eq("id", itemId)
-        .eq("shop_id", access.profile.shop_id);
+        .eq("shop_id", shopId);
       if (quoteOriginUnlinked) {
         attachUpdate = attachUpdate
           .eq("quote_line_id", item.quote_line_id as string)
@@ -203,7 +237,7 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
 
       if (isUuid(item.quote_line_id)) {
         const sync = await syncQuoteLinePartsStatus(access.supabase, {
-          shopId: access.profile.shop_id,
+          shopId: shopId,
           quoteLineId: item.quote_line_id,
         });
         if (!sync.ok) {
@@ -218,6 +252,16 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
         }
       }
 
+      // The request may have been approved between the status read and the
+      // update above. If so, run the operational attach so the canonical
+      // work-order part is created/updated for the newly selected part.
+      if (!quoteOriginUnlinked) {
+        const recheck = await readRequestStatus();
+        if ("status" in recheck && RELEASED_REQUEST_STATUSES.has(recheck.status)) {
+          return attachViaRpc();
+        }
+      }
+
       return NextResponse.json({
         ok: true,
         item: updatedItem,
@@ -226,43 +270,60 @@ export async function POST(req: Request, ctx: { params: Promise<{ itemId: string
       });
     }
 
-    const rpc = access.supabase as unknown as RpcClient;
-    const { data: attachData, error: updateError } = await rpc.rpc(
-      "parts_attach_inventory_to_request_item_atomic",
-      { p_item_id: itemId, p_part_id: part.id },
-    );
-    const attachResult = (
-      Array.isArray(attachData) ? attachData[0] : attachData
-    ) as {
-      item?: unknown;
-      part_id?: string;
-    } | null;
-    if (updateError || !attachResult?.part_id) {
-      const stableError =
-        updateError?.message?.match(/^PARTS_[A-Z0-9_]+$/)?.[0];
-      const code = stableError ?? "PARTS_INVENTORY_ATTACH_FAILED";
-      const error = stableError
-        ? (ATTACH_ERROR_MESSAGES[stableError] ?? stableError)
-        : "Inventory selection did not persist.";
-      return NextResponse.json({ ok: false, code, error }, { status: 409 });
+    return attachViaRpc();
+
+    async function attachViaRpc(): Promise<NextResponse> {
+      const rpc = supabase as unknown as RpcClient;
+      const { data: attachData, error: updateError } = await rpc.rpc(
+        "parts_attach_inventory_to_request_item_atomic",
+        { p_item_id: itemId, p_part_id: part.id },
+      );
+      const attachResult = (
+        Array.isArray(attachData) ? attachData[0] : attachData
+      ) as {
+        item?: unknown;
+        part_id?: string;
+      } | null;
+      if (updateError || !attachResult?.part_id) {
+        const stableError =
+          updateError?.message?.match(/^PARTS_[A-Z0-9_]+$/)?.[0];
+        const code = stableError ?? "PARTS_INVENTORY_ATTACH_FAILED";
+        const error = stableError
+          ? (ATTACH_ERROR_MESSAGES[stableError] ?? stableError)
+          : "Inventory selection did not persist.";
+        return NextResponse.json({ ok: false, code, error }, { status: 409 });
+      }
+      let attachedItem: unknown = attachResult.item ?? null;
+      if (syncDescription && clean(part.name)) {
+        const { data: describedItem, error: describeError } = await supabase
+          .from("part_request_items")
+          .update({ description: clean(part.name), updated_at: new Date().toISOString() })
+          .eq("id", itemId)
+          .eq("shop_id", shopId)
+          .select("*")
+          .maybeSingle();
+        if (describeError || !describedItem) {
+          // The attach already committed; report the partial result so the UI
+          // reconciles instead of showing a success for an unsaved description.
+          return NextResponse.json(
+            {
+              ok: false,
+              code: "PARTS_DESCRIPTION_SYNC_FAILED",
+              error:
+                "Inventory part attached, but the description could not be saved. Reload to see the saved state.",
+            },
+            { status: 409 },
+          );
+        }
+        attachedItem = describedItem;
+      }
+      return NextResponse.json({
+        ok: true,
+        item: attachedItem,
+        partId: attachResult.part_id,
+        part,
+      });
     }
-    let attachedItem: unknown = attachResult.item ?? null;
-    if (body.syncDescription && clean(part.name)) {
-      const { data: describedItem } = await access.supabase
-        .from("part_request_items")
-        .update({ description: clean(part.name), updated_at: new Date().toISOString() })
-        .eq("id", itemId)
-        .eq("shop_id", access.profile.shop_id)
-        .select("*")
-        .maybeSingle();
-      if (describedItem) attachedItem = describedItem;
-    }
-    return NextResponse.json({
-      ok: true,
-      item: attachedItem,
-      partId: attachResult.part_id,
-      part,
-    });
   }
 
   const name = clean(body.name);
