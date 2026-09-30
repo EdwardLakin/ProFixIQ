@@ -129,7 +129,7 @@ type LocalParse =
   | { kind: "section_status"; status: LocalStatus; sectionHint: string };
 
 function extractFirstNumber(raw: string): { value: number; match: string } | null {
-  const m = raw.match(/-?\d+(?:\.\d+)?/);
+  const m = raw.match(/-?(?:\d+(?:\.\d+)?|\.\d+)/);
   if (!m) return null;
   const n = Number(m[0]);
   if (!Number.isFinite(n)) return null;
@@ -183,7 +183,7 @@ function stripStatusWords(raw: string): string {
 
 function stripNumberAndUnitWords(raw: string): string {
   return raw
-    .replace(/-?\d+(?:\.\d+)?/g, " ")
+    .replace(/-?(?:\d+(?:\.\d+)?|\.\d+)/g, " ")
     .replace(
       /\b(mm|millimet(er|re)s?|psi|kpa|inch|inches|\bin\b|ft\s*lb|ftlb|ft-lb|cca|volts?\b|\bv\b|mil|mils)\b/gi,
       " ",
@@ -195,6 +195,9 @@ function stripNumberAndUnitWords(raw: string): string {
 function localParseUtterance(raw: string): LocalParse | null {
   const text = normalizeString(raw);
   if (!text) return null;
+
+  // "add .5 labor" is a labor line, never a measurement reading.
+  if (/\blabou?r\b/i.test(text)) return null;
 
   const t = norm(text);
 
@@ -381,9 +384,21 @@ function buildParsedFromLocal(
   return [cmd];
 }
 
+const INTERPRET_TIMEOUT_MS = 15_000;
+
+/** Why the interpreter returned nothing, in words a technician can act on. */
+function interpretFailureReason(status: number): string {
+  if (status === 429) return "Voice AI is rate limited — try again in a moment.";
+  if (status === 401 || status === 403) return "Voice AI is not available for this login.";
+  if (status === 503) return "Voice AI is temporarily unavailable.";
+  if (status === 504) return "Voice AI took too long.";
+  return "Voice AI could not process that.";
+}
+
 export async function interpretCommand(
   transcript: string,
   ctx?: InterpretContext,
+  onFailure?: (reason: string) => void,
 ): Promise<ParsedCommand[]> {
   const text = normalizeString(transcript);
   if (!text) return [];
@@ -404,10 +419,15 @@ export async function interpretCommand(
       if (localCmds.length > 0) return localCmds;
     }
 
+    // A hung request would otherwise leave the technician waiting forever
+    // with no feedback, so bound it and report why nothing happened.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), INTERPRET_TIMEOUT_MS);
     try {
       const res = await fetch("/api/ai/interpret", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: controller.signal,
         body: JSON.stringify({
           transcript: p,
           context,
@@ -417,6 +437,7 @@ export async function interpretCommand(
 
       if (!res.ok) {
         console.error("[interpretCommand] non-OK response", res.status, { p });
+        onFailure?.(interpretFailureReason(res.status));
         return [];
       }
 
@@ -424,7 +445,14 @@ export async function interpretCommand(
       return pickCommandsFromResponse(data);
     } catch (err) {
       console.error("[interpretCommand] failed", err);
+      onFailure?.(
+        err instanceof DOMException && err.name === "AbortError"
+          ? "Voice AI took too long."
+          : "Voice AI could not be reached — check your connection.",
+      );
       return [];
+    } finally {
+      clearTimeout(timer);
     }
   };
 

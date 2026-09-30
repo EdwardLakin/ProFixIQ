@@ -21,7 +21,8 @@ import {
   claimVoice,
   releaseVoice,
 } from "@/features/shared/voice/voiceArbiter";
-import { buildVoiceBrainFeedback } from "@inspections/lib/inspection/voice/voiceBrain";
+import { parseStandaloneLabor } from "@/features/inspections/lib/inspection/voice/spokenLabor";
+import { buildVoiceBrainFeedback } from "@/features/inspections/lib/inspection/voice/voiceBrain";
 import VoiceControlsPanel from "@inspections/components/inspection/VoiceControlsPanel";
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
 import {
@@ -532,25 +533,44 @@ function localFallbackCommands(text: string): ParsedCommand[] {
 // speakNatural below is the primary path now; this only runs when that
 // fails (no OpenAI-configured voice, network error, or nothing to play
 // through), so the technician still hears *something* rather than silence.
+// Upper bound on how long a spoken reply may keep the mic muted. A reply is a
+// short phrase; if the browser never reports playback finished (a suspended
+// audio context, a speechSynthesis `end` that never fires) the mic would stay
+// muted while the UI still says "Listening", so give up and hand it back.
+const SPEECH_PLAYBACK_MAX_MS = 12_000;
+
 function speakLocal(text: string, onDone?: () => void): void {
+  let finished = false;
+  let watchdog: number | null = null;
+  const done = (): void => {
+    if (finished) return;
+    finished = true;
+    if (watchdog !== null) window.clearTimeout(watchdog);
+    onDone?.();
+  };
+
   try {
     if (typeof window === "undefined") return;
     const synth = window.speechSynthesis;
     if (!synth) {
-      onDone?.();
+      done();
       return;
     }
     const u = new SpeechSynthesisUtterance(text);
     u.rate = 1;
     u.pitch = 1;
-    if (onDone) {
-      u.onend = () => onDone();
-      u.onerror = () => onDone();
-    }
+    u.onend = done;
+    u.onerror = done;
+    watchdog = window.setTimeout(() => {
+      try {
+        synth.cancel();
+      } catch {}
+      done();
+    }, SPEECH_PLAYBACK_MAX_MS);
     synth.cancel();
     synth.speak(u);
   } catch {
-    onDone?.();
+    done();
   }
 }
 
@@ -1850,6 +1870,7 @@ type SmartMatchRow = {
 
     let commands: ParsedCommand[] = [];
     const applied: VoiceCommandApplyResult[] = [];
+    let interpretFailure: string | null = null;
 
     try {
       const correctionTarget = lastVoiceTargetRef.current;
@@ -1909,8 +1930,24 @@ type SmartMatchRow = {
             value: correctionValue,
           } as unknown as ParsedCommand,
         ];
+      } else if (
+        correctionTarget &&
+        parseStandaloneLabor(mainText) !== null
+      ) {
+        // "add .5 labor" — a bare labor line for the item just worked on.
+        // Applied locally so it never depends on the AI round trip.
+        commands = [
+          {
+            command: "add_labor",
+            sectionIndex: correctionTarget.sectionIndex,
+            itemIndex: correctionTarget.itemIndex,
+            hours: parseStandaloneLabor(mainText),
+          } as unknown as ParsedCommand,
+        ];
       } else {
-        commands = await interpretCommand(mainText, ctx);
+        commands = await interpretCommand(mainText, ctx, (reason) => {
+          interpretFailure = reason;
+        });
       }
 
       if (guardLocked()) return;
@@ -1928,8 +1965,12 @@ type SmartMatchRow = {
         commands = fallback;
       }
 
-      // If STILL nothing, log + stop
+      // If STILL nothing, log + stop. Never silently: a technician whose
+      // command vanished needs to know it was not applied, and why.
       if (!commands.length) {
+        toast.error(
+          interpretFailure ?? `Didn't catch an inspection update: “${text.trim()}”`,
+        );
         appendVoiceTrace({
           rawFinal: text,
           wakeCommand: text,
@@ -2021,6 +2062,23 @@ type SmartMatchRow = {
             });
           }
           continue;
+        }
+
+        // A bare follow-on line ("add .5 labor", "add part X") belongs to the
+        // item just worked on. The interpreter sees each clause on its own, so
+        // it cannot know which item that is — without this the part lands but
+        // the labor finds no target.
+        if (label === "add_labor" || label === "add_part") {
+          const rec = command as unknown as Record<string, unknown>;
+          const itemName = typeof rec.item === "string" ? rec.item.trim() : "";
+          const unnamed = !itemName || /^(?:labou?r|parts?)$/i.test(itemName);
+          const followOnTarget = lastAppliedTarget ?? lastVoiceTargetRef.current;
+          if (unnamed && typeof rec.itemIndex !== "number" && followOnTarget) {
+            delete rec.item;
+            delete rec.section;
+            rec.sectionIndex = followOnTarget.sectionIndex;
+            rec.itemIndex = followOnTarget.itemIndex;
+          }
         }
 
         // lightweight detection from parsed shape
@@ -2203,6 +2261,8 @@ type SmartMatchRow = {
     {
       onStateChange: setVoiceState,
       onPulse: triggerVoicePulse,
+      // Never let a stuck reply leave the mic muted for long.
+      maxPausedMs: SPEECH_PLAYBACK_MAX_MS + 5_000,
       // A spend cap tears the transport down without going through
       // stopListening, so clear hold here too: the panel would otherwise keep
       // inviting "Buster resume" with no mic left to hear it. Bumping the
@@ -2250,31 +2310,56 @@ type SmartMatchRow = {
    * fetch was pending, so a technician who hits Stop doesn't hear delayed
    * feedback from a session that's already gone.
    */
+  const speakSeqRef = useRef(0);
   const speak = (text: string): void => {
     const generation = voiceGenerationRef.current;
+    // Latest reply wins: an older reply that finishes after a newer one has
+    // started must not unmute the mic underneath it.
+    const seq = (speakSeqRef.current += 1);
+    const isCurrent = (): boolean =>
+      voiceGenerationRef.current === generation && speakSeqRef.current === seq;
+
     void (async () => {
       const audio = await fetchNaturalSpeechAudio(text);
-      if (voiceGenerationRef.current !== generation) return;
+      if (!isCurrent()) return;
 
       if (audio && typeof voice.playAudio === "function") {
         const paused = voice.pause();
         if (paused) {
+          let timer: number | undefined;
+          let timedOut = false;
           try {
-            await voice.playAudio(audio);
-            if (voiceGenerationRef.current === generation) voice.resume();
+            await Promise.race([
+              voice.playAudio(audio),
+              new Promise<never>((_, reject) => {
+                timer = window.setTimeout(() => {
+                  timedOut = true;
+                  reject(new Error("playback timed out"));
+                }, SPEECH_PLAYBACK_MAX_MS);
+              }),
+            ]);
+            if (isCurrent()) voice.resume();
             return;
           } catch {
-            // Falls through to the device-voice fallback below. If the
-            // session was torn down while playAudio awaited, the
-            // generation check right after will still catch it.
+            // A timeout means playback hung: cut it and hand the mic back
+            // rather than layering a second voice on top. Any other failure
+            // falls through to the device-voice fallback below.
+            voice.stopAudio?.();
+            if (!isCurrent()) return;
+            if (timedOut) {
+              voice.resume();
+              return;
+            }
+          } finally {
+            if (timer !== undefined) window.clearTimeout(timer);
           }
         }
       }
 
-      if (voiceGenerationRef.current !== generation) return;
+      if (!isCurrent()) return;
       const paused = voice.pause();
       speakLocal(text, () => {
-        if (paused && voiceGenerationRef.current === generation) voice.resume();
+        if (paused && isCurrent()) voice.resume();
       });
     })();
   };
