@@ -2,9 +2,54 @@
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createServerSupabaseRSC, createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
+export async function ensureMainLocation(shopId: string) {
+  const supabase = createServerSupabaseRoute();
+  const { data, error } = await supabase
+    .from("stock_locations")
+    .select("id, code, name")
+    .eq("shop_id", shopId)
+    .eq("code", "MAIN")
+    .maybeSingle();
+  if (error) throw error;
+  if (data) return data;
+  const { data: created, error: cerr } = await supabase
+    .from("stock_locations")
+    .insert({ shop_id: shopId, code: "MAIN", name: "Main Stock" })
+    .select("id, code, name")
+    .single();
+  if (cerr) throw cerr;
+  return created;
+}
+
+export async function listLocations(shopId: string) {
+  const supabase = createServerSupabaseRSC();
+  const { data, error } = await supabase
+    .from("stock_locations")
+    .select("id, code, name")
+    .eq("shop_id", shopId)
+    .order("code");
+  if (error) throw error;
+  return data ?? [];
+}
+
+/** Existing contract retained for callers outside Parts → Inventory. */
+export async function createLocation(input: { shop_id: string; code: string; name: string }) {
+  const supabase = createServerSupabaseRoute();
+  const { data, error } = await supabase
+    .from("stock_locations")
+    .insert(input)
+    .select("id")
+    .single();
+  if (error) throw error;
+  return data.id as string;
+}
+
 type StockLocationClient = ReturnType<typeof createServerSupabaseRoute>;
 
-async function findOrCreateMainLocation(supabase: StockLocationClient, shopId: string) {
+async function findOrCreateInventoryMainLocation(
+  supabase: StockLocationClient,
+  shopId: string,
+) {
   const { data: locations, error } = await supabase
     .from("stock_locations")
     .select("id, code, name")
@@ -39,16 +84,7 @@ async function findOrCreateMainLocation(supabase: StockLocationClient, shopId: s
   throw createError;
 }
 
-export async function ensureMainLocation(shopId: string) {
-  const supabase = createServerSupabaseRoute();
-  return findOrCreateMainLocation(supabase, shopId);
-}
-
-/**
- * Inventory's additive default-location path. Only staff with the canonical
- * parts-management capability may create MAIN; the tenant comes from profile.
- * Read-only inventory users can still load existing locations.
- */
+/** Additive default path used only by the inventory page. */
 export async function ensureInventoryMainLocation() {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageParts",
@@ -60,21 +96,15 @@ export async function ensureInventoryMainLocation() {
     return null;
   }
 
-  return findOrCreateMainLocation(access.supabase, access.profile.shop_id);
+  return findOrCreateInventoryMainLocation(access.supabase, access.profile.shop_id);
 }
 
-export async function listLocations(shopId: string) {
-  const supabase = createServerSupabaseRSC();
-  const { data, error } = await supabase
-    .from("stock_locations")
-    .select("id, code, name")
-    .eq("shop_id", shopId)
-    .order("code");
-  if (error) throw error;
-  return data ?? [];
-}
-
-export async function createLocation(input: { shop_id: string; code: string; name: string }) {
+/** Authorized, tenant-derived mutation for the new inventory manager. */
+export async function createInventoryLocation(input: {
+  shop_id: string;
+  code: string;
+  name: string;
+}) {
   const access = await requireShopScopedApiAccess({
     requiredCapability: "canManageParts",
   });
