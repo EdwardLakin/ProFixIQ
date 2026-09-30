@@ -13,6 +13,34 @@ set local statement_timeout = '5min';
 -- seat count (10 for 'starter') fails with PLAN_USER_LIMIT_REACHED /
 -- "Shop user limit reached" -- a hard block never intended for this shop.
 
+-- enforce_shop_user_limit() below calls public.shop_staff_user_count(), which
+-- -- like the two trigger attachments and the CHECK constraint further down
+-- in this file -- predates this repo's tracked migration history: it exists
+-- on canonical production with the exact body below (confirmed against
+-- production), but was only ever referenced by name (never CREATEd) in the
+-- three function-hardening migrations that pin its search_path and grants
+-- (20260919032049_pin_function_search_path.sql,
+-- 20260919034353_lockdown_function_grants.sql,
+-- 20260919034900_lockdown_function_grants_public_role.sql). Those guard with
+-- to_regprocedure()/IF EXISTS, so they silently no-op for it on a clean
+-- replay instead of failing -- masking the gap until this migration's own
+-- regression test exercises enforce_shop_user_limit() and calls a function
+-- that was never created there. "create or replace" promotes it into the
+-- baseline while safely leaving the live production definition unchanged.
+create or replace function public.shop_staff_user_count(p_shop_id uuid)
+returns integer
+language sql
+stable
+set search_path = 'public, extensions, pg_temp'
+as $$
+  select count(*)
+  from public.profiles p
+  where p.shop_id = p_shop_id
+$$;
+
+revoke all on function public.shop_staff_user_count(uuid) from public, anon, authenticated;
+grant execute on function public.shop_staff_user_count(uuid) to service_role;
+
 create or replace function public.enforce_shop_user_limit()
 returns trigger
 language plpgsql
