@@ -2,6 +2,7 @@ import type {
   InspectionItemStatus,
   ParsedInspectionFindingCommand,
 } from "@inspections/lib/inspection/types";
+import { extractSpokenLabor } from "@/features/inspections/lib/inspection/voice/spokenLabor";
 
 function norm(input: string): string {
   return String(input ?? "")
@@ -39,17 +40,6 @@ function detectStatus(input: string): InspectionItemStatus | null {
   }
 
   return null;
-}
-
-function extractLaborHours(input: string): number | null {
-  const m =
-    input.match(/\b(\d+(?:\.\d+)?)\s*(?:hr|hrs|hour|hours)\b/i) ??
-    input.match(/\b(\d+(?:\.\d+)?)\s*h\b/i);
-
-  if (!m?.[1]) return null;
-
-  const n = Number(m[1]);
-  return Number.isFinite(n) ? n : null;
 }
 
 function wantsPhotoCapture(input: string): boolean {
@@ -144,9 +134,9 @@ export function parseInspectionFinding(
   const item = extractItemHint(raw, status);
   if (!item) return null;
 
-  const note = extractNote(raw, status);
-  const laborHours = extractLaborHours(raw);
-  const parts = extractParts(raw);
+  const { hours: laborHours, rest } = extractSpokenLabor(raw);
+  const note = extractNote(rest, status);
+  const parts = extractParts(rest);
   const openPhotoCapture = wantsPhotoCapture(raw);
 
   return {

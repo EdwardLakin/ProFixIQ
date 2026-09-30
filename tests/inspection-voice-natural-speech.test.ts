@@ -44,7 +44,10 @@ describe("inspection voice control: natural speech, not the flat device voice", 
     // its session is gone; speak() must check that before acting on the
     // fetch's result.
     expect(screen).toContain("voiceGenerationRef.current += 1");
-    expect(screen).toContain("if (voiceGenerationRef.current !== generation) return;");
+    expect(screen).toContain(
+      "voiceGenerationRef.current === generation && speakSeqRef.current === seq",
+    );
+    expect(screen).toContain("if (!isCurrent()) return;");
 
     // stopVoice() is the only place that should call voice.stop() directly
     // (it's what bumps the generation) — every other call site (startListening's
@@ -69,7 +72,10 @@ describe("inspection voice control: natural speech, not the flat device voice", 
     const screen = read(
       "features/inspections/screens/GenericInspectionScreen.tsx",
     );
-    expect(screen).toContain("await voice.playAudio(audio)");
+    expect(screen).toContain("voice.playAudio(audio)");
+    // ...but a reply whose playback never finishes must not leave the mic
+    // muted: playback is raced against a hard timeout.
+    expect(screen).toContain("SPEECH_PLAYBACK_MAX_MS");
   });
 
   it("routes through the shared naturalSpeech module server-side, the same one the Technician CoPilot uses", () => {

@@ -51,6 +51,12 @@ type RealtimeTranscriptionOptions = {
   maxStreamingMs?: number;
   /** Silence window in ms before auto-stop. <= 0 disables the cap. */
   idleTimeoutMs?: number;
+  /**
+   * Safety net for pause(): if the mic has been muted this long without a
+   * resume() (a reply whose playback never reported finished), resume it so a
+   * listening session can never stay silently deaf. <= 0 / unset disables it.
+   */
+  maxPausedMs?: number;
   /** Fired after an automatic teardown, once the state has settled to idle. */
   onAutoStop?: (reason: RealtimeAutoStopReason) => void;
 };
@@ -286,6 +292,10 @@ export function useRealtimeTranscription(
   const lastPulseAtRef = useRef(0);
   const stoppedRef = useRef(true);
   const startupGenerationRef = useRef(0);
+
+  const transcriptQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const pendingTranscriptsRef = useRef(0);
+  const pauseWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleTranscriptRef = useRef<HandleTranscriptFn>(handleTranscript);
   const maybeHandleWakeWordRef = useRef<(text: string) => string | null>(
@@ -626,7 +636,30 @@ export function useRealtimeTranscription(
 
           const cmd = (maybeHandleWakeWordRef.current(finalText) ?? "").trim();
           if (!cmd) return;
-          handleTranscriptRef.current(cmd);
+          // Handle utterances one at a time, in order. Two back-to-back
+          // commands otherwise run concurrently against the same render
+          // snapshot and can overwrite each other's updates.
+          const invoke = (): Promise<unknown> => {
+            try {
+              return Promise.resolve(handleTranscriptRef.current(cmd));
+            } catch (caught) {
+              return Promise.reject(caught);
+            }
+          };
+          // Idle queue: run immediately (same tick). Busy: wait our turn.
+          const run =
+            pendingTranscriptsRef.current === 0
+              ? invoke()
+              : transcriptQueueRef.current.then(invoke);
+          pendingTranscriptsRef.current += 1;
+          transcriptQueueRef.current = run
+            .catch((caught) => {
+              // eslint-disable-next-line no-console
+              console.error("[RealtimeTranscription] transcript handler failed", caught);
+            })
+            .finally(() => {
+              pendingTranscriptsRef.current -= 1;
+            });
           return;
         }
 
@@ -678,9 +711,29 @@ export function useRealtimeTranscription(
     }
   }
 
+  function clearPauseWatchdog(): void {
+    if (pauseWatchdogRef.current !== null) {
+      clearTimeout(pauseWatchdogRef.current);
+      pauseWatchdogRef.current = null;
+    }
+  }
+
   function pause(): boolean {
     const session = activeSessionRef.current;
     if (stoppedRef.current || !session) return false;
+    const maxPausedMs = opts?.maxPausedMs ?? 0;
+    clearPauseWatchdog();
+    if (maxPausedMs > 0) {
+      pauseWatchdogRef.current = setTimeout(() => {
+        pauseWatchdogRef.current = null;
+        if (activeSessionRef.current === session && session.paused) {
+          // eslint-disable-next-line no-console
+          console.warn("[RealtimeTranscription] mic stayed muted too long; resuming");
+          stopPlayback(session);
+          resume();
+        }
+      }, maxPausedMs);
+    }
     session.paused = true;
     session.live = "";
     suspendStreamingClock(session, Date.now());
@@ -755,6 +808,7 @@ export function useRealtimeTranscription(
   }
 
   function resume(): boolean {
+    clearPauseWatchdog();
     const session = activeSessionRef.current;
     const socket = session?.ws ?? null;
     if (stoppedRef.current || !session || !socket) return false;
@@ -791,6 +845,7 @@ export function useRealtimeTranscription(
   }
 
   function stop(): void {
+    clearPauseWatchdog();
     startupGenerationRef.current += 1;
     stoppedRef.current = true;
     const session = activeSessionRef.current;
