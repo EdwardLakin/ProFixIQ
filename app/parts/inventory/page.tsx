@@ -21,7 +21,7 @@ import { GuidedImportCardLayout } from "@/features/shared/components/import/Guid
 import { GuidedImportFooterActions } from "@/features/shared/components/import/GuidedImportFooterActions";
 import { parseGuidedOnboardingQuery } from "@/features/onboarding-v2/guided/query";
 import { loadStockOnHandByPartId } from "@/features/parts/lib/stock-on-hand";
-import { createLocation } from "@/features/parts/lib/locations";
+import { createLocation, ensureInventoryMainLocation } from "@/features/parts/lib/locations";
 
 /* ----------------------------- Types ----------------------------- */
 
@@ -655,6 +655,7 @@ export default function InventoryPage(): JSX.Element {
 
   const loadStockLocations = useCallback(async (sid: string) => {
     setLocsError(null);
+    await ensureInventoryMainLocation();
     const { data, error } = await supabase
       .from("stock_locations")
       .select("*")
@@ -687,16 +688,7 @@ export default function InventoryPage(): JSX.Element {
     setLocationSaving(true);
     setLocationSaveError(null);
     try {
-      await createLocation({ shop_id: shopId, code, name });
-      const { data, error } = await supabase
-        .from("stock_locations")
-        .select("*")
-        .eq("shop_id", shopId)
-        .eq("code", code)
-        .single();
-      if (error) throw error;
-
-      const created = data as StockLoc;
+      const created = (await createLocation({ shop_id: shopId, code, name })) as StockLoc;
       setLocsError(null);
       setLocs((current) => [...current.filter((location) => location.id !== created.id), created].sort((a, b) => (a.code ?? "").localeCompare(b.code ?? "")));
       setInitLoc((current) => current || created.id);
@@ -1477,7 +1469,7 @@ export default function InventoryPage(): JSX.Element {
             <button className="ml-2 underline" onClick={() => void loadStockLocations(shopId)}>Try again</button>
           </div>
         ) : null}
-        <div className="mb-4 space-y-2">
+        <div className="mb-4 max-h-[45vh] space-y-2 overflow-y-auto">
           {locs.length ? locs.map((location) => (
             <div key={location.id} className="flex items-center justify-between rounded-lg border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm">
               <span className="font-mono text-xs">{location.code}</span>
