@@ -33,7 +33,7 @@ export default function OwnerPinModal({
   const [confirmPin, setConfirmPin] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [mode, setMode] = useState<"verify" | "set">("verify");
+  const [mode, setMode] = useState<"verify" | "set" | "reset">("verify");
 
   useEffect(() => {
     if (!open) {
@@ -47,7 +47,7 @@ export default function OwnerPinModal({
 
   const canSubmit = useMemo(() => {
     if (!shopId || busy) return false;
-    if (mode === "set") {
+    if (mode !== "verify") {
       return /^\d{4,8}$/.test(pin) && pin === confirmPin;
     }
     return pin.trim().length >= 4;
@@ -141,12 +141,18 @@ export default function OwnerPinModal({
       <div className="w-full max-w-md rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-5 shadow-2xl">
         <div className="mb-4">
           <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
-            {mode === "verify" ? "Owner PIN Required" : "Set Owner PIN"}
+            {mode === "verify"
+              ? "Owner PIN Required"
+              : mode === "reset"
+                ? "Reset Owner PIN"
+                : "Set Owner PIN"}
           </h2>
           <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
             {mode === "verify"
               ? "Unlock protected owner settings."
-              : "Create a 4 to 8 digit PIN for owner-protected actions."}
+              : mode === "reset"
+                ? "Choose a new PIN. Your signed-in owner or admin account must be authorized for this shop."
+                : "Create a 4 to 8 digit PIN for owner-protected actions."}
           </p>
         </div>
 
@@ -165,7 +171,7 @@ export default function OwnerPinModal({
             />
           </div>
 
-          {mode === "set" && (
+          {mode !== "verify" && (
             <div>
               <label className="mb-1 block text-xs text-[color:var(--theme-text-secondary)]">
                 Confirm PIN
@@ -188,6 +194,19 @@ export default function OwnerPinModal({
               {error}
             </div>
           ) : null}
+          {mode === "verify" ? (
+            <button
+              type="button"
+              className="text-sm font-medium text-[color:var(--accent-copper)] underline underline-offset-2"
+              onClick={() => {
+                setMode("reset");
+                setError(null);
+              }}
+              disabled={busy}
+            >
+              Forgot your PIN? Reset it
+            </button>
+          ) : null}
         </div>
 
         <div className="mt-5 flex items-center justify-end gap-2">
@@ -200,7 +219,13 @@ export default function OwnerPinModal({
             Cancel
           </Button>
           <Button type="button" onClick={handleSubmit} disabled={!canSubmit}>
-            {busy ? "Please wait..." : mode === "verify" ? "Unlock" : "Set PIN"}
+            {busy
+              ? "Please wait..."
+              : mode === "verify"
+                ? "Unlock"
+                : mode === "reset"
+                  ? "Reset PIN"
+                  : "Set PIN"}
           </Button>
         </div>
       </div>

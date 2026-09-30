@@ -51,6 +51,7 @@ import {
 } from "@/features/stripe/lib/stripe/plan-normalization";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
 import { applyThemePreference } from "@/features/shared/lib/theme";
+import { resolvePlanPresentation } from "./demoPlanPresentation";
 
 type HourRow = {
   weekday: number;
@@ -145,14 +146,6 @@ type ShopLocationRow = Pick<
 
 type PlanName = CanonicalPlan | "unknown";
 
-// ✅ These are your seat caps.
-// Starter & Pro limited. Everything else unlimited.
-const PLAN_LIMITS: Record<Exclude<PlanName, "unknown">, number | null> = {
-  starter: 10,
-  pro: 50,
-  unlimited: null,
-};
-
 function parsePlan(v: unknown): PlanName {
   const canonical = normalizeCanonicalPlan(v);
   return canonical ?? "unknown";
@@ -164,8 +157,7 @@ function planLabel(p: PlanName): string {
 }
 
 function planSeatLimit(p: PlanName): number | null {
-  const resolved = p === "unknown" ? "starter" : p;
-  return PLAN_LIMITS[resolved as Exclude<PlanName, "unknown">] ?? 10;
+  return resolvePlanPresentation(p, null).seatLimit;
 }
 
 function daysUntil(iso: string | null | undefined): number | null {
@@ -249,6 +241,7 @@ export default function OwnerSettingsPage() {
 
   // Current active shop
   const [shopId, setShopId] = useState<string | null>(null);
+  const [isInternalDemoShop, setIsInternalDemoShop] = useState(false);
 
   // Organization (multi-location)
   const [orgId, setOrgId] = useState<string | null>(null);
@@ -501,7 +494,7 @@ export default function OwnerSettingsPage() {
   };
 
   const refreshBillingState = useCallback(
-    async (sid: string) => {
+    async (sid: string, internalDemoOverride = isInternalDemoShop) => {
       const { data: billing } = await supabase
         .from("shops")
         .select(
@@ -514,7 +507,17 @@ export default function OwnerSettingsPage() {
         >();
 
       setStripeAccountId((billing?.stripe_account_id as string | null) ?? null);
-      const planSignal = parsePlan((billing?.plan as string | null) ?? null);
+      const planPresentation = resolvePlanPresentation(
+        billing?.plan,
+        internalDemoOverride ? "internal_demo" : null,
+      );
+      const planSignal = internalDemoOverride
+        ? planPresentation.plan
+        : parsePlan((billing?.plan as string | null) ?? null);
+      if (internalDemoOverride) {
+        setPlan(planPresentation.plan);
+        setSeatsLimit(null);
+      }
       const shopStatus = parseStripeSubscriptionStatus(
         billing?.stripe_subscription_status,
       );
@@ -572,10 +575,14 @@ export default function OwnerSettingsPage() {
           return;
         }
 
-        const resolvedPlan = parsePlan(j.resolved_plan);
+        const resolvedPlan = internalDemoOverride
+          ? planPresentation.plan
+          : parsePlan(j.resolved_plan);
         if (resolvedPlan !== "unknown") {
           setPlan(resolvedPlan);
-          setSeatsLimit(planSeatLimit(resolvedPlan));
+          setSeatsLimit(
+            internalDemoOverride ? null : planSeatLimit(resolvedPlan),
+          );
         }
 
         setBillingDisplayStatus(
@@ -597,7 +604,7 @@ export default function OwnerSettingsPage() {
         setCancelAtPeriodEnd(false);
       }
     },
-    [supabase],
+    [isInternalDemoShop, supabase],
   );
 
   const fetchSettings = useCallback(async () => {
@@ -660,9 +667,17 @@ export default function OwnerSettingsPage() {
     if (error) toast.error(error.message);
 
     // ✅ Plan + seats (Plan comes from shops.plan)
-    const resolvedPlan = parsePlan((shop as { plan?: unknown } | null)?.plan);
+    const internalDemoOverride =
+      (shop as { billing_entitlement_override?: unknown } | null)
+        ?.billing_entitlement_override === "internal_demo";
+    setIsInternalDemoShop(internalDemoOverride);
+    const planPresentation = resolvePlanPresentation(
+      (shop as { plan?: unknown } | null)?.plan,
+      internalDemoOverride ? "internal_demo" : null,
+    );
+    const resolvedPlan = planPresentation.plan;
     setPlan(resolvedPlan);
-    setSeatsLimit(planSeatLimit(resolvedPlan));
+    setSeatsLimit(planPresentation.seatLimit);
 
     // Seats used = # of profiles in this shop
     // Seats used = # of profiles in this shop (use server route so RLS doesn't force 1)
@@ -676,7 +691,7 @@ export default function OwnerSettingsPage() {
         const j = (await res.json()) as { count?: number };
         const used = typeof j.count === "number" ? j.count : 0;
         setSeatsUsed(used);
-        maybeToastSeatInfo(used, planSeatLimit(resolvedPlan), resolvedPlan);
+        maybeToastSeatInfo(used, planPresentation.seatLimit, resolvedPlan);
       }
     } catch (e) {
       console.warn("[OwnerSettings] user-count exception", e);
@@ -771,7 +786,7 @@ export default function OwnerSettingsPage() {
       setAutoSendQuoteEmail(!!shop.auto_send_quote_email);
     }
 
-    await refreshBillingState(sid);
+    await refreshBillingState(sid, internalDemoOverride);
 
     // pricing validity days
     try {
@@ -1598,7 +1613,14 @@ export default function OwnerSettingsPage() {
                 description="Current plan, seat utilization, and organization scope."
               >
                 <div className="grid gap-3 md:grid-cols-4">
-                  <OwnerSettingsStat label="Plan" value={planLabel(plan)} />
+                  <OwnerSettingsStat
+                    label="Plan"
+                    value={
+                      isInternalDemoShop
+                        ? "Complete Operations (Demo)"
+                        : planLabel(plan)
+                    }
+                  />
                   <OwnerSettingsStat label="Seats" value={seatLimitLabel} />
                   <OwnerSettingsStat
                     label="Billing"
@@ -2080,7 +2102,14 @@ export default function OwnerSettingsPage() {
               description="Subscription and payout status for the current location."
             >
               <div className="grid gap-3 sm:grid-cols-3">
-                <OwnerSettingsStat label="Plan" value={planLabel(plan)} />
+                <OwnerSettingsStat
+                  label="Plan"
+                  value={
+                    isInternalDemoShop
+                      ? "Complete Operations (Demo)"
+                      : planLabel(plan)
+                  }
+                />
                 <OwnerSettingsStat
                   label="Subscription"
                   value={String(billingDisplayStatus).replaceAll("_", " ")}
@@ -2128,7 +2157,11 @@ export default function OwnerSettingsPage() {
             }
             onSwitchLocation={(id) => void switchLocation(id)}
             onRefreshEmailLogs={() => void fetchEmailLogs()}
-            planLabel={planLabel}
+            planLabel={(value) =>
+              isInternalDemoShop
+                ? "Complete Operations (Demo)"
+                : planLabel(value)
+            }
             parseStripeStatus={parseStripeSubscriptionStatus}
             formatDate={formatDate}
             formatLocationLine={formatLocationLine}
