@@ -1540,7 +1540,7 @@ export default function OwnerSettingsPage() {
     "billing" | "plan" | "organization" | "public-profile" | "preview" | "email"
   > =
     activeSection === "overview"
-      ? ["plan"]
+      ? []
       : activeSection === "business"
         ? ["public-profile", "preview"]
         : activeSection === "communications"
@@ -1548,7 +1548,7 @@ export default function OwnerSettingsPage() {
           : activeSection === "organization"
             ? ["organization"]
             : activeSection === "billing"
-              ? ["billing", "plan"]
+              ? ["billing"]
               : [];
 
   return (
@@ -2091,10 +2091,10 @@ export default function OwnerSettingsPage() {
 
           {activeSection === "billing" ? (
             <OwnerSettingsPanel
-              title="Billing overview"
-              description="Subscription and payout status for the current location."
+              title="Plan & seats"
+              description="Your subscription tier and staff capacity for this location."
             >
-              <div className="grid gap-3 sm:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
                 <OwnerSettingsStat
                   label="Plan"
                   value={
@@ -2103,13 +2103,18 @@ export default function OwnerSettingsPage() {
                       : planLabel(plan)
                   }
                 />
+                <OwnerSettingsStat label="Staff seats used" value={seatsUsed} />
                 <OwnerSettingsStat
-                  label="Subscription"
-                  value={String(billingDisplayStatus).replaceAll("_", " ")}
+                  label="Seat limit"
+                  value={seatsLimit == null ? "Unlimited" : seatsLimit}
                 />
                 <OwnerSettingsStat
-                  label="Payouts"
-                  value={stripeAccountId ? "Connected" : "Not connected"}
+                  label="Seats remaining"
+                  value={
+                    seatsLimit == null
+                      ? "Unlimited"
+                      : Math.max(0, seatsLimit - seatsUsed)
+                  }
                 />
               </div>
             </OwnerSettingsPanel>
@@ -2119,6 +2124,7 @@ export default function OwnerSettingsPage() {
         {contextualSections.length > 0 ? (
           <OwnerSettingsSidebar
             sections={contextualSections}
+            sticky={activeSection !== "billing"}
             shopId={shopId}
             isUnlocked={isUnlocked}
             canManageBilling={canManageBilling}

@@ -175,9 +175,11 @@ export default function OwnerSettingsSidebar({
           tone="secondary"
           title="Billing & Stripe"
           description="Subscription and payment setup for this location."
+          className="space-y-3 p-4"
+          bodyClassName="space-y-2"
           action={<div className="flex items-center gap-2">{billingPill}</div>}
         >
-          <div className="grid gap-2">
+          <div className="grid gap-2 xl:grid-cols-2">
             <OwnerSettingsStat
               label="Status"
               value={String(billingDisplayStatus)
@@ -200,11 +202,14 @@ export default function OwnerSettingsSidebar({
               label="Connected payout account"
               value={stripeAccountId || "No Stripe Connect account linked yet"}
             />
+          </div>
 
-            <div className="flex flex-col gap-2">
+          <div className="grid gap-2 sm:grid-cols-2">
+            <div className="space-y-1.5">
               <Button
                 onClick={onOpenStripeConnect}
                 disabled={!isUnlocked || connectLoading}
+                className="w-full"
               >
                 {connectLoading
                   ? "Opening Stripe..."
@@ -215,13 +220,16 @@ export default function OwnerSettingsSidebar({
               <p className="text-[11px] text-[color:var(--theme-text-muted)]">
                 Set up or resume Stripe Connect for shop payouts.
               </p>
+            </div>
 
+            <div className="space-y-1.5">
               <Button
                 variant="secondary"
                 onClick={onStartSubscriptionCheckout}
                 disabled={
                   !isUnlocked || manageSubscriptionLoading || isLinkageState
                 }
+                className="w-full"
               >
                 {manageSubscriptionLoading
                   ? hasManagedSubscription
@@ -237,41 +245,40 @@ export default function OwnerSettingsSidebar({
                 {isLinkageState
                   ? "An existing Stripe subscription was detected but must finish linking before checkout or portal actions."
                   : hasManagedSubscription
-                    ? "Open Stripe billing portal to manage an existing subscription."
-                    : "Start checkout to create a new ProFixIQ subscription for this location."}
+                    ? "Manage the current subscription in Stripe."
+                    : "Start a subscription for this location."}
               </p>
-
-              {canManageBilling && isCancelableStatus ? (
-                cancelAtPeriodEnd ? (
-                  <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200">
-                    <p>
-                      Cancellation takes effect at the end of the current
-                      billing period.
-                      {periodEndIso
-                        ? ` Your subscription will end on ${formatDate(periodEndIso)}.`
-                        : ""}
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <Button
-                      variant="secondary"
-                      onClick={onRequestCancelSubscription}
-                      disabled={!isUnlocked || cancelLoading}
-                      className="border-red-500/40 text-red-700 hover:bg-red-500/10 dark:text-red-200"
-                    >
-                      {cancelLoading
-                        ? "Scheduling cancellation..."
-                        : "Cancel subscription"}
-                    </Button>
-                    <p className="text-[11px] text-[color:var(--theme-text-muted)]">
-                      Schedule cancellation at period end. Access stays active
-                      until then.
-                    </p>
-                  </>
-                )
-              ) : null}
             </div>
+
+            {canManageBilling && isCancelableStatus ? (
+              cancelAtPeriodEnd ? (
+                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-700 dark:text-amber-200 sm:col-span-2">
+                  <p>
+                    Cancellation takes effect at the end of the current billing
+                    period.
+                    {periodEndIso
+                      ? ` Your subscription will end on ${formatDate(periodEndIso)}.`
+                      : ""}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Button
+                    variant="secondary"
+                    onClick={onRequestCancelSubscription}
+                    disabled={!isUnlocked || cancelLoading}
+                    className="w-full border-red-500/40 text-red-700 hover:bg-red-500/10 dark:text-red-200"
+                  >
+                    {cancelLoading
+                      ? "Scheduling cancellation..."
+                      : "Cancel subscription"}
+                  </Button>
+                  <p className="text-[11px] text-[color:var(--theme-text-muted)]">
+                    Cancellations take effect at period end.
+                  </p>
+                </div>
+              )
+            ) : null}
           </div>
         </OwnerSettingsPanel>
       ) : null}
