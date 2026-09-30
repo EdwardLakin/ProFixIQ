@@ -36,4 +36,33 @@ describe("quote review one-screen layout", () => {
     expect(view).toContain("saveSuppliesOverride");
     expect(view).toContain("Save changes");
   });
+
+  it("renders the readiness and send bands before the active-work list", () => {
+    expect(view.indexOf("Send to customer")).toBeLessThan(
+      view.indexOf("Active approved / punchable work"),
+    );
+  });
+
+  it("lets the send description shrink on narrow screens", () => {
+    expect(view).not.toContain("min-w-[16rem] flex-1");
+    expect(view).toContain("sm:min-w-[16rem]");
+  });
+
+  it("keeps the quote-line save separate from the labeled shop-supplies override group", () => {
+    const overrideLabel = view.indexOf(">Shop supplies override</span>");
+    const saveOverride = view.indexOf("Save override");
+    const saveChanges = view.indexOf('"Saving…" : "Save changes"');
+    expect(overrideLabel).toBeGreaterThan(-1);
+    expect(saveChanges).toBeGreaterThan(-1);
+    // Save changes now lives with the totals, before the override group.
+    expect(saveChanges).toBeLessThan(overrideLabel);
+    expect(overrideLabel).toBeLessThan(saveOverride);
+    expect(view).toContain("does not save the shop supplies override");
+  });
+
+  it("keeps the active-work guidance visible as helper text, not only a tooltip", () => {
+    expect(view).toMatch(
+      /Add active work only when intentionally needed\. Inspection recommendations stay in canonical quote lines until customer approval\.\s*<\/div>/,
+    );
+  });
 });

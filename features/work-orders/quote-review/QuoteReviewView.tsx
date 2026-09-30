@@ -1239,6 +1239,12 @@ export default function QuoteReviewView(props: {
           </div>
         </div>
 
+        {canAddJob ? (
+          <div className="-mt-1 mb-2 text-right text-[11px] leading-snug text-[color:var(--theme-text-muted)]">
+            Add active work only when intentionally needed. Inspection recommendations stay in canonical quote lines until customer approval.
+          </div>
+        ) : null}
+
         <div className={`${card} ${padX} ${padY}`}>
           <div className={embedded ? "grid gap-3" : "grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,1.15fr)_auto]"}>
             <div className="min-w-0">
@@ -1635,21 +1641,6 @@ export default function QuoteReviewView(props: {
               )}
             </div>
 
-            {workLines.length > 0 ? (
-              <div className={`${card} mt-4`}>
-                <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]`}>
-                  Active approved / punchable work
-                </div>
-                <div className="divide-y divide-[color:var(--desktop-border)]">
-                  {workLines.map((line) => (
-                    <div key={line.id} className={`${padX} py-3 text-sm`}>
-                      <div className="font-semibold text-[color:var(--theme-text-primary)]">{safeTrim(line.description) || `Line ${line.line_no ?? ""}`}</div>
-                      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Status: {statusLabel(line.status)} • Approval: {statusLabel(line.approval_state)} • Punchable: {line.punchable ? "yes" : "no"}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : null}
           </div>
 
           <div className="space-y-3">
@@ -1665,8 +1656,12 @@ export default function QuoteReviewView(props: {
                   <div className="text-[11px]">{quoteTotals.partsPricingQuarantined ? "Parts (protected)" : "Parts"}<div className="text-sm font-medium text-[color:var(--theme-text-primary)]">{quoteTotals.partsTotalUnavailable ? "Manual review" : fmt(quoteTotals.parts)}</div></div>
                   <div className="text-[11px]">Shop supplies<div className="text-sm font-medium text-[color:var(--theme-text-primary)]">{fmt(quoteTotals.shopSupplies.amount)}</div></div>
                   <div className="text-[11px]">Grand total<div className="text-lg font-bold leading-tight" style={{ color: COPPER }}>{quoteTotals.grandTotalUnavailable ? "Manual review" : fmt(quoteTotals.total)}</div></div>
+                  <button onClick={() => void saveAllDirty()} disabled={saving} title="Save canonical quote line changes (does not save the shop supplies override)" className="desktop-btn-primary rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-60">
+                    {saving ? "Saving…" : "Save changes"}
+                  </button>
                 </div>
-                <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                <div className="flex flex-wrap items-center gap-2 rounded-xl border border-[color:var(--desktop-border)] px-3 py-2 lg:justify-end">
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]">Shop supplies override</span>
                   <select
                     aria-label="Shop supplies override"
                     value={suppliesEnabledDraft == null ? "default" : suppliesEnabledDraft ? "on" : "off"}
@@ -1688,9 +1683,6 @@ export default function QuoteReviewView(props: {
                     {savingSuppliesOverride ? "Saving…" : "Save override"}
                   </button>
                   <button type="button" onClick={resetSuppliesOverride} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-subtle)]">Reset draft</button>
-                  <button onClick={() => void saveAllDirty()} disabled={saving} className="desktop-btn-primary rounded-lg px-3 py-1.5 text-xs font-semibold disabled:opacity-60">
-                    {saving ? "Saving…" : "Save changes"}
-                  </button>
                 </div>
               </div>
               {quoteTotals.partsPricingQuarantined || shopSuppliesSummaryText(quoteTotals.shopSupplies) ? (
@@ -1704,7 +1696,7 @@ export default function QuoteReviewView(props: {
             <div className={card}>
               <div className={`${padX} py-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm text-[color:var(--theme-text-secondary)]`}>
                 <div className="font-semibold text-[color:var(--theme-text-primary)] whitespace-nowrap">Send to customer</div>
-                <div className="min-w-[16rem] flex-1 text-xs leading-snug text-[color:var(--theme-text-muted)]">
+                <div className="min-w-0 flex-1 text-xs leading-snug sm:min-w-[16rem] text-[color:var(--theme-text-muted)]">
                   Sends only ready canonical quote lines; pending parts, declined, deferred, approved, and converted lines are not sent. Portal link: <span className="text-[color:var(--theme-text-secondary)]">/portal/quotes/{woId}</span>. Customer portal and shop-recorded phone decisions use the same canonical approval lifecycle.
                 </div>
                 <div className="flex items-center gap-2">
@@ -1735,6 +1727,22 @@ export default function QuoteReviewView(props: {
               </div>
             </div>
           </div>
+
+          {workLines.length > 0 ? (
+            <div className={`${card}`}>
+              <div className={`border-b ${divider} ${padX} py-3 text-sm font-semibold text-[color:var(--theme-text-primary)]`}>
+                Active approved / punchable work
+              </div>
+              <div className="divide-y divide-[color:var(--desktop-border)]">
+                {workLines.map((line) => (
+                  <div key={line.id} className={`${padX} py-3 text-sm`}>
+                    <div className="font-semibold text-[color:var(--theme-text-primary)]">{safeTrim(line.description) || `Line ${line.line_no ?? ""}`}</div>
+                    <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Status: {statusLabel(line.status)} • Approval: {statusLabel(line.approval_state)} • Punchable: {line.punchable ? "yes" : "no"}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ) : null}
         </div>
 
         {!embedded && <div className="mt-6 text-xs text-[color:var(--theme-text-muted)]">Work Order ID: {wo.id} • Status: {statusLabel(wo.status)}</div>}
