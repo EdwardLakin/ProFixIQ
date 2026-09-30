@@ -131,8 +131,14 @@ $$;
 -- from the plan by a trigger that never fires for a plain profiles change),
 -- keeps this a single, minimal, and future-proof exemption regardless of
 -- how max_users is computed.
+--
+-- This constraint exists on canonical production but was never captured by
+-- an earlier migration (the same class of untracked production drift noted
+-- in 20260804052000_narrow_profile_user_count_trigger.sql), so a clean
+-- replay never creates it -- "if exists" makes this migration promote it
+-- into the baseline there while still safely replacing the live one.
 alter table public.shops
-  drop constraint shops_active_user_count_le_max_users;
+  drop constraint if exists shops_active_user_count_le_max_users;
 
 alter table public.shops
   add constraint shops_active_user_count_le_max_users
