@@ -229,7 +229,7 @@ function ExtendControl({
   }
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-orange-500/30 bg-orange-500/5 p-2">
+    <div className="flex w-full min-w-0 max-w-full flex-col gap-2 rounded-lg border border-orange-500/30 bg-orange-500/5 p-2">
       <div className="flex flex-col gap-2 sm:flex-row">
         <select
           value={durationHours}
@@ -252,7 +252,7 @@ function ExtendControl({
           />
         ) : null}
       </div>
-      {error ? <p className="text-[11px] font-semibold text-red-300">{error}</p> : null}
+      {error ? <p role="alert" className="w-full min-w-0 max-w-full break-all text-[11px] font-semibold text-red-300">{error}</p> : null}
       <div className="flex gap-2">
         <button
           type="button"
@@ -302,7 +302,7 @@ function RevokeButton({ profileId, onDone }: { profileId: string; onDone: () => 
       >
         {submitting ? "Revoking…" : "Revoke"}
       </button>
-      {error ? <p className="text-[11px] font-semibold text-red-300">{error}</p> : null}
+      {error ? <p role="alert" className="max-w-full break-words text-[11px] font-semibold text-red-300">{error}</p> : null}
     </div>
   );
 }
@@ -385,8 +385,8 @@ function ApproveRequestControl({
           />
         ) : null}
       </div>
-      {error ? <p className="text-[11px] font-semibold text-red-300">{error}</p> : null}
-      <div className="flex gap-2">
+      {error ? <p role="alert" className="max-w-full break-words text-[11px] font-semibold text-red-300">{error}</p> : null}
+      <div className="flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => void handleApprove()}
@@ -435,7 +435,7 @@ function DismissRequestButton({ requestId, onDone }: { requestId: string; onDone
       >
         {submitting ? "Dismissing…" : "Dismiss"}
       </button>
-      {error ? <p className="text-[11px] font-semibold text-red-300">{error}</p> : null}
+      {error ? <p role="alert" className="max-w-full break-words text-[11px] font-semibold text-red-300">{error}</p> : null}
     </div>
   );
 }
@@ -487,13 +487,13 @@ function RequestsSection({ requests, onChanged }: { requests: DemoAccessRequest[
                   Requested {formatDateTime(request.createdAt)}
                 </p>
               </div>
-              <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">
+              <div className="flex w-full min-w-0 flex-col items-start gap-2 sm:w-auto sm:max-w-[50%] sm:items-end">
                 {request.status === "provisioning" ? (
                   <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[color:var(--theme-text-muted)]">
                     Processing…
                   </span>
                 ) : (
-                  <div className="flex gap-2">
+                  <div className="flex w-full min-w-0 flex-wrap gap-2 sm:w-auto">
                     <ApproveRequestControl requestId={request.id} onDone={onChanged} />
                     <DismissRequestButton requestId={request.id} onDone={onChanged} />
                   </div>
