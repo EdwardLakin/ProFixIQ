@@ -1543,6 +1543,21 @@ export default function InventoryPage(): JSX.Element {
             onChange={(v) => setRecvQty(v === "" ? "" : Math.max(0, v))}
           />
         </div>
+        {!locs.length ? (
+          <div className="mt-3 rounded-lg border border-amber-500/35 bg-amber-950/15 p-3 text-sm text-amber-100">
+            {locsError ? "Stock locations could not be loaded." : "This shop has no stock locations yet."}
+            <button
+              type="button"
+              className="ml-2 font-semibold underline"
+              onClick={() => {
+                setRecvOpen(false);
+                openStockLocations();
+              }}
+            >
+              Set up locations
+            </button>
+          </div>
+        ) : null}
       </Modal>
 
       {/* On-hand detail */}
