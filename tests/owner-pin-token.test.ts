@@ -86,6 +86,26 @@ describe("owner pin signed token", () => {
     }
   });
 
+  it("preserves legacy token parsing but requires a PIN-bound proof for access", async () => {
+    const token = createOwnerPinToken({
+      userId: "user-1",
+      shopId: "shop-1",
+      purpose: OWNER_PIN_PURPOSES.SETTINGS,
+    });
+    expect(verifyOwnerPinToken(token).ok).toBe(true);
+
+    const req = makeRequestWithCookie(
+      `${OWNER_PIN_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    );
+    const result = await requireOwnerPinVerified(req, makeSupabase(), {
+      userId: "user-1",
+      shopId: "shop-1",
+      allowedPurposes: [OWNER_PIN_PURPOSES.SETTINGS],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(401);
+  });
+
   it("rejects an expired token", async () => {
     const token = createOwnerPinToken({
       userId: "user-1",

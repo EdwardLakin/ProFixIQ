@@ -25,8 +25,8 @@ export type OwnerPinTokenClaims = {
   purpose: OwnerPinPurpose;
   iat: number;
   exp: number;
-  pin_hash_fingerprint: string;
-  ver: 2;
+  pin_hash_fingerprint?: string;
+  ver: 1;
 };
 
 type SupabaseLike = {
@@ -76,7 +76,7 @@ export function createOwnerPinToken(args: {
   userId: string;
   shopId: string;
   purpose: OwnerPinPurpose;
-  ownerPinHash: string;
+  ownerPinHash?: string;
   ttlSeconds?: number;
   nowSeconds?: number;
 }): string {
@@ -92,8 +92,10 @@ export function createOwnerPinToken(args: {
     purpose: args.purpose,
     iat: now,
     exp: now + (args.ttlSeconds ?? OWNER_PIN_TTL_SECONDS),
-    pin_hash_fingerprint: ownerPinHashFingerprint(args.ownerPinHash),
-    ver: 2,
+    ...(args.ownerPinHash
+      ? { pin_hash_fingerprint: ownerPinHashFingerprint(args.ownerPinHash) }
+      : {}),
+    ver: 1,
   };
   const encodedHeader = base64UrlEncode(
     JSON.stringify({ alg: "HS256", typ: "JWT" }),
@@ -114,7 +116,8 @@ export function isOwnerPinTokenCurrent(
 ): boolean {
   return Boolean(
     ownerPinHash &&
-    safeEqualString(
+      typeof claims.pin_hash_fingerprint === "string" &&
+      safeEqualString(
       claims.pin_hash_fingerprint,
       ownerPinHashFingerprint(ownerPinHash),
     ),
@@ -147,13 +150,14 @@ export function verifyOwnerPinToken(
       base64UrlDecode(encodedPayload),
     ) as Partial<OwnerPinTokenClaims>;
     if (
-      claims.ver !== 2 ||
+      claims.ver !== 1 ||
       typeof claims.sub !== "string" ||
       typeof claims.shop_id !== "string" ||
       typeof claims.purpose !== "string" ||
       typeof claims.iat !== "number" ||
       typeof claims.exp !== "number" ||
-      typeof claims.pin_hash_fingerprint !== "string"
+      (claims.pin_hash_fingerprint !== undefined &&
+        typeof claims.pin_hash_fingerprint !== "string")
     ) {
       return { ok: false };
     }
@@ -183,7 +187,7 @@ export function setOwnerPinVerifiedCookie(
     userId: string;
     shopId: string;
     purpose: OwnerPinPurpose;
-    ownerPinHash: string;
+    ownerPinHash?: string;
     token?: string;
   },
 ) {
