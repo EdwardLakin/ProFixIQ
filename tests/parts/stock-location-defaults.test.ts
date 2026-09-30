@@ -21,8 +21,11 @@ describe("parts stock locations", () => {
     expect(locations).toContain('requiredCapability: "canManageParts"');
     expect(locations).toContain("access.profile.shop_id");
     expect(locations).toContain("input.shop_id !== shopId");
+    expect(locations).toContain('export async function createInventoryLocation(input:');
+    expect(locations).toContain('export async function createLocation(input:');
+
     expect(inventory).toContain("ensureInventoryMainLocation()");
-    expect(inventory).toContain("createLocation({ shop_id: shopId, code, name })");
+    expect(inventory).toContain("createInventoryLocation({ shop_id: shopId, code, name })");
     expect(inventory).not.toContain('.eq("code", code)\n        .single()');
   });
 
