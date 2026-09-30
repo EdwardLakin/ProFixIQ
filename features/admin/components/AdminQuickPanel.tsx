@@ -563,7 +563,11 @@ export default function AdminQuickPanel() {
   // Shop utilization + setup completeness
   if (shopUtil) {
     const used = shopUtil.active_user_count ?? 0;
-    const cap = shopUtil.user_limit ?? 0;
+    const rawCap = shopUtil.user_limit ?? 0;
+    // 2147483647 is the DB's unlimited-seat sentinel (see plan_user_limit()/
+    // product_package_user_limit() in supabase/migrations); never divide by it.
+    const isUnlimitedCap = rawCap >= 2147483647;
+    const cap = isUnlimitedCap ? 0 : rawCap;
     const pct = cap ? Math.min(100, Math.round((used / cap) * 100)) : 0;
 
     cards.push(
@@ -574,7 +578,9 @@ export default function AdminQuickPanel() {
           </h3>
         </div>
         <div className="text-sm">
-          Users {used}/{cap || "—"} {cap ? `(${pct}%)` : ""}
+          {isUnlimitedCap
+            ? `Users ${used}/Unlimited`
+            : `Users ${used}/${cap || "—"} ${cap ? `(${pct}%)` : ""}`}
         </div>
         {shopMissingFields?.length ? (
           <div className="mt-2 text-xs text-yellow-400">
