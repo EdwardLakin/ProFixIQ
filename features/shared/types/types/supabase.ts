@@ -30951,6 +30951,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      product_package_user_limit: {
+        Args: { p_package_key: string }
+        Returns: number
+      }
       profixiq_can_finalize_workforce: { Args: never; Returns: boolean }
       profixiq_can_manage_workforce: { Args: never; Returns: boolean }
       profixiq_current_role: { Args: never; Returns: string }
