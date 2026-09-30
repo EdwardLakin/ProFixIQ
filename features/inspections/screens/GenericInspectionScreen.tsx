@@ -17,6 +17,10 @@ import { handleTranscriptFn } from "@inspections/lib/inspection/handleTranscript
 import { interpretCommand } from "@inspections/components/inspection/interpretCommand";
 import { addWorkOrderLineFromSuggestion } from "@inspections/lib/inspection/addWorkOrderLine";
 import { useRealtimeVoice } from "@inspections/lib/inspection/useRealtimeVoice";
+import {
+  claimVoice,
+  releaseVoice,
+} from "@/features/shared/voice/voiceArbiter";
 import { buildVoiceBrainFeedback } from "@inspections/lib/inspection/voice/voiceBrain";
 import VoiceControlsPanel from "@inspections/components/inspection/VoiceControlsPanel";
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
@@ -2297,6 +2301,20 @@ type SmartMatchRow = {
     }
   };
 
+  // Only one of inspection voice / Technician CoPilot voice listens at a time
+  // (see voiceArbiter.ts). Claiming here pauses an active CoPilot session; it
+  // resumes by itself once this releases. If CoPilot is started by hand while
+  // this is listening, this is the one that stops.
+  const stopListeningRef = useRef<() => void>(() => undefined);
+  useEffect(() => {
+    if (isListening) {
+      claimVoice("inspection", () => stopListeningRef.current());
+    } else {
+      releaseVoice("inspection");
+    }
+  }, [isListening]);
+  useEffect(() => () => releaseVoice("inspection"), []);
+
   const stopListening = (): void => {
     try {
       stopVoice();
@@ -2305,6 +2323,7 @@ type SmartMatchRow = {
     voiceHeldRef.current = false;
     setVoiceHeld(false);
   };
+  stopListeningRef.current = stopListening;
 
   const [submittingFindingKeys, setSubmittingFindingKeys] = useState<
     Record<string, boolean>

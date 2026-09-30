@@ -2,6 +2,12 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  claimVoice,
+  getVoiceHolder,
+  releaseVoice,
+  subscribeVoiceHolder,
+} from "@/features/shared/voice/voiceArbiter";
+import {
   useTechnicianRealtimeVoice,
   type TechnicianRealtimeVoiceState,
 } from "./useTechnicianRealtimeVoice";
@@ -695,11 +701,51 @@ export function useTechnicianInteractionGateway({
   }, [enabled, invalidateGeneration, requestWakeLock]);
   startRef.current = start;
 
+  // Mic arbitration with inspection voice (see voiceArbiter.ts): only one of
+  // the two listens at a time. If inspection voice takes the mic while this
+  // is active, stop and remember to resume once inspection voice lets go; an
+  // autoStart that would land while inspection voice holds the mic waits.
+  const stopRef = useRef<() => void>(() => undefined);
+  const resumeAfterInspectionRef = useRef(false);
+  const [inspectionHoldsMic, setInspectionHoldsMic] = useState(
+    () => getVoiceHolder() === "inspection",
+  );
+
   useEffect(() => {
-    if (!enabled || !autoStart || autoStartAttemptedRef.current) return;
+    return subscribeVoiceHolder((owner) => {
+      setInspectionHoldsMic(owner === "inspection");
+    });
+  }, []);
+
+  useEffect(() => {
+    if (modeActive) {
+      claimVoice("copilot", () => {
+        resumeAfterInspectionRef.current = true;
+        stopRef.current();
+      });
+    } else {
+      releaseVoice("copilot");
+    }
+  }, [modeActive]);
+
+  useEffect(() => {
+    if (inspectionHoldsMic || !resumeAfterInspectionRef.current) return;
+    resumeAfterInspectionRef.current = false;
+    if (enabled && !activeRef.current) void startRef.current();
+  }, [enabled, inspectionHoldsMic]);
+
+  useEffect(() => {
+    if (
+      !enabled ||
+      !autoStart ||
+      inspectionHoldsMic ||
+      autoStartAttemptedRef.current
+    ) {
+      return;
+    }
     autoStartAttemptedRef.current = true;
     void start();
-  }, [autoStart, enabled, start]);
+  }, [autoStart, enabled, inspectionHoldsMic, start]);
 
   const stop = useCallback(() => {
     invalidateGeneration();
@@ -720,6 +766,8 @@ export function useTechnicianInteractionGateway({
     utteranceRef.current = null;
     setVoicePhase("idle");
   }, [clearSpeechWatchdog, invalidateGeneration, releaseWakeLock, setVoicePhase]);
+
+  stopRef.current = stop;
 
   const interrupt = useCallback(() => {
     if (!activeRef.current || phaseRef.current !== "speaking") return;
