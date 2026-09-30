@@ -431,9 +431,72 @@ describe("PartsRequestWorkbench inventory attach flow", () => {
         itemId: "item-1",
         partId: "part-2",
         warningAccepted: undefined,
+        syncDescription: true,
       }),
     );
     expect(screen.getByText("Selected: ACDelco Oil Filter")).toBeInTheDocument();
+  });
+
+  it("fills the Description with the inventory part name when an inline match is picked", async () => {
+    const user = userEvent.setup();
+    const onAttachInventory = vi.fn(async () => ({
+      partId: "part-2",
+      // Stale last-saved value from the server must not win over the pick.
+      description: "",
+      addedToWorkOrder: false,
+    }));
+
+    render(<PartsRequestWorkbench model={model(null)} onAttachInventory={onAttachInventory} />);
+
+    const descriptionField = screen.getByRole("combobox", {
+      name: /Description for Oil filter/i,
+    });
+    await user.clear(descriptionField);
+    await user.type(descriptionField, "ACD");
+    await user.click(await screen.findByRole("option", { name: /ACDelco Oil Filter/i }));
+
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("ACDelco Oil Filter")).toBeInTheDocument(),
+    );
+  });
+
+  it("keeps the row linked when the attach failed after it was already persisted", async () => {
+    const user = userEvent.setup();
+    const onAttachInventory = vi.fn(async () => {
+      throw Object.assign(new Error("sync failed"), { code: "PARTS_QUOTE_SYNC_FAILED" });
+    });
+
+    render(<PartsRequestWorkbench model={model(null)} onAttachInventory={onAttachInventory} />);
+
+    const descriptionField = screen.getByRole("combobox", {
+      name: /Description for Oil filter/i,
+    });
+    await user.clear(descriptionField);
+    await user.type(descriptionField, "ACD");
+    await user.click(await screen.findByRole("option", { name: /ACDelco Oil Filter/i }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("sync failed"));
+    expect(screen.getByText("Selected: ACDelco Oil Filter")).toBeInTheDocument();
+  });
+
+  it("rolls the row back to unlinked when an inline attach fails", async () => {
+    const user = userEvent.setup();
+    const onAttachInventory = vi.fn(async () => {
+      throw new Error("PARTS_APPROVAL_REQUIRED");
+    });
+
+    render(<PartsRequestWorkbench model={model(null)} onAttachInventory={onAttachInventory} />);
+
+    const descriptionField = screen.getByRole("combobox", {
+      name: /Description for Oil filter/i,
+    });
+    await user.clear(descriptionField);
+    await user.type(descriptionField, "ACD");
+    await user.click(await screen.findByRole("option", { name: /ACDelco Oil Filter/i }));
+
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith("PARTS_APPROVAL_REQUIRED"));
+    expect(screen.queryByText("Selected: ACDelco Oil Filter")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Attach Part" })).toBeInTheDocument();
   });
 
   it("searches inventory inline from the Part # field and does not auto-substitute on typing alone", async () => {

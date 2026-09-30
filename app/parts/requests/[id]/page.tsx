@@ -2524,13 +2524,19 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                           const res = await fetch(`/api/parts/requests/items/${input.itemId}/inventory`, {
                             method: "POST",
                             headers: { "Content-Type": "application/json" },
-                            body: JSON.stringify({ mode: "attach", partId: input.partId }),
+                            body: JSON.stringify({
+                              mode: "attach",
+                              partId: input.partId,
+                              syncDescription: input.syncDescription === true,
+                            }),
                           });
-                          const body = await res.json().catch(() => null) as { ok?: boolean; error?: string; item?: ItemRow } | null;
+                          const body = await res.json().catch(() => null) as { ok?: boolean; code?: string; error?: string; item?: ItemRow } | null;
                           if (!res.ok || !body?.ok) {
                             const message = body?.error || "Could not attach inventory part.";
                             toast.error(message);
-                            throw new Error(message);
+                            // Keep the server code so the workbench can tell a
+                            // failure before persistence from a partial success.
+                            throw Object.assign(new Error(message), { code: body?.code });
                           }
 
                           if (body.item) {

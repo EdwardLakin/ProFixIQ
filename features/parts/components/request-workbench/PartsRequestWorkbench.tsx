@@ -40,6 +40,12 @@ type ActiveModal =
   | { type: "confirmConflict"; itemId: string; partId?: string | null }
   | null;
 
+// Attach failures reported after the inventory selection was already persisted.
+const PARTIAL_ATTACH_ERROR_CODES = new Set([
+  "PARTS_QUOTE_SYNC_FAILED",
+  "PARTS_DESCRIPTION_SYNC_FAILED",
+]);
+
 function canRequestSupplierQuote(item: PartsRequestWorkbenchItem): boolean {
   const status = String(item.status ?? "requested").toLowerCase();
   return (
@@ -238,45 +244,94 @@ export function PartsRequestWorkbench({
   async function attachInventoryPart(
     itemId: string,
     partId: string,
-    options?: { warningAccepted?: boolean },
+    options?: {
+      warningAccepted?: boolean;
+      // Inline pick only: replace the row description with this label.
+      syncDescription?: string;
+    },
   ): Promise<void> {
+    const previous = items.find((item) => item.id === itemId) ?? null;
+    const syncedDescription = options?.syncDescription?.trim() || null;
+
     setItems((current) =>
-      current.map((item) => (item.id === itemId ? { ...item, partId } : item)),
+      current.map((item) =>
+        item.id === itemId
+          ? {
+              ...item,
+              partId,
+              ...(syncedDescription ? { description: syncedDescription } : {}),
+            }
+          : item,
+      ),
     );
 
-    await onResetConflictOverride?.(itemId);
+    try {
+      await onResetConflictOverride?.(itemId);
 
-    const updated = await onAttachInventory?.({
-      itemId,
-      partId,
-      warningAccepted: options?.warningAccepted,
-    });
+      const updated = await onAttachInventory?.({
+        itemId,
+        partId,
+        warningAccepted: options?.warningAccepted,
+        syncDescription: syncedDescription != null ? true : undefined,
+      });
 
-    if (updated) {
+      if (updated) {
+        setItems((current) =>
+          current.map((item) =>
+            item.id === itemId
+              ? {
+                  ...item,
+                  ...updated,
+                  // The server row only carries the last *saved* description, so
+                  // never let it clobber what the user typed or just picked.
+                  // If the user kept typing while the request was in flight,
+                  // their newer text wins over the optimistic selection.
+                  description:
+                    syncedDescription && item.description === syncedDescription
+                      ? updated.description?.trim() || syncedDescription
+                      : item.description,
+                  partId: updated.partId ?? partId,
+                  addedToWorkOrder: updated.addedToWorkOrder ?? item.addedToWorkOrder ?? false,
+                }
+              : item,
+          ),
+        );
+      }
+    } catch (error) {
+      // These failures happen after the attach was already committed, so the
+      // database is linked; keep the row linked and let a reload reconcile.
+      const code = (error as { code?: unknown } | null)?.code;
+      if (typeof code === "string" && PARTIAL_ATTACH_ERROR_CODES.has(code)) {
+        throw error;
+      }
+      // The attach did not persist, so do not leave the row looking linked.
       setItems((current) =>
         current.map((item) =>
           item.id === itemId
             ? {
                 ...item,
-                ...updated,
-                partId: updated.partId ?? partId,
-                addedToWorkOrder: updated.addedToWorkOrder ?? item.addedToWorkOrder ?? false,
+                partId: previous?.partId ?? null,
+                description: previous?.description ?? item.description,
               }
             : item,
         ),
       );
+      throw error;
     }
   }
 
   // Inline combobox selection: the user explicitly picked a suggested
   // inventory match while typing in Description / Part # / Manufacturer.
   // This is never automatic — it only fires from a deliberate click/select.
+  // Picking a match also fills the Description with the inventory part name.
   async function selectInventoryMatch(
     itemId: string,
     result: PartsRequestInventoryResult,
   ): Promise<void> {
     try {
-      await attachInventoryPart(itemId, result.value);
+      await attachInventoryPart(itemId, result.value, {
+        syncDescription: result.label,
+      });
       toast.success(`Linked to ${result.label}.`);
     } catch (error) {
       toast.error(

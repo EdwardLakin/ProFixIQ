@@ -178,6 +178,8 @@ export type AttachInventoryInput = {
   itemId: string;
   partId: string;
   warningAccepted?: boolean;
+  /** Also replace the row description with the picked inventory part's name. */
+  syncDescription?: boolean;
 };
 
 export type ItemAction = {
