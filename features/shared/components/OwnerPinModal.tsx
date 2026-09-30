@@ -120,6 +120,36 @@ export default function OwnerPinModal({
     return verification === "verified";
   }
 
+  async function handleResetPin(): Promise<boolean> {
+    if (!shopId) {
+      setError("Shop not found.");
+      return false;
+    }
+    if (!/^\d{4,8}$/.test(pin)) {
+      setError("PIN must be 4 to 8 digits.");
+      return false;
+    }
+    if (pin !== confirmPin) {
+      setError("PINs do not match.");
+      return false;
+    }
+
+    const res = await fetch("/api/shop/owner-pin/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shopId, pin, ...(purpose ? { purpose } : {}) }),
+    });
+    const json = (await res.json().catch(() => ({}))) as VerifyResponse;
+    if (!res.ok) {
+      setError(json?.error || "Failed to reset PIN");
+      return false;
+    }
+
+    onVerified?.(buildExpiryIso(30));
+    onClose();
+    return true;
+  }
+
   async function handleSubmit() {
     setBusy(true);
     setError(null);
@@ -130,7 +160,8 @@ export default function OwnerPinModal({
         return;
       }
 
-      await handleSetPin();
+      if (mode === "reset") await handleResetPin();
+      else await handleSetPin();
     } finally {
       setBusy(false);
     }

@@ -494,7 +494,7 @@ export default function OwnerSettingsPage() {
   };
 
   const refreshBillingState = useCallback(
-    async (sid: string, internalDemoOverride = isInternalDemoShop) => {
+    async (sid: string, internalDemoOverride: boolean) => {
       const { data: billing } = await supabase
         .from("shops")
         .select(
@@ -507,15 +507,8 @@ export default function OwnerSettingsPage() {
         >();
 
       setStripeAccountId((billing?.stripe_account_id as string | null) ?? null);
-      const planPresentation = resolvePlanPresentation(
-        billing?.plan,
-        internalDemoOverride ? "internal_demo" : null,
-      );
-      const planSignal = internalDemoOverride
-        ? planPresentation.plan
-        : parsePlan((billing?.plan as string | null) ?? null);
+      const planSignal = parsePlan((billing?.plan as string | null) ?? null);
       if (internalDemoOverride) {
-        setPlan(planPresentation.plan);
         setSeatsLimit(null);
       }
       const shopStatus = parseStripeSubscriptionStatus(
@@ -575,10 +568,8 @@ export default function OwnerSettingsPage() {
           return;
         }
 
-        const resolvedPlan = internalDemoOverride
-          ? planPresentation.plan
-          : parsePlan(j.resolved_plan);
-        if (resolvedPlan !== "unknown") {
+        const resolvedPlan = parsePlan(j.resolved_plan);
+        if (!internalDemoOverride && resolvedPlan !== "unknown") {
           setPlan(resolvedPlan);
           setSeatsLimit(
             internalDemoOverride ? null : planSeatLimit(resolvedPlan),
@@ -604,7 +595,7 @@ export default function OwnerSettingsPage() {
         setCancelAtPeriodEnd(false);
       }
     },
-    [isInternalDemoShop, supabase],
+    [supabase],
   );
 
   const fetchSettings = useCallback(async () => {
@@ -675,7 +666,9 @@ export default function OwnerSettingsPage() {
       (shop as { plan?: unknown } | null)?.plan,
       internalDemoOverride ? "internal_demo" : null,
     );
-    const resolvedPlan = planPresentation.plan;
+    const resolvedPlan = parsePlan(
+      (shop as { plan?: string | null } | null)?.plan ?? null,
+    );
     setPlan(resolvedPlan);
     setSeatsLimit(planPresentation.seatLimit);
 
@@ -1367,7 +1360,7 @@ export default function OwnerSettingsPage() {
       }
       setCancelDialogOpen(false);
 
-      await refreshBillingState(shopId);
+      await refreshBillingState(shopId, isInternalDemoShop);
       toast.success(
         "Cancellation scheduled for the end of the current billing period.",
       );

@@ -13,12 +13,18 @@ const SECRET_ENV = "OWNER_PIN_TOKEN_SECRET";
 
 type MockSupabase = {
   auth: {
-    getUser: () => Promise<{ data: { user: { id: string } | null }; error: unknown }>;
+    getUser: () => Promise<{
+      data: { user: { id: string } | null };
+      error: unknown;
+    }>;
   };
   from: () => {
     select: () => {
       eq: () => {
-        single: () => Promise<{ data: { id: string } | null; error: unknown }>;
+        single: () => Promise<{
+          data: { id: string; owner_pin_hash: string } | null;
+          error: unknown;
+        }>;
       };
     };
   };
@@ -32,7 +38,10 @@ function makeRequestWithCookie(cookie: string): Request {
   });
 }
 
-function makeSupabase(userId = "user-1"): MockSupabase {
+function makeSupabase(
+  userId = "user-1",
+  ownerPinHash = "stored-hash-v1",
+): MockSupabase {
   return {
     auth: {
       getUser: async () => ({ data: { user: { id: userId } }, error: null }),
@@ -40,7 +49,10 @@ function makeSupabase(userId = "user-1"): MockSupabase {
     from: () => ({
       select: () => ({
         eq: () => ({
-          single: async () => ({ data: { id: "shop-1" }, error: null }),
+          single: async () => ({
+            data: { id: "shop-1", owner_pin_hash: ownerPinHash },
+            error: null,
+          }),
         }),
       }),
     }),
@@ -61,6 +73,7 @@ describe("owner pin signed token", () => {
       userId: "user-1",
       shopId: "shop-1",
       purpose: OWNER_PIN_PURPOSES.SETTINGS,
+      ownerPinHash: "stored-hash-v1",
       ttlSeconds: 600,
     });
 
@@ -73,15 +86,38 @@ describe("owner pin signed token", () => {
     }
   });
 
+  it("preserves legacy token parsing but requires a PIN-bound proof for access", async () => {
+    const token = createOwnerPinToken({
+      userId: "user-1",
+      shopId: "shop-1",
+      purpose: OWNER_PIN_PURPOSES.SETTINGS,
+    });
+    expect(verifyOwnerPinToken(token).ok).toBe(true);
+
+    const req = makeRequestWithCookie(
+      `${OWNER_PIN_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    );
+    const result = await requireOwnerPinVerified(req, makeSupabase(), {
+      userId: "user-1",
+      shopId: "shop-1",
+      allowedPurposes: [OWNER_PIN_PURPOSES.SETTINGS],
+    });
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(401);
+  });
+
   it("rejects an expired token", async () => {
     const token = createOwnerPinToken({
       userId: "user-1",
       shopId: "shop-1",
       purpose: OWNER_PIN_PURPOSES.SETTINGS,
+      ownerPinHash: "stored-hash-v1",
       ttlSeconds: -1,
     });
 
-    const req = makeRequestWithCookie(`${OWNER_PIN_COOKIE_NAME}=${encodeURIComponent(token)}`);
+    const req = makeRequestWithCookie(
+      `${OWNER_PIN_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    );
     const result = await requireOwnerPinVerified(req, makeSupabase(), {
       userId: "user-1",
       shopId: "shop-1",
@@ -99,9 +135,12 @@ describe("owner pin signed token", () => {
       userId: "user-1",
       shopId: "shop-1",
       purpose: OWNER_PIN_PURPOSES.SETTINGS,
+      ownerPinHash: "stored-hash-v1",
     });
 
-    const req = makeRequestWithCookie(`${OWNER_PIN_COOKIE_NAME}=${encodeURIComponent(token)}`);
+    const req = makeRequestWithCookie(
+      `${OWNER_PIN_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    );
     const result = await requireOwnerPinVerified(req, makeSupabase("user-2"), {
       userId: "user-2",
       shopId: "shop-1",
@@ -119,9 +158,12 @@ describe("owner pin signed token", () => {
       userId: "user-1",
       shopId: "shop-1",
       purpose: OWNER_PIN_PURPOSES.SETTINGS,
+      ownerPinHash: "stored-hash-v1",
     });
 
-    const req = makeRequestWithCookie(`${OWNER_PIN_COOKIE_NAME}=${encodeURIComponent(token)}`);
+    const req = makeRequestWithCookie(
+      `${OWNER_PIN_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    );
     const result = await requireOwnerPinVerified(req, makeSupabase(), {
       userId: "user-1",
       shopId: "shop-2",
@@ -139,9 +181,12 @@ describe("owner pin signed token", () => {
       userId: "user-1",
       shopId: "shop-1",
       purpose: OWNER_PIN_PURPOSES.BILLING,
+      ownerPinHash: "stored-hash-v1",
     });
 
-    const req = makeRequestWithCookie(`${OWNER_PIN_COOKIE_NAME}=${encodeURIComponent(token)}`);
+    const req = makeRequestWithCookie(
+      `${OWNER_PIN_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    );
     const result = await requireOwnerPinVerified(req, makeSupabase(), {
       userId: "user-1",
       shopId: "shop-1",
@@ -152,6 +197,30 @@ describe("owner pin signed token", () => {
     if (!result.ok) {
       expect(result.response.status).toBe(403);
     }
+  });
+
+  it("rejects a proof after the stored owner PIN hash changes", async () => {
+    const token = createOwnerPinToken({
+      userId: "user-1",
+      shopId: "shop-1",
+      purpose: OWNER_PIN_PURPOSES.SETTINGS,
+      ownerPinHash: "stored-hash-v1",
+    });
+    const req = makeRequestWithCookie(
+      `${OWNER_PIN_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    );
+    const result = await requireOwnerPinVerified(
+      req,
+      makeSupabase("user-1", "stored-hash-v2"),
+      {
+        userId: "user-1",
+        shopId: "shop-1",
+        allowedPurposes: [OWNER_PIN_PURPOSES.SETTINGS],
+      },
+    );
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.response.status).toBe(401);
   });
 
   it("rejects after clear cookie", async () => {
