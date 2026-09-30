@@ -20,13 +20,6 @@ if [[ -z "$generated_file" ]]; then
   remove_generated=true
 fi
 
-cleanup() {
-  if [[ "$remove_generated" == "true" ]]; then
-    rm -f "$generated_file"
-  fi
-}
-trap cleanup EXIT
-
 generation_error_file="$(mktemp)"
 
 generate_types() {
@@ -43,7 +36,7 @@ generate_types() {
     # with Supabase's same-version GHCR mirror, aliased to the name the CLI uses.
     if grep -Eqi 'toomanyrequests|rate exceeded|data limit exceeded' "$generation_error_file"; then
       image="$(sed -nE "s/.*Unable to find image '([^']+)'.*/\\1/p" "$generation_error_file" | tail -n 1)"
-      if [[ "$image" =~ ^public\\.ecr\\.aws/supabase/postgres-meta:([^[:space:]]+)$ ]]; then
+      if [[ "$image" =~ ^public\.ecr\.aws/supabase/postgres-meta:([^[:space:]]+)$ ]]; then
         mirror_image="ghcr.io/supabase/postgres-meta:${BASH_REMATCH[1]}"
         echo "ECR pull limit reached; retrying generated types with ${mirror_image}." >&2
         docker pull "$mirror_image"
