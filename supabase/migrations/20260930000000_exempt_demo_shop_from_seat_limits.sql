@@ -120,6 +120,36 @@ begin
 end;
 $$;
 
+-- Both functions above already existed on canonical production with these
+-- exact bodies, but -- discovered only by this migration's own regression
+-- test failing on a clean replay -- the CREATE TRIGGER statements that
+-- attach them to public.profiles were never captured by any migration
+-- either (the same class of untracked drift as the constraint below).
+-- Without this, a clean replay has both functions defined but neither ever
+-- invoked: every profiles insert/update sails through completely
+-- unguarded by seat limits. "drop if exists" promotes each into the
+-- baseline there while safely replacing the live one on production.
+drop trigger if exists profiles_enforce_shop_user_limit on public.profiles;
+create trigger profiles_enforce_shop_user_limit
+before insert or update of shop_id
+on public.profiles
+for each row
+execute function public.tg_profiles_enforce_shop_user_limit();
+
+drop trigger if exists trg_profiles_enforce_shop_user_limit_ins on public.profiles;
+create trigger trg_profiles_enforce_shop_user_limit_ins
+before insert
+on public.profiles
+for each row
+execute function public.enforce_shop_user_limit();
+
+drop trigger if exists trg_profiles_enforce_shop_user_limit_upd on public.profiles;
+create trigger trg_profiles_enforce_shop_user_limit_upd
+before update of shop_id
+on public.profiles
+for each row
+execute function public.enforce_shop_user_limit();
+
 -- A third, independent layer hits the same wall: profixiq_mark_shop_billing_sync()
 -- recalculates shops.active_user_count from the live profile count on every
 -- profiles insert/update/delete, and shops_active_user_count_le_max_users
