@@ -3800,6 +3800,14 @@ type SmartMatchRow = {
           </div>
         ) : null}
 
+        <ImportedFormContextCard
+          context={session.formContext}
+          values={session.formContextValues ?? {}}
+          placement="certification"
+          disabled={isLocked}
+          onChange={updateFormContextValue}
+        />
+
         <div className="mt-2">
           <InspectionSignaturePanel
             inspectionId={inspectionId}

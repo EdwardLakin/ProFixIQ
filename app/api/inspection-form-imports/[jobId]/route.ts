@@ -4,6 +4,7 @@ import {
   inspectionFormImportState,
   normalizeInspectionFormImportSummary,
   normalizeInspectionFormContext,
+  refineInspectionFormContext,
   normalizeInspectionFormSections,
 } from "@/features/inspections/lib/form-import";
 import {
@@ -78,7 +79,9 @@ export async function GET(_req: Request, context: Context) {
       fleetId: summary.fleetId,
       fleetName: summary.fleetName,
       draftSections: summary.draftSections,
-      formContext: summary.formContext,
+      // Reshaped on read so imports parsed before the certification and noise
+      // rules existed open in the corrected order; saving persists it.
+      formContext: refineInspectionFormContext(summary.formContext),
       extractedText: summary.extractedText,
       failedPages: summary.failedPages,
       totalPages: job.total_rows,
@@ -125,7 +128,7 @@ export async function PATCH(req: Request, context: Context) {
   const formContext =
     body?.formContext === undefined
       ? current.formContext
-      : normalizeInspectionFormContext(body.formContext);
+      : refineInspectionFormContext(normalizeInspectionFormContext(body.formContext));
   const admin = createAdminSupabase();
   const { error } = await admin
     .from("import_jobs")

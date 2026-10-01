@@ -1349,7 +1349,11 @@ export async function generateInspectionPDF(
   // session.formContext, outside session.sections, so rendering the checklist
   // alone would drop them from a finalized regulatory report.
   const contextBlocks = assembleInspectionReport(session).formContext;
-  for (const block of contextBlocks) {
+  // Like the paper form: the record and printed statements open the report,
+  // while the free-text boxes and the certification block close it, just ahead
+  // of the signatures.
+  const drawContextBlocks = (wanted: readonly string[]) => {
+  for (const block of contextBlocks.filter((b) => wanted.includes(b.block))) {
     drawRule();
     drawSectionHeader(block.title);
     for (const item of block.items) {
@@ -1377,6 +1381,8 @@ export async function generateInspectionPDF(
       drawMetaRow(label, item.value ?? undefined);
     }
   }
+  };
+  drawContextBlocks(["branding", "header", "notices"]);
 
   /* -------------------------------------------------------- Full item detail */
 
@@ -1428,6 +1434,8 @@ export async function generateInspectionPDF(
     openSectionTitle = null;
     y -= 10;
   }
+
+  drawContextBlocks(["notes", "completion"]);
 
   /* --------------------------------------------------------------- Signatures */
 
