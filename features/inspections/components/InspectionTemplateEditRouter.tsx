@@ -6,6 +6,19 @@ import { toast } from "sonner";
 
 import CustomDraftPage from "@/features/inspections/app/inspection/custom-draft/page";
 import {
+  declinedGridsFromTags,
+  refreshTemplateLayout,
+  tagsWithDeclinedGrids,
+} from "@/features/inspections/lib/fleet/refreshTemplateLayout";
+import {
+  emptyInspectionFormContext,
+  normalizeInspectionFormContext,
+  normalizeInspectionFormSections,
+  type GeneratedGridMeta,
+  type ImportGridPlan,
+  type InspectionFormContext,
+} from "@/features/inspections/lib/form-import";
+import {
   getInspectionBuilderNavigation,
   type InspectionBuilderSurface,
 } from "@/features/inspections/lib/inspectionBuilderNavigation";
@@ -17,11 +30,17 @@ type ImportedItem = {
   unit: string | null;
   fieldType: ImportedFieldType;
 };
-type ImportedSection = { title: string; items: ImportedItem[] };
+type ImportedSection = {
+  title: string;
+  items: ImportedItem[];
+  /** Set on a tire/brake grid ProFixIQ generated; must survive every save. */
+  generatedGrid?: GeneratedGridMeta;
+};
 
 type TemplateRow = {
   template_name: string | null;
   sections: unknown;
+  form_context?: unknown;
   vehicle_type: string | null;
   labor_hours: number | null;
   tags: string[] | null;
@@ -68,7 +87,22 @@ function normalizedSections(value: unknown): ImportedSection[] {
           return { item, unit, fieldType } satisfies ImportedItem;
         })
         .filter((item): item is ImportedItem => item !== null);
-      return items.length ? ({ title, items } satisfies ImportedSection) : null;
+      const grid = isRecord(rawSection.generatedGrid)
+        ? rawSection.generatedGrid
+        : null;
+      const generatedGrid: GeneratedGridMeta | null =
+        grid &&
+        (grid.kind === "tire" || grid.kind === "brake") &&
+        (grid.brakeMode === "air" || grid.brakeMode === "hydraulic")
+          ? { kind: grid.kind, brakeMode: grid.brakeMode }
+          : null;
+      return items.length
+        ? ({
+            title,
+            items,
+            ...(generatedGrid ? { generatedGrid } : {}),
+          } satisfies ImportedSection)
+        : null;
     })
     .filter((section): section is ImportedSection => section !== null);
 }
@@ -96,6 +130,51 @@ function ImportedFleetTemplateEditor({
     normalizedSections(initial.sections),
   );
   const [saving, setSaving] = useState(false);
+
+  // The printed form's non-checklist content (trip record, certificate, ...).
+  // Only written back when the layout is refreshed, so saving an ordinary edit
+  // never rewrites it.
+  const [formContext, setFormContext] = useState<InspectionFormContext>(() =>
+    initial.form_context
+      ? normalizeInspectionFormContext(initial.form_context)
+      : emptyInspectionFormContext(),
+  );
+  const [formContextDirty, setFormContextDirty] = useState(false);
+  // Tags carry the reviewer's explicit "no grid" choices; written back only
+  // when a refresh changes them.
+  const [tags, setTags] = useState<string[]>(
+    Array.isArray(initial.tags) ? initial.tags : [],
+  );
+  const [tagsDirty, setTagsDirty] = useState(false);
+  const [planChoice, setPlanChoice] = useState<Partial<ImportGridPlan>>({});
+  const [treadUnit, setTreadUnit] = useState<"" | "32nds" | "mm">("");
+
+  const refresh = useMemo(
+    () =>
+      refreshTemplateLayout({
+        sections: normalizeInspectionFormSections(sections),
+        formContext,
+        vehicleType,
+        title,
+        plan: planChoice,
+        treadUnit: treadUnit || null,
+        declined: declinedGridsFromTags(tags),
+      }),
+    [formContext, planChoice, sections, tags, title, treadUnit, vehicleType],
+  );
+
+  const applyRefresh = () => {
+    setSections(normalizedSections(refresh.sections));
+    setFormContext(refresh.formContext);
+    setFormContextDirty(true);
+    const nextTags = tagsWithDeclinedGrids(tags, refresh.declined);
+    if (nextTags.join("\u0000") !== tags.join("\u0000")) {
+      setTags(nextTags);
+      setTagsDirty(true);
+    }
+    setPlanChoice({});
+    toast.success("Layout refreshed. Review it below, then save.");
+  };
 
   const updateSection = (
     sectionIndex: number,
@@ -125,6 +204,9 @@ function ImportedFleetTemplateEditor({
     const cleaned = sections
       .map((section) => ({
         title: section.title.trim(),
+        ...(section.generatedGrid
+          ? { generatedGrid: section.generatedGrid }
+          : {}),
         items: section.items
           .map((item) => ({
             item: item.item.trim(),
@@ -164,6 +246,8 @@ function ImportedFleetTemplateEditor({
               sections: cleaned,
               vehicleType: vehicleType.trim() || null,
               laborHours: parsedLabor,
+              ...(formContextDirty ? { formContext } : {}),
+              ...(tagsDirty ? { tags } : {}),
             }),
           },
         );
@@ -181,12 +265,16 @@ function ImportedFleetTemplateEditor({
             sections: cleaned,
             vehicle_type: vehicleType.trim() || null,
             labor_hours: parsedLabor,
+            ...(formContextDirty ? { form_context: formContext } : {}),
+            ...(tagsDirty ? { tags } : {}),
           } as never)
           .eq("id", templateId);
         if (error) throw error;
       }
       toast.success("Imported fleet template saved.");
       setSections(cleaned);
+      setFormContextDirty(false);
+      setTagsDirty(false);
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -252,6 +340,93 @@ function ImportedFleetTemplateEditor({
             className="mt-1 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5 text-sm"
           />
         </label>
+      </section>
+
+      <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
+        <h2 className="text-sm font-semibold uppercase tracking-[0.14em]">
+          Refresh layout
+        </h2>
+        <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+          Brings this saved template up to the current import layout without
+          re-reading the paper form: certificate fields move to the end above
+          the signature block, page markers and legends are removed, and the
+          tire and brake grids that fit the form are added. Nothing changes
+          until you apply it and save. Inspections already started keep the
+          layout they began with.
+        </p>
+        <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={refresh.gridPlan.tireGrid}
+              onChange={(event) =>
+                setPlanChoice((c) => ({ ...c, tireGrid: event.target.checked }))
+              }
+            />
+            Tire grid (pressure and tread)
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={refresh.gridPlan.brakeGrid}
+              onChange={(event) =>
+                setPlanChoice((c) => ({ ...c, brakeGrid: event.target.checked }))
+              }
+            />
+            Brake grid (pads, linings, push rod)
+          </label>
+          <label className="flex items-center gap-2">
+            Brake system
+            <select
+              aria-label="Brake system"
+              value={refresh.gridPlan.brakeMode}
+              onChange={(event) =>
+                setPlanChoice((c) => ({
+                  ...c,
+                  brakeMode: event.target.value as ImportGridPlan["brakeMode"],
+                }))
+              }
+              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-xs"
+            >
+              <option value="air">Air</option>
+              <option value="hydraulic">Hydraulic</option>
+            </select>
+          </label>
+          <label className="flex items-center gap-2">
+            Tread depth unit
+            <select
+              aria-label="Tread depth unit"
+              value={treadUnit}
+              onChange={(event) =>
+                setTreadUnit(event.target.value as "" | "32nds" | "mm")
+              }
+              className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-xs"
+            >
+              <option value="">Keep current</option>
+              <option value="32nds">32nds of an inch</option>
+              <option value="mm">Millimetres</option>
+            </select>
+          </label>
+        </div>
+        {refresh.changed ? (
+          <ul className="mt-3 list-disc space-y-1 pl-4 text-xs text-[color:var(--theme-text-secondary)]">
+            {refresh.summary.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        ) : (
+          <p className="mt-3 text-xs text-[color:var(--theme-text-secondary)]">
+            This template already matches the current layout.
+          </p>
+        )}
+        <button
+          type="button"
+          disabled={!refresh.changed}
+          onClick={applyRefresh}
+          className="mt-3 rounded-xl border border-[var(--accent-copper)] px-4 py-2 text-sm font-semibold text-[var(--accent-copper)] disabled:opacity-40"
+        >
+          Apply refreshed layout
+        </button>
       </section>
 
       <div className="space-y-4">
@@ -430,7 +605,9 @@ export default function InspectionTemplateEditRouter({
     setCheckError(null);
     void supabase
       .from("inspection_templates")
-      .select("template_name, sections, vehicle_type, labor_hours, tags")
+      .select(
+        "template_name, sections, vehicle_type, labor_hours, tags, form_context",
+      )
       .eq("id", templateId)
       .maybeSingle<TemplateRow>()
       .then(({ data, error }) => {
