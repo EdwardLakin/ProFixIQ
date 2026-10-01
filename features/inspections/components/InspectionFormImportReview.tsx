@@ -412,6 +412,7 @@ export default function InspectionFormImportReview({
               <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
                 <label className="flex items-center gap-2"><input type="checkbox" checked={gridPlan.tireGrid} onChange={(event) => changeGrids({ tireGrid: event.target.checked })} />Tire grid (pressure and tread)</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={gridPlan.brakeGrid} onChange={(event) => changeGrids({ brakeGrid: event.target.checked })} />Brake grid (pads, linings, push rod)</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={Boolean(gridPlan.batteryGrid)} onChange={(event) => changeGrids({ batteryGrid: event.target.checked })} />Battery grid (rated / tested CCA)</label>
                 <label className="flex items-center gap-2">Brake system
                   <select aria-label="Brake system" value={gridPlan.brakeMode} onChange={(event) => changeGrids({ brakeMode: event.target.value as ImportGridPlan["brakeMode"] })} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1 text-xs">
                     <option value="air">Air</option>
@@ -425,10 +426,10 @@ export default function InspectionFormImportReview({
                 </ul>
               ) : null}
               {gridPlan.tireGrid && record.gridDetection?.sourceHasTireMeasurements ? (
-                <p className="mt-1 text-[11px] text-amber-200">This form already has tire measurement rows, so the tire grid would repeat them.</p>
+                <p className="mt-1 text-[11px] text-amber-200">The tire table printed on this form is replaced by the tire grid.</p>
               ) : null}
               {gridPlan.brakeGrid && record.gridDetection?.sourceHasBrakeMeasurements ? (
-                <p className="mt-1 text-[11px] text-amber-200">This form already has brake measurement rows, so the brake grid would repeat them.</p>
+                <p className="mt-1 text-[11px] text-amber-200">The brake table printed on this form is replaced by the brake grid.</p>
               ) : null}
             </div>
             <div className="mt-4 space-y-3">

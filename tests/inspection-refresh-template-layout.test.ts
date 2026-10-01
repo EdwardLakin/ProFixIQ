@@ -46,10 +46,10 @@ describe("refreshTemplateLayout", () => {
     expect(out.sections.find((s) => s.title === "Air Brakes")!.items).toHaveLength(2);
   });
 
-  it("adds the grids the form calls for, after the matching sections", () => {
+  it("adds the grids the form calls for, at the top of the checklist", () => {
     expect(out.gridPlan).toMatchObject({ tireGrid: true, brakeGrid: true, brakeMode: "air" });
     expect(out.sections.map((s) => s.title)).toEqual([
-      "Air Brakes", "Corner Grid (Air)", "Tires & Wheels", "Tire Grid — Air Brake (HD)",
+      "Corner Grid (Air)", "Tire Grid — Air Brake (HD)", "Air Brakes", "Tires & Wheels",
     ]);
   });
 
@@ -77,7 +77,7 @@ describe("refreshTemplateLayout", () => {
       treadUnit: "32nds",
     });
     expect(custom.sections.map((s) => s.title)).toEqual([
-      "Air Brakes", "Tires & Wheels", "Tire Grid — Hydraulic",
+      "Tire Grid — Hydraulic", "Air Brakes", "Tires & Wheels",
     ]);
     const tread = custom.sections.find((s) => s.title.startsWith("Tire Grid"))!.items.filter((i) => /tread/i.test(i.item));
     expect(tread.every((i) => i.unit === "32nds")).toBe(true);
@@ -178,5 +178,38 @@ describe("refresh persistence wiring", () => {
     expect(route).toContain('hasOwnField(body, "formContext")');
     expect(route).toContain("normalizeInspectionFormContext");
     expect(route).toContain("200_000");
+  });
+});
+
+describe("refreshTemplateLayout — grid layout", () => {
+  const air = { tireGrid: true, brakeGrid: true, brakeMode: "air" as const };
+
+  it("moves grids saved after their matching sections to the top and says so", () => {
+    const old: InspectionFormSection[] = [
+      { title: "Air Brakes", items: [check("Brake chambers")] },
+      { title: "Tires & Wheels", items: [check("Tire condition")] },
+      { title: "Tire Grid — Air Brake (HD)", items: [{ item: "Steer 1 Left Tire Pressure", unit: "psi", fieldType: "measurement" }], generatedGrid: { kind: "tire", brakeMode: "air" } },
+    ];
+    const out = refreshTemplateLayout({ sections: old, vehicleType: "truck" });
+    expect(out.sections[0].title).toBe("Tire Grid — Air Brake (HD)");
+    expect(out.summary.join("\n")).toMatch(/move the grids to the top/i);
+    expect(out.gridPlan).toMatchObject({ tireGrid: true, brakeGrid: false });
+  });
+
+  it("removes the form's own tire table the grid replaces and adds a chosen battery grid", () => {
+    const out = refreshTemplateLayout({
+      sections: [
+        { title: "Air Brakes", items: [check("Brake chambers")] },
+        { title: "TIRE TREAD DEPTH & PRESSURE", items: [{ item: "Outside / Inside", unit: "/32", fieldType: "measurement" }] },
+      ],
+      vehicleType: "truck",
+      plan: { ...air, batteryGrid: true },
+    });
+    expect(out.sections.map((s) => s.title)).toEqual([
+      "Corner Grid (Air)", "Tire Grid — Air Brake (HD)", "Battery Grid", "Air Brakes",
+    ]);
+    const text = out.summary.join("\n");
+    expect(text).toMatch(/TIRE TREAD DEPTH & PRESSURE/);
+    expect(text).toMatch(/battery grid/i);
   });
 });

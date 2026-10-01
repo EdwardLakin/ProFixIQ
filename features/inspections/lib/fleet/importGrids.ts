@@ -125,15 +125,18 @@ export function detectImportGridPlan(input: {
     measured.filter((row) => BRAKE_MEASURE_RE.test(row.item)).length >= 2;
 
   if (sourceHasTireMeasurements) {
-    reasons.push("The form already has its own tire measurement rows.");
+    reasons.push("The form's own tire measurement table is replaced by the tire grid.");
   }
   if (sourceHasBrakeMeasurements) {
-    reasons.push("The form already has its own brake measurement rows.");
+    reasons.push("The form's own brake measurement table is replaced by the brake grid.");
   }
 
+  // Every inspection gets the grids; a source form's own measurement-only
+  // tables are replaced by them (see applyImportGrids), not repeated.
   return {
-    tireGrid: !sourceHasTireMeasurements,
-    brakeGrid: !sourceHasBrakeMeasurements,
+    tireGrid: true,
+    brakeGrid: true,
+    batteryGrid: false,
     brakeMode,
     sourceHasTireMeasurements,
     sourceHasBrakeMeasurements,
@@ -173,7 +176,8 @@ function trailerAxleItems(
   for (const axle of axles) {
     for (const side of ["Left", "Right"]) {
       if (kind === "tire") {
-        out.push({ item: `${axle} ${side} Tire Pressure`, unit: "psi" });
+        out.push({ item: `${axle} ${side} Tire Pressure (Outer)`, unit: "psi" });
+        out.push({ item: `${axle} ${side} Tire Pressure (Inner)`, unit: "psi" });
         out.push({ item: `${axle} ${side} Tread Depth (Outer)`, unit: "mm" });
         out.push({ item: `${axle} ${side} Tread Depth (Inner)`, unit: "mm" });
         out.push({ item: `${axle} ${side} Tire Condition`, unit: null });
@@ -238,26 +242,48 @@ function buildBrakeGrid(
   };
 }
 
+function buildBatteryGrid(): InspectionFormSection {
+  return {
+    title: "Battery Grid",
+    items: [
+      { item: "Battery 1 Rated CCA", unit: "CCA", fieldType: "measurement" },
+      { item: "Battery 1 Tested CCA", unit: "CCA", fieldType: "measurement" },
+    ],
+    generatedGrid: { kind: "battery", brakeMode: "air" },
+  };
+}
+
+const TIRE_TABLE_TITLE_RE =
+  /\b(?:tires?|tyres?|tread)\b.*\b(?:depth|pressure|tread)\b|\b(?:depth|pressure)\b.*\b(?:tires?|tyres?|tread)\b/i;
+const BRAKE_TABLE_TITLE_RE =
+  /\bbrakes?\b.*\b(?:measure\w*|lining|thickness|pads?|push\s*rod)\b|\b(?:lining|pads?|push\s*rod)\b/i;
+
+/**
+ * A source section that only tabulates readings the generated grid captures:
+ * every row is a measurement and the title names tires/tread or brake wear.
+ * Sections with any check row (condition, leaks, ...) are never touched.
+ */
+function isMeasurementOnlyTable(
+  section: InspectionFormSection,
+  titleRe: RegExp,
+): boolean {
+  const items = section.items ?? [];
+  return (
+    items.length > 0 &&
+    titleRe.test(section.title) &&
+    items.every((item) => item.fieldType === "measurement")
+  );
+}
+
 /** Printed units say whether tread is read in 32nds of an inch. */
 function prefersThirtySeconds(text: string): boolean {
   return /\/\s*32\b|\b32nds?\b|thirty[\s-]?seconds?/i.test(text);
 }
 
-function lastIndexWhere(
-  sections: readonly InspectionFormSection[],
-  test: RegExp,
-): number {
-  for (let i = sections.length - 1; i >= 0; i -= 1) {
-    if (test.test(sections[i].title)) return i;
-  }
-  return -1;
-}
-
 /**
  * Returns the sections with the planned grids in place: any grid this module
  * added before is removed first, so toggling the plan on the review screen is
- * repeatable. The tire grid goes after the form's tires section and the brake
- * grid after its brakes section; failing that, at the end of the checklist.
+ * repeatable. The tire grids go at the top of the checklist, in the inspection builder's order.
  */
 export function applyImportGrids(
   sections: readonly InspectionFormSection[],
@@ -291,26 +317,24 @@ export function applyImportGrids(
 
   const tire = plan.tireGrid ? buildTireGrid(plan.brakeMode, trailer, treadUnit) : null;
   const brake = plan.brakeGrid ? buildBrakeGrid(plan.brakeMode, trailer) : null;
-  if (!tire && !brake) return base;
+  const battery = plan.batteryGrid ? buildBatteryGrid() : null;
+  if (!tire && !brake && !battery) return base;
 
-  const tireAt = lastIndexWhere(base, /\b(?:tires?|tyres?|wheels?)\b/i);
-  const brakeAt = lastIndexWhere(base, /\bbrakes?\b/i);
+  // The source's own measurement-only tables would only repeat the grids.
+  const rest = base.filter(
+    (section) =>
+      !(tire && isMeasurementOnlyTable(section, TIRE_TABLE_TITLE_RE)) &&
+      !(brake && isMeasurementOnlyTable(section, BRAKE_TABLE_TITLE_RE)),
+  );
 
-  // Insertions keyed by the original index they follow (-1 = append).
-  const after = new Map<number, InspectionFormSection[]>();
-  const add = (index: number, section: InspectionFormSection) => {
-    const key = index < 0 ? base.length - 1 : index;
-    after.set(key, [...(after.get(key) ?? []), section]);
-  };
-  if (brake) add(brakeAt, brake);
-  if (tire) add(tireAt, tire);
-
-  const out: InspectionFormSection[] = [];
-  base.forEach((section, index) => {
-    out.push(section, ...(after.get(index) ?? []));
-  });
-  if (base.length === 0) out.push(...[brake, tire].filter((s): s is InspectionFormSection => s !== null));
-  return out;
+  // Same order as the inspection builder: brakes, tires, battery, then the
+  // rest of the checklist.
+  return [
+    ...[brake, tire, battery].filter(
+      (section): section is InspectionFormSection => section !== null,
+    ),
+    ...rest,
+  ];
 }
 
 /**
@@ -324,9 +348,11 @@ export function currentImportGridPlan(
   const grids = sections.filter(isImportGridSection);
   const brake = grids.find((s) => s.generatedGrid?.kind === "brake");
   const tire = grids.find((s) => s.generatedGrid?.kind === "tire");
+  const battery = grids.find((s) => s.generatedGrid?.kind === "battery");
   return {
     tireGrid: Boolean(tire),
     brakeGrid: Boolean(brake),
+    batteryGrid: Boolean(battery),
     brakeMode:
       brake?.generatedGrid?.brakeMode ??
       tire?.generatedGrid?.brakeMode ??

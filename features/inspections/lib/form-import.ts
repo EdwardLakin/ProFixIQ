@@ -31,7 +31,7 @@ export type InspectionFormItem = {
  * say who made a section.
  */
 export type GeneratedGridMeta = {
-  kind: "tire" | "brake";
+  kind: "tire" | "brake" | "battery";
   brakeMode: "air" | "hydraulic";
 };
 
@@ -49,6 +49,8 @@ export type InspectionFormSection = {
 export type ImportGridPlan = {
   tireGrid: boolean;
   brakeGrid: boolean;
+  /** Optional: a battery (rated / tested CCA) grid. Off unless chosen. */
+  batteryGrid?: boolean;
   brakeMode: "air" | "hydraulic";
 };
 
@@ -64,6 +66,7 @@ export function normalizeImportGridPlan(value: unknown): ImportGridPlan | null {
   return {
     tireGrid: plan.tireGrid,
     brakeGrid: plan.brakeGrid,
+    batteryGrid: plan.batteryGrid === true,
     brakeMode: plan.brakeMode,
   };
 }
@@ -220,7 +223,7 @@ export function normalizeInspectionFormSections(
     }
     const grid = record(section.generatedGrid);
     const generatedGrid: GeneratedGridMeta | null =
-      (grid.kind === "tire" || grid.kind === "brake") &&
+      (grid.kind === "tire" || grid.kind === "brake" || grid.kind === "battery") &&
       (grid.brakeMode === "air" || grid.brakeMode === "hydraulic")
         ? { kind: grid.kind, brakeMode: grid.brakeMode }
         : null;
