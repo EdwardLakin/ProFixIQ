@@ -244,8 +244,11 @@ describe("imported form context preservation", () => {
 
     // Approval reads the preserved context back from the saved import, so an
     // edit still sitting in the debounce window has to land first. Clearing
-    // dirty would cancel that save instead of completing it.
-    expect(review).toContain("if (dirty && !(await saveReview())) return;");
+    // dirty would cancel that save instead of completing it. It saves even when
+    // nothing is dirty: an import read before the context rules existed is only
+    // corrected in this screen's memory, and approval copies the saved context.
+    expect(review).toContain("if (!(await saveReview())) return;");
+    expect(review).not.toContain("if (dirty && !(await saveReview())) return;");
   });
 
   it("keys captured values so repeated printed labels stay distinct", () => {

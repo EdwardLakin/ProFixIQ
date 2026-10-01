@@ -1148,6 +1148,13 @@ type SmartMatchRow = {
       formContextValues: { ...(session.formContextValues ?? {}), [key]: value },
     });
   };
+  // Several captured values as one write, so none overwrites another.
+  const updateFormContextValues = (updates: Record<string, string>) => {
+    if (isLockedRef.current) return;
+    updateInspection({
+      formContextValues: { ...(session.formContextValues ?? {}), ...updates },
+    });
+  };
   const resumeSession = (
     ...args: Parameters<typeof resumeInspectionSession>
   ) => {
@@ -3799,6 +3806,15 @@ type SmartMatchRow = {
             </div>
           </div>
         ) : null}
+
+        <ImportedFormContextCard
+          context={session.formContext}
+          values={session.formContextValues ?? {}}
+          placement="certification"
+          disabled={isLocked}
+          onChange={updateFormContextValue}
+          onChangeMany={updateFormContextValues}
+        />
 
         <div className="mt-2">
           <InspectionSignaturePanel

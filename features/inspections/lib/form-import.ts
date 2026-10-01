@@ -24,10 +24,49 @@ export type InspectionFormItem = {
   fieldType?: InspectionFormFieldType;
 };
 
+/**
+ * Marks a section ProFixIQ generated for an imported form (its tire or brake
+ * grid). Provenance lives here, not in the section title: titles are editable
+ * and a customer's own section can share a canonical title, so a title cannot
+ * say who made a section.
+ */
+export type GeneratedGridMeta = {
+  kind: "tire" | "brake";
+  brakeMode: "air" | "hydraulic";
+};
+
 export type InspectionFormSection = {
   title: string;
   items: InspectionFormItem[];
+  generatedGrid?: GeneratedGridMeta;
 };
+
+/**
+ * Which of ProFixIQ's tire / brake grids an import was given. Chosen from the
+ * form when it is read, adjustable on the review screen, and saved with the
+ * review so the screen reopens as it was left.
+ */
+export type ImportGridPlan = {
+  tireGrid: boolean;
+  brakeGrid: boolean;
+  brakeMode: "air" | "hydraulic";
+};
+
+export function normalizeImportGridPlan(value: unknown): ImportGridPlan | null {
+  const plan = record(value);
+  if (
+    typeof plan.tireGrid !== "boolean" ||
+    typeof plan.brakeGrid !== "boolean" ||
+    (plan.brakeMode !== "air" && plan.brakeMode !== "hydraulic")
+  ) {
+    return null;
+  }
+  return {
+    tireGrid: plan.tireGrid,
+    brakeGrid: plan.brakeGrid,
+    brakeMode: plan.brakeMode,
+  };
+}
 
 export type InspectionFormImportSummary = {
   state: InspectionFormImportState;
@@ -40,6 +79,7 @@ export type InspectionFormImportSummary = {
   fleetName: string | null;
   draftSections: InspectionFormSection[];
   formContext: InspectionFormContext;
+  gridPlan: ImportGridPlan | null;
   extractedText: string;
   failedPages: Array<{ page: number; message: string }>;
 };
@@ -57,6 +97,13 @@ export type InspectionFormImportView = {
   fleetName: string | null;
   draftSections: InspectionFormSection[];
   formContext: InspectionFormContext;
+  gridPlan: ImportGridPlan | null;
+  /** Why the grids were chosen, and whether the form already measures itself. */
+  gridDetection: {
+    reasons: string[];
+    sourceHasTireMeasurements: boolean;
+    sourceHasBrakeMeasurements: boolean;
+  } | null;
   extractedText: string;
   failedPages: Array<{ page: number; message: string }>;
   totalPages: number;
@@ -171,7 +218,19 @@ export function normalizeInspectionFormSections(
         ...(fieldType ? { fieldType } : {}),
       });
     }
-    if (items.length) sections.push({ title, items });
+    const grid = record(section.generatedGrid);
+    const generatedGrid: GeneratedGridMeta | null =
+      (grid.kind === "tire" || grid.kind === "brake") &&
+      (grid.brakeMode === "air" || grid.brakeMode === "hydraulic")
+        ? { kind: grid.kind, brakeMode: grid.brakeMode }
+        : null;
+    if (items.length) {
+      sections.push({
+        title,
+        items,
+        ...(generatedGrid ? { generatedGrid } : {}),
+      });
+    }
   }
   return sections;
 }
@@ -344,7 +403,150 @@ export function mergeInspectionFormContexts(
       merged[block].push(...context[block]);
     }
   }
-  return merged;
+  return refineInspectionFormContext(merged);
+}
+
+/**
+ * Printed furniture that the OCR reads as fields but that is not a value
+ * anyone fills in: page markers, the legend row of a Pass/Fail/N-A table,
+ * and the column headings of a measurement grid.
+ */
+const FORM_CONTEXT_NOISE_RES: readonly RegExp[] = [
+  /^page\s*\d+\s*(?:of|\/)\s*\d+$/i,
+  /^pass\s*\/\s*fail(?:\s*\/\s*n\s*\/?\s*a)?$/i,
+  /^(?:left|right)\s+side$/i,
+  /^(?:outside|inside)\s*\/\s*(?:inside|outside)$/i,
+  /^\/?\s*32(?:nds?)?$/i,
+  /^(?:psi|kpa|mm)$/i,
+];
+
+export function isInspectionFormContextNoise(label: string): boolean {
+  const l = label.trim();
+  return !l || FORM_CONTEXT_NOISE_RES.some((re) => re.test(l));
+}
+
+/** A printed "Issued By: ..." footer is branding, not a field to fill in. */
+const ISSUED_BY_RE = /^issued\s+by\b/i;
+
+/** A section the paper form prints as its certification / sign-off block. */
+const CERTIFICATE_TITLE_RE =
+  /\b(?:certificat(?:e|ion)|sign[\s-]?off|attestation)\b/i;
+
+/**
+ * Paper fields that ProFixIQ's own technician signature block already
+ * captures (printed name, signature, signed date). The signed record carries
+ * them, so showing or printing a second blank copy would only duplicate the
+ * sign-off. Deliberately limited to the technician: a driver's or customer's
+ * name and signature on a form is a different person's.
+ */
+const SIGNATURE_PANEL_FIELD_RES: readonly RegExp[] = [
+  // Only the technician's own sign-off lines. A driver, carrier or customer
+  // signing a form is a different person and stays a normal field.
+  /\b(?:technician|inspector|mechanic)\b.*\b(?:name|signature|sign(?:ed)?|print(?:ed)?)\b/i,
+  /^(?:technician|inspector|mechanic)\s*(?:\(print(?:ed)?\))?$/i,
+];
+
+export function isSignaturePanelField(label: string): boolean {
+  const l = label.trim();
+  return SIGNATURE_PANEL_FIELD_RES.some((re) => re.test(l));
+}
+
+export type CertificationFieldKind =
+  | "inspectionDate"
+  | "stationName"
+  | "stationNumber"
+  | "stationLocation"
+  | "licenseNumber";
+
+/**
+ * The fleet-required certification fields ProFixIQ can fill from what it
+ * already knows (today's date, the shop, the signing technician's licence).
+ * Anything else on the certificate stays a plain typed field.
+ */
+export function certificationFieldKind(
+  label: string,
+): CertificationFieldKind | null {
+  const l = label.trim().toLowerCase();
+  if (/\bstation\b.*(?:#|\bno\b\.?|number)/.test(l)) return "stationNumber";
+  if (/\bstation\b.*\bname\b|\b(?:facility|shop)\s+name\b/.test(l)) {
+    return "stationName";
+  }
+  if (/\bstation\b.*\blocation\b|\b(?:facility|shop)\s+(?:location|address)\b/.test(l)) {
+    return "stationLocation";
+  }
+  // The technician's inspection licence only. "Driver Licence #", a vehicle
+  // plate or a carrier's licence on the same form are other people's and
+  // other things' numbers, and must never be filled with the technician's.
+  const OTHER_LICENCE_OWNER =
+    /\b(?:driver|operator|vehicle|plate|carrier|customer|owner|company|business|trailer|unit|class|jurisdiction|province|state)\b/;
+  if (
+    /\binspector\s*(?:#|no\b\.?|number|id)\b/.test(l) ||
+    (/\blicen[sc]e\b/.test(l) && !OTHER_LICENCE_OWNER.test(l))
+  ) {
+    return "licenseNumber";
+  }
+  if (/\bdate\b.*\binspection\b|\binspection\s+date\b/.test(l)) {
+    return "inspectionDate";
+  }
+  return null;
+}
+
+/**
+ * Re-shapes a captured form context so it reads like the paper form:
+ * - noise (page markers, legends, grid headings) is dropped;
+ * - "Issued By" footers become branding;
+ * - every field of the printed certificate / sign-off section moves to the
+ *   completion block, so certification sits at the end whatever role the OCR
+ *   guessed for each individual field (it tends to call Date, Station and
+ *   Licence "identity", which would put them at the top).
+ * Idempotent, so it can run on freshly parsed and already-stored contexts.
+ */
+export function refineInspectionFormContext(
+  context: InspectionFormContext,
+): InspectionFormContext {
+  const out = emptyInspectionFormContext();
+
+  const push = (
+    block: InspectionFormContextBlock,
+    title: string,
+    items: InspectionFormItem[],
+  ) => {
+    if (!items.length) return;
+    // Fold into a same-titled section so a certificate split across roles
+    // reads as one block again — but never when a label would collide, since
+    // captured values are keyed by block, section position, title and label.
+    const existing = out[block].find(
+      (sec) =>
+        sec.title === title &&
+        !items.some((item) => sec.items.some((have) => have.item === item.item)),
+    );
+    if (existing) existing.items.push(...items);
+    else out[block].push({ title, items: [...items] });
+  };
+
+  for (const block of INSPECTION_FORM_CONTEXT_BLOCKS) {
+    for (const section of context[block] ?? []) {
+      const certificate = CERTIFICATE_TITLE_RE.test(section.title);
+      const keep: InspectionFormItem[] = [];
+      const branding: InspectionFormItem[] = [];
+
+      for (const item of section.items) {
+        if (isInspectionFormContextNoise(item.item)) continue;
+        if (block !== "branding" && ISSUED_BY_RE.test(item.item.trim())) {
+          branding.push(item);
+          continue;
+        }
+        keep.push(item);
+      }
+
+      push("branding", section.title, branding);
+      const target: InspectionFormContextBlock =
+        certificate && block !== "branding" ? "completion" : block;
+      push(target, section.title, keep);
+    }
+  }
+
+  return out;
 }
 
 export function normalizeInspectionFormContext(
@@ -428,6 +630,7 @@ export function normalizeInspectionFormImportSummary(
     fleetName: nullableText(summary.fleetName),
     draftSections: normalizeInspectionFormSections(summary.draftSections),
     formContext: normalizeInspectionFormContext(summary.formContext),
+    gridPlan: normalizeImportGridPlan(summary.gridPlan),
     extractedText: text(summary.extractedText),
     failedPages,
   };

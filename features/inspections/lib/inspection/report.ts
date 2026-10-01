@@ -157,7 +157,12 @@ export function assembleInspectionReport(
     for (const [sectionIndex, section] of (
       session.formContext?.[block] ?? []
     ).entries()) {
-      const items = (section.items ?? []).map((item) => ({
+      // Every captured line stays in the report data. Which lines a rendering
+      // repeats next to a verified signature is the renderer's decision, not
+      // this assembler's: it receives no signature records and cannot tell
+      // whether a replacement exists.
+      const items = (section.items ?? [])
+        .map((item) => ({
         label: item.item,
         value: text(
           capturedValues[

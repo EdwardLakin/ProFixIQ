@@ -122,7 +122,7 @@ function stripExistingCornerGrids<T extends CornerGridSection>(sections: T[]): T
  * IMPORTANT:
  * Corner grids are BRAKES/torque/push-rod ONLY (tires moved to Tire Grid).
  */
-function buildHydraulicCornerSection(): CornerGridSection {
+export function buildHydraulicCornerSection(): CornerGridSection {
   const metrics: Array<{ label: string; unit: string | null }> = [
     { label: "Brake Pad", unit: "mm" },
     { label: "Rotor", unit: "mm" },
@@ -147,7 +147,7 @@ function buildHydraulicCornerSection(): CornerGridSection {
  * Corner grids are BRAKES/torque/push-rod ONLY (tires moved to Tire Grid).
  * This helper injects a minimal “Steer 1 / Drive 1” set when needed.
  */
-function buildAirCornerSection(): CornerGridSection {
+export function buildAirCornerSection(): CornerGridSection {
   const steer: CornerGridItem[] = [
     { item: "Steer 1 Left Lining/Shoe", unit: "mm" },
     { item: "Steer 1 Right Lining/Shoe", unit: "mm" },
