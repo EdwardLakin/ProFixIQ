@@ -94,7 +94,13 @@ function normalizedSections(value: unknown): ImportedSection[] {
         grid &&
         (grid.kind === "tire" || grid.kind === "brake" || grid.kind === "battery") &&
         (grid.brakeMode === "air" || grid.brakeMode === "hydraulic")
-          ? { kind: grid.kind, brakeMode: grid.brakeMode }
+          ? {
+              kind: grid.kind,
+              brakeMode: grid.brakeMode,
+              ...(Array.isArray(grid.replaced) && grid.replaced.length
+                ? { replaced: normalizedSections(grid.replaced) }
+                : {}),
+            }
           : null;
       return items.length
         ? ({

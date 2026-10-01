@@ -33,6 +33,8 @@ export type InspectionFormItem = {
 export type GeneratedGridMeta = {
   kind: "tire" | "brake" | "battery";
   brakeMode: "air" | "hydraulic";
+  /** Source sections this grid replaced; restored if the grid is removed. */
+  replaced?: InspectionFormSection[];
 };
 
 export type InspectionFormSection = {
@@ -225,7 +227,13 @@ export function normalizeInspectionFormSections(
     const generatedGrid: GeneratedGridMeta | null =
       (grid.kind === "tire" || grid.kind === "brake" || grid.kind === "battery") &&
       (grid.brakeMode === "air" || grid.brakeMode === "hydraulic")
-        ? { kind: grid.kind, brakeMode: grid.brakeMode }
+        ? {
+            kind: grid.kind,
+            brakeMode: grid.brakeMode,
+            ...(Array.isArray(grid.replaced) && grid.replaced.length
+              ? { replaced: normalizeInspectionFormSections(grid.replaced) }
+              : {}),
+          }
         : null;
     if (items.length) {
       sections.push({

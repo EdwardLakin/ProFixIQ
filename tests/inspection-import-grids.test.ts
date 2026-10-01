@@ -113,6 +113,33 @@ describe("applyImportGrids", () => {
     expect(titles(applyImportGrids(withTable, { ...air, tireGrid: false }))).toContain("TIRE TREAD DEPTH & PRESSURE");
   });
 
+  it("brings the form's table back when the grid that replaced it is turned off", () => {
+    const withTable: InspectionFormSection[] = [
+      ...hansens(),
+      { title: "TIRE TREAD DEPTH & PRESSURE", items: [measure("Outside / Inside"), measure("Inside / Outside")] },
+    ];
+    const on = applyImportGrids(withTable, air);
+    const off = applyImportGrids(on, { ...air, tireGrid: false });
+    expect(titles(off)).toContain("TIRE TREAD DEPTH & PRESSURE");
+    expect(titles(off)).not.toContain("Tire Grid — Air Brake (HD)");
+    // and survives being saved and reloaded
+    const reloaded = normalizeInspectionFormSections(JSON.parse(JSON.stringify(on)));
+    expect(titles(applyImportGrids(reloaded, { ...air, tireGrid: false }))).toContain("TIRE TREAD DEPTH & PRESSURE");
+  });
+
+  it("finds a plainly titled table by its rows, the way detection does", () => {
+    const plain: InspectionFormSection[] = [
+      ...hansens(),
+      { title: "Tires", items: [measure("LF Tire Pressure"), measure("RF Tread Depth")] },
+    ];
+    expect(titles(applyImportGrids(plain, air))).not.toContain("Tires");
+    // a titled-only match needs every row to be a measurement
+    const mixed: InspectionFormSection[] = [
+      { title: "Tires", items: [measure("LF Tire Pressure"), check("Sidewall condition")] },
+    ];
+    expect(titles(applyImportGrids(mixed, air))).toContain("Tires");
+  });
+
   it("gives every dual axle an inner and an outer pressure", () => {
     const out = applyImportGrids(hansens(), air);
     const labels = out.find((s) => s.title.startsWith("Tire Grid"))!.items.map((i) => i.item);

@@ -158,13 +158,23 @@ function toFormItem(
   return { item: label, unit, fieldType: fieldTypeFor(label) };
 }
 
+const DUAL_PRESSURE_RE =
+  /^((?:Drive|Rear|Tag|Trailer)\s*\d*\s+(?:Left|Right))\s+Tire Pressure$/i;
+
 function masterTireGrid(title: string): InspectionFormSection | null {
   const found = masterInspectionList.find((s) => s.title.trim() === title);
   if (!found) return null;
-  return {
-    title: found.title,
-    items: found.items.map((it) => ({ item: it.item, unit: it.unit ?? null })),
-  };
+  // The shared master list has one pressure per side on a dual axle; the tire
+  // grid reads an outer and an inner tire, so an imported template gets both.
+  const items = found.items.flatMap((it) => {
+    const dual = DUAL_PRESSURE_RE.exec(it.item);
+    if (!dual) return [{ item: it.item, unit: it.unit ?? null }];
+    return (["Outer", "Inner"] as const).map((pos) => ({
+      item: `${dual[1]} Tire Pressure (${pos})`,
+      unit: it.unit ?? null,
+    }));
+  });
+  return { title: found.title, items };
 }
 
 function trailerAxleItems(
@@ -260,18 +270,20 @@ const BRAKE_TABLE_TITLE_RE =
 
 /**
  * A source section that only tabulates readings the generated grid captures:
- * every row is a measurement and the title names tires/tread or brake wear.
- * Sections with any check row (condition, leaks, ...) are never touched.
+ * every row is a measurement, and either the title names them or every row
+ * label does (so a plainly titled "Tires" table is found too, by the same
+ * row test detection uses). A section with any check row is never touched.
  */
 function isMeasurementOnlyTable(
   section: InspectionFormSection,
   titleRe: RegExp,
+  rowRe: RegExp,
 ): boolean {
   const items = section.items ?? [];
   return (
     items.length > 0 &&
-    titleRe.test(section.title) &&
-    items.every((item) => item.fieldType === "measurement")
+    items.every((item) => item.fieldType === "measurement") &&
+    (titleRe.test(section.title) || items.every((item) => rowRe.test(item.item)))
   );
 }
 
@@ -299,7 +311,15 @@ export function applyImportGrids(
     treadUnit?: "32nds" | "mm" | null;
   } = {},
 ): InspectionFormSection[] {
-  const base = sections.filter((section) => !isImportGridSection(section));
+  // Tables an earlier pass replaced come back first, so turning a grid off
+  // (or switching brake system) never loses the form's own readings.
+  const restored = sections
+    .filter(isImportGridSection)
+    .flatMap((section) => section.generatedGrid?.replaced ?? []);
+  const base = [
+    ...restored,
+    ...sections.filter((section) => !isImportGridSection(section)),
+  ];
   const trailer = /trailer/i.test(context.vehicleType ?? "");
   const treadUnit =
     context.treadUnit === "32nds"
@@ -320,17 +340,34 @@ export function applyImportGrids(
   const battery = plan.batteryGrid ? buildBatteryGrid() : null;
   if (!tire && !brake && !battery) return base;
 
-  // The source's own measurement-only tables would only repeat the grids.
-  const rest = base.filter(
-    (section) =>
-      !(tire && isMeasurementOnlyTable(section, TIRE_TABLE_TITLE_RE)) &&
-      !(brake && isMeasurementOnlyTable(section, BRAKE_TABLE_TITLE_RE)),
-  );
+  // The source's own measurement-only tables would only repeat the grids. They
+  // are kept on the grid that replaced them so the replacement is reversible.
+  const tireReplaced = tire
+    ? base.filter((section) =>
+        isMeasurementOnlyTable(section, TIRE_TABLE_TITLE_RE, TIRE_MEASURE_RE),
+      )
+    : [];
+  const brakeReplaced = brake
+    ? base.filter(
+        (section) =>
+          !tireReplaced.includes(section) &&
+          isMeasurementOnlyTable(section, BRAKE_TABLE_TITLE_RE, BRAKE_MEASURE_RE),
+      )
+    : [];
+  const replaced = new Set([...tireReplaced, ...brakeReplaced]);
+  const rest = base.filter((section) => !replaced.has(section));
+  const remember = (
+    grid: InspectionFormSection | null,
+    dropped: InspectionFormSection[],
+  ) =>
+    grid && dropped.length && grid.generatedGrid
+      ? { ...grid, generatedGrid: { ...grid.generatedGrid, replaced: dropped } }
+      : grid;
 
   // Same order as the inspection builder: brakes, tires, battery, then the
   // rest of the checklist.
   return [
-    ...[brake, tire, battery].filter(
+    ...[remember(brake, brakeReplaced), remember(tire, tireReplaced), battery].filter(
       (section): section is InspectionFormSection => section !== null,
     ),
     ...rest,

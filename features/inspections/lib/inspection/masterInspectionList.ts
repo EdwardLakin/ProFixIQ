@@ -1336,7 +1336,7 @@ export const masterInspectionList: InspectionCategory[] = [
 
       // Drive 1 (dual)
       {
-        item: "Drive 1 Left Tire Pressure (Outer)",
+        item: "Drive 1 Left Tire Pressure",
         unit: "psi",
         systems: ["air_brake"],
         vehicleTypes: ["truck", "bus", "trailer"],
@@ -1345,25 +1345,7 @@ export const masterInspectionList: InspectionCategory[] = [
         priority: 95,
       },
       {
-        item: "Drive 1 Left Tire Pressure (Inner)",
-        unit: "psi",
-        systems: ["air_brake"],
-        vehicleTypes: ["truck", "bus", "trailer"],
-        dutyClasses: ["heavy"],
-        required: true,
-        priority: 95,
-      },
-      {
-        item: "Drive 1 Right Tire Pressure (Outer)",
-        unit: "psi",
-        systems: ["air_brake"],
-        vehicleTypes: ["truck", "bus", "trailer"],
-        dutyClasses: ["heavy"],
-        required: true,
-        priority: 95,
-      },
-      {
-        item: "Drive 1 Right Tire Pressure (Inner)",
+        item: "Drive 1 Right Tire Pressure",
         unit: "psi",
         systems: ["air_brake"],
         vehicleTypes: ["truck", "bus", "trailer"],
@@ -1426,7 +1408,7 @@ export const masterInspectionList: InspectionCategory[] = [
 
       // Rear 1 (dual) — matches your corner mapping in UI
       {
-        item: "Rear 1 Left Tire Pressure (Outer)",
+        item: "Rear 1 Left Tire Pressure",
         unit: "psi",
         systems: ["air_brake"],
         vehicleTypes: ["truck", "bus", "trailer"],
@@ -1435,25 +1417,7 @@ export const masterInspectionList: InspectionCategory[] = [
         priority: 95,
       },
       {
-        item: "Rear 1 Left Tire Pressure (Inner)",
-        unit: "psi",
-        systems: ["air_brake"],
-        vehicleTypes: ["truck", "bus", "trailer"],
-        dutyClasses: ["heavy"],
-        required: true,
-        priority: 95,
-      },
-      {
-        item: "Rear 1 Right Tire Pressure (Outer)",
-        unit: "psi",
-        systems: ["air_brake"],
-        vehicleTypes: ["truck", "bus", "trailer"],
-        dutyClasses: ["heavy"],
-        required: true,
-        priority: 95,
-      },
-      {
-        item: "Rear 1 Right Tire Pressure (Inner)",
+        item: "Rear 1 Right Tire Pressure",
         unit: "psi",
         systems: ["air_brake"],
         vehicleTypes: ["truck", "bus", "trailer"],
