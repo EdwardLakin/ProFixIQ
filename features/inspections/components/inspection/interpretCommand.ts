@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  chunkFindings,
+  parseCompoundFinding,
+} from "@/features/inspections/lib/inspection/voice/compoundFinding";
 import type { ParsedCommand } from "@inspections/lib/inspection/types";
 
 export type InterpretContext = {
@@ -358,6 +362,22 @@ function scoreItemLabel(label: string, hint: string): number {
   return score;
 }
 
+/**
+ * Fallback for an item the technician named outright ("horn", "battery"):
+ * its few generic words score below the fuzzy threshold, yet the label
+ * appears whole in the phrase. The longest such label wins.
+ */
+function resolveExactItem(items: string[], hint: string): string | null {
+  const h = ` ${norm(hint)} `;
+  let best: string | null = null;
+  for (const it of items) {
+    const l = norm(it);
+    if (l.length < 3) continue;
+    if (h.includes(` ${l} `) && (!best || l.length > norm(best).length)) best = it;
+  }
+  return best;
+}
+
 function resolveBestItem(items: string[], hint: string): { item: string; score: number } | null {
   let best: { item: string; score: number } | null = null;
 
@@ -460,6 +480,30 @@ export async function interpretCommand(
   if (!text) return [];
 
   const context = buildContext(ctx);
+
+  // One continuous phrase per failed/recommended item: problem, parts and
+  // labor together. Checked per finding-sized chunk before the clause-level
+  // splitting below, which would otherwise tear the parts and labor away.
+  const chunks = chunkFindings(text);
+  if (context && chunks.length > 0) {
+    const resolve = (hint: string): string | null =>
+      resolveBestItem(context.items, hint)?.item ??
+      resolveExactItem(context.items, hint);
+    const compound = chunks.map((chunk) => parseCompoundFinding(chunk, resolve));
+    if (compound.some((c) => c !== null)) {
+      const merged: ParsedCommand[] = [];
+      for (let i = 0; i < chunks.length; i += 1) {
+        const c = compound[i];
+        if (c) {
+          merged.push(c as unknown as ParsedCommand);
+        } else {
+          merged.push(...(await interpretCommand(chunks[i], ctx, onFailure)));
+        }
+      }
+      return merged;
+    }
+  }
+
   const parts = splitMultiCommands(text);
 
   const interpretOne = async (part: string): Promise<ParsedCommand[]> => {

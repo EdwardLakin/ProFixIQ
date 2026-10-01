@@ -654,6 +654,23 @@ function coerceLaborHoursFromUnknown(v: unknown): number | null | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+// A repeated mention of the same part keeps the larger quantity instead of
+// adding, so re-saying a finding cannot double its parts; a new part appends.
+function mergePartLists(existing: unknown, incoming: PartLine[]): PartLine[] {
+  const merged = [...(coercePartsFromUnknown(existing) ?? [])];
+  for (const part of incoming) {
+    const idx = merged.findIndex(
+      (p) => norm(p.description) === norm(part.description),
+    );
+    if (idx >= 0) {
+      merged[idx] = { ...merged[idx], qty: Math.max(merged[idx].qty, part.qty) };
+    } else {
+      merged.push(part);
+    }
+  }
+  return merged;
+}
+
 // add_part reports one part at a time as the technician mentions it, so it
 // accumulates onto whatever the item already has instead of replacing the
 // list the way oneshot_item's bundled `parts` array does. A repeated
@@ -805,6 +822,7 @@ async function applySingleCommand(args: {
 
   let parts: PartLine[] | undefined;
   let laborHours: number | null | undefined;
+  let mergeEstimates = false;
 
   // add_part / add_labor: a single incrementally-reported line, distinct
   // from oneshot_item's bundled `parts` array / `laborHours` above.
@@ -844,6 +862,7 @@ async function applySingleCommand(args: {
 
       parts = coercePartsFromUnknown(rec.parts);
       laborHours = coerceLaborHoursFromUnknown(rec.laborHours);
+      mergeEstimates = rec.mergeEstimates === true;
 
       if (typeof rec.partName === "string") partName = rec.partName;
       quantity = coerceNumericValue(rec.quantity);
@@ -866,6 +885,7 @@ async function applySingleCommand(args: {
     if (isRecord(rec)) {
       parts = coercePartsFromUnknown(rec.parts);
       laborHours = coerceLaborHoursFromUnknown(rec.laborHours);
+      mergeEstimates = rec.mergeEstimates === true;
     }
   }
 
@@ -1163,8 +1183,18 @@ async function applySingleCommand(args: {
         break;
     }
 
-    if (parts) itemUpdates.parts = parts;
-    if (laborHours !== undefined) itemUpdates.laborHours = laborHours;
+    if (parts) {
+      itemUpdates.parts = mergeEstimates
+        ? mergePartLists((targetRow as { parts?: unknown }).parts, parts)
+        : parts;
+    }
+    if (laborHours !== undefined) {
+      const existingHours = (targetRow as { laborHours?: unknown }).laborHours;
+      itemUpdates.laborHours =
+        mergeEstimates && typeof laborHours === "number"
+          ? (typeof existingHours === "number" ? existingHours : 0) + laborHours
+          : laborHours;
+    }
 
     if (Object.keys(itemUpdates).length > 0) {
       updateItem(safe.sectionIndex, safe.itemIndex, itemUpdates);
@@ -1420,8 +1450,18 @@ async function applySingleCommand(args: {
       break;
   }
 
-  if (parts) itemUpdates.parts = parts;
-  if (laborHours !== undefined) itemUpdates.laborHours = laborHours;
+  if (parts) {
+    itemUpdates.parts = mergeEstimates
+      ? mergePartLists((targetRow as { parts?: unknown }).parts, parts)
+      : parts;
+  }
+  if (laborHours !== undefined) {
+    const existingHours = (targetRow as { laborHours?: unknown }).laborHours;
+    itemUpdates.laborHours =
+      mergeEstimates && typeof laborHours === "number"
+        ? (typeof existingHours === "number" ? existingHours : 0) + laborHours
+        : laborHours;
+  }
 
   if (Object.keys(itemUpdates).length > 0) {
     updateItem(safeTarget.sectionIndex, safeTarget.itemIndex, itemUpdates);

@@ -28,6 +28,12 @@ export type ParsedInspectionFindingCommand = {
   parts?: Array<{ description: string; qty: number }>;
   laborHours?: number | null;
   openPhotoCapture?: boolean;
+  /**
+   * Set by the one-phrase finding parser ("... add X and 1.5 labor"): the
+   * parts and labor are additions to what the item already has, like the
+   * incremental add_part / add_labor commands, not a replacement.
+   */
+  mergeEstimates?: boolean;
 };
 
 export type VoiceFollowUp =
