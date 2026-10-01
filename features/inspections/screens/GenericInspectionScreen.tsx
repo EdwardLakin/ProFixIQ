@@ -56,6 +56,7 @@ import {
   normalizeInspectionFormContext,
   type InspectionFormContext,
 } from "@/features/inspections/lib/form-import";
+import { inferUnitSystem } from "@inspections/lib/inspection/inferUnitSystem";
 import SectionDisplay from "@inspections/lib/inspection/SectionDisplay";
 import CornerGrid from "@inspections/lib/inspection/ui/CornerGrid";
 import AirCornerGrid from "@inspections/lib/inspection/ui/AirCornerGrid";
@@ -1000,6 +1001,7 @@ type SmartMatchRow = {
   );
 
   const [unit, setUnit] = useState<"metric" | "imperial">("metric");
+  const unitChosenRef = useRef(false);
 
   const [isPaused, setIsPaused] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
@@ -1113,6 +1115,13 @@ type SmartMatchRow = {
     resumeSession: resumeInspectionSession,
     pauseSession: pauseInspectionSession,
   } = useInspectionSession(initialSession);
+  // Open in the system the form itself is printed in (e.g. /32 and PSI),
+  // unless the technician has already picked one.
+  useEffect(() => {
+    if (unitChosenRef.current) return;
+    const inferred = inferUnitSystem(session.sections ?? []);
+    if (inferred) setUnit(inferred);
+  }, [session.sections]);
   const submittingFindingKeysRef = useRef<Record<string, boolean>>({});
   const pendingPhotoKeysRef = useRef<Record<string, boolean>>({});
 
@@ -3042,9 +3051,14 @@ type SmartMatchRow = {
   const recommended = allItems.filter(
     (it) => String(it.status ?? "").toLowerCase() === "recommend",
   );
-  const otherOkNa = allItems.filter((it) => {
+  // Untouched rows default to N/A, so "done" is counted from Pass only.
+  const passed = allItems.filter((it) => {
     const st = String(it.status ?? "").toLowerCase();
-    return st === "ok" || st === "na" || st === "" || st === "pass";
+    return st === "ok" || st === "pass";
+  });
+  const notApplicable = allItems.filter((it) => {
+    const st = String(it.status ?? "").toLowerCase();
+    return st === "na" || st === "";
   });
   const linesAdded = session.voiceMeta?.linesAddedToWorkOrder ?? 0;
 
@@ -3225,15 +3239,19 @@ type SmartMatchRow = {
               variant="outline"
               size="sm"
               className="justify-center text-xs font-semibold sm:justify-start"
-              onClick={(): void => setUnit(unit === "metric" ? "imperial" : "metric")}
+              onClick={(): void => {
+                unitChosenRef.current = true;
+                setUnit(unit === "metric" ? "imperial" : "metric");
+              }}
             >
               {unit === "metric" ? "Metric (mm / kPa)" : "Imperial (in / psi)"}
             </Button>
 
-            <div className="grid grid-cols-2 gap-2 text-xs sm:flex sm:items-center">
+            <div className="grid grid-cols-2 gap-2 text-xs sm:flex sm:flex-wrap sm:items-center">
               <span className="rounded-full bg-red-50 px-3 py-1.5 font-semibold text-red-700 dark:bg-red-950/35 dark:text-red-200">{failed.length} Fail</span>
               <span className="rounded-full bg-amber-50 px-3 py-1.5 font-semibold text-amber-800 dark:bg-amber-950/35 dark:text-amber-200">{recommended.length} Recommend</span>
-              <span className="rounded-full bg-emerald-50 px-3 py-1.5 font-semibold text-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200">{otherOkNa.length} Pass / N/A</span>
+              <span className="rounded-full bg-emerald-50 px-3 py-1.5 font-semibold text-emerald-700 dark:bg-emerald-950/35 dark:text-emerald-200">{passed.length} Pass</span>
+              <span className="rounded-full bg-slate-100 px-3 py-1.5 font-semibold text-slate-700 dark:bg-slate-800/60 dark:text-slate-200">{notApplicable.length} N/A</span>
               <span className="rounded-full bg-sky-50 px-3 py-1.5 font-semibold text-sky-700 dark:bg-sky-950/35 dark:text-sky-200">{linesAdded} WO lines</span>
             </div>
           </div>
