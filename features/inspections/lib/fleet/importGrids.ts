@@ -265,15 +265,29 @@ export function applyImportGrids(
   context: {
     vehicleType?: string | null;
     extractedText?: string | null;
+    /**
+     * Forces the tread unit. A saved template no longer carries the printed
+     * form's units, so the caller states it ("32nds"); "mm" keeps the grid's
+     * own default. Left out, it is read from the printed text when available.
+     */
+    treadUnit?: "32nds" | "mm" | null;
   } = {},
 ): InspectionFormSection[] {
   const base = sections.filter((section) => !isImportGridSection(section));
   const trailer = /trailer/i.test(context.vehicleType ?? "");
-  const treadUnit = prefersThirtySeconds(
-    [context.extractedText ?? "", ...base.flatMap((s) => rows([s]).map((r) => r.item))].join("\n"),
-  )
-    ? "32nds"
-    : null;
+  const treadUnit =
+    context.treadUnit === "32nds"
+      ? "32nds"
+      : context.treadUnit === "mm"
+        ? null
+        : prefersThirtySeconds(
+              [
+                context.extractedText ?? "",
+                ...base.flatMap((s) => rows([s]).map((r) => r.item)),
+              ].join("\n"),
+            )
+          ? "32nds"
+          : null;
 
   const tire = plan.tireGrid ? buildTireGrid(plan.brakeMode, trailer, treadUnit) : null;
   const brake = plan.brakeGrid ? buildBrakeGrid(plan.brakeMode, trailer) : null;

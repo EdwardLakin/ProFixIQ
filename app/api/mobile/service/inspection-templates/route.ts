@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 
+import { normalizeInspectionFormContext } from "@/features/inspections/lib/form-import";
 import {
   isInspectionTemplateId,
   validateInspectionTemplateMutation,
@@ -130,6 +131,21 @@ export async function PATCH(request: Request) {
     payload.vehicle_type = input.vehicleType;
   if (hasOwnField(body, "tags")) payload.tags = input.tags;
   if (hasOwnField(body, "laborHours")) payload.labor_hours = input.laborHours;
+  // An imported template's preserved form context (set when its layout is
+  // refreshed). Re-shaped through the same normalizer the importer uses, and
+  // bounded like the sections are.
+  if (hasOwnField(body, "formContext")) {
+    const formContext = normalizeInspectionFormContext(
+      (body as { formContext?: unknown }).formContext,
+    );
+    if (JSON.stringify(formContext).length > 200_000) {
+      return NextResponse.json(
+        { error: "The preserved form content is too large." },
+        { status: 400 },
+      );
+    }
+    payload.form_context = formContext as unknown as TemplateUpdate["form_context"];
+  }
   const { data, error } = await access.supabase
     .from("inspection_templates")
     .update(payload)
