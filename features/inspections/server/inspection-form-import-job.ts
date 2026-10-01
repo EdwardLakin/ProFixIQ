@@ -13,6 +13,10 @@ import {
   selectRunnableInspectionFormSections,
   type InspectionFormSection,
 } from "@/features/inspections/lib/form-import";
+import {
+  applyImportGrids,
+  detectImportGridPlan,
+} from "@/features/inspections/lib/fleet/importGrids";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
@@ -221,6 +225,26 @@ async function finalizeJob(
     return { completed: true, failed: true };
   }
 
+  // Every import is offered the tire and brake grid that fits its vehicle and
+  // brake system, unless the form already measures those itself. They are real
+  // sections the reviewer can remove or switch before approving.
+  const gridDetection = detectImportGridPlan({
+    sections: draftSections,
+    vehicleType: hints.vehicleType,
+    dutyClass: hints.dutyClass,
+    title: hints.title,
+    extractedText,
+  });
+  const gridPlan = {
+    tireGrid: gridDetection.tireGrid,
+    brakeGrid: gridDetection.brakeGrid,
+    brakeMode: gridDetection.brakeMode,
+  };
+  const draftWithGrids = applyImportGrids(draftSections, gridPlan, {
+    vehicleType: hints.vehicleType,
+    extractedText,
+  });
+
   await client
     .from("import_jobs")
     .update({
@@ -232,7 +256,8 @@ async function finalizeJob(
       summary: {
         ...hints,
         state: "ready_for_review",
-        draftSections,
+        draftSections: draftWithGrids,
+        gridPlan,
         formContext,
         extractedText,
         failedPages,

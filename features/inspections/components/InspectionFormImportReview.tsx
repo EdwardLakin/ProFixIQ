@@ -14,6 +14,11 @@ import {
   type InspectionFormImportView,
   type InspectionFormSection,
 } from "@/features/inspections/lib/form-import";
+import {
+  applyImportGrids,
+  currentImportGridPlan,
+  type ImportGridPlan,
+} from "@/features/inspections/lib/fleet/importGrids";
 import { Button } from "@shared/components/ui/Button";
 
 const FIELD_TYPE_LABEL: Record<
@@ -69,6 +74,7 @@ export default function InspectionFormImportReview({
   const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [brakeMode, setBrakeMode] = useState<ImportGridPlan["brakeMode"]>("hydraulic");
   const initialized = useRef(false);
 
   const load = useCallback(async () => {
@@ -88,6 +94,7 @@ export default function InspectionFormImportReview({
       initialized.current = true;
       setTitle(body.import.title);
       setSections(body.import.draftSections);
+      if (body.import.gridPlan) setBrakeMode(body.import.gridPlan.brakeMode);
       setFormContext(
         body.import.formContext ?? emptyInspectionFormContext(),
       );
@@ -118,7 +125,12 @@ export default function InspectionFormImportReview({
       const response = await fetch(`/api/inspection-form-imports/${jobId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ title, sections, formContext }),
+        body: JSON.stringify({
+          title,
+          sections,
+          formContext,
+          gridPlan: currentImportGridPlan(sections, brakeMode),
+        }),
       });
       const body = (await response.json().catch(() => null)) as
         | { error?: string }
@@ -132,7 +144,7 @@ export default function InspectionFormImportReview({
     } finally {
       setSaving(false);
     }
-  }, [formContext, jobId, sections, title]);
+  }, [brakeMode, formContext, jobId, sections, title]);
 
   useEffect(() => {
     if (!dirty || record?.state !== "ready_for_review") return;
@@ -143,6 +155,20 @@ export default function InspectionFormImportReview({
   const mutateSections = (next: InspectionFormSection[]) => {
     setSections(next);
     setDirty(true);
+  };
+
+  // The tire and brake grids are ordinary sections, so a reviewer can also drop
+  // one with its own Remove button; the checkboxes follow what is really there.
+  const gridPlan = currentImportGridPlan(sections, brakeMode);
+  const changeGrids = (change: Partial<ImportGridPlan>) => {
+    const next = { ...gridPlan, ...change };
+    if (change.brakeMode) setBrakeMode(change.brakeMode);
+    mutateSections(
+      applyImportGrids(sections, next, {
+        vehicleType: record?.vehicleType,
+        extractedText: record?.extractedText,
+      }),
+    );
   };
 
   const mutateItem = (
@@ -374,6 +400,33 @@ export default function InspectionFormImportReview({
           <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4">
             <div className="mb-3 flex items-center justify-between"><h2 className="text-sm font-semibold uppercase tracking-[0.14em]">Review template</h2><span className="text-xs text-[color:var(--theme-text-secondary)]">{saving ? "Saving…" : dirty ? "Unsaved" : "Saved"}</span></div>
             <label className="text-xs text-[color:var(--theme-text-secondary)]">Template name<input value={title} onChange={(event) => { setTitle(event.target.value); setDirty(true); }} className="mt-1 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-3 text-sm text-[color:var(--theme-text-primary)]" /></label>
+            <div className="mt-4 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+              <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">Tire and brake grids</div>
+              <p className="mt-1 text-[11px] text-[color:var(--theme-text-secondary)]">
+                Added so tire pressures, tread depths and brake readings are captured the same way as every other inspection, including by voice. Untick one to leave it out.
+              </p>
+              <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+                <label className="flex items-center gap-2"><input type="checkbox" checked={gridPlan.tireGrid} onChange={(event) => changeGrids({ tireGrid: event.target.checked })} />Tire grid (pressure and tread)</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={gridPlan.brakeGrid} onChange={(event) => changeGrids({ brakeGrid: event.target.checked })} />Brake grid (pads, linings, push rod)</label>
+                <label className="flex items-center gap-2">Brake system
+                  <select aria-label="Brake system" value={gridPlan.brakeMode} onChange={(event) => changeGrids({ brakeMode: event.target.value as ImportGridPlan["brakeMode"] })} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-2 py-1 text-xs">
+                    <option value="air">Air</option>
+                    <option value="hydraulic">Hydraulic</option>
+                  </select>
+                </label>
+              </div>
+              {record.gridDetection?.reasons.length ? (
+                <ul className="mt-2 list-disc space-y-0.5 pl-4 text-[11px] text-[color:var(--theme-text-secondary)]">
+                  {record.gridDetection.reasons.map((reason) => <li key={reason}>{reason}</li>)}
+                </ul>
+              ) : null}
+              {gridPlan.tireGrid && record.gridDetection?.sourceHasTireMeasurements ? (
+                <p className="mt-1 text-[11px] text-amber-200">This form already has tire measurement rows, so the tire grid would repeat them.</p>
+              ) : null}
+              {gridPlan.brakeGrid && record.gridDetection?.sourceHasBrakeMeasurements ? (
+                <p className="mt-1 text-[11px] text-amber-200">This form already has brake measurement rows, so the brake grid would repeat them.</p>
+              ) : null}
+            </div>
             <div className="mt-4 space-y-3">
               {sections.map((section, sectionIndex) => (
                 <div key={sectionIndex} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">

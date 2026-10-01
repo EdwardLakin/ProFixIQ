@@ -4,9 +4,14 @@ import {
   inspectionFormImportState,
   normalizeInspectionFormImportSummary,
   normalizeInspectionFormContext,
+  normalizeImportGridPlan,
   refineInspectionFormContext,
   normalizeInspectionFormSections,
 } from "@/features/inspections/lib/form-import";
+import {
+  applyImportGrids,
+  detectImportGridPlan,
+} from "@/features/inspections/lib/fleet/importGrids";
 import {
   INSPECTION_FORM_IMPORT_BATCH_SIZE,
   processInspectionFormImportJobBatch,
@@ -65,6 +70,42 @@ export async function GET(_req: Request, context: Context) {
     });
   }
 
+  // An import still awaiting review is offered the grids that fit its form.
+  // Imports read before grids existed have no saved plan, so it is derived
+  // here; saving the review persists it. Approved imports are left as saved.
+  let draftSections = summary.draftSections;
+  let gridPlan = summary.gridPlan;
+  let gridDetection: {
+    reasons: string[];
+    sourceHasTireMeasurements: boolean;
+    sourceHasBrakeMeasurements: boolean;
+  } | null = null;
+  if (state === "ready_for_review") {
+    const detection = detectImportGridPlan({
+      sections: draftSections,
+      vehicleType: summary.vehicleType,
+      dutyClass: summary.dutyClass,
+      title: summary.title,
+      extractedText: summary.extractedText,
+    });
+    gridDetection = {
+      reasons: detection.reasons,
+      sourceHasTireMeasurements: detection.sourceHasTireMeasurements,
+      sourceHasBrakeMeasurements: detection.sourceHasBrakeMeasurements,
+    };
+    if (!gridPlan) {
+      gridPlan = {
+        tireGrid: detection.tireGrid,
+        brakeGrid: detection.brakeGrid,
+        brakeMode: detection.brakeMode,
+      };
+      draftSections = applyImportGrids(draftSections, gridPlan, {
+        vehicleType: summary.vehicleType,
+        extractedText: summary.extractedText,
+      });
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     import: {
@@ -78,7 +119,9 @@ export async function GET(_req: Request, context: Context) {
       customerName: summary.customerName,
       fleetId: summary.fleetId,
       fleetName: summary.fleetName,
-      draftSections: summary.draftSections,
+      draftSections,
+      gridPlan,
+      gridDetection,
       // Reshaped on read so imports parsed before the certification and noise
       // rules existed open in the corrected order; saving persists it.
       formContext: refineInspectionFormContext(summary.formContext),
@@ -110,7 +153,7 @@ export async function PATCH(req: Request, context: Context) {
   }
 
   const body = (await req.json().catch(() => null)) as
-    | { title?: unknown; sections?: unknown; formContext?: unknown }
+    | { title?: unknown; sections?: unknown; formContext?: unknown; gridPlan?: unknown }
     | null;
   const title = typeof body?.title === "string" ? body.title.trim().slice(0, 160) : "";
   const sections = normalizeInspectionFormSections(body?.sections);
@@ -129,10 +172,16 @@ export async function PATCH(req: Request, context: Context) {
     body?.formContext === undefined
       ? current.formContext
       : refineInspectionFormContext(normalizeInspectionFormContext(body.formContext));
+  const gridPlan =
+    body?.gridPlan === undefined
+      ? current.gridPlan
+      : normalizeImportGridPlan(body.gridPlan);
   const admin = createAdminSupabase();
   const { error } = await admin
     .from("import_jobs")
-    .update({ summary: { ...current, title, draftSections: sections, formContext } })
+    .update({
+      summary: { ...current, title, draftSections: sections, formContext, gridPlan },
+    })
     .eq("id", jobId)
     .eq("shop_id", loaded.access.profile.shop_id)
     .eq("import_type", "inspection_form")
@@ -142,5 +191,5 @@ export async function PATCH(req: Request, context: Context) {
     return NextResponse.json({ error: "Unable to save the review." }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, title, sections, formContext });
+  return NextResponse.json({ ok: true, title, sections, formContext, gridPlan });
 }

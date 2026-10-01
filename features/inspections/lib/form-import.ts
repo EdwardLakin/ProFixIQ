@@ -29,6 +29,33 @@ export type InspectionFormSection = {
   items: InspectionFormItem[];
 };
 
+/**
+ * Which of ProFixIQ's tire / brake grids an import was given. Chosen from the
+ * form when it is read, adjustable on the review screen, and saved with the
+ * review so the screen reopens as it was left.
+ */
+export type ImportGridPlan = {
+  tireGrid: boolean;
+  brakeGrid: boolean;
+  brakeMode: "air" | "hydraulic";
+};
+
+export function normalizeImportGridPlan(value: unknown): ImportGridPlan | null {
+  const plan = record(value);
+  if (
+    typeof plan.tireGrid !== "boolean" ||
+    typeof plan.brakeGrid !== "boolean" ||
+    (plan.brakeMode !== "air" && plan.brakeMode !== "hydraulic")
+  ) {
+    return null;
+  }
+  return {
+    tireGrid: plan.tireGrid,
+    brakeGrid: plan.brakeGrid,
+    brakeMode: plan.brakeMode,
+  };
+}
+
 export type InspectionFormImportSummary = {
   state: InspectionFormImportState;
   title: string;
@@ -40,6 +67,7 @@ export type InspectionFormImportSummary = {
   fleetName: string | null;
   draftSections: InspectionFormSection[];
   formContext: InspectionFormContext;
+  gridPlan: ImportGridPlan | null;
   extractedText: string;
   failedPages: Array<{ page: number; message: string }>;
 };
@@ -57,6 +85,13 @@ export type InspectionFormImportView = {
   fleetName: string | null;
   draftSections: InspectionFormSection[];
   formContext: InspectionFormContext;
+  gridPlan: ImportGridPlan | null;
+  /** Why the grids were chosen, and whether the form already measures itself. */
+  gridDetection: {
+    reasons: string[];
+    sourceHasTireMeasurements: boolean;
+    sourceHasBrakeMeasurements: boolean;
+  } | null;
   extractedText: string;
   failedPages: Array<{ page: number; message: string }>;
   totalPages: number;
@@ -563,6 +598,7 @@ export function normalizeInspectionFormImportSummary(
     fleetName: nullableText(summary.fleetName),
     draftSections: normalizeInspectionFormSections(summary.draftSections),
     formContext: normalizeInspectionFormContext(summary.formContext),
+    gridPlan: normalizeImportGridPlan(summary.gridPlan),
     extractedText: text(summary.extractedText),
     failedPages,
   };
