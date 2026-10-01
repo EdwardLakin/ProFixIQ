@@ -7,6 +7,7 @@ import {
   type PDFFont,
   type PDFPage,
 } from "pdf-lib";
+import { isSignaturePanelField } from "@/features/inspections/lib/form-import";
 import { assembleInspectionReport } from "./report";
 import type {
   InspectionSession,
@@ -1357,6 +1358,17 @@ export async function generateInspectionPDF(
     drawRule();
     drawSectionHeader(block.title);
     for (const item of block.items) {
+      // The technician's own name/signature lines are repeated by the
+      // signature cards below — but only when that signature exists and the
+      // line holds nothing someone captured.
+      if (
+        block.block === "completion" &&
+        technicianSignature &&
+        !item.value &&
+        isSignaturePanelField(item.label)
+      ) {
+        continue;
+      }
       if (block.block === "branding" || block.block === "notices") {
         drawWrappedParagraph(item.label, {
           widthChars: 92,

@@ -76,12 +76,19 @@ export default function ImportedFormContextCard({
   values,
   placement,
   onChange,
+  onChangeMany,
   disabled = false,
 }: {
   context: InspectionFormContext | null | undefined;
   values: Record<string, string>;
   placement: ImportedFormContextPlacement;
   onChange: (key: string, value: string) => void;
+  /**
+   * Applies several values as one update. Autofill must use this: separate
+   * onChange calls in the same render each start from the same snapshot of
+   * the captured values, so each would overwrite the one before it.
+   */
+  onChangeMany?: (updates: Record<string, string>) => void;
   disabled?: boolean;
 }) {
   const [defaults, setDefaults] = useState<CertificationDefaults | null>(null);
@@ -122,6 +129,7 @@ export default function ImportedFormContextCard({
   // so a technician's own edit (or a cleared field) is never overwritten.
   useEffect(() => {
     if (placement !== "certification" || disabled || !context) return;
+    const updates: Record<string, string> = {};
     context.completion.forEach((section, sectionIndex) => {
       section.items.forEach((item) => {
         const kind = certificationFieldKind(item.item);
@@ -144,11 +152,15 @@ export default function ImportedFormContextCard({
                   ? defaults?.licenseNumber
                   : null;
         if (!value) return;
-        appliedRef.current.add(key);
-        onChange(key, value);
+        updates[key] = value;
       });
     });
-  }, [context, defaults, disabled, onChange, placement, values]);
+    const keys = Object.keys(updates);
+    if (!keys.length) return;
+    for (const key of keys) appliedRef.current.add(key);
+    if (onChangeMany) onChangeMany(updates);
+    else for (const key of keys) onChange(key, updates[key]);
+  }, [context, defaults, disabled, onChange, onChangeMany, placement, values]);
 
   if (!context || isInspectionFormContextEmpty(context)) return null;
 
@@ -160,13 +172,38 @@ export default function ImportedFormContextCard({
 
   // ProFixIQ's signature block records the printed name, signature and signed
   // date, so the paper copies of those lines are not shown a second time.
-  const visibleItems = (block: InspectionFormContextBlock, items: typeof context.header[number]["items"]) =>
+  // A line that already holds a captured value stays visible: that is data
+  // someone entered, and it must not vanish from an inspection in progress.
+  const visibleItems = (
+    block: InspectionFormContextBlock,
+    sectionIndex: number,
+    section: { title: string },
+    items: typeof context.header[number]["items"],
+  ) =>
     block === "completion"
-      ? items.filter((item) => !isSignaturePanelField(item.item))
+      ? items.filter(
+          (item) =>
+            !isSignaturePanelField(item.item) ||
+            Boolean(
+              (
+                values[
+                  inspectionFormContextValueKey(
+                    block,
+                    sectionIndex,
+                    section.title,
+                    item.item,
+                  )
+                ] ?? ""
+              ).trim(),
+            ),
+        )
       : items;
 
   const rendered = blocks.filter((block) =>
-    context[block].some((section) => visibleItems(block, section.items).length > 0),
+    context[block].some(
+      (section, sectionIndex) =>
+        visibleItems(block, sectionIndex, section, section.items).length > 0,
+    ),
   );
   if (!rendered.length) return null;
 
@@ -181,7 +218,7 @@ export default function ImportedFormContextCard({
           ) : null}
 
           {context[block].map((section, sectionIndex) => {
-            const items = visibleItems(block, section.items);
+            const items = visibleItems(block, sectionIndex, section, section.items);
             if (!items.length) return null;
             const title = visibleTitle(section.title);
             return (

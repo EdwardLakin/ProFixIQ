@@ -244,9 +244,13 @@ export default function InspectionFormImportReview({
     setApproving(true);
     setError(null);
     try {
-      // Flush any pending review edit first. Setting dirty=false here would
-      // cancel the debounced save instead of completing it.
-      if (dirty && !(await saveReview())) return;
+      // Always save before approving, even when nothing was edited. An import
+      // read before the context-shaping and grid rules existed is corrected on
+      // load only in this screen's memory, and approval copies the *saved*
+      // context into the template, so skipping the save would keep the old
+      // layout while the review showed the new one. Setting dirty=false here
+      // would instead cancel a debounced save rather than complete it.
+      if (!(await saveReview())) return;
       setDirty(false);
       const response = await fetch(`/api/inspection-form-imports/${jobId}/approve`, {
         method: "POST",

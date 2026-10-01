@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { getShopScheduleDateContext } from "@/features/workforce/lib/schedulePosture";
 import {
   pickInspectionLicenseNumber,
   shopStationLocation,
@@ -27,7 +28,7 @@ export async function GET() {
   const [shopResult, certResult] = await Promise.all([
     admin
       .from("shops")
-      .select("name, shop_name, business_name, address, city, province, postal_code")
+      .select("name, shop_name, business_name, address, city, province, postal_code, timezone")
       .eq("id", shopId)
       .maybeSingle(),
     admin
@@ -40,7 +41,13 @@ export async function GET() {
   // Defaults are a convenience; a failed lookup must never block the form.
   const shop = shopResult.error ? null : shopResult.data;
   const certs = certResult.error ? [] : (certResult.data ?? []);
-  const today = new Date().toISOString().slice(0, 10);
+  // "Expired" is a calendar-date question in the shop's own timezone: a
+  // certificate that expires today is still valid this evening in Alberta even
+  // though UTC has already rolled over.
+  const today = getShopScheduleDateContext(
+    new Date(),
+    shop?.timezone,
+  ).dateKey;
 
   return NextResponse.json(
     {

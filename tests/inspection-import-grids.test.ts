@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   applyImportGrids,
+  currentImportGridPlan,
   detectImportGridPlan,
   isImportGridSection,
 } from "@/features/inspections/lib/fleet/importGrids";
-import type { InspectionFormSection } from "@/features/inspections/lib/form-import";
+import {
+  normalizeInspectionFormSections,
+  type InspectionFormSection,
+} from "@/features/inspections/lib/form-import";
 
 const check = (item: string) => ({ item, fieldType: "check" as const });
 const measure = (item: string) => ({ item, fieldType: "measurement" as const });
@@ -36,6 +40,27 @@ describe("detectImportGridPlan", () => {
       vehicleType: "truck",
     });
     expect(plan.brakeMode).toBe("hydraulic");
+  });
+
+  it("does not let air suspension outvote explicit hydraulic-brake wording", () => {
+    const plan = detectImportGridPlan({
+      sections: [
+        { title: "Suspension", items: [check("Air Suspension")] },
+        { title: "Brakes", items: [check("Brake fluid level"), check("Calipers")] },
+      ],
+      vehicleType: "truck",
+    });
+    expect(plan.brakeMode).toBe("hydraulic");
+  });
+
+  it("picks the system the form names more often when both appear", () => {
+    const plan = detectImportGridPlan({
+      sections: [
+        { title: "Air Brakes", items: [check("Brake Chambers"), check("Slack adjusters"), check("Air tanks")] },
+        { title: "Notes", items: [check("Brake fluid")] },
+      ],
+    });
+    expect(plan.brakeMode).toBe("air");
   });
 
   it("falls back on the vehicle: heavy -> air, car -> hydraulic", () => {
@@ -94,6 +119,12 @@ describe("applyImportGrids", () => {
     expect(titles(hyd)).toContain("Corner Grid (Hydraulic)");
     const trailer = applyImportGrids(hansens(), air, { vehicleType: "trailer" });
     expect(trailer.find((s) => s.title === "Trailer Tire Grid")!.items[0].item).toMatch(/^Trailer 1 Left/);
+    // a hydraulic trailer gets pad/rotor rows, not push rods, and keeps its mode
+    const hydTrailer = applyImportGrids(hansens(), { ...air, brakeMode: "hydraulic" }, { vehicleType: "trailer" });
+    const corner = hydTrailer.find((s) => s.title === "Trailer Corner Grid")!;
+    expect(corner.items.some((i) => /push rod/i.test(i.item))).toBe(false);
+    expect(corner.items.some((i) => /brake pad/i.test(i.item))).toBe(true);
+    expect(currentImportGridPlan(hydTrailer, "air").brakeMode).toBe("hydraulic");
   });
 
   it("appends at the end when the form has no tires or brakes section", () => {
@@ -113,9 +144,38 @@ describe("applyImportGrids", () => {
     expect(titles(applyImportGrids(once, { ...air, tireGrid: false, brakeGrid: false }))).toEqual(titles(hansens()));
   });
 
-  it("identifies its own sections", () => {
-    expect(isImportGridSection({ title: "Corner Grid (Air)" })).toBe(true);
-    expect(isImportGridSection({ title: "Air Brakes" })).toBe(false);
+  it("identifies its own sections by marker, not by title", () => {
+    const out = applyImportGrids(hansens(), air);
+    const generated = out.filter(isImportGridSection).map((s) => s.title);
+    expect(generated).toEqual(["Corner Grid (Air)", "Tire Grid — Air Brake (HD)"]);
+    expect(isImportGridSection({})).toBe(false);
+  });
+
+  it("keeps a customer's own section with a canonical title and does not rebuild it", () => {
+    const own: InspectionFormSection = {
+      title: "Corner Grid (Air)",
+      items: [measure("Steer 1 Left Lining/Shoe")],
+    };
+    const out = applyImportGrids([...hansens(), own], { ...air, brakeGrid: false });
+    expect(out.filter((s) => s.title === "Corner Grid (Air)")).toHaveLength(1);
+    expect(out.find((s) => s.title === "Corner Grid (Air)")!.items).toHaveLength(1);
+  });
+
+  it("survives a reviewer renaming a generated grid", () => {
+    const out = applyImportGrids(hansens(), air).map((s) =>
+      s.generatedGrid?.kind === "tire" ? { ...s, title: "Tyres (customer layout)" } : s,
+    );
+    expect(currentImportGridPlan(out, "air").tireGrid).toBe(true);
+    // re-applying replaces it instead of adding a duplicate
+    const again = applyImportGrids(out, air);
+    expect(again.filter((s) => s.generatedGrid?.kind === "tire")).toHaveLength(1);
+    expect(again.some((s) => s.title === "Tyres (customer layout)")).toBe(false);
+  });
+
+  it("keeps the markers through the save path", () => {
+    const out = applyImportGrids(hansens(), air);
+    expect(normalizeInspectionFormSections(JSON.parse(JSON.stringify(out)))
+      .filter((s) => s.generatedGrid)).toHaveLength(2);
   });
 });
 

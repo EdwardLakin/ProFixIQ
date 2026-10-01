@@ -1,7 +1,6 @@
 import {
   INSPECTION_FORM_CONTEXT_BLOCKS,
   inspectionFormContextValueKey,
-  isSignaturePanelField,
   type InspectionFormContextBlock,
 } from "@/features/inspections/lib/form-import";
 
@@ -158,13 +157,11 @@ export function assembleInspectionReport(
     for (const [sectionIndex, section] of (
       session.formContext?.[block] ?? []
     ).entries()) {
-      // ProFixIQ's signature record carries the printed name, signature and
-      // signed date, so the paper form's copies of those lines are not
-      // repeated as blank rows.
+      // Every captured line stays in the report data. Which lines a rendering
+      // repeats next to a verified signature is the renderer's decision, not
+      // this assembler's: it receives no signature records and cannot tell
+      // whether a replacement exists.
       const items = (section.items ?? [])
-        .filter(
-          (item) => block !== "completion" || !isSignaturePanelField(item.item),
-        )
         .map((item) => ({
         label: item.item,
         value: text(

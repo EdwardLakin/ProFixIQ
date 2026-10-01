@@ -24,9 +24,21 @@ export type InspectionFormItem = {
   fieldType?: InspectionFormFieldType;
 };
 
+/**
+ * Marks a section ProFixIQ generated for an imported form (its tire or brake
+ * grid). Provenance lives here, not in the section title: titles are editable
+ * and a customer's own section can share a canonical title, so a title cannot
+ * say who made a section.
+ */
+export type GeneratedGridMeta = {
+  kind: "tire" | "brake";
+  brakeMode: "air" | "hydraulic";
+};
+
 export type InspectionFormSection = {
   title: string;
   items: InspectionFormItem[];
+  generatedGrid?: GeneratedGridMeta;
 };
 
 /**
@@ -206,7 +218,19 @@ export function normalizeInspectionFormSections(
         ...(fieldType ? { fieldType } : {}),
       });
     }
-    if (items.length) sections.push({ title, items });
+    const grid = record(section.generatedGrid);
+    const generatedGrid: GeneratedGridMeta | null =
+      (grid.kind === "tire" || grid.kind === "brake") &&
+      (grid.brakeMode === "air" || grid.brakeMode === "hydraulic")
+        ? { kind: grid.kind, brakeMode: grid.brakeMode }
+        : null;
+    if (items.length) {
+      sections.push({
+        title,
+        items,
+        ...(generatedGrid ? { generatedGrid } : {}),
+      });
+    }
   }
   return sections;
 }
@@ -450,7 +474,15 @@ export function certificationFieldKind(
   if (/\bstation\b.*\blocation\b|\b(?:facility|shop)\s+(?:location|address)\b/.test(l)) {
     return "stationLocation";
   }
-  if (/\blicen[sc]e\b|\binspector\s*(?:#|no\b\.?|number|id)\b/.test(l)) {
+  // The technician's inspection licence only. "Driver Licence #", a vehicle
+  // plate or a carrier's licence on the same form are other people's and
+  // other things' numbers, and must never be filled with the technician's.
+  const OTHER_LICENCE_OWNER =
+    /\b(?:driver|operator|vehicle|plate|carrier|customer|owner|company|business|trailer|unit|class|jurisdiction|province|state)\b/;
+  if (
+    /\binspector\s*(?:#|no\b\.?|number|id)\b/.test(l) ||
+    (/\blicen[sc]e\b/.test(l) && !OTHER_LICENCE_OWNER.test(l))
+  ) {
     return "licenseNumber";
   }
   if (/\bdate\b.*\binspection\b|\binspection\s+date\b/.test(l)) {

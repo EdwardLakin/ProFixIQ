@@ -14,6 +14,7 @@ import {
   buildHydraulicCornerSection,
 } from "@/features/inspections/lib/inspection/prepareSectionsWithCornerGrid";
 import type {
+  GeneratedGridMeta,
   ImportGridPlan,
   InspectionFormItem,
   InspectionFormSection,
@@ -32,28 +33,28 @@ export type DetectedImportGridPlan = ImportGridPlan & {
 
 const TIRE_GRID_AIR_TITLE = "Tire Grid — Air Brake (HD)";
 const TIRE_GRID_HYD_TITLE = "Tire Grid — Hydraulic";
-const BRAKE_GRID_AIR_TITLE = "Corner Grid (Air)";
-const BRAKE_GRID_HYD_TITLE = "Corner Grid (Hydraulic)";
 
-const CANONICAL_GRID_TITLES = new Set(
-  [
-    TIRE_GRID_AIR_TITLE,
-    TIRE_GRID_HYD_TITLE,
-    BRAKE_GRID_AIR_TITLE,
-    BRAKE_GRID_HYD_TITLE,
-  ].map((t) => t.toLowerCase()),
-);
-
-/** Titles of the grid sections this module adds (and may later remove). */
-export function isImportGridSection(section: { title: string }): boolean {
-  const t = section.title.trim().toLowerCase();
-  return CANONICAL_GRID_TITLES.has(t) || /^trailer (?:tire|corner) grid$/.test(t);
+/**
+ * True for a section this module generated. Identity is the saved
+ * `generatedGrid` marker, never the title: a reviewer can rename a generated
+ * grid, and a customer's own section may share a canonical title.
+ */
+export function isImportGridSection(section: {
+  generatedGrid?: GeneratedGridMeta;
+}): boolean {
+  return Boolean(section.generatedGrid);
 }
 
+// Brake-system evidence only. "Air suspension" is not a brake system, and a
+// hydraulic-brake form can perfectly well list it.
 const AIR_SIGNAL_RE =
-  /\bair\s*(?:brakes?|system|tanks?|lines?|dryer|suspension)\b|brake chambers?|slack adjusters?|push\s*rods?|pushrod|tractor protection|spring brake|parking brake & emergency/i;
+  /\bair\s*brakes?\b|brake chambers?|slack adjusters?|push\s*rods?|pushrod|tractor protection|spring brake|\bair\s*(?:tanks?|dryer)\b|air system leak/gi;
 const HYD_SIGNAL_RE =
-  /\bhydraulic\b|brake fluid|master cylinder|calipers?|brake booster/i;
+  /\bhydraulic\s*brakes?\b|\bhydraulic\b|brake fluid|master cylinder|calipers?|brake booster/gi;
+
+function countMatches(re: RegExp, text: string): number {
+  return (text.match(re) ?? []).length;
+}
 
 const TIRE_MEASURE_RE = /tread depth|tire pressure|tyre pressure|\bpsi\b/i;
 const BRAKE_MEASURE_RE =
@@ -90,13 +91,23 @@ export function detectImportGridPlan(input: {
   const vehicleType = (input.vehicleType ?? "").toLowerCase();
   const dutyClass = (input.dutyClass ?? "").toLowerCase();
 
+  const airHits = countMatches(AIR_SIGNAL_RE, corpus);
+  const hydHits = countMatches(HYD_SIGNAL_RE, corpus);
+
   let brakeMode: BrakeMode;
-  if (AIR_SIGNAL_RE.test(corpus)) {
+  if (airHits > 0 && hydHits === 0) {
     brakeMode = "air";
     reasons.push("The form mentions air-brake components.");
-  } else if (HYD_SIGNAL_RE.test(corpus)) {
+  } else if (hydHits > 0 && airHits === 0) {
     brakeMode = "hydraulic";
     reasons.push("The form mentions hydraulic-brake components.");
+  } else if (airHits !== hydHits) {
+    // Both appear: the brake system the form names more often is the one it
+    // is about.
+    brakeMode = airHits > hydHits ? "air" : "hydraulic";
+    reasons.push(
+      `The form mentions both brake systems; ${brakeMode} is named more often.`,
+    );
   } else if (
     /truck|tractor|bus|coach|trailer|heavy/.test(`${vehicleType} ${dutyClass}`)
   ) {
@@ -155,6 +166,7 @@ function masterTireGrid(title: string): InspectionFormSection | null {
 
 function trailerAxleItems(
   kind: "tire" | "corner",
+  mode: BrakeMode,
 ): Array<{ item: string; unit: string | null }> {
   const axles = ["Trailer 1", "Trailer 2"];
   const out: Array<{ item: string; unit: string | null }> = [];
@@ -165,10 +177,15 @@ function trailerAxleItems(
         out.push({ item: `${axle} ${side} Tread Depth (Outer)`, unit: "mm" });
         out.push({ item: `${axle} ${side} Tread Depth (Inner)`, unit: "mm" });
         out.push({ item: `${axle} ${side} Tire Condition`, unit: null });
-      } else {
+      } else if (mode === "air") {
         out.push({ item: `${axle} ${side} Lining/Shoe`, unit: "mm" });
         out.push({ item: `${axle} ${side} Drum/Rotor`, unit: "mm" });
         out.push({ item: `${axle} ${side} Push Rod Travel`, unit: "in" });
+      } else {
+        // Hydraulic (surge or electric-over-hydraulic) trailer brakes have no
+        // push rods.
+        out.push({ item: `${axle} ${side} Brake Pad`, unit: "mm" });
+        out.push({ item: `${axle} ${side} Rotor/Drum`, unit: "mm" });
       }
     }
   }
@@ -180,17 +197,23 @@ function buildTireGrid(
   trailer: boolean,
   treadUnit: string | null,
 ): InspectionFormSection | null {
+  const generatedGrid: GeneratedGridMeta = { kind: "tire", brakeMode: mode };
   if (trailer) {
     return {
       title: "Trailer Tire Grid",
-      items: trailerAxleItems("tire").map((it) => toFormItem(it, treadUnit)),
+      items: trailerAxleItems("tire", mode).map((it) => toFormItem(it, treadUnit)),
+      generatedGrid,
     };
   }
   const base = masterTireGrid(
     mode === "air" ? TIRE_GRID_AIR_TITLE : TIRE_GRID_HYD_TITLE,
   );
   return base
-    ? { title: base.title, items: base.items.map((it) => toFormItem(it, treadUnit)) }
+    ? {
+        title: base.title,
+        items: base.items.map((it) => toFormItem(it, treadUnit)),
+        generatedGrid,
+      }
     : null;
 }
 
@@ -198,10 +221,12 @@ function buildBrakeGrid(
   mode: BrakeMode,
   trailer: boolean,
 ): InspectionFormSection {
+  const generatedGrid: GeneratedGridMeta = { kind: "brake", brakeMode: mode };
   if (trailer) {
     return {
       title: "Trailer Corner Grid",
-      items: trailerAxleItems("corner").map((it) => toFormItem(it, null)),
+      items: trailerAxleItems("corner", mode).map((it) => toFormItem(it, null)),
+      generatedGrid,
     };
   }
   const base =
@@ -209,6 +234,7 @@ function buildBrakeGrid(
   return {
     title: base.title,
     items: (base.items ?? []).map((it) => toFormItem(it, null)),
+    generatedGrid,
   };
 }
 
@@ -273,31 +299,23 @@ export function applyImportGrids(
   return out;
 }
 
-const TIRE_GRID_TITLE_RE = /^(?:tire grid\b|trailer tire grid$)/i;
-const BRAKE_GRID_TITLE_RE = /^(?:corner grid\b|trailer corner grid$)/i;
-
 /**
  * What the sections currently contain, so the review screen's checkboxes stay
- * truthful when a reviewer removes a grid with the section's own Remove button.
+ * truthful when a reviewer removes or renames a grid.
  */
 export function currentImportGridPlan(
   sections: readonly InspectionFormSection[],
   fallbackMode: BrakeMode,
 ): ImportGridPlan {
   const grids = sections.filter(isImportGridSection);
-  const brake = grids.find((s) => BRAKE_GRID_TITLE_RE.test(s.title.trim()));
-  const tire = grids.find((s) => TIRE_GRID_TITLE_RE.test(s.title.trim()));
-  const titleMode = (section?: { title: string }): BrakeMode | null =>
-    !section
-      ? null
-      : /\(air\)|air brake|^trailer/i.test(section.title)
-        ? "air"
-        : /hydraulic/i.test(section.title)
-          ? "hydraulic"
-          : null;
+  const brake = grids.find((s) => s.generatedGrid?.kind === "brake");
+  const tire = grids.find((s) => s.generatedGrid?.kind === "tire");
   return {
     tireGrid: Boolean(tire),
     brakeGrid: Boolean(brake),
-    brakeMode: titleMode(brake) ?? titleMode(tire) ?? fallbackMode,
+    brakeMode:
+      brake?.generatedGrid?.brakeMode ??
+      tire?.generatedGrid?.brakeMode ??
+      fallbackMode,
   };
 }

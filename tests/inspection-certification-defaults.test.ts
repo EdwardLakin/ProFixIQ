@@ -73,6 +73,12 @@ describe("certification field recognition", () => {
     ["License#", "licenseNumber"],
     ["Licence No.", "licenseNumber"],
     ["Odometer", null],
+    ["Inspector License No.", "licenseNumber"],
+    ["Driver Licence Number", null],
+    ["Vehicle License", null],
+    ["Carrier Licence #", null],
+    ["Operator's License Class", null],
+    ["License Plate", null],
   ])("%s -> %s", (label, kind) => {
     expect(certificationFieldKind(label)).toBe(kind);
   });
@@ -90,5 +96,68 @@ describe("certification field recognition", () => {
     ]) {
       expect(isSignaturePanelField(label)).toBe(false);
     }
+  });
+});
+
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+describe("review-driven wiring", () => {
+  const read = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
+
+  it("evaluates certification expiry in the shop's own timezone", () => {
+    const route = read("app/api/inspections/certification-defaults/route.ts");
+    expect(route).toContain("getShopScheduleDateContext");
+    expect(route).toContain("timezone");
+    expect(route).not.toContain("toISOString().slice(0, 10)");
+  });
+
+  it("applies certification defaults as one update", () => {
+    const card = read("features/inspections/components/inspection/ImportedFormContextCard.tsx");
+    const screen = read("features/inspections/screens/GenericInspectionScreen.tsx");
+    expect(card).toContain("onChangeMany(updates)");
+    expect(screen).toContain("updateFormContextValues");
+    expect(screen).toContain("onChangeMany={updateFormContextValues}");
+  });
+
+  it("always saves the review before approving", () => {
+    const review = read("features/inspections/components/InspectionFormImportReview.tsx");
+    expect(review).toContain("if (!(await saveReview())) return;");
+    expect(review).not.toContain("if (dirty && !(await saveReview())) return;");
+  });
+
+  it("keeps every captured line in the report data", () => {
+    const report = read("features/inspections/lib/inspection/report.ts");
+    expect(report).not.toContain("isSignaturePanelField");
+  });
+});
+
+import { assembleInspectionReport } from "@/features/inspections/lib/inspection/report";
+import {
+  emptyInspectionFormContext,
+  inspectionFormContextValueKey,
+} from "@/features/inspections/lib/form-import";
+import type { InspectionSession } from "@/features/inspections/lib/inspection/types";
+
+describe("report data keeps captured signature-line values", () => {
+  it("does not drop a captured Inspector Name from the report data", () => {
+    const formContext = emptyInspectionFormContext();
+    formContext.completion = [
+      { title: "Certificate of Inspection", items: [{ item: "Inspector Name" }, { item: "License#" }] },
+    ];
+    const session = {
+      templateName: "Quarterly",
+      sections: [],
+      formContext,
+      formContextValues: {
+        [inspectionFormContextValueKey("completion", 0, "Certificate of Inspection", "Inspector Name")]: "E. Lakin",
+      },
+    } as unknown as InspectionSession;
+
+    const labels = assembleInspectionReport(session).formContext.flatMap((s) =>
+      s.items.map((i) => [i.label, i.value] as const),
+    );
+    expect(labels).toContainEqual(["Inspector Name", "E. Lakin"]);
+    expect(labels).toContainEqual(["License#", null]);
   });
 });
