@@ -22,6 +22,10 @@ import {
   releaseVoice,
 } from "@/features/shared/voice/voiceArbiter";
 import { parseStandaloneLabor } from "@/features/inspections/lib/inspection/voice/spokenLabor";
+import {
+  parseBulkCommands,
+  type BulkCommand,
+} from "@/features/inspections/lib/inspection/voice/bulkCommands";
 import { buildVoiceBrainFeedback } from "@/features/inspections/lib/inspection/voice/voiceBrain";
 import VoiceControlsPanel from "@inspections/components/inspection/VoiceControlsPanel";
 import { prepareSectionsWithCornerGrid } from "@inspections/lib/inspection/prepareSectionsWithCornerGrid";
@@ -538,6 +542,19 @@ function localFallbackCommands(text: string): ParsedCommand[] {
 // audio context, a speechSynthesis `end` that never fires) the mic would stay
 // muted while the UI still says "Listening", so give up and hand it back.
 const SPEECH_PLAYBACK_MAX_MS = 12_000;
+
+const BULK_METRIC_LABEL = {
+  pressure: "tire pressures",
+  tread: "tread depths",
+  pad: "brake pads",
+} as const;
+
+function describeBulk(b: BulkCommand): string {
+  const scope = b.scope === "all" ? "" : `${b.scope} `;
+  const what = `${b.targets.length} ${scope}${BULK_METRIC_LABEL[b.metric]}`;
+  if (b.value !== undefined) return `${what} set to ${b.value}${b.unit ? ` ${b.unit}` : ""}`;
+  return `${what} marked ${b.status === "na" ? "N A" : b.status}`;
+}
 
 function speakLocal(text: string, onDone?: () => void): void {
   let finished = false;
@@ -1871,6 +1888,9 @@ type SmartMatchRow = {
     let commands: ParsedCommand[] = [];
     const applied: VoiceCommandApplyResult[] = [];
     let interpretFailure: string | null = null;
+    const bulkSummaries: string[] = [];
+    let bulkCommandCount = 0;
+    const targetBeforeBulk = lastVoiceTargetRef.current;
 
     try {
       const correctionTarget = lastVoiceTargetRef.current;
@@ -1945,9 +1965,35 @@ type SmartMatchRow = {
           } as unknown as ParsedCommand,
         ];
       } else {
-        commands = await interpretCommand(mainText, ctx, (reason) => {
-          interpretFailure = reason;
-        });
+        // "All tire pressures 110", "front brake pads 8, rear brake pads 9":
+        // one phrase sets a whole group of grid items. Anything left over is
+        // interpreted the normal way.
+        const bulk = parseBulkCommands(mainText, sess);
+        if (bulk.commands.length > 0) {
+          for (const b of bulk.commands) {
+            for (const t of b.targets) {
+              commands.push({
+                command: b.status ? "update_status" : "update_value",
+                sectionIndex: t.sectionIndex,
+                itemIndex: t.itemIndex,
+                ...(b.status ? { status: b.status } : { value: b.value, unit: b.unit }),
+              } as unknown as ParsedCommand);
+            }
+            bulkSummaries.push(describeBulk(b));
+          }
+          bulkCommandCount = commands.length;
+          if (/[a-z0-9]{2,}/.test(bulk.rest) && !/^(?:and|then|also)$/.test(bulk.rest)) {
+            commands.push(
+              ...(await interpretCommand(bulk.rest, ctx, (reason) => {
+                interpretFailure = reason;
+              })),
+            );
+          }
+        } else {
+          commands = await interpretCommand(mainText, ctx, (reason) => {
+            interpretFailure = reason;
+          });
+        }
       }
 
       if (guardLocked()) return;
@@ -2090,7 +2136,11 @@ type SmartMatchRow = {
             updateItem,
             updateSection,
             finishSession,
-            rawSpeech: mainText,
+            // A compound finding carries the item-bearing head of its phrase so
+            // part names later in the sentence cannot steer it to another item.
+            rawSpeech:
+              (command as unknown as { speechHint?: string }).speechHint ??
+              mainText,
           });
 
           if (guardLocked()) return;
@@ -2138,8 +2188,22 @@ type SmartMatchRow = {
       }
 
       const successfulUpdates = applied.filter((result) => result.ok).length;
+
+      // A bulk-only phrase is not a "last item" the technician can follow up
+      // on ("add labor" after "all tire pressures 110" has no sensible target).
+      if (bulkCommandCount > 0 && commands.length === bulkCommandCount) {
+        lastVoiceTargetRef.current = targetBeforeBulk;
+      }
+
+      const bulkSummary = bulkSummaries.join(", ");
       const feedback =
-        successfulUpdates > 1
+        bulkSummary && successfulUpdates > 0
+          ? {
+              spoken: `${bulkSummary}.`,
+              toast: bulkSummary,
+              followUp: { kind: "none" as const },
+            }
+          : successfulUpdates > 1
           ? {
               spoken: `${successfulUpdates} inspection updates recorded.`,
               toast: `${successfulUpdates} inspection updates recorded`,
