@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { refreshTemplateLayout } from "@/features/inspections/lib/fleet/refreshTemplateLayout";
+import {
+  declinedGridsFromTags,
+  refreshTemplateLayout,
+  tagsWithDeclinedGrids,
+} from "@/features/inspections/lib/fleet/refreshTemplateLayout";
 import {
   emptyInspectionFormContext,
   type InspectionFormContext,
@@ -101,6 +105,62 @@ const INSPECTION_BLOCKS = ["header", "notices", "notes", "completion", "branding
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 
+describe("review hardening", () => {
+  const { sections, formContext } = oldTemplate();
+  const treads = (secs: InspectionFormSection[]) =>
+    secs.find((s) => s.generatedGrid?.kind === "tire")!.items.filter((i) => /tread/i.test(i.item));
+
+  it("keeps saved 32nds tread units when the selector is left alone", () => {
+    const first = refreshTemplateLayout({ sections, formContext, vehicleType: "truck", treadUnit: "32nds" });
+    expect(treads(first.sections).every((i) => i.unit === "32nds")).toBe(true);
+
+    // a later, context-only refresh with the selector untouched must not relabel them
+    const noisy = emptyInspectionFormContext();
+    noisy.header = [{ title: "Page 2 of 2", items: [{ item: "Page 2 of 2" }] }];
+    const second = refreshTemplateLayout({ sections: first.sections, formContext: noisy, vehicleType: "truck" });
+    expect(treads(second.sections).every((i) => i.unit === "32nds")).toBe(true);
+
+    // an explicit choice still wins
+    const back = refreshTemplateLayout({ sections: first.sections, formContext, vehicleType: "truck", treadUnit: "mm" });
+    expect(treads(back.sections).every((i) => i.unit === "mm")).toBe(true);
+  });
+
+  it("round-trips an explicit no-grid choice through tags", () => {
+    const off = refreshTemplateLayout({
+      sections, formContext, vehicleType: "truck", plan: { tireGrid: false, brakeGrid: false },
+    });
+    expect(off.declined).toEqual({ tireGrid: true, brakeGrid: true });
+    const tags = tagsWithDeclinedGrids(["customer-form", "fleet"], off.declined);
+    expect(tags).toEqual(["customer-form", "fleet", "layout:no-tire-grid", "layout:no-brake-grid"]);
+    expect(declinedGridsFromTags(tags)).toEqual({ tireGrid: true, brakeGrid: true });
+
+    // saved + reopened: no grid sections, tags present -> nothing left to apply
+    const reopened = refreshTemplateLayout({
+      sections: off.sections, formContext: off.formContext, vehicleType: "truck",
+      declined: declinedGridsFromTags(tags),
+    });
+    expect(reopened.gridPlan).toMatchObject({ tireGrid: false, brakeGrid: false });
+    expect(reopened.changed).toBe(false);
+    expect(reopened.sections.some((s) => s.generatedGrid)).toBe(false);
+
+    // without the tags the grids would be offered again (the bug being fixed)
+    expect(
+      refreshTemplateLayout({ sections: off.sections, formContext: off.formContext, vehicleType: "truck" }).changed,
+    ).toBe(true);
+  });
+
+  it("only tags what the form actually calls for, and clears tags when a grid is turned back on", () => {
+    const hydraulicNoGrid = refreshTemplateLayout({
+      sections: [{ title: "Lights", items: [check("Headlights")] }],
+      formContext: emptyInspectionFormContext(),
+      plan: { tireGrid: true, brakeGrid: true },
+    });
+    expect(hydraulicNoGrid.declined).toEqual({ tireGrid: false, brakeGrid: false });
+    const on = tagsWithDeclinedGrids(["fleet", "layout:no-tire-grid"], { tireGrid: false, brakeGrid: false });
+    expect(on).toEqual(["fleet"]);
+  });
+});
+
 describe("refresh persistence wiring", () => {
   const read = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
 
@@ -108,6 +168,7 @@ describe("refresh persistence wiring", () => {
     const editor = read("features/inspections/components/InspectionTemplateEditRouter.tsx");
     expect(editor).toContain("...(formContextDirty ? { formContext } : {})");
     expect(editor).toContain("...(formContextDirty ? { form_context: formContext } : {})");
+    expect(editor).toContain("...(tagsDirty ? { tags } : {})");
     // grid markers must survive an ordinary save
     expect(editor).toContain("generatedGrid: section.generatedGrid");
   });

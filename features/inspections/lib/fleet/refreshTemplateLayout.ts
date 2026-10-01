@@ -19,11 +19,67 @@ import {
   type DetectedImportGridPlan,
 } from "@/features/inspections/lib/fleet/importGrids";
 
+/**
+ * A reviewer's explicit "no" to a grid the form calls for. Saved as template
+ * tags, because the absence of a generated grid section cannot tell "declined"
+ * from "never offered": without it, reopening a template that deliberately has
+ * no grids would offer them again, forever.
+ */
+export const DECLINED_GRID_TAGS = {
+  tireGrid: "layout:no-tire-grid",
+  brakeGrid: "layout:no-brake-grid",
+} as const;
+
+export type DeclinedGrids = { tireGrid: boolean; brakeGrid: boolean };
+
+export function declinedGridsFromTags(
+  tags: readonly string[] | null | undefined,
+): DeclinedGrids {
+  const have = new Set((tags ?? []).map((t) => t.toLowerCase()));
+  return {
+    tireGrid: have.has(DECLINED_GRID_TAGS.tireGrid),
+    brakeGrid: have.has(DECLINED_GRID_TAGS.brakeGrid),
+  };
+}
+
+/** The template's tags with the layout tags replaced; other tags untouched. */
+export function tagsWithDeclinedGrids(
+  tags: readonly string[] | null | undefined,
+  declined: DeclinedGrids,
+): string[] {
+  const layout = new Set<string>(Object.values(DECLINED_GRID_TAGS));
+  const kept = (tags ?? []).filter((t) => !layout.has(t.toLowerCase()));
+  if (declined.tireGrid) kept.push(DECLINED_GRID_TAGS.tireGrid);
+  if (declined.brakeGrid) kept.push(DECLINED_GRID_TAGS.brakeGrid);
+  return kept;
+}
+
+/**
+ * The tread unit the template's own generated tire grid already uses, so a
+ * refresh that leaves the unit selector alone does not quietly relabel saved
+ * measurements.
+ */
+function existingTreadUnit(
+  sections: readonly InspectionFormSection[],
+): "32nds" | "mm" | null {
+  const units = sections
+    .filter((s) => s.generatedGrid?.kind === "tire")
+    .flatMap((s) => s.items)
+    .filter((item) => /tread/i.test(item.item))
+    .map((item) => (item.unit ?? "").toLowerCase());
+  if (units.length === 0) return null;
+  if (units.every((u) => u === "32nds")) return "32nds";
+  if (units.every((u) => u === "mm")) return "mm";
+  return null;
+}
+
 export type TemplateLayoutRefresh = {
   sections: InspectionFormSection[];
   formContext: InspectionFormContext;
   gridPlan: ImportGridPlan;
   detection: DetectedImportGridPlan;
+  /** Grids the form calls for that the reviewer has turned off. */
+  declined: DeclinedGrids;
   /** Plain-language list of what applying this will change. */
   summary: string[];
   changed: boolean;
@@ -47,7 +103,10 @@ export function refreshTemplateLayout(input: {
   title?: string | null;
   /** Reviewer's choices; anything left out follows the template or the form. */
   plan?: Partial<ImportGridPlan>;
+  /** Left unset, the template's existing tread unit is kept. */
   treadUnit?: "32nds" | "mm" | null;
+  /** Earlier explicit "no grid" choices (see DECLINED_GRID_TAGS). */
+  declined?: Partial<DeclinedGrids>;
 }): TemplateLayoutRefresh {
   const before = input.formContext ?? emptyInspectionFormContext();
   const formContext = refineInspectionFormContext(before);
@@ -64,15 +123,19 @@ export function refreshTemplateLayout(input: {
   const base: ImportGridPlan = hasGeneratedGrids
     ? currentImportGridPlan(input.sections, detection.brakeMode)
     : {
-        tireGrid: detection.tireGrid,
-        brakeGrid: detection.brakeGrid,
+        tireGrid: detection.tireGrid && !input.declined?.tireGrid,
+        brakeGrid: detection.brakeGrid && !input.declined?.brakeGrid,
         brakeMode: detection.brakeMode,
       };
   const gridPlan: ImportGridPlan = { ...base, ...input.plan };
+  const declined: DeclinedGrids = {
+    tireGrid: detection.tireGrid && !gridPlan.tireGrid,
+    brakeGrid: detection.brakeGrid && !gridPlan.brakeGrid,
+  };
 
   const sections = applyImportGrids(input.sections, gridPlan, {
     vehicleType: input.vehicleType,
-    treadUnit: input.treadUnit,
+    treadUnit: input.treadUnit ?? existingTreadUnit(input.sections),
   });
 
   const summary: string[] = [];
@@ -120,5 +183,5 @@ export function refreshTemplateLayout(input: {
     JSON.stringify(formContext) !== JSON.stringify(before) ||
     JSON.stringify(sections) !== JSON.stringify(input.sections);
 
-  return { sections, formContext, gridPlan, detection, summary, changed };
+  return { sections, formContext, gridPlan, detection, declined, summary, changed };
 }

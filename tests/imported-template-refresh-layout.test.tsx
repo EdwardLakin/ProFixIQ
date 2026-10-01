@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const updates: unknown[] = [];
 
-const template = {
+let template = {
   template_name: "Hansen's Quarterly Inspection - Tractor",
   vehicle_type: "truck",
   labor_hours: null,
@@ -52,6 +52,11 @@ beforeEach(() => {
   updates.length = 0;
 });
 
+const original = JSON.stringify(template);
+beforeEach(() => {
+  template = JSON.parse(original);
+});
+
 describe("refresh layout on a saved imported template", () => {
   it("previews, applies, and saves sections with grid markers plus the reshaped context", async () => {
     render(<InspectionTemplateEditRouter surface="shop" />);
@@ -91,5 +96,30 @@ describe("refresh layout on a saved imported template", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(updates).toHaveLength(1));
     expect(updates[0]).not.toHaveProperty("form_context");
+  });
+});
+
+describe("an explicit no-grid choice survives save and reopen", () => {
+  it("does not offer the grids again after they were declined and saved", async () => {
+    const first = render(<InspectionTemplateEditRouter surface="shop" />);
+    await screen.findByText("Refresh layout");
+    fireEvent.click(screen.getByLabelText(/Tire grid/));
+    fireEvent.click(screen.getByLabelText(/Brake grid/));
+    fireEvent.click(screen.getByRole("button", { name: "Apply refreshed layout" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await waitFor(() => expect(updates).toHaveLength(1));
+
+    const saved = updates[0] as {
+      sections: unknown[]; tags: string[]; form_context: unknown;
+    };
+    expect(saved.tags).toEqual(["customer-form", "layout:no-tire-grid", "layout:no-brake-grid"]);
+
+    // reopen the template as saved
+    first.unmount();
+    template = { ...template, sections: saved.sections as never, tags: saved.tags, form_context: saved.form_context as never };
+    render(<InspectionTemplateEditRouter surface="shop" />);
+    await screen.findByText("Refresh layout");
+    expect(screen.getByText(/already matches the current layout/i)).toBeTruthy();
+    expect((screen.getByLabelText(/Tire grid/) as HTMLInputElement).checked).toBe(false);
   });
 });

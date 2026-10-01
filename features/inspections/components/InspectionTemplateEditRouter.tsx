@@ -5,7 +5,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import CustomDraftPage from "@/features/inspections/app/inspection/custom-draft/page";
-import { refreshTemplateLayout } from "@/features/inspections/lib/fleet/refreshTemplateLayout";
+import {
+  declinedGridsFromTags,
+  refreshTemplateLayout,
+  tagsWithDeclinedGrids,
+} from "@/features/inspections/lib/fleet/refreshTemplateLayout";
 import {
   emptyInspectionFormContext,
   normalizeInspectionFormContext,
@@ -136,6 +140,12 @@ function ImportedFleetTemplateEditor({
       : emptyInspectionFormContext(),
   );
   const [formContextDirty, setFormContextDirty] = useState(false);
+  // Tags carry the reviewer's explicit "no grid" choices; written back only
+  // when a refresh changes them.
+  const [tags, setTags] = useState<string[]>(
+    Array.isArray(initial.tags) ? initial.tags : [],
+  );
+  const [tagsDirty, setTagsDirty] = useState(false);
   const [planChoice, setPlanChoice] = useState<Partial<ImportGridPlan>>({});
   const [treadUnit, setTreadUnit] = useState<"" | "32nds" | "mm">("");
 
@@ -148,14 +158,20 @@ function ImportedFleetTemplateEditor({
         title,
         plan: planChoice,
         treadUnit: treadUnit || null,
+        declined: declinedGridsFromTags(tags),
       }),
-    [formContext, planChoice, sections, title, treadUnit, vehicleType],
+    [formContext, planChoice, sections, tags, title, treadUnit, vehicleType],
   );
 
   const applyRefresh = () => {
     setSections(normalizedSections(refresh.sections));
     setFormContext(refresh.formContext);
     setFormContextDirty(true);
+    const nextTags = tagsWithDeclinedGrids(tags, refresh.declined);
+    if (nextTags.join("\u0000") !== tags.join("\u0000")) {
+      setTags(nextTags);
+      setTagsDirty(true);
+    }
     setPlanChoice({});
     toast.success("Layout refreshed. Review it below, then save.");
   };
@@ -231,6 +247,7 @@ function ImportedFleetTemplateEditor({
               vehicleType: vehicleType.trim() || null,
               laborHours: parsedLabor,
               ...(formContextDirty ? { formContext } : {}),
+              ...(tagsDirty ? { tags } : {}),
             }),
           },
         );
@@ -249,6 +266,7 @@ function ImportedFleetTemplateEditor({
             vehicle_type: vehicleType.trim() || null,
             labor_hours: parsedLabor,
             ...(formContextDirty ? { form_context: formContext } : {}),
+            ...(tagsDirty ? { tags } : {}),
           } as never)
           .eq("id", templateId);
         if (error) throw error;
@@ -256,6 +274,7 @@ function ImportedFleetTemplateEditor({
       toast.success("Imported fleet template saved.");
       setSections(cleaned);
       setFormContextDirty(false);
+      setTagsDirty(false);
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -383,7 +402,7 @@ function ImportedFleetTemplateEditor({
               }
               className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-1 text-xs"
             >
-              <option value="">Grid default</option>
+              <option value="">Keep current</option>
               <option value="32nds">32nds of an inch</option>
               <option value="mm">Millimetres</option>
             </select>
