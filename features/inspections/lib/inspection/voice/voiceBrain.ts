@@ -100,6 +100,13 @@ function buildPartsLaborSummary(
   return pieces.join(" and ");
 }
 
+// A one-phrase finding ("... leaking, add X and 1.5 labor") reports the same
+// outcome as a plain status command and gets the same confirmation and photo
+// prompt.
+function isStatusLike(type: string): boolean {
+  return type === "status" || type === "update_status" || type === "inspection_finding";
+}
+
 export function buildVoiceBrainFeedback(args: {
   rawSpeech: string;
   parsed: ParsedCommand[];
@@ -123,7 +130,7 @@ export function buildVoiceBrainFeedback(args: {
   const parts = getCommandParts(primary);
   const laborHours = getCommandLaborHours(primary);
 
-  if ((type === "status" || type === "update_status") && status === "ok") {
+  if (isStatusLike(type) && status === "ok") {
     return {
       spoken: `${item} marked okay.`,
       toast: `${item} marked OK`,
@@ -131,7 +138,7 @@ export function buildVoiceBrainFeedback(args: {
     };
   }
 
-  if ((type === "status" || type === "update_status") && status === "na") {
+  if (isStatusLike(type) && status === "na") {
     return {
       spoken: `${item} marked not applicable.`,
       toast: `${item} marked NA`,
@@ -139,7 +146,7 @@ export function buildVoiceBrainFeedback(args: {
     };
   }
 
-  if ((type === "status" || type === "update_status") && status === "fail") {
+  if (isStatusLike(type) && status === "fail") {
     const summary = buildPartsLaborSummary(parts, laborHours);
 
     return {
@@ -154,7 +161,7 @@ export function buildVoiceBrainFeedback(args: {
     };
   }
 
-  if ((type === "status" || type === "update_status") && status === "recommend") {
+  if (isStatusLike(type) && status === "recommend") {
     const summary = buildPartsLaborSummary(parts, laborHours);
 
     return {

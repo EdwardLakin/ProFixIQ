@@ -20,11 +20,17 @@ export type CompoundFinding = {
   parts?: Array<{ description: string; qty: number }>;
   laborHours?: number | null;
   openPhotoCapture: boolean;
+  /** Parts and labor are additions to the item's existing estimate. */
+  mergeEstimates: true;
   /** The head of the phrase (item + problem), used to locate the item on apply
    * so part names later in the sentence can never steer it elsewhere. */
   speechHint: string;
 };
 
+// Explicit status words the technician chose beat descriptive condition words:
+// "leaking, recommend replacement" is a recommendation, not a failure.
+const EXPLICIT_FAIL_RE = /\b(fail|failed|fails)\b/i;
+const EXPLICIT_RECOMMEND_RE = /\b(recommend|recommended|rec|suggest|suggested)\b/i;
 const RECOMMEND_RE = /\b(recommend|recommended|rec|suggest|suggested|monitor|watch)\b/i;
 const FAIL_RE =
   /\b(fail|failed|fails|bad|leak|leaks|leaking|leaky|broken|cracked|crack|worn|worn out|damaged|torn|cut|bent|missing|seized|seizing|bulging|bulge|loose|stuck|out of adjustment)\b/i;
@@ -42,11 +48,15 @@ const FILLER_WORDS = new Set([
 // Say nothing the status field does not already say.
 const STATUS_ONLY_WORDS = new Set([
   "fail", "failed", "fails", "bad", "recommend", "recommended", "rec", "suggest", "suggested",
+  "replacement", "monitor", "watch",
 ]);
 
 const QTY_WORDS: Record<string, number> = {
-  a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, eight: 8, ten: 10,
+  a: 1, an: 1, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8,
+  nine: 9, ten: 10,
 };
+const QTY_WORD_ALT = Object.keys(QTY_WORDS).join("|");
+const QTY_RE = new RegExp(`^(\\d+|${QTY_WORD_ALT})\\s+(.+)$`, "i");
 
 function words(s: string): string[] {
   return s
@@ -70,7 +80,7 @@ function parseParts(text: string): Array<{ description: string; qty: number }> {
     if (!piece || NOT_A_PART_RE.test(piece)) continue;
 
     let qty = 1;
-    const q = piece.match(/^(\d+|a|an|one|two|three|four|five|six|eight|ten)\s+(.+)$/i);
+    const q = piece.match(QTY_RE);
     if (q) {
       const n = /^\d+$/.test(q[1]) ? Number(q[1]) : QTY_WORDS[q[1].toLowerCase()];
       if (n && n > 0 && n <= 1000 && !/^a$/i.test(q[1])) {
@@ -111,7 +121,13 @@ export function parseCompoundFinding(
   const isRec = RECOMMEND_RE.test(head);
   if (!isFail && !isRec) return null;
   if (OK_RE.test(head) && !isFail) return null;
-  const status: "fail" | "recommend" = isRec && !isFail ? "recommend" : "fail";
+  const status: "fail" | "recommend" = EXPLICIT_FAIL_RE.test(head)
+    ? "fail"
+    : EXPLICIT_RECOMMEND_RE.test(head)
+      ? "recommend"
+      : isFail
+        ? "fail"
+        : "recommend";
 
   // 4. Item: whatever the head names, minus the problem words.
   const itemHint = head
@@ -143,6 +159,7 @@ export function parseCompoundFinding(
     parts: parts.length > 0 ? parts : undefined,
     laborHours: hours,
     openPhotoCapture: true,
+    mergeEstimates: true,
     speechHint: head,
   };
 }
@@ -156,7 +173,8 @@ export function parseCompoundFinding(
  */
 export function chunkFindings(speech: string): string[] {
   const rough = String(speech ?? "")
-    .replace(/\b(?:then|also|next)\b/gi, "|")
+    .replace(/\b(?:then|next)\b/gi, "|")
+    .replace(/\balso\b/gi, "|also")
     .replace(/[;]+/g, "|")
     .replace(/(?<!\d)\.(?!\d)/g, "|")
     .split("|")
@@ -166,14 +184,19 @@ export function chunkFindings(speech: string): string[] {
   const out: string[] = [];
   for (const chunk of rough) {
     const hasProblem = FAIL_RE.test(chunk) || RECOMMEND_RE.test(chunk);
+    // "also <part>" continues the finding unless it is its own status
+    // ("also horn ok"); a bare "also" never starts a new item by itself.
+    const alsoContinuation =
+      /^also\b/i.test(chunk) && !OK_RE.test(chunk) && !EXPLICIT_FAIL_RE.test(chunk);
     const followOn =
       !hasProblem &&
-      (/^(?:add|adding|parts?|replace|replacing|needs?|plus|and|labou?r)\b/i.test(chunk) ||
+      (alsoContinuation ||
+        /^(?:add|adding|parts?|replace|replacing|needs?|plus|and|labou?r)\b/i.test(chunk) ||
         extractSpokenLabor(chunk).hours !== null);
     if (followOn && out.length > 0) {
-      out[out.length - 1] = `${out[out.length - 1]}, ${chunk}`;
+      out[out.length - 1] = `${out[out.length - 1]}, ${chunk.replace(/^also\s+/i, "")}`;
     } else {
-      out.push(chunk);
+      out.push(chunk.replace(/^also\s+/i, ""));
     }
   }
   return out;

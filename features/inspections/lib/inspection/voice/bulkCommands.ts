@@ -18,6 +18,9 @@ export type BulkTarget = {
 export type BulkCommand = {
   scope: BulkScope;
   metric: BulkMetric;
+  /** The matched words of this phrase alone, so unit inference never reads
+   * another phrase in the same utterance. */
+  clause: string;
   /** Set when a number was spoken. */
   value?: number;
   unit?: string;
@@ -75,6 +78,15 @@ function statusOf(word: string): BulkStatus {
   return "na";
 }
 
+function unitOf(u: string): string | undefined {
+  if (/^psi$/.test(u)) return "psi";
+  if (/^kpa$/.test(u)) return "kPa";
+  if (/^mm$|^mils?$/.test(u)) return "mm";
+  if (/^(inch|inches)$/.test(u)) return "in";
+  if (/32|thirty/.test(u)) return "32nds";
+  return undefined;
+}
+
 function normLabel(label: string): string {
   return label
     .toLowerCase()
@@ -88,12 +100,13 @@ function isGridCorner(l: string): boolean {
   return (
     /\b(lf|rf|lr|rr)\b/.test(l) ||
     /\b(left|right)\s+(front|rear)\b|\b(front|rear)\s+(left|right)\b/.test(l) ||
-    /^(steer|drive|trailer|tag)\b.*\b(left|right)\b/.test(l)
+    /^(steer|drive|trailer|tag|front|rear)\b.*\b(left|right)\b/.test(l)
   );
 }
 
 function matchesMetric(l: string, metric: BulkMetric): boolean {
-  if (metric === "pressure") return /\bpressure\b/.test(l);
+  // A corner-shaped row is not necessarily a tire ("LF Hydraulic Pressure").
+  if (metric === "pressure") return /\bpressure\b/.test(l) && /\b(tire|tyre)\b/.test(l);
   if (metric === "tread") return /\btread\b/.test(l);
   return /\b(pad|lining|shoe)\b/.test(l) && !/\b(drum|rotor|condition)\b/.test(l);
 }
@@ -149,14 +162,14 @@ export function parseBulkCommands(speech: string, session: SessionLike): BulkPar
     const targets = targetsFor(session, metric, scope);
     if (targets.length === 0) continue;
 
-    const cmd: BulkCommand = { scope, metric, targets };
+    const cmd: BulkCommand = { scope, metric, targets, clause: m[0].trim() };
     if (m[3] !== undefined) {
       const value = Number(m[3]);
       if (!Number.isFinite(value)) continue;
       cmd.value = value;
       if (m[4]) {
         const u = m[4].toLowerCase();
-        cmd.unit = /psi|kpa/.test(u) ? u.replace("kpa", "kPa") : /mm/.test(u) ? "mm" : undefined;
+        cmd.unit = unitOf(u);
       }
     } else if (m[5]) {
       cmd.status = statusOf(m[5].toLowerCase());

@@ -91,3 +91,38 @@ describe("compound finding applied end to end", () => {
     expect(lr.parts).toBeUndefined();
   });
 });
+
+describe("review hardening: apply semantics", () => {
+  it("compound additions merge into existing parts and accumulate labor", async () => {
+    const h = harness();
+    const items = h.sections.flatMap((s) => s.items.map((r) => String(r.item)));
+    const say = async (speech: string) => {
+      const [cmd] = await interpretCommand(speech, { items });
+      await h.apply(cmd, (cmd as unknown as { speechHint: string }).speechHint);
+    };
+    await say("right rear brake chamber leaking, add clevis pins and 1 labor");
+    await say("right rear brake chamber leaking, add rear brake chamber, clevis pins and .5 labor");
+    const rr = h.sections[1].items[5];
+    expect(rr.laborHours).toBe(1.5);
+    expect((rr.parts as Array<{ description: string; qty: number }>).map((p) => [p.description, p.qty])).toEqual([
+      ["Clevis pins", 1],
+      ["Rear brake chamber", 1],
+    ]);
+  });
+
+  it("a bulk clause cannot change another phrase's unit", async () => {
+    const h = harness();
+    h.sections[1].items[0].unit = "mm";
+    const utterance = "all tire pressures 110 psi, front brake pads 8";
+    const { commands } = parseBulkCommands(utterance, h.session);
+    const pads = commands[1];
+    for (const t of pads.targets) {
+      await h.apply(
+        { command: "update_value", sectionIndex: t.sectionIndex, itemIndex: t.itemIndex, value: pads.value },
+        pads.clause,
+      );
+    }
+    expect(h.sections[1].items[0].value).toBe(8);
+    expect(h.sections[1].items[0].unit).toBe("mm");
+  });
+});

@@ -93,3 +93,43 @@ describe("parseBulkCommands", () => {
     expect(none.rest).toBe("all tire pressures 110");
   });
 });
+
+describe("parseBulkCommands: review hardening", () => {
+  it("scopes units and clauses to their own phrase", () => {
+    const { commands } = parseBulkCommands(
+      "all tire pressures 110 psi, front brake pads 8",
+      hydraulic,
+    );
+    expect(commands[0].unit).toBe("psi");
+    expect(commands[1].unit).toBeUndefined();
+    expect(commands[1].clause).toBe("front brake pads 8");
+    expect(commands[1].clause).not.toMatch(/psi/);
+  });
+
+  it("includes canonical Rear/Front axle rows", () => {
+    const s = mk([
+      [
+        "Steer 1 Left Tire Pressure", "Steer 1 Right Tire Pressure",
+        "Rear 1 Left Tire Pressure", "Rear 1 Right Tread Depth", "Rear 1 Left Tread Depth",
+      ],
+    ]);
+    expect(labels(parseBulkCommands("all tire pressures 100", s).commands[0])).toHaveLength(3);
+    expect(labels(parseBulkCommands("rear tire pressures 100", s).commands[0])).toEqual([
+      "Rear 1 Left Tire Pressure",
+    ]);
+    expect(labels(parseBulkCommands("rear tread depths 7", s).commands[0])).toHaveLength(2);
+    expect(labels(parseBulkCommands("front tire pressures 100", s).commands[0])).toHaveLength(2);
+  });
+
+  it("only touches tire rows for tire-pressure phrases", () => {
+    const s = mk([["LF Tire Pressure", "LF Hydraulic Pressure", "RF Tire Pressure", "RF Hydraulic Pressure"]]);
+    expect(labels(parseBulkCommands("all tire pressures 110", s).commands[0])).toEqual([
+      "LF Tire Pressure", "RF Tire Pressure",
+    ]);
+  });
+
+  it("keeps the 32nds unit it recognised", () => {
+    expect(parseBulkCommands("all tread depths 8 32nds", hydraulic).commands[0].unit).toBe("32nds");
+    expect(parseBulkCommands("all tread depths 8 thirty seconds", hydraulic).commands[0].unit).toBe("32nds");
+  });
+});

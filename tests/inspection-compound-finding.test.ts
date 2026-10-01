@@ -65,3 +65,39 @@ describe("compound finding phrase", () => {
     expect(chunkFindings("brake chamber leaking add clevis pins. add .5 labor")).toHaveLength(1);
   });
 });
+
+describe("compound finding: review hardening", () => {
+  it("explicit recommend beats descriptive condition words", async () => {
+    const [c] = await run("left front shock leaking, recommend replacement, add shock bushings and .5 labor");
+    expect(c).toMatchObject({ item: "LF Shock Absorber", status: "recommend", laborHours: 0.5 });
+    expect(c.note).toBe("leaking");
+    const [f] = await run("left front shock leaking, failed, add shock bushings and .5 labor");
+    expect(f.status).toBe("fail");
+  });
+
+  it("seven and nine are quantities", async () => {
+    const [a] = await run("left front shock leaking add seven shock bushings and .5 labor");
+    expect(a.parts).toEqual([{ description: "Shock bushings", qty: 7 }]);
+    const [b] = await run("left front shock leaking add nine shock bolts and .5 labor");
+    expect(b.parts).toEqual([{ description: "Shock bolts", qty: 9 }]);
+  });
+
+  it("'also <part>' continues the finding", async () => {
+    const cmds = await run("left front shock leaking add shock bushing, also mounting bolt, and .5 labor");
+    expect(cmds).toHaveLength(1);
+    expect(cmds[0].parts?.map((p) => p.description)).toEqual(["Shock bushing", "Mounting bolt"]);
+    expect(chunkFindings("left front shock leaking add bushing also mounting bolt")).toHaveLength(1);
+    expect(chunkFindings("shock leaking add bushing also horn ok")).toHaveLength(2);
+  });
+
+  it("resolves plainly named items below the fuzzy threshold", async () => {
+    const withGeneric = { items: [...items, "Battery"] };
+    const run2 = async (s: string) => (await interpretCommand(s, withGeneric)) as unknown as Cmd[];
+    expect((await run2("horn broken add horn and .5 labor"))[0]).toMatchObject({
+      item: "Horn", status: "fail", laborHours: 0.5,
+    });
+    expect((await run2("battery failed add battery and 1 labor"))[0]).toMatchObject({
+      item: "Battery", status: "fail", laborHours: 1,
+    });
+  });
+});

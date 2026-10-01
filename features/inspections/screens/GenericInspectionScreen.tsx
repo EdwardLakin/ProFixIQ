@@ -549,11 +549,16 @@ const BULK_METRIC_LABEL = {
   pad: "brake pads",
 } as const;
 
-function describeBulk(b: BulkCommand): string {
+function describeBulk(b: BulkCommand, applied: number, skipped: number): string {
   const scope = b.scope === "all" ? "" : `${b.scope} `;
-  const what = `${b.targets.length} ${scope}${BULK_METRIC_LABEL[b.metric]}`;
-  if (b.value !== undefined) return `${what} set to ${b.value}${b.unit ? ` ${b.unit}` : ""}`;
-  return `${what} marked ${b.status === "na" ? "N A" : b.status}`;
+  const what = `${applied} ${scope}${BULK_METRIC_LABEL[b.metric]}`;
+  const base =
+    b.value !== undefined
+      ? `${what} set to ${b.value}${b.unit ? ` ${b.unit}` : ""}`
+      : `${what} marked ${b.status === "na" ? "N A" : b.status}`;
+  return skipped > 0
+    ? `${base}, ${skipped} skipped because already submitted`
+    : base;
 }
 
 function speakLocal(text: string, onDone?: () => void): void {
@@ -1889,6 +1894,8 @@ type SmartMatchRow = {
     const applied: VoiceCommandApplyResult[] = [];
     let interpretFailure: string | null = null;
     const bulkSummaries: string[] = [];
+    const bulkCommandSet = new Set<ParsedCommand>();
+    let bulkOk = 0;
     let bulkCommandCount = 0;
     const targetBeforeBulk = lastVoiceTargetRef.current;
 
@@ -1971,15 +1978,32 @@ type SmartMatchRow = {
         const bulk = parseBulkCommands(mainText, sess);
         if (bulk.commands.length > 0) {
           for (const b of bulk.commands) {
+            let appliedCount = 0;
+            let skipped = 0;
             for (const t of b.targets) {
-              commands.push({
+              // Mirror updateItem's guards so the confirmation only counts rows
+              // that can actually change.
+              const row = sess.sections?.[t.sectionIndex]?.items?.[t.itemIndex];
+              if (
+                findingIsSubmitted(row) ||
+                submittingFindingKeysRef.current[`${t.sectionIndex}:${t.itemIndex}`]
+              ) {
+                skipped += 1;
+                continue;
+              }
+              const cmd = {
                 command: b.status ? "update_status" : "update_value",
                 sectionIndex: t.sectionIndex,
                 itemIndex: t.itemIndex,
+                // Only this phrase's own words may be used for unit inference.
+                speechHint: b.clause,
                 ...(b.status ? { status: b.status } : { value: b.value, unit: b.unit }),
-              } as unknown as ParsedCommand);
+              } as unknown as ParsedCommand;
+              commands.push(cmd);
+              bulkCommandSet.add(cmd);
+              appliedCount += 1;
             }
-            bulkSummaries.push(describeBulk(b));
+            bulkSummaries.push(describeBulk(b, appliedCount, skipped));
           }
           bulkCommandCount = commands.length;
           if (/[a-z0-9]{2,}/.test(bulk.rest) && !/^(?:and|then|also)$/.test(bulk.rest)) {
@@ -1997,6 +2021,17 @@ type SmartMatchRow = {
       }
 
       if (guardLocked()) return;
+
+      if (bulkSummaries.length > 0 && commands.length === 0) {
+        toast.error(bulkSummaries.join(", "));
+        appendVoiceTrace({
+          rawFinal: text,
+          wakeCommand: text,
+          parsed: [],
+          applied: [{ command: "bulk", ok: false, reason: "all targets already submitted" }],
+        });
+        return;
+      }
 
       // ✅ FALLBACK: if AI returns nothing, try local parsing
       if (!commands.length) {
@@ -2050,7 +2085,7 @@ type SmartMatchRow = {
 
               const okResult: VoiceCommandApplyResult = { command: label, ok: true };
               applied.push(okResult);
-              if (!primaryFeedback) {
+              if (!primaryFeedback && !bulkCommandSet.has(command)) {
                 primaryFeedback = {
                   spoken: "Inspection paused.",
                   toast: "Inspection paused",
@@ -2080,7 +2115,7 @@ type SmartMatchRow = {
 
               const okResult: VoiceCommandApplyResult = { command: label, ok: true };
               applied.push(okResult);
-              if (!primaryFeedback) {
+              if (!primaryFeedback && !bulkCommandSet.has(command)) {
                 primaryFeedback = {
                   spoken:
                     outstanding.length === 0
@@ -2160,8 +2195,9 @@ type SmartMatchRow = {
             };
 
             applied.push(okResult);
+            if (bulkCommandSet.has(command)) bulkOk += 1;
 
-            if (!primaryFeedback) {
+            if (!primaryFeedback && !bulkCommandSet.has(command)) {
               primaryFeedback = buildVoiceBrainFeedback({
                 rawSpeech: text,
                 parsed: [command],
@@ -2197,12 +2233,20 @@ type SmartMatchRow = {
 
       const bulkSummary = bulkSummaries.join(", ");
       const feedback =
-        bulkSummary && successfulUpdates > 0
-          ? {
-              spoken: `${bulkSummary}.`,
-              toast: bulkSummary,
-              followUp: { kind: "none" as const },
-            }
+        bulkSummary && bulkOk > 0
+          ? primaryFeedback
+            ? {
+                // A finding reported alongside a bulk phrase keeps its own
+                // confirmation and photo prompt.
+                spoken: `${bulkSummary}. ${primaryFeedback.spoken}`,
+                toast: `${bulkSummary} • ${primaryFeedback.toast}`,
+                followUp: primaryFeedback.followUp,
+              }
+            : {
+                spoken: `${bulkSummary}.`,
+                toast: bulkSummary,
+                followUp: { kind: "none" as const },
+              }
           : successfulUpdates > 1
           ? {
               spoken: `${successfulUpdates} inspection updates recorded.`,
