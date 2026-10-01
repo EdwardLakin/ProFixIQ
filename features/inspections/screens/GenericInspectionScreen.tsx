@@ -3282,6 +3282,17 @@ type SmartMatchRow = {
           placement="before"
           disabled={isLocked}
           onChange={updateFormContextValue}
+          onChangeMany={updateFormContextValues}
+          vehicle={
+            hasVehicleContext((session.vehicle ?? {}) as SessionVehicle)
+              ? session.vehicle
+              : vehicle
+          }
+          customer={
+            hasCustomerContext((session.customer ?? {}) as SessionCustomer)
+              ? session.customer
+              : customer
+          }
         />
 
         <InspectionFormCtx.Provider value={{ updateItem, updateSection }}>

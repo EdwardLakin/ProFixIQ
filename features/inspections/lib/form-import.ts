@@ -494,6 +494,43 @@ export function certificationFieldKind(
   return null;
 }
 
+export type VehicleFieldKind =
+  | "unitNumber"
+  | "vin"
+  | "licensePlate"
+  | "year"
+  | "make"
+  | "model"
+  | "makeModel"
+  | "odometer"
+  | "engineHours"
+  | "customerName";
+
+/**
+ * Header fields ProFixIQ already knows from the work order's vehicle and
+ * customer. A trailer's fields are never matched: the work order's vehicle is
+ * the power unit, and a trailer number on the form is a different unit.
+ */
+export function vehicleFieldKind(label: string): VehicleFieldKind | null {
+  const l = label.trim().toLowerCase();
+  if (!l || /\b(?:trailer|driver|dolly)\b/.test(l)) return null;
+  if (/\bvin\b/.test(l)) return "vin";
+  if (/\bunit\b/.test(l)) return "unitNumber";
+  if (/\bplate\b/.test(l)) return "licensePlate";
+  if (/\bodometer\b|\bmileage\b|\bkilomet(?:er|re)s?\b|\bmiles\b/.test(l)) {
+    return "odometer";
+  }
+  if (/\bhour[\s-]*meter\b|\bengine\s+hours\b/.test(l)) return "engineHours";
+  if (/\bmodel\s+year\b|^year$/.test(l)) return "year";
+  if (/\bmake\b.*\bmodel\b/.test(l)) return "makeModel";
+  if (/^make$/.test(l)) return "make";
+  if (/^model$/.test(l)) return "model";
+  if (/^(?:customer|carrier|company|owner|fleet)(?:\s+name)?$/.test(l)) {
+    return "customerName";
+  }
+  return null;
+}
+
 /**
  * Re-shapes a captured form context so it reads like the paper form:
  * - noise (page markers, legends, grid headings) is dropped;
