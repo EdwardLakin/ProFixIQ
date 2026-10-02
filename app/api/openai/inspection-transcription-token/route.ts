@@ -103,6 +103,7 @@ export async function GET() {
         token: secret.token,
         expiresAt: secret.expiresAt,
         transcriptionModel: model,
+        usageKey: crypto.randomUUID(),
       },
       { headers: { "Cache-Control": "no-store" } },
     );
