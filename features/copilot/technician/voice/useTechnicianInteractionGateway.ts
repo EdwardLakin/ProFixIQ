@@ -42,7 +42,7 @@ type RealtimeTransport = {
   pause?: () => boolean;
   stopAudio?: () => void;
   resume?: () => boolean;
-  speakText?: (text: string) => boolean;
+  speakText?: (text: string, delegationId?: string | null) => boolean;
   stop: () => void;
 };
 
@@ -144,7 +144,9 @@ export function useTechnicianInteractionGateway({
   const startRef = useRef<
     (opts?: { isAutoResume?: boolean }) => Promise<void>
   >(async () => undefined);
-  const speakReplyRef = useRef<(text: string) => void>(() => undefined);
+  const speakReplyRef = useRef<
+    (text: string, delegationId?: string | null) => void
+  >(() => undefined);
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const speechWatchdogRef = useRef<number | null>(null);
   const speechStartWatchdogRef = useRef<number | null>(null);
@@ -289,7 +291,7 @@ export function useTechnicianInteractionGateway({
   );
 
   const handleFinalTranscript = useCallback(
-    (rawText: string) => {
+    (rawText: string, delegationId?: string) => {
       const text = normalizedTranscript(rawText);
       if (
         !text ||
@@ -325,7 +327,7 @@ export function useTechnicianInteractionGateway({
           consecutiveRecoverableFailuresRef.current = 0;
           const reply = normalizedTranscript(result.reply ?? "");
           if (reply) {
-            speakReplyRef.current(reply);
+            speakReplyRef.current(reply, delegationId);
           } else {
             await startListeningRef.current();
           }
@@ -575,7 +577,7 @@ export function useTechnicianInteractionGateway({
   );
 
   const speakReply = useCallback(
-    (text: string) => {
+    (text: string, delegationId?: string | null) => {
       if (!activeRef.current) return;
 
       const generation = generationRef.current;
@@ -583,7 +585,8 @@ export function useTechnicianInteractionGateway({
       const playbackAttempt = speechPlaybackAttemptRef.current;
       setVoicePhase("speaking");
 
-      const sentToLive = realtimeRef.current?.speakText?.(text) ?? false;
+      const sentToLive =
+        realtimeRef.current?.speakText?.(text, delegationId) ?? false;
       if (sentToLive) {
         // GPT-Live owns playback and interruption. There is intentionally no
         // pause/resume cycle here: the microphone stays live so the technician
