@@ -22100,7 +22100,7 @@ export type Database = {
           {
             foreignKeyName: "shops_demo_prospect_profile_id_fkey"
             columns: ["demo_prospect_profile_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
