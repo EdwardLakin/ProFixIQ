@@ -602,7 +602,21 @@ export function useRealtimeTranscription(
     setState("idle");
   }
 
-  useEffect(() => stop, []);
+  useEffect(() => {
+    return () => {
+      startupGenerationRef.current += 1;
+      stoppedRef.current = true;
+      const session = activeSessionRef.current;
+      activeSessionRef.current = null;
+      if (session) {
+        sendEvent(session, {
+          type: "session.close",
+          event_id: `profix_unmount_${Date.now()}`,
+        });
+        cleanupSession(session);
+      }
+    };
+  }, []);
 
   return {
     start,
