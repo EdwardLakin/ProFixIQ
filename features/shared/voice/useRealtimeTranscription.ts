@@ -1,285 +1,181 @@
-// Shared OpenAI Realtime transcription transport.
-//
-// This is the one hardened implementation behind both the Technician CoPilot
-// voice bridge (features/copilot/technician/voice/useTechnicianRealtimeVoice.ts)
-// and inspection/dictation voice control
-// (features/inspections/lib/inspection/useRealtimeVoice.ts) — both of those
-// files are now thin re-exports of this hook under their own established
-// names, so existing call sites and import paths never had to change.
-//
-// It started as two independently-maintained copies: the CoPilot fork added
-// pause()/resume() (mute the mic without tearing down the WebSocket/token),
-// playAudio()/stopAudio() (spoken-reply playback through the same audio
-// graph), and generation-based startup/teardown safety, while inspection
-// voice control kept the original simpler start()/stop() pair. Once that
-// hardening was proven out, keeping two copies in sync was only a source of
-// drift, so this file is the single source of truth going forward.
 "use client";
 
 import { useEffect, useRef } from "react";
-import { getOpenAIRealtimeTranscriptionModel } from "@/features/shared/lib/openai-realtime-models";
 
-export type RealtimeTranscriptionState = "idle" | "connecting" | "listening" | "error";
+export type RealtimeTranscriptionState =
+  | "idle"
+  | "connecting"
+  | "listening"
+  | "error";
 
 export type RealtimeAutoStopReason = "max_duration" | "idle";
+export type VoiceSurface = "technician_copilot" | "inspection";
+export type HandleTranscriptFn = (
+  text: string,
+  delegationId?: string,
+) => void | Promise<unknown>;
 
-/**
- * Ceiling on cumulative *streaming* time — the audio actually sent upstream,
- * which is what Realtime bills for. Paused time is excluded because a paused
- * session sends no frames.
- */
-export const DEFAULT_MAX_STREAMING_MS = 10 * 60_000;
-
-/**
- * Auto-stop after this long with no speech detected while streaming. A handset
- * left face-up on a bench otherwise streams room noise until the tab closes.
- */
-export const DEFAULT_IDLE_TIMEOUT_MS = 90_000;
-
-const GUARD_TICK_MS = 1_000;
-
-type HandleTranscriptFn = (text: string) => void;
-
-type RealtimeTranscriptionOptions = {
+export type RealtimeTranscriptionOptions = {
   onStateChange?: (state: RealtimeTranscriptionState) => void;
   onPulse?: () => void;
   onError?: (message: string) => void;
-  audioPulseThreshold?: number;
-  pulseDebounceMs?: number;
   debug?: boolean;
-  /** Cumulative streaming ceiling in ms. <= 0 disables the cap. */
   maxStreamingMs?: number;
-  /** Silence window in ms before auto-stop. <= 0 disables the cap. */
   idleTimeoutMs?: number;
-  /**
-   * Safety net for pause(): if the mic has been muted this long without a
-   * resume() (a reply whose playback never reported finished), resume it so a
-   * listening session can never stay silently deaf. <= 0 / unset disables it.
-   */
   maxPausedMs?: number;
-  /** Fired after an automatic teardown, once the state has settled to idle. */
   onAutoStop?: (reason: RealtimeAutoStopReason) => void;
+  onOutputStateChange?: (speaking: boolean) => void;
+  surface?: VoiceSurface;
 };
 
-type RealtimeTokenResponse = {
-  token?: string;
-  transcriptionModel?: string;
+export const DEFAULT_MAX_STREAMING_MS = 10 * 60_000;
+export const DEFAULT_IDLE_TIMEOUT_MS = 90_000;
+
+const GUARD_TICK_MS = 1_000;
+const ICE_GATHER_TIMEOUT_MS = 10_000;
+
+type TranscriptTurn = {
+  text: string;
+  /** Server stream offset, or null when the event did not carry one. */
+  endMs: number | null;
 };
 
-type RealtimeTokenErrorResponse = {
-  error?: string;
-  code?: string;
-};
-
-type RealtimePlayback = {
-  source: AudioBufferSourceNode;
-  settle: (error?: unknown) => void;
-};
-
-type RealtimeSessionResources = {
+type LiveResources = {
   generation: number;
-  ws: WebSocket | null;
-  audioCtx: AudioContext | null;
+  peer: RTCPeerConnection | null;
+  events: RTCDataChannel | null;
   mediaStream: MediaStream | null;
-  worklet: AudioWorkletNode | null;
-  zeroGain: GainNode | null;
-  playback: RealtimePlayback | null;
+  audio: HTMLAudioElement | null;
   paused: boolean;
-  live: string;
   guardTimer: ReturnType<typeof setInterval> | null;
-  /** Streaming time already banked from earlier unpaused stretches. */
-  streamedMs: number;
-  /** When the current unpaused stretch began, or null while paused. */
-  streamingSince: number | null;
-  /** Last upstream speech signal observed while streaming. */
+  pauseTimer: ReturnType<typeof setTimeout> | null;
+  closeTimer: number | null;
+  sessionId: string | null;
+  latestUsageSeconds: number | null;
+  sessionStartedAt: number | null;
   lastActivityAt: number;
+  completedTranscriptTurns: TranscriptTurn[];
+  currentTranscript: string;
+  currentTranscriptEndMs: number | null;
+  /** Highest server stream offset already consumed, or null if none. */
+  lastDelegationOffsetMs: number | null;
+  latestDelegationId: string | null;
 };
-
-/** Bank the open streaming stretch, if any. Safe to call repeatedly. */
-function suspendStreamingClock(
-  session: RealtimeSessionResources,
-  now: number,
-): void {
-  if (session.streamingSince === null) return;
-  session.streamedMs += Math.max(0, now - session.streamingSince);
-  session.streamingSince = null;
-}
-
-/**
- * Open a streaming stretch. Resuming counts as activity in its own right, so
- * a session paused longer than the idle window is not torn down the instant
- * it comes back.
- */
-function resumeStreamingClock(
-  session: RealtimeSessionResources,
-  now: number,
-): void {
-  if (session.streamingSince !== null) return;
-  session.streamingSince = now;
-  session.lastActivityAt = now;
-}
-
-function streamedTotalMs(
-  session: RealtimeSessionResources,
-  now: number,
-): number {
-  const open =
-    session.streamingSince === null ? 0 : Math.max(0, now - session.streamingSince);
-  return session.streamedMs + open;
-}
-
-async function getRealtimeTokenError(response: Response): Promise<string> {
-  let body: RealtimeTokenErrorResponse | null = null;
-  try {
-    body = (await response.json()) as RealtimeTokenErrorResponse;
-  } catch {}
-
-  if (response.status === 401) {
-    return "Your session expired. Sign in again, then retry voice.";
-  }
-  if (response.status === 403) {
-    return "Voice is not available for this account.";
-  }
-  if (response.status === 429) {
-    return "Voice is busy. Wait a moment and try again.";
-  }
-
-  switch (body?.code) {
-    case "realtime_not_configured":
-      return "Voice is not configured for this deployment.";
-    case "realtime_upstream_timeout":
-      return "Voice took too long to connect. Try again.";
-    case "realtime_session_rejected":
-    case "realtime_invalid_response":
-    case "realtime_token_error":
-      return "Voice could not start. Try again in a moment.";
-    default:
-      return body?.error?.trim() || "Voice could not start.";
-  }
-}
-
-function base64FromArrayBuffer(buf: ArrayBuffer): string {
-  let binary = "";
-  const bytes = new Uint8Array(buf);
-  const chunkSize = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunkSize) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
-  }
-  return btoa(binary);
-}
-
-function rms(float32: Float32Array): number {
-  if (float32.length === 0) return 0;
-  let sum = 0;
-  for (let i = 0; i < float32.length; i++) {
-    const v = float32[i];
-    sum += v * v;
-  }
-  return Math.sqrt(sum / float32.length);
-}
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function stopStream(stream: MediaStream | null | undefined): void {
+function getString(value: unknown): string {
+  return typeof value === "string" ? value : "";
+}
+
+// HTMLMediaElement.play() returns a promise in current browsers but may return
+// undefined elsewhere; never assume it can be chained.
+function playQuietly(audio: HTMLAudioElement): void {
+  try {
+    void Promise.resolve(audio.play()).catch(() => undefined);
+  } catch {}
+}
+
+function stopStream(stream: MediaStream | null): void {
   try {
     stream?.getTracks().forEach((track) => track.stop());
   } catch {}
 }
 
-function stopPlayback(session: RealtimeSessionResources): void {
-  const playback = session.playback;
-  session.playback = null;
-  if (!playback) return;
-
-  playback.source.onended = null;
-  try {
-    playback.source.stop();
-  } catch {}
-  playback.settle();
+function sendEvent(
+  session: LiveResources,
+  event: Record<string, unknown>,
+): boolean {
+  const channel = session.events;
+  if (!channel || channel.readyState !== "open") return false;
+  channel.send(JSON.stringify(event));
+  return true;
 }
 
-function cleanupSession(session: RealtimeSessionResources): void {
-  stopPlayback(session);
+function relayConfirmedLiveUsage(
+  sessionId: string,
+  usageSeconds: number,
+): void {
+  const payload = JSON.stringify({
+    sessionId,
+    usageSeconds,
+  });
 
-  if (session.guardTimer !== null) {
-    clearInterval(session.guardTimer);
-    session.guardTimer = null;
-  }
-
-  try {
-    session.worklet?.disconnect();
-  } catch {}
-  session.worklet = null;
-
-  try {
-    session.zeroGain?.disconnect();
-  } catch {}
-  session.zeroGain = null;
-
-  const socket = session.ws;
-  session.ws = null;
   try {
     if (
-      socket &&
-      (socket.readyState === WebSocket.OPEN ||
-        socket.readyState === WebSocket.CONNECTING)
+      typeof navigator !== "undefined" &&
+      typeof navigator.sendBeacon === "function"
     ) {
-      socket.close();
+      const body = new Blob([payload], { type: "application/json" });
+      if (navigator.sendBeacon("/api/openai/live-settlement", body)) return;
     }
   } catch {}
+
+  try {
+    void fetch("/api/openai/live-settlement", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+      keepalive: true,
+    }).catch(() => undefined);
+  } catch {}
+}
+
+async function waitForIceGathering(peer: RTCPeerConnection): Promise<void> {
+  if (peer.iceGatheringState === "complete") return;
+  await new Promise<void>((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      peer.removeEventListener("icegatheringstatechange", onState);
+      reject(new Error("Voice connection timed out while gathering ICE candidates."));
+    }, ICE_GATHER_TIMEOUT_MS);
+    const onState = () => {
+      if (peer.iceGatheringState !== "complete") return;
+      window.clearTimeout(timeout);
+      peer.removeEventListener("icegatheringstatechange", onState);
+      resolve();
+    };
+    peer.addEventListener("icegatheringstatechange", onState);
+    onState();
+  });
+}
+
+function cleanupSession(session: LiveResources): void {
+  if (session.guardTimer) clearInterval(session.guardTimer);
+  if (session.pauseTimer) clearTimeout(session.pauseTimer);
+  if (session.closeTimer) clearTimeout(session.closeTimer);
+  session.guardTimer = null;
+  session.pauseTimer = null;
+  session.closeTimer = null;
+
+  try {
+    session.events?.close();
+  } catch {}
+  session.events = null;
+
+  try {
+    session.peer?.close();
+  } catch {}
+  session.peer = null;
 
   stopStream(session.mediaStream);
   session.mediaStream = null;
 
-  const audioContext = session.audioCtx;
-  session.audioCtx = null;
-  try {
-    void audioContext?.close().catch(() => undefined);
-  } catch {}
-
-  session.live = "";
-  session.paused = false;
-  session.streamingSince = null;
-}
-
-/**
- * Idle is measured against *recognized speech* — a non-empty transcription
- * delta or final — never against the raw `input_audio_buffer.speech_*` VAD
- * events. Server VAD's `threshold` is a speech-probability gate, so shop
- * noise, a radio or a conversation across the bay crosses it routinely with
- * nobody addressing the device; resetting on those would keep a parked
- * handset alive indefinitely, which is precisely the case the idle cap
- * exists to stop.
- *
- * Reading the transcription stream rather than gating the microphone also
- * leaves the audio we send untouched, so `prefix_padding_ms` /
- * `silence_duration_ms` still see the lead-in they need to catch the start of
- * an utterance.
- */
-
-const TRANSCRIPTION_DELTA_TYPES = new Set<string>([
-  "conversation.item.input_audio_transcription.delta",
-  "input_audio_transcription.delta",
-  "input_audio_buffer.transcription.delta",
-]);
-
-const TRANSCRIPTION_COMPLETE_TYPES = new Set<string>([
-  "conversation.item.input_audio_transcription.completed",
-  "conversation.item.input_audio_transcription.done",
-  "input_audio_transcription.completed",
-  "input_audio_transcription.done",
-  "input_audio_buffer.transcription.completed",
-  "input_audio_buffer.transcription.done",
-]);
-
-function getStringField(obj: Record<string, unknown>, keys: string[]): string {
-  for (const key of keys) {
-    const value = obj[key];
-    if (typeof value === "string" && value.trim()) return value;
+  if (session.audio) {
+    try {
+      session.audio.pause();
+    } catch {}
+    session.audio.srcObject = null;
   }
-  return "";
+  session.audio = null;
+  session.paused = false;
+  session.sessionStartedAt = null;
+  session.completedTranscriptTurns = [];
+  session.currentTranscript = "";
+  session.currentTranscriptEndMs = null;
+  session.latestDelegationId = null;
 }
 
 export function useRealtimeTranscription(
@@ -287,20 +183,13 @@ export function useRealtimeTranscription(
   maybeHandleWakeWord: (text: string) => string | null,
   opts?: RealtimeTranscriptionOptions,
 ) {
-  const transcriptionModel = getOpenAIRealtimeTranscriptionModel();
-  const activeSessionRef = useRef<RealtimeSessionResources | null>(null);
-  const lastPulseAtRef = useRef(0);
+  const activeSessionRef = useRef<LiveResources | null>(null);
   const stoppedRef = useRef(true);
   const startupGenerationRef = useRef(0);
-
+  const handleTranscriptRef = useRef(handleTranscript);
+  const maybeHandleWakeWordRef = useRef(maybeHandleWakeWord);
   const transcriptQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const pendingTranscriptsRef = useRef(0);
-  const pauseWatchdogRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const handleTranscriptRef = useRef<HandleTranscriptFn>(handleTranscript);
-  const maybeHandleWakeWordRef = useRef<(text: string) => string | null>(
-    maybeHandleWakeWord,
-  );
 
   useEffect(() => {
     handleTranscriptRef.current = handleTranscript;
@@ -314,67 +203,55 @@ export function useRealtimeTranscription(
     opts?.onStateChange?.(state);
   };
 
-  const pulse = () => {
-    const now = Date.now();
-    const debounce =
-      typeof opts?.pulseDebounceMs === "number" ? opts.pulseDebounceMs : 250;
-    if (now - lastPulseAtRef.current < debounce) return;
-    lastPulseAtRef.current = now;
-    opts?.onPulse?.();
-  };
+  const isCurrent = (session: LiveResources): boolean =>
+    !stoppedRef.current &&
+    activeSessionRef.current === session &&
+    startupGenerationRef.current === session.generation;
 
-  function sessionIsCurrent(session: RealtimeSessionResources): boolean {
-    return (
-      !stoppedRef.current &&
-      activeSessionRef.current === session &&
-      startupGenerationRef.current === session.generation
-    );
-  }
-
-  function detachCurrentSession(session: RealtimeSessionResources): boolean {
+  const detach = (session: LiveResources): boolean => {
     if (activeSessionRef.current !== session) return false;
     activeSessionRef.current = null;
     stoppedRef.current = true;
     startupGenerationRef.current += 1;
     return true;
-  }
+  };
 
-  function failCurrentSession(
-    session: RealtimeSessionResources,
-    message: string,
-  ): void {
-    if (!detachCurrentSession(session)) {
-      cleanupSession(session);
-      return;
-    }
+  const fail = (session: LiveResources, message: string): void => {
+    const current = detach(session);
     cleanupSession(session);
+    if (!current) return;
     setState("error");
     opts?.onError?.(message);
-  }
+  };
 
-  function markActivity(session: RealtimeSessionResources): void {
-    session.lastActivityAt = Date.now();
-  }
+  // Keep the data channel alive after session.close so OpenAI can emit the
+  // terminal session.closed event with final provider-reported usage.
+  const closeGracefully = (session: LiveResources, eventId: string): void => {
+    stopStream(session.mediaStream);
+    session.mediaStream = null;
+    if (sendEvent(session, { type: "session.close", event_id: eventId })) {
+      session.closeTimer = window.setTimeout(() => {
+        cleanupSession(session);
+      }, 5_000);
+    } else {
+      cleanupSession(session);
+    }
+  };
 
-  /**
-   * Settle to `idle` rather than `error`: an exhausted cap is an ordinary end
-   * of session, and consumers already treat an unsolicited idle as "transport
-   * ended, offer restart" because an upstream socket close does the same.
-   */
-  function autoStopSession(
-    session: RealtimeSessionResources,
+  const autoStop = (
+    session: LiveResources,
     reason: RealtimeAutoStopReason,
-  ): void {
-    if (!detachCurrentSession(session)) {
+  ): void => {
+    if (!detach(session)) {
       cleanupSession(session);
       return;
     }
-    cleanupSession(session);
+    closeGracefully(session, `profix_autostop_${Date.now()}`);
     setState("idle");
     opts?.onAutoStop?.(reason);
-  }
+  };
 
-  function startGuardTimer(session: RealtimeSessionResources): void {
+  const startGuardTimer = (session: LiveResources): void => {
     const maxStreamingMs =
       typeof opts?.maxStreamingMs === "number"
         ? opts.maxStreamingMs
@@ -383,93 +260,183 @@ export function useRealtimeTranscription(
       typeof opts?.idleTimeoutMs === "number"
         ? opts.idleTimeoutMs
         : DEFAULT_IDLE_TIMEOUT_MS;
-
     if (maxStreamingMs <= 0 && idleTimeoutMs <= 0) return;
-    if (session.guardTimer !== null) return;
 
     session.guardTimer = setInterval(() => {
-      if (!sessionIsCurrent(session)) return;
-
+      if (!isCurrent(session)) return;
       const now = Date.now();
-
-      // Neither cap advances while paused. No frames are being sent, so no
-      // spend accrues, and tearing down mid-pause would strand a consumer
-      // that pauses deliberately to play a spoken reply.
-      if (session.paused) {
-        suspendStreamingClock(session, now);
+      // GPT-Live bills active session time even while muted, silent, or waiting
+      // on backend work. Cap wall-clock session duration, not microphone time.
+      if (
+        maxStreamingMs > 0 &&
+        session.sessionStartedAt !== null &&
+        now - session.sessionStartedAt >= maxStreamingMs
+      ) {
+        autoStop(session, "max_duration");
         return;
       }
-
-      resumeStreamingClock(session, now);
-
-      if (maxStreamingMs > 0 && streamedTotalMs(session, now) >= maxStreamingMs) {
-        autoStopSession(session, "max_duration");
-        return;
-      }
-
+      if (session.paused) return;
       if (idleTimeoutMs > 0 && now - session.lastActivityAt >= idleTimeoutMs) {
-        autoStopSession(session, "idle");
+        autoStop(session, "idle");
       }
     }, GUARD_TICK_MS);
-  }
+  };
+
+  const dispatchDelegation = (
+    session: LiveResources,
+    delegationId: string,
+    offsetMs: number | null,
+  ): void => {
+    const collect = (attempt: number): void => {
+      window.setTimeout(() => {
+        if (!isCurrent(session)) return;
+
+        // Server offsets (end_ms / offset_ms) share one stream clock. Use
+        // them to bound the window only when both sides carry one; otherwise
+        // fall back to arrival order so a missing field can never make every
+        // turn ineligible. Mixing in wall-clock time is deliberately avoided.
+        const lastOffset = session.lastDelegationOffsetMs;
+        const withinWindow = (turn: TranscriptTurn): boolean => {
+          if (offsetMs === null || turn.endMs === null) return true;
+          if (lastOffset !== null && turn.endMs <= lastOffset) return false;
+          return turn.endMs <= offsetMs + 500;
+        };
+        const candidates = session.completedTranscriptTurns.filter(withinWindow);
+        if (session.currentTranscript.trim()) {
+          const inProgress: TranscriptTurn = {
+            text: session.currentTranscript.trim(),
+            endMs: session.currentTranscriptEndMs,
+          };
+          if (withinWindow(inProgress)) candidates.push(inProgress);
+        }
+        // Candidates are in arrival order; the latest eligible turn is the
+        // one this delegation was created for.
+        const selected = candidates[candidates.length - 1];
+
+        if (!selected && attempt < 3) {
+          collect(attempt + 1);
+          return;
+        }
+
+        if (offsetMs !== null) {
+          session.lastDelegationOffsetMs = Math.max(
+            session.lastDelegationOffsetMs ?? offsetMs,
+            offsetMs,
+          );
+        }
+        // Everything up to and including the selected turn is consumed so
+        // earlier non-delegated speech never leaks into a later backend turn.
+        const selectedIndex = selected
+          ? session.completedTranscriptTurns.indexOf(selected)
+          : -1;
+        session.completedTranscriptTurns =
+          selected && selectedIndex >= 0
+            ? session.completedTranscriptTurns.slice(selectedIndex + 1)
+            : session.completedTranscriptTurns.filter(
+                (turn) => !withinWindow(turn),
+              );
+        if (!selected?.text.trim()) {
+          // Never leave a client delegation open: tell Live it produced no
+          // usable input so it can ask the technician to repeat.
+          speakText("I didn't catch that. Please say it again.", delegationId);
+          return;
+        }
+
+        const command = (
+          maybeHandleWakeWordRef.current(selected.text) ?? ""
+        ).trim();
+        if (!command) {
+          speakText("I didn't catch a command there.", delegationId);
+          return;
+        }
+
+        const invoke = (): Promise<unknown> => {
+          try {
+            session.latestDelegationId = delegationId;
+            return Promise.resolve(
+              handleTranscriptRef.current(command, delegationId),
+            );
+          } catch (caught) {
+            return Promise.reject(caught);
+          }
+        };
+        const run =
+          pendingTranscriptsRef.current === 0
+            ? invoke()
+            : transcriptQueueRef.current.then(invoke);
+        pendingTranscriptsRef.current += 1;
+        transcriptQueueRef.current = run
+          .catch((caught) => {
+            // eslint-disable-next-line no-console
+            console.error("[GPTLive] delegated transcript handler failed", caught);
+            // The backend turn threw before it could reply; close the
+            // delegation so Live does not wait on it indefinitely.
+            if (isCurrent(session)) {
+              speakText("Sorry, I couldn't complete that.", delegationId);
+            }
+          })
+          .finally(() => {
+            pendingTranscriptsRef.current -= 1;
+          });
+      }, attempt === 0 ? 300 : 200);
+    };
+
+    collect(0);
+  };
 
   async function start(): Promise<void> {
     if (!stoppedRef.current || activeSessionRef.current) return;
+    if (
+      typeof window === "undefined" ||
+      typeof RTCPeerConnection === "undefined"
+    ) {
+      throw new Error("This browser does not support GPT-Live voice.");
+    }
 
     const generation = startupGenerationRef.current + 1;
     startupGenerationRef.current = generation;
     stoppedRef.current = false;
 
-    const session: RealtimeSessionResources = {
+    const session: LiveResources = {
       generation,
-      ws: null,
-      audioCtx: null,
+      peer: null,
+      events: null,
       mediaStream: null,
-      worklet: null,
-      zeroGain: null,
-      playback: null,
+      audio: null,
       paused: false,
-      live: "",
       guardTimer: null,
-      streamedMs: 0,
-      streamingSince: null,
+      pauseTimer: null,
+      closeTimer: null,
+      sessionId: null,
+      latestUsageSeconds: null,
+      sessionStartedAt: null,
       lastActivityAt: Date.now(),
+      completedTranscriptTurns: [],
+      currentTranscript: "",
+      currentTranscriptEndMs: null,
+      lastDelegationOffsetMs: null,
+      latestDelegationId: null,
     };
     activeSessionRef.current = session;
     setState("connecting");
 
     try {
-      const response = await fetch("/api/openai/realtime-token", {
-        method: "GET",
-        cache: "no-store",
-        credentials: "same-origin",
+      const peer = new RTCPeerConnection();
+      session.peer = peer;
+
+      const audio = document.createElement("audio");
+      audio.autoplay = true;
+      session.audio = audio;
+
+      peer.addEventListener("track", (event) => {
+        if (!isCurrent(session)) return;
+        const stream =
+          event.streams[0] ?? new MediaStream([event.track]);
+        audio.srcObject = stream;
+        playQuietly(audio);
       });
-      if (!sessionIsCurrent(session)) {
-        cleanupSession(session);
-        return;
-      }
 
-      if (!response.ok) {
-        throw new Error(await getRealtimeTokenError(response));
-      }
-
-      const tokenResp = (await response.json()) as RealtimeTokenResponse;
-      if (!sessionIsCurrent(session)) {
-        cleanupSession(session);
-        return;
-      }
-
-      const token = typeof tokenResp.token === "string" ? tokenResp.token : "";
-      const sessionTranscriptionModel =
-        typeof tokenResp.transcriptionModel === "string" &&
-        tokenResp.transcriptionModel.trim()
-          ? tokenResp.transcriptionModel.trim()
-          : transcriptionModel;
-      if (!token) {
-        throw new Error("Voice service returned an invalid token. Try again.");
-      }
-
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const microphone = await navigator.mediaDevices.getUserMedia({
         audio: {
           channelCount: 1,
           echoCancellation: true,
@@ -477,229 +444,235 @@ export function useRealtimeTranscription(
           autoGainControl: true,
         },
       });
-      session.mediaStream = stream;
-      if (!sessionIsCurrent(session)) {
+      session.mediaStream = microphone;
+      if (!isCurrent(session)) {
         cleanupSession(session);
         return;
       }
-
-      const audioCtx = new AudioContext({ sampleRate: 24000 });
-      session.audioCtx = audioCtx;
-
-      if (audioCtx.state === "suspended") {
-        await audioCtx.resume();
-        if (!sessionIsCurrent(session)) {
-          cleanupSession(session);
-          return;
-        }
+      for (const track of microphone.getAudioTracks()) {
+        peer.addTrack(track, microphone);
       }
 
-      await audioCtx.audioWorklet.addModule("/voice/pcm-processor.js");
-      if (!sessionIsCurrent(session)) {
-        cleanupSession(session);
-        return;
-      }
+      const events = peer.createDataChannel("oai-events");
+      session.events = events;
 
-      const source = audioCtx.createMediaStreamSource(stream);
-      const worklet = new AudioWorkletNode(audioCtx, "pcm-processor");
-      session.worklet = worklet;
-
-      const zeroGain = audioCtx.createGain();
-      zeroGain.gain.value = 0;
-      session.zeroGain = zeroGain;
-
-      source.connect(worklet);
-      worklet.connect(zeroGain);
-      zeroGain.connect(audioCtx.destination);
-
-      if (!sessionIsCurrent(session)) {
-        cleanupSession(session);
-        return;
-      }
-
-      const ws = new WebSocket(
-        "wss://api.openai.com/v1/realtime?intent=transcription",
-        ["realtime", `openai-insecure-api-key.${token}`],
-      );
-      session.ws = ws;
-      if (!sessionIsCurrent(session)) {
-        cleanupSession(session);
-        return;
-      }
-
-      ws.onopen = () => {
-        if (!sessionIsCurrent(session)) return;
-
-        if (!session.paused) {
-          setState("listening");
-          resumeStreamingClock(session, Date.now());
-        }
-        startGuardTimer(session);
-
-        ws.send(
-          JSON.stringify({
-            type: "session.update",
-            session: {
-              type: "transcription",
-              audio: {
-                input: {
-                  format: { type: "audio/pcm", rate: 24000 },
-                  noise_reduction: { type: "near_field" },
-                  transcription: {
-                    model: sessionTranscriptionModel,
-                    language: "en",
-                  },
-                  turn_detection: {
-                    type: "server_vad",
-                    threshold: 0.45,
-                    prefix_padding_ms: 650,
-                    silence_duration_ms: 850,
-                  },
-                },
-              },
-            },
-          }),
-        );
-      };
-
-      worklet.port.onmessage = (event: MessageEvent) => {
-        if (!sessionIsCurrent(session) || session.paused) return;
-
-        const data = event.data as unknown;
-        if (!(data instanceof Float32Array)) return;
-
-        const threshold =
-          typeof opts?.audioPulseThreshold === "number"
-            ? opts.audioPulseThreshold
-            : 0.02;
-        if (rms(data) >= threshold) pulse();
-
-        const pcm16 = new Int16Array(data.length);
-        for (let i = 0; i < data.length; i++) {
-          const sample = Math.max(-1, Math.min(1, data[i]));
-          pcm16[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-        }
-
-        const socket = session.ws;
-        if (!socket || socket.readyState !== WebSocket.OPEN) return;
-
-        socket.send(
-          JSON.stringify({
-            type: "input_audio_buffer.append",
-            audio: base64FromArrayBuffer(pcm16.buffer),
-          }),
-        );
-      };
-
-      ws.onmessage = (event) => {
-        if (
-          !sessionIsCurrent(session) ||
-          session.paused ||
-          typeof event.data !== "string"
-        ) {
-          return;
-        }
-
-        let msgUnknown: unknown;
+      events.addEventListener("message", (event) => {
+        if (typeof event.data !== "string") return;
+        let parsed: unknown;
         try {
-          msgUnknown = JSON.parse(event.data);
+          parsed = JSON.parse(event.data);
         } catch {
           return;
         }
+        if (!isRecord(parsed)) return;
 
-        if (!isRecord(msgUnknown)) return;
-
-        const type = String(msgUnknown.type ?? "");
+        const type = getString(parsed.type);
         if (opts?.debug && type) {
           // eslint-disable-next-line no-console
-          console.log("[RealtimeTranscription] event:", type);
+          console.log("[GPTLive] event:", type);
         }
 
-        if (TRANSCRIPTION_DELTA_TYPES.has(type)) {
-          const delta = getStringField(msgUnknown, ["delta", "transcript", "text"]);
-          if (!delta) return;
-          markActivity(session);
-          session.live += delta;
-          pulse();
+        if (type === "session.usage.updated") {
+          const usage = isRecord(parsed.usage) ? parsed.usage : null;
+          if (usage && typeof usage.seconds === "number") {
+            session.latestUsageSeconds = Math.max(0, usage.seconds);
+          }
           return;
         }
 
-        if (TRANSCRIPTION_COMPLETE_TYPES.has(type)) {
-          const finalText = getStringField(msgUnknown, [
-            "transcript",
-            "text",
-            "final",
-          ]).trim();
-          session.live = "";
-          if (!finalText) return;
-          markActivity(session);
+        if (type === "session.closed") {
+          const usage = isRecord(parsed.usage) ? parsed.usage : null;
+          const finalSeconds =
+            usage && typeof usage.seconds === "number"
+              ? Math.max(0, usage.seconds)
+              : null;
+          if (finalSeconds !== null) {
+            session.latestUsageSeconds = finalSeconds;
+          }
+          if (
+            session.sessionId &&
+            session.latestUsageSeconds !== null
+          ) {
+            relayConfirmedLiveUsage(
+              session.sessionId,
+              session.latestUsageSeconds,
+            );
+          }
+          const current = detach(session);
+          cleanupSession(session);
+          if (current) setState("idle");
+          return;
+        }
 
-          const cmd = (maybeHandleWakeWordRef.current(finalText) ?? "").trim();
-          if (!cmd) return;
-          // Handle utterances one at a time, in order. Two back-to-back
-          // commands otherwise run concurrently against the same render
-          // snapshot and can overwrite each other's updates.
-          const invoke = (): Promise<unknown> => {
-            try {
-              return Promise.resolve(handleTranscriptRef.current(cmd));
-            } catch (caught) {
-              return Promise.reject(caught);
+        if (!isCurrent(session)) return;
+
+        if (type === "session.started") {
+          session.lastActivityAt = Date.now();
+          session.sessionStartedAt = Date.now();
+          const started = isRecord(parsed.session) ? parsed.session : null;
+          if (started && typeof started.id === "string" && started.id.trim()) {
+            session.sessionId = started.id.trim();
+          }
+          setState("listening");
+          startGuardTimer(session);
+          return;
+        }
+
+        if (type === "session.input_transcript.delta") {
+          const delta = getString(parsed.delta);
+          if (!delta) return;
+          session.currentTranscript += delta;
+          session.currentTranscriptEndMs =
+            typeof parsed.end_ms === "number"
+              ? parsed.end_ms
+              : session.currentTranscriptEndMs;
+          session.lastActivityAt = Date.now();
+          opts?.onPulse?.();
+          return;
+        }
+
+        if (
+          type === "session.input_transcript.done" ||
+          type === "session.input_transcript.completed"
+        ) {
+          const text =
+            getString(parsed.transcript).trim() ||
+            session.currentTranscript.trim();
+          const endMs =
+            typeof parsed.end_ms === "number"
+              ? parsed.end_ms
+              : session.currentTranscriptEndMs;
+          if (text) {
+            session.completedTranscriptTurns.push({ text, endMs });
+            if (session.completedTranscriptTurns.length > 8) {
+              session.completedTranscriptTurns.splice(
+                0,
+                session.completedTranscriptTurns.length - 8,
+              );
             }
-          };
-          // Idle queue: run immediately (same tick). Busy: wait our turn.
-          const run =
-            pendingTranscriptsRef.current === 0
-              ? invoke()
-              : transcriptQueueRef.current.then(invoke);
-          pendingTranscriptsRef.current += 1;
-          transcriptQueueRef.current = run
-            .catch((caught) => {
-              // eslint-disable-next-line no-console
-              console.error("[RealtimeTranscription] transcript handler failed", caught);
-            })
-            .finally(() => {
-              pendingTranscriptsRef.current -= 1;
-            });
+          }
+          session.currentTranscript = "";
+          session.currentTranscriptEndMs = null;
+          return;
+        }
+
+        if (type === "session.delegation.created") {
+          const delegation = isRecord(parsed.delegation)
+            ? parsed.delegation
+            : null;
+          if (
+            !delegation ||
+            delegation.target !== "client" ||
+            typeof delegation.id !== "string"
+          ) {
+            return;
+          }
+          const offsetMs =
+            typeof parsed.offset_ms === "number" ? parsed.offset_ms : null;
+          dispatchDelegation(session, delegation.id, offsetMs);
+          return;
+        }
+
+        if (
+          type === "session.output_transcript.delta" ||
+          type === "session.output_audio.started"
+        ) {
+          session.lastActivityAt = Date.now();
+          opts?.onOutputStateChange?.(true);
+          return;
+        }
+
+        if (
+          type === "session.output_transcript.done" ||
+          type === "session.output_transcript.completed" ||
+          type === "session.output_audio.done"
+        ) {
+          session.lastActivityAt = Date.now();
+          opts?.onOutputStateChange?.(false);
           return;
         }
 
         if (type === "error") {
-          const errObjUnknown = msgUnknown.error;
-          const errObj = isRecord(errObjUnknown) ? errObjUnknown : null;
-          const message =
-            (errObj && typeof errObj.message === "string" && errObj.message) ||
-            "Realtime voice error";
-
-          // eslint-disable-next-line no-console
-          console.error("[RealtimeTranscription] error", msgUnknown);
-          failCurrentSession(session, message);
+          const error = isRecord(parsed.error) ? parsed.error : null;
+          fail(
+            session,
+            error && typeof error.message === "string"
+              ? error.message
+              : "GPT-Live voice error",
+          );
         }
-      };
+      });
 
-      ws.onerror = () => {
-        if (!sessionIsCurrent(session)) return;
-        failCurrentSession(session, "WebSocket error");
-      };
-
-      ws.onclose = () => {
-        if (!sessionIsCurrent(session)) return;
-        detachCurrentSession(session);
+      events.addEventListener("close", () => {
+        if (!isCurrent(session)) return;
+        const current = detach(session);
         cleanupSession(session);
-        setState("idle");
-      };
-    } catch (caught) {
-      const stillCurrent = activeSessionRef.current === session;
-      if (stillCurrent) {
-        activeSessionRef.current = null;
-        stoppedRef.current = true;
-        startupGenerationRef.current += 1;
-      }
-      cleanupSession(session);
+        if (current) setState("idle");
+      });
 
-      // A stop/restart can replace this startup while an await is pending. The
-      // stale startup owns only `session`, so cleanup above cannot dismantle the
-      // replacement transport and should not surface an error into its UI.
-      if (!stillCurrent) return;
+      peer.addEventListener("connectionstatechange", () => {
+        if (!isCurrent(session)) return;
+        if (peer.connectionState === "failed") {
+          fail(session, "GPT-Live voice connection failed.");
+        }
+      });
+
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+      await waitForIceGathering(peer);
+      if (!isCurrent(session)) {
+        cleanupSession(session);
+        return;
+      }
+
+      const sdp = peer.localDescription?.sdp;
+      if (!sdp) throw new Error("Voice connection did not produce an SDP offer.");
+
+      const response = await fetch("/api/openai/realtime-token", {
+        method: "POST",
+        cache: "no-store",
+        credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sdp,
+          surface: opts?.surface ?? "inspection",
+        }),
+      });
+      if (!response.ok) {
+        let message = "Voice could not start.";
+        try {
+          const payload = (await response.json()) as { error?: unknown };
+          if (typeof payload.error === "string" && payload.error.trim()) {
+            message = payload.error.trim();
+          }
+        } catch {}
+        throw new Error(message);
+      }
+
+      const payload = (await response.json()) as {
+        session?: { id?: unknown };
+        transport?: { sdp?: unknown };
+      };
+      if (typeof payload.session?.id === "string" && payload.session.id.trim()) {
+        session.sessionId = payload.session.id.trim();
+      }
+      const answerSdp =
+        typeof payload.transport?.sdp === "string"
+          ? payload.transport.sdp
+          : "";
+      if (!answerSdp) {
+        throw new Error("Voice service returned an invalid WebRTC answer.");
+      }
+
+      await peer.setRemoteDescription({
+        type: "answer",
+        sdp: answerSdp,
+      });
+    } catch (caught) {
+      const current = activeSessionRef.current === session;
+      if (current) detach(session);
+      cleanupSession(session);
+      if (!current) return;
 
       const message =
         caught instanceof Error
@@ -711,146 +684,89 @@ export function useRealtimeTranscription(
     }
   }
 
-  function clearPauseWatchdog(): void {
-    if (pauseWatchdogRef.current !== null) {
-      clearTimeout(pauseWatchdogRef.current);
-      pauseWatchdogRef.current = null;
-    }
-  }
-
   function pause(): boolean {
     const session = activeSessionRef.current;
-    if (stoppedRef.current || !session) return false;
-    const maxPausedMs = opts?.maxPausedMs ?? 0;
-    clearPauseWatchdog();
-    if (maxPausedMs > 0) {
-      pauseWatchdogRef.current = setTimeout(() => {
-        pauseWatchdogRef.current = null;
-        if (activeSessionRef.current === session && session.paused) {
-          // eslint-disable-next-line no-console
-          console.warn("[RealtimeTranscription] mic stayed muted too long; resuming");
-          stopPlayback(session);
-          resume();
-        }
-      }, maxPausedMs);
-    }
+    if (!session || stoppedRef.current || session.paused) return false;
     session.paused = true;
-    session.live = "";
-    suspendStreamingClock(session, Date.now());
     try {
-      session.mediaStream?.getTracks().forEach((track) => {
+      session.mediaStream?.getAudioTracks().forEach((track) => {
         track.enabled = false;
       });
     } catch {}
+    sendEvent(session, {
+      type: "session.input_audio.mute",
+      event_id: `profix_mute_${Date.now()}`,
+    });
+
+    const maxPausedMs = opts?.maxPausedMs ?? 0;
+    if (maxPausedMs > 0) {
+      session.pauseTimer = setTimeout(() => {
+        if (activeSessionRef.current === session && session.paused) resume();
+      }, maxPausedMs);
+    }
     return true;
   }
 
-  async function playAudio(encodedAudio: ArrayBuffer): Promise<void> {
+  function resume(): boolean {
     const session = activeSessionRef.current;
-    const audioContext = session?.audioCtx ?? null;
-    if (
-      stoppedRef.current ||
-      !session ||
-      !audioContext ||
-      !session.paused ||
-      encodedAudio.byteLength === 0
-    ) {
-      throw new Error("Realtime audio output is not ready.");
+    if (!session || stoppedRef.current || !session.paused) return false;
+    if (session.pauseTimer) clearTimeout(session.pauseTimer);
+    session.pauseTimer = null;
+    session.paused = false;
+    try {
+      session.mediaStream?.getAudioTracks().forEach((track) => {
+        track.enabled = true;
+      });
+    } catch {}
+    sendEvent(session, {
+      type: "session.input_audio.unmute",
+      event_id: `profix_unmute_${Date.now()}`,
+    });
+    return true;
+  }
+
+  function speakText(
+    text: string,
+    delegationId?: string | null,
+  ): boolean {
+    const session = activeSessionRef.current;
+    const content = text.trim();
+    if (!session || stoppedRef.current || !content) return false;
+    if (session.audio) {
+      session.audio.muted = false;
+      playQuietly(session.audio);
     }
-
-    if (audioContext.state === "suspended") {
-      await audioContext.resume();
-    }
-    if (!sessionIsCurrent(session) || session.audioCtx !== audioContext) {
-      throw new Error("Realtime audio output was interrupted.");
-    }
-
-    const decoded = await audioContext.decodeAudioData(encodedAudio.slice(0));
-    if (!sessionIsCurrent(session) || session.audioCtx !== audioContext) {
-      throw new Error("Realtime audio output was interrupted.");
-    }
-
-    stopPlayback(session);
-
-    await new Promise<void>((resolve, reject) => {
-      const source = audioContext.createBufferSource();
-      let settled = false;
-      const settle = (error?: unknown) => {
-        if (settled) return;
-        settled = true;
-        source.onended = null;
-        try {
-          source.disconnect();
-        } catch {}
-        if (session.playback?.source === source) {
-          session.playback = null;
-        }
-        if (error) reject(error);
-        else resolve();
-      };
-
-      source.buffer = decoded;
-      source.connect(audioContext.destination);
-      source.onended = () => settle();
-      session.playback = { source, settle };
-
-      try {
-        source.start();
-      } catch (error) {
-        settle(error);
-      }
+    return sendEvent(session, {
+      type: "session.commentary.append",
+      event_id: `profix_commentary_${Date.now()}`,
+      delegation_id:
+        delegationId === undefined ? session.latestDelegationId : delegationId,
+      content,
     });
   }
 
   function stopAudio(): void {
     const session = activeSessionRef.current;
-    if (session) stopPlayback(session);
-  }
-
-  function resume(): boolean {
-    clearPauseWatchdog();
-    const session = activeSessionRef.current;
-    const socket = session?.ws ?? null;
-    if (stoppedRef.current || !session || !socket) return false;
-
-    if (
-      socket.readyState !== WebSocket.OPEN &&
-      socket.readyState !== WebSocket.CONNECTING
-    ) {
-      detachCurrentSession(session);
-      cleanupSession(session);
-
-      // A dead paused socket is a recoverable transport replacement signal.
-      // Do not emit terminal `idle` here: the caller is already in
-      // `connecting` and will immediately establish a replacement transport
-      // after resume() returns false. Emitting idle synchronously would
-      // incorrectly revoke ownership while the replacement starts.
-      return false;
-    }
-
-    session.paused = false;
-    resumeStreamingClock(session, Date.now());
-    try {
-      session.mediaStream?.getTracks().forEach((track) => {
-        track.enabled = true;
-      });
-    } catch {}
-
-    if (socket.readyState === WebSocket.OPEN) {
-      setState("listening");
-    } else {
-      setState("connecting");
-    }
-    return true;
+    if (!session) return;
+    if (session.audio) session.audio.muted = true;
+    sendEvent(session, {
+      type: "session.instructions.append",
+      event_id: `profix_interrupt_${Date.now()}`,
+      delegation_id: null,
+      content: "Stop speaking now and listen to the technician.",
+    });
+    window.setTimeout(() => {
+      if (activeSessionRef.current === session && session.audio) {
+        session.audio.muted = false;
+      }
+    }, 500);
   }
 
   function stop(): void {
-    clearPauseWatchdog();
-    startupGenerationRef.current += 1;
-    stoppedRef.current = true;
     const session = activeSessionRef.current;
-    activeSessionRef.current = null;
-    if (session) cleanupSession(session);
+    if (!session) return;
+    detach(session);
+    closeGracefully(session, `profix_close_${Date.now()}`);
     setState("idle");
   }
 
@@ -860,9 +776,18 @@ export function useRealtimeTranscription(
       stoppedRef.current = true;
       const session = activeSessionRef.current;
       activeSessionRef.current = null;
-      if (session) cleanupSession(session);
+      if (session) {
+        closeGracefully(session, `profix_unmount_${Date.now()}`);
+      }
     };
   }, []);
 
-  return { start, pause, playAudio, stopAudio, resume, stop };
+  return {
+    start,
+    stop,
+    pause,
+    resume,
+    stopAudio,
+    speakText,
+  };
 }

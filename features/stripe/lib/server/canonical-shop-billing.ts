@@ -14,6 +14,7 @@ import {
   PRODUCT_PACKAGE_BILLING_MODEL,
   PRODUCT_PACKAGE_KEYS,
   PRODUCT_PACKAGE_LOOKUP_KEYS,
+  TECHNICIAN_COPILOT_LOOKUP_KEY,
   normalizeProductPackageKey,
   type ProductPackageKey,
 } from "@/features/stripe/lib/stripe/product-packages";
@@ -164,6 +165,40 @@ export function resolveProductPackageFromSubscription(
     if (packageKey) return packageKey;
   }
   return null;
+}
+
+function technicianCopilotSeatsFromSubscription(
+  subscription: Stripe.Subscription,
+): number {
+  return subscription.items.data.reduce((total, item) => {
+    const lookupKey = normalize(item.price.lookup_key);
+    const productKey = normalize(item.price.metadata?.product_key);
+    if (
+      lookupKey !== TECHNICIAN_COPILOT_LOOKUP_KEY &&
+      productKey !== "technician_copilot"
+    ) {
+      return total;
+    }
+    return total + Math.max(0, item.quantity ?? 0);
+  }, 0);
+}
+
+async function syncTechnicianCopilotSeats(
+  supabase: SupabaseClient<DB>,
+  shopId: string,
+  subscription: Stripe.Subscription,
+): Promise<void> {
+  const rpc = supabase as unknown as {
+    rpc: (
+      name: "set_technician_copilot_licensed_seats",
+      args: { p_shop_id: string; p_seats: number },
+    ) => PromiseLike<{ data: boolean | null; error: { message?: string } | null }>;
+  };
+  const { error } = await rpc.rpc("set_technician_copilot_licensed_seats", {
+    p_shop_id: shopId,
+    p_seats: technicianCopilotSeatsFromSubscription(subscription),
+  });
+  if (error) throw new Error(error.message ?? "Unable to sync Copilot seats");
 }
 
 export function resolveCanonicalPlanFromSubscription(
@@ -326,7 +361,8 @@ export async function syncCanonicalShopBilling(params: {
         p_snapshot: snapshot,
       });
 
-    let result = await applySnapshot(shopId);
+    let resolvedShopId = shopId;
+    let result = await applySnapshot(resolvedShopId);
     if (result.error?.message === "billing shop not found") {
       const recoveredShopId = await recoverWebhookShopId({
         stripe,
@@ -347,10 +383,14 @@ export async function syncCanonicalShopBilling(params: {
         staleShopId: shopId,
         recoveredShopId,
       });
-      result = await applySnapshot(recoveredShopId);
+      resolvedShopId = recoveredShopId;
+      result = await applySnapshot(resolvedShopId);
     }
 
     if (result.error) throw new Error(result.error.message);
+    if (result.data === true) {
+      await syncTechnicianCopilotSeats(supabase, resolvedShopId, sub);
+    }
     return { applied: result.data === true };
   }
 
@@ -359,6 +399,7 @@ export async function syncCanonicalShopBilling(params: {
     .update(update as DB["public"]["Tables"]["shops"]["Update"])
     .eq("id", shopId);
   if (error) throw new Error(error.message);
+  await syncTechnicianCopilotSeats(supabase, shopId, sub);
   return { applied: true };
 }
 

@@ -1,6 +1,6 @@
 import "server-only";
 
-export const AI_RATE_CARD_VERSION = "openai-2026-09-08-v1";
+export const AI_RATE_CARD_VERSION = "openai-2026-10-02-v2";
 
 export type OpenAITextCostInput = {
   model: string | null;
@@ -103,4 +103,65 @@ export function estimateOpenAISpeechCostUsd(
   const normalized = model?.trim().toLowerCase();
   if (normalized !== "tts-1" && !normalized?.startsWith("tts-1-")) return null;
   return Number(((Math.max(characterCount, 0) / 1_000_000) * 15).toFixed(8));
+}
+
+
+type LiveModelRate = {
+  perMinuteUsd: number;
+};
+
+const OPENAI_LIVE_MODEL_RATES: Array<{
+  matches: (model: string) => boolean;
+  rate: LiveModelRate;
+}> = [
+  {
+    matches: (model) => model === "gpt-live-1" || model.startsWith("gpt-live-1-"),
+    rate: { perMinuteUsd: 0.05 },
+  },
+];
+
+export function getOpenAILiveModelRate(
+  model: string | null,
+): LiveModelRate | null {
+  const normalized = model?.trim().toLowerCase();
+  if (!normalized) return null;
+  return (
+    OPENAI_LIVE_MODEL_RATES.find((entry) => entry.matches(normalized))?.rate ??
+    null
+  );
+}
+
+/**
+ * GPT-Live is duration-priced and billed per second. The API reports cumulative
+ * session duration in seconds, including silence and time spent waiting on the
+ * delegated backend.
+ */
+export function estimateOpenAILiveCostUsd(
+  model: string | null,
+  durationSeconds: number,
+): number | null {
+  const rate = getOpenAILiveModelRate(model);
+  if (!rate) return null;
+  const seconds = Math.max(0, durationSeconds);
+  return Number(((seconds / 60) * rate.perMinuteUsd).toFixed(8));
+}
+
+
+export function estimateOpenAIInspectionTranscriptionCostUsd(
+  model: string | null,
+  durationSeconds: number,
+): number | null {
+  const normalized = model?.trim().toLowerCase();
+  const perMinuteUsd =
+    normalized === "gpt-live-transcribe" ||
+    normalized?.startsWith("gpt-live-transcribe-")
+      ? 0.017
+      : normalized === "gpt-transcribe" ||
+          normalized?.startsWith("gpt-transcribe-")
+        ? 0.0045
+        : null;
+  if (perMinuteUsd == null) return null;
+  return Number(
+    ((Math.max(0, durationSeconds) / 60) * perMinuteUsd).toFixed(8),
+  );
 }

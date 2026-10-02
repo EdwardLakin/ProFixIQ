@@ -1,4 +1,5 @@
-const DEFAULT_REALTIME_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
+const DEFAULT_LIVE_MODEL = "gpt-live-1";
+const DEFAULT_INSPECTION_TRANSCRIPTION_MODEL = "gpt-live-transcribe";
 
 function env(name: string): string | undefined {
   const value = process.env[name]?.trim();
@@ -6,13 +7,21 @@ function env(name: string): string | undefined {
 }
 
 /**
- * Realtime transcription requires an audio transcription model. Do not fall
- * back to the app's general text/reasoning model variables: those values can
- * be valid elsewhere while being rejected by the Realtime API.
+ * GPT-Live is reserved for the premium conversational Technician Copilot.
+ * Keep its model independent from the app's text/reasoning model controls.
  */
-export function getOpenAIRealtimeTranscriptionModel(): string {
+export function getOpenAILiveModel(): string {
+  return env("OPENAI_LIVE_MODEL") ?? DEFAULT_LIVE_MODEL;
+}
+
+/**
+ * Inspection voice is transcription-first rather than full-duplex conversation.
+ * This keeps the inspection engine authoritative while avoiding GPT-Live's
+ * elapsed-session pricing for long CVIP workflows.
+ */
+export function getOpenAIInspectionTranscriptionModel(): string {
   return (
-    env("OPENAI_REALTIME_TRANSCRIBE_MODEL") ??
-    DEFAULT_REALTIME_TRANSCRIPTION_MODEL
+    env("OPENAI_INSPECTION_TRANSCRIBE_MODEL") ??
+    DEFAULT_INSPECTION_TRANSCRIPTION_MODEL
   );
 }

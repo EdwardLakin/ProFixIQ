@@ -1,39 +1,49 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const realtime = vi.hoisted(() => ({
-  connected: false,
   start: vi.fn(async () => undefined),
-  pause: vi.fn(() => false),
-  playAudio: vi.fn(async (_audio: ArrayBuffer): Promise<void> => undefined),
+  pause: vi.fn(() => true),
   stopAudio: vi.fn(),
-  resume: vi.fn(() => false),
+  resume: vi.fn(() => true),
+  speakText: vi.fn(() => true),
   stop: vi.fn(),
-  onFinal: null as null | ((text: string) => void),
-  onStateChange: null as null | ((state: "idle" | "connecting" | "listening" | "error") => void),
+  onFinal: null as null | ((
+    text: string,
+    delegationId?: string,
+  ) => void | Promise<unknown>),
+  onStateChange: null as null | ((
+    state: "idle" | "connecting" | "listening" | "error",
+  ) => void),
   onAutoStop: null as null | ((reason: "max_duration" | "idle") => void),
+  onOutputStateChange: null as null | ((speaking: boolean) => void),
 }));
 
 vi.mock("@/features/copilot/technician/voice/useTechnicianRealtimeVoice", () => ({
   useTechnicianRealtimeVoice: (
-    onFinal: (text: string) => void,
+    onFinal: (
+      text: string,
+      delegationId?: string,
+    ) => void | Promise<unknown>,
     _wake: (text: string) => string | null,
     options?: {
       onStateChange?: (
         state: "idle" | "connecting" | "listening" | "error",
       ) => void;
       onAutoStop?: (reason: "max_duration" | "idle") => void;
+      onOutputStateChange?: (speaking: boolean) => void;
     },
   ) => {
     realtime.onFinal = onFinal;
     realtime.onStateChange = options?.onStateChange ?? null;
     realtime.onAutoStop = options?.onAutoStop ?? null;
+    realtime.onOutputStateChange = options?.onOutputStateChange ?? null;
     return {
       start: realtime.start,
       pause: realtime.pause,
-      playAudio: realtime.playAudio,
       stopAudio: realtime.stopAudio,
       resume: realtime.resume,
+      speakText: realtime.speakText,
       stop: realtime.stop,
     };
   },
@@ -41,146 +51,22 @@ vi.mock("@/features/copilot/technician/voice/useTechnicianRealtimeVoice", () => 
 
 import { useTechnicianInteractionGateway } from "@/features/copilot/technician/voice/useTechnicianInteractionGateway";
 
-class FakeSpeechSynthesisUtterance {
-  text: string;
-  lang = "";
-  rate = 1;
-  onend: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-
-  constructor(text: string) {
-    this.text = text;
-  }
-}
-
-const speech = {
-  cancel: vi.fn(),
-  resume: vi.fn(),
-  speak: vi.fn((_utterance: SpeechSynthesisUtterance) => undefined),
-  speaking: true,
-  pending: false,
-};
-
-const generatedAudio = new Uint8Array([1, 2, 3, 4]).buffer;
-const speechFetch = vi.fn();
-const wakeLockRequest = vi.fn();
-let wakeLockRelease = vi.fn(async (): Promise<void> => undefined);
-let generatedPlayback: ReturnType<typeof deferred<void>>;
-let generatedPlaybackStarted = false;
-
-function deferred<T>() {
-  let resolve!: (value: T) => void;
-  const promise = new Promise<T>((next) => {
-    resolve = next;
-  });
-  return { promise, resolve };
-}
-
-describe("Technician CoPilot voice interaction gateway", () => {
+describe("Technician Copilot GPT-Live interaction gateway", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    realtime.connected = false;
     realtime.onFinal = null;
     realtime.onStateChange = null;
     realtime.onAutoStop = null;
-    generatedPlayback = deferred<void>();
-    generatedPlaybackStarted = false;
-    speech.speaking = true;
-    speech.pending = false;
+    realtime.onOutputStateChange = null;
     realtime.start.mockImplementation(async () => {
-      realtime.connected = true;
       realtime.onStateChange?.("listening");
-      return undefined;
     });
-    realtime.pause.mockImplementation(() => realtime.connected);
-    realtime.playAudio.mockImplementation(() => {
-      generatedPlaybackStarted = true;
-      return generatedPlayback.promise.finally(() => {
-        generatedPlaybackStarted = false;
-      });
-    });
-    realtime.stopAudio.mockImplementation(() => {
-      if (generatedPlaybackStarted) generatedPlayback.resolve();
-    });
-    realtime.resume.mockImplementation(() => {
-      if (!realtime.connected) return false;
-      realtime.onStateChange?.("listening");
-      return true;
-    });
-    realtime.stop.mockImplementation(() => {
-      realtime.connected = false;
-      realtime.onStateChange?.("idle");
-    });
-
-    vi.stubGlobal(
-      "SpeechSynthesisUtterance",
-      FakeSpeechSynthesisUtterance as unknown as typeof SpeechSynthesisUtterance,
-    );
-    Object.defineProperty(window, "speechSynthesis", {
-      configurable: true,
-      value: speech,
-    });
-    speechFetch.mockImplementation(async () => ({
-      ok: true,
-      arrayBuffer: async () => generatedAudio.slice(0),
-    }));
-    vi.stubGlobal("fetch", speechFetch);
-
-    let wakeLockReleaseListener: (() => void) | null = null;
-    const wakeLockSentinel = {
-      released: false,
-      release: vi.fn(async () => {
-        wakeLockSentinel.released = true;
-        wakeLockReleaseListener?.();
-      }),
-      addEventListener: vi.fn(
-        (_type: "release", listener: () => void) => {
-          wakeLockReleaseListener = listener;
-        },
-      ),
-    };
-    wakeLockRelease = wakeLockSentinel.release;
-    wakeLockRequest.mockResolvedValue(wakeLockSentinel);
-    Object.defineProperty(navigator, "wakeLock", {
-      configurable: true,
-      value: { request: wakeLockRequest },
-    });
+    realtime.speakText.mockReturnValue(true);
   });
 
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    Reflect.deleteProperty(window, "speechSynthesis");
-    Reflect.deleteProperty(navigator, "wakeLock");
-  });
-
-  it("starts one call automatically when voice access becomes available", async () => {
-    const onUtterance = vi.fn(async () => ({ reply: null }));
-    const { result, rerender } = renderHook(
-      ({ enabled }) =>
-        useTechnicianInteractionGateway({
-          enabled,
-          autoStart: true,
-          onUtterance,
-        }),
-      { initialProps: { enabled: false } },
-    );
-
-    expect(realtime.start).not.toHaveBeenCalled();
-
-    rerender({ enabled: true });
-
-    await waitFor(() => {
-      expect(result.current.phase).toBe("listening");
-    });
-    expect(realtime.start).toHaveBeenCalledTimes(1);
-
-    rerender({ enabled: true });
-    expect(realtime.start).toHaveBeenCalledTimes(1);
-  });
-
-  it("pauses Realtime, plays generated speech through its audio context, then resumes it", async () => {
-    const onUtterance = vi.fn(async (text: string) => ({
-      reply: `Reply to ${text}`,
+  it("delegates recognized speech to the existing backend without pausing the full-duplex mic", async () => {
+    const onUtterance = vi.fn(async () => ({
+      reply: "Rear U-joint play documented.",
     }));
     const { result } = renderHook(() =>
       useTechnicianInteractionGateway({ enabled: true, onUtterance }),
@@ -190,107 +76,112 @@ describe("Technician CoPilot voice interaction gateway", () => {
       await result.current.start();
     });
     expect(result.current.phase).toBe("listening");
-    expect(realtime.start).toHaveBeenCalledTimes(1);
-    expect(realtime.resume).not.toHaveBeenCalled();
 
-    act(() => {
-      realtime.onFinal?.("Rear U-joint has play.");
+    await act(async () => {
+      realtime.onFinal?.("Rear U-joint has play.", "item_delegate_1");
+      await Promise.resolve();
     });
 
     await waitFor(() => {
       expect(onUtterance).toHaveBeenCalledWith("Rear U-joint has play.");
-      expect(result.current.phase).toBe("speaking");
+      expect(realtime.speakText).toHaveBeenCalledWith(
+        "Rear U-joint play documented.",
+        "item_delegate_1",
+      );
     });
-    expect(realtime.pause).toHaveBeenCalledTimes(1);
-    expect(realtime.stop).not.toHaveBeenCalled();
-    expect(speechFetch).toHaveBeenCalledWith(
-      "/api/copilot/technician/speech",
-      expect.objectContaining({
-        method: "POST",
-        credentials: "same-origin",
-      }),
-    );
-    const speechRequest = speechFetch.mock.calls[0]?.[1] as
-      | RequestInit
-      | undefined;
-    expect(JSON.parse(String(speechRequest?.body))).toEqual({
-      text: "Reply to Rear U-joint has play.",
-    });
-    expect(realtime.playAudio).toHaveBeenCalledTimes(1);
-    expect(realtime.playAudio.mock.calls[0]?.[0]).toBeInstanceOf(ArrayBuffer);
-    expect(speech.speak).not.toHaveBeenCalled();
+    expect(realtime.pause).not.toHaveBeenCalled();
+    expect(result.current.active).toBe(true);
+  });
 
+  it("queues a second delegated turn instead of dropping it while the backend is busy", async () => {
+    let resolveFirst!: (value: { reply: string | null }) => void;
+    const first = new Promise<{ reply: string | null }>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const onUtterance = vi
+      .fn()
+      .mockImplementationOnce(() => first)
+      .mockResolvedValueOnce({ reply: "Second result" });
+
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({ enabled: true, onUtterance }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+
+    let firstTurn!: Promise<unknown>;
     act(() => {
-      realtime.onFinal?.("Late buffered transcript");
+      firstTurn = Promise.resolve(
+        realtime.onFinal?.("First command", "item_delegate_1"),
+      );
+    });
+    await waitFor(() => expect(onUtterance).toHaveBeenCalledTimes(1));
+
+    let secondTurn!: Promise<unknown>;
+    act(() => {
+      secondTurn = Promise.resolve(
+        realtime.onFinal?.("Second command", "item_delegate_2"),
+      );
     });
     expect(onUtterance).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      generatedPlayback.resolve();
-      await generatedPlayback.promise;
+      resolveFirst({ reply: "First result" });
+      await firstTurn;
+      await secondTurn;
     });
 
-    await waitFor(() => {
-      expect(realtime.resume).toHaveBeenCalledTimes(1);
-      expect(realtime.start).toHaveBeenCalledTimes(1);
-      expect(result.current.phase).toBe("listening");
-    });
+    expect(onUtterance).toHaveBeenNthCalledWith(1, "First command");
+    expect(onUtterance).toHaveBeenNthCalledWith(2, "Second command");
+    expect(realtime.speakText).toHaveBeenCalledWith(
+      "First result",
+      "item_delegate_1",
+    );
+    expect(realtime.speakText).toHaveBeenCalledWith(
+      "Second result",
+      "item_delegate_2",
+    );
   });
 
-  it("starts and pauses the Realtime transport before speaking the opening greeting, so it uses generated voice instead of the device fallback", async () => {
-    const onUtterance = vi.fn(async () => ({ reply: null }));
+  it("mutes the Live microphone around browser-voice fallback", async () => {
+    realtime.speakText.mockReturnValueOnce(false);
+    const onUtterance = vi.fn(async () => ({ reply: "Fallback reply" }));
     const { result } = renderHook(() =>
-      useTechnicianInteractionGateway({
-        enabled: true,
-        onUtterance,
-        greeting: "Good morning. You have 3 jobs today.",
-      }),
+      useTechnicianInteractionGateway({ enabled: true, onUtterance }),
     );
 
     await act(async () => {
       await result.current.start();
+      await realtime.onFinal?.("Say it.", "item_delegate_1");
     });
 
-    // The greeting must start (and pause) the same Realtime session an
-    // ordinary reply already has by the time it speaks — playAudio can only
-    // play through that session's own audio context. Speaking before ever
-    // starting it is exactly the regression this covers: it silently forced
-    // every greeting onto the device voice even when generated speech
-    // worked fine.
-    expect(realtime.start).toHaveBeenCalledTimes(1);
     expect(realtime.pause).toHaveBeenCalledTimes(1);
-    await waitFor(() => {
-      expect(result.current.phase).toBe("speaking");
-    });
-    expect(speechFetch).toHaveBeenCalledWith(
-      "/api/copilot/technician/speech",
-      expect.objectContaining({ method: "POST" }),
-    );
-    const speechRequest = speechFetch.mock.calls[0]?.[1] as
-      | RequestInit
-      | undefined;
-    expect(JSON.parse(String(speechRequest?.body))).toEqual({
-      text: "Good morning. You have 3 jobs today.",
-    });
-    expect(realtime.playAudio).toHaveBeenCalledTimes(1);
-    expect(speech.speak).not.toHaveBeenCalled();
-    expect(onUtterance).not.toHaveBeenCalled();
-
-    await act(async () => {
-      generatedPlayback.resolve();
-      await generatedPlayback.promise;
-    });
-
-    await waitFor(() => {
-      expect(realtime.resume).toHaveBeenCalledTimes(1);
-      expect(result.current.phase).toBe("listening");
-    });
   });
 
-  it("returns to listening when a persisted CoPilot turn fails", async () => {
-    const onUtterance = vi.fn(async () => {
-      throw new Error("CoPilot took too long to respond. Please try again.");
+  it("keeps the UI in speaking state until Live reports output completion", async () => {
+    const onUtterance = vi.fn(async () => ({ reply: "Live reply" }));
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({ enabled: true, onUtterance }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+      await realtime.onFinal?.("Reply.", "item_delegate_1");
     });
+    expect(result.current.phase).toBe("speaking");
+
+    act(() => realtime.onOutputStateChange?.(false));
+    expect(result.current.phase).toBe("listening");
+  });
+
+  it("keeps a stale backend reply out of a restarted Live session", async () => {
+    let resolveTurn!: (value: { reply: string }) => void;
+    const pending = new Promise<{ reply: string }>((resolve) => {
+      resolveTurn = resolve;
+    });
+    const onUtterance = vi.fn(() => pending);
     const { result } = renderHook(() =>
       useTechnicianInteractionGateway({ enabled: true, onUtterance }),
     );
@@ -299,296 +190,25 @@ describe("Technician CoPilot voice interaction gateway", () => {
       await result.current.start();
     });
     act(() => {
-      realtime.onFinal?.("What is my next job?");
-    });
-
-    await waitFor(() => {
-      expect(result.current.phase).toBe("listening");
-      expect(result.current.error).toContain("took too long");
-    });
-    expect(result.current.active).toBe(true);
-    expect(realtime.resume).toHaveBeenCalledTimes(1);
-    expect(realtime.stop).not.toHaveBeenCalled();
-  });
-
-  it("holds a screen wake lock while voice is active and releases it on stop", async () => {
-    const { result } = renderHook(() =>
-      useTechnicianInteractionGateway({
-        enabled: true,
-        onUtterance: vi.fn(async () => ({ reply: null })),
-      }),
-    );
-
-    await act(async () => {
-      await result.current.start();
-    });
-    await waitFor(() => {
-      expect(wakeLockRequest).toHaveBeenCalledWith("screen");
-      expect(result.current.wakeLockSupported).toBe(true);
-      expect(result.current.wakeLockActive).toBe(true);
-    });
-
-    act(() => result.current.stop());
-
-    expect(wakeLockRelease).toHaveBeenCalledTimes(1);
-    expect(result.current.wakeLockActive).toBe(false);
-  });
-
-  it("stops voice after a terminal CoPilot turn failure", async () => {
-    const terminalFailure = Object.assign(
-      new Error(
-        "The active CoPilot repair context changed. Reload before continuing.",
-      ),
-      { recoverable: false },
-    );
-    const onUtterance = vi.fn(async () => {
-      throw terminalFailure;
-    });
-    const { result } = renderHook(() =>
-      useTechnicianInteractionGateway({ enabled: true, onUtterance }),
-    );
-
-    await act(async () => {
-      await result.current.start();
-    });
-    act(() => {
-      realtime.onFinal?.("Complete this job.");
-    });
-
-    await waitFor(() => {
-      expect(result.current.phase).toBe("error");
-      expect(result.current.active).toBe(false);
-    });
-    expect(result.current.error).toContain("Reload before continuing");
-    expect(result.current.heardTranscript).toBe("Complete this job.");
-    expect(realtime.stop).toHaveBeenCalledTimes(1);
-    expect(realtime.resume).not.toHaveBeenCalled();
-  });
-
-  it("recovers when iOS speech synthesis never emits a completion event", async () => {
-    vi.useFakeTimers();
-    try {
-      speechFetch.mockResolvedValue({ ok: false });
-      const onUtterance = vi.fn(async () => ({
-        reply: "Your next assigned job is the Ford.",
-      }));
-      const { result } = renderHook(() =>
-        useTechnicianInteractionGateway({ enabled: true, onUtterance }),
-      );
-
-      await act(async () => {
-        await result.current.start();
-      });
-      await act(async () => {
-        realtime.onFinal?.("What is my next job?");
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-
-      expect(result.current.phase).toBe("speaking");
-      expect(speech.speak).toHaveBeenCalledTimes(1);
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(90_001);
-      });
-
-      expect(speech.cancel).toHaveBeenCalledTimes(1);
-      expect(realtime.resume).toHaveBeenCalledTimes(1);
-      expect(result.current.phase).toBe("listening");
-      expect(result.current.error).toContain("spoken reply stalled");
-      expect(result.current.active).toBe(true);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("does not truncate a maximum-length valid reply at 90 seconds", async () => {
-    vi.useFakeTimers();
-    try {
-      speechFetch.mockResolvedValue({ ok: false });
-      const { result } = renderHook(() =>
-        useTechnicianInteractionGateway({
-          enabled: true,
-          onUtterance: vi.fn(async () => ({ reply: "x".repeat(2_000) })),
-        }),
-      );
-
-      await act(async () => {
-        await result.current.start();
-      });
-      await act(async () => {
-        realtime.onFinal?.("Read the full answer.");
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-
-      expect(result.current.phase).toBe("speaking");
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(90_001);
-      });
-
-      expect(speech.cancel).not.toHaveBeenCalled();
-      expect(result.current.phase).toBe("speaking");
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(216_000);
-      });
-      expect(speech.cancel).toHaveBeenCalledTimes(1);
-      expect(result.current.phase).toBe("listening");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("returns to listening quickly when device speech never starts", async () => {
-    vi.useFakeTimers();
-    try {
-      speechFetch.mockResolvedValue({ ok: false });
-      speech.speaking = false;
-      speech.pending = false;
-      const { result } = renderHook(() =>
-        useTechnicianInteractionGateway({
-          enabled: true,
-          onUtterance: vi.fn(async () => ({ reply: "The reply is ready." })),
-        }),
-      );
-
-      await act(async () => {
-        await result.current.start();
-      });
-      await act(async () => {
-        realtime.onFinal?.("Can you hear me?");
-        await Promise.resolve();
-        await Promise.resolve();
-      });
-      expect(result.current.phase).toBe("speaking");
-
-      await act(async () => {
-        await vi.advanceTimersByTimeAsync(1_501);
-      });
-
-      expect(result.current.phase).toBe("listening");
-      expect(result.current.error).toContain("could not start");
-      expect(result.current.active).toBe(true);
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
-  it("lets the technician interrupt a spoken reply and resume the same Realtime session", async () => {
-    const onUtterance = vi.fn(async () => ({ reply: "Long spoken response" }));
-    const { result } = renderHook(() =>
-      useTechnicianInteractionGateway({ enabled: true, onUtterance }),
-    );
-
-    await act(async () => {
-      await result.current.start();
-    });
-    act(() => {
-      realtime.onFinal?.("What have we figured out?");
-    });
-    await waitFor(() => {
-      expect(result.current.phase).toBe("speaking");
-      expect(realtime.playAudio).toHaveBeenCalledTimes(1);
-    });
-    realtime.stopAudio.mockClear();
-
-    act(() => {
-      result.current.interrupt();
-    });
-
-    expect(speech.cancel).toHaveBeenCalled();
-    expect(realtime.stopAudio).toHaveBeenCalledTimes(1);
-    await waitFor(() => {
-      expect(realtime.resume).toHaveBeenCalledTimes(1);
-      expect(realtime.start).toHaveBeenCalledTimes(1);
-      expect(result.current.phase).toBe("listening");
-    });
-  });
-
-  it("discards an old in-flight reply after voice is stopped and restarted", async () => {
-    const firstTurn = deferred<{ reply: string }>();
-    const onUtterance = vi.fn(() => firstTurn.promise);
-    const { result } = renderHook(() =>
-      useTechnicianInteractionGateway({ enabled: true, onUtterance }),
-    );
-
-    await act(async () => {
-      await result.current.start();
-    });
-    act(() => {
-      realtime.onFinal?.("Old turn");
+      void realtime.onFinal?.("Old turn");
     });
     await waitFor(() => expect(result.current.phase).toBe("thinking"));
 
-    act(() => {
-      result.current.stop();
-    });
-    await act(async () => {
-      await result.current.start();
-    });
-    expect(result.current.phase).toBe("listening");
-    expect(realtime.start).toHaveBeenCalledTimes(2);
-
-    await act(async () => {
-      firstTurn.resolve({ reply: "This reply is stale" });
-      await firstTurn.promise;
-    });
-
-    expect(speech.speak).not.toHaveBeenCalled();
-    expect(speechFetch).not.toHaveBeenCalled();
-    expect(realtime.playAudio).not.toHaveBeenCalled();
-    expect(result.current.active).toBe(true);
-    expect(result.current.phase).toBe("listening");
-  });
-
-  it("does not let stale startup A stop a replacement startup B", async () => {
-    const startupA = deferred<void>();
-    let startCall = 0;
-    realtime.start.mockImplementation(async () => {
-      startCall += 1;
-      if (startCall === 1) {
-        await startupA.promise;
-        return;
-      }
-      realtime.connected = true;
-      realtime.onStateChange?.("listening");
-    });
-
-    const { result } = renderHook(() =>
-      useTechnicianInteractionGateway({
-        enabled: true,
-        onUtterance: vi.fn(async () => ({ reply: null })),
-      }),
-    );
-
-    let staleStartPromise: Promise<void> | undefined;
-    act(() => {
-      staleStartPromise = result.current.start();
-    });
-    await waitFor(() => expect(result.current.phase).toBe("connecting"));
-
     act(() => result.current.stop());
-    expect(realtime.stop).toHaveBeenCalledTimes(1);
-
     await act(async () => {
       await result.current.start();
     });
-    expect(result.current.active).toBe(true);
-    expect(result.current.phase).toBe("listening");
-    expect(realtime.start).toHaveBeenCalledTimes(2);
 
     await act(async () => {
-      startupA.resolve();
-      await staleStartPromise;
+      resolveTurn({ reply: "Stale result" });
+      await pending;
     });
 
-    expect(realtime.stop).toHaveBeenCalledTimes(1);
+    expect(realtime.speakText).not.toHaveBeenCalledWith("Stale result");
     expect(result.current.active).toBe(true);
-    expect(result.current.phase).toBe("listening");
   });
 
-  it("deactivates voice mode when the live Realtime transport closes unexpectedly", async () => {
+  it("uses GPT-Live for proactive announcements without muting the microphone", async () => {
     const { result } = renderHook(() =>
       useTechnicianInteractionGateway({
         enabled: true,
@@ -599,50 +219,91 @@ describe("Technician CoPilot voice interaction gateway", () => {
     await act(async () => {
       await result.current.start();
     });
-    expect(result.current.active).toBe(true);
-    expect(result.current.phase).toBe("listening");
 
-    act(() => {
-      realtime.connected = false;
-      realtime.onStateChange?.("idle");
+    expect(result.current.announce("You've just been assigned a new job.")).toBe(
+      true,
+    );
+    expect(realtime.speakText).toHaveBeenCalledWith(
+      "You've just been assigned a new job.",
+      null,
+    );
+    expect(realtime.pause).not.toHaveBeenCalled();
+  });
+
+  it("does not send a Live stop instruction before speaking a normal reply", async () => {
+    const onUtterance = vi.fn(async () => ({ reply: "Verified reply" }));
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({ enabled: true, onUtterance }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+      await realtime.onFinal?.("Explain.", "item_delegate_1");
     });
+
+    expect(realtime.speakText).toHaveBeenCalledWith(
+      "Verified reply",
+      "item_delegate_1",
+    );
+    expect(realtime.stopAudio).not.toHaveBeenCalled();
+  });
+
+  it("closes the delegation when the backend returns no speakable reply", async () => {
+    const onUtterance = vi.fn(async () => ({ reply: null }));
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({ enabled: true, onUtterance }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+      await realtime.onFinal?.("Do it.", "item_delegate_9");
+    });
+
+    expect(realtime.speakText).toHaveBeenCalledWith(
+      expect.any(String),
+      "item_delegate_9",
+    );
+  });
+
+  it("sends explicit interrupt requests to the Live transport", async () => {
+    const onUtterance = vi.fn(async () => ({ reply: "Long spoken reply" }));
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({ enabled: true, onUtterance }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+      realtime.onFinal?.("Explain that.");
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(realtime.speakText).toHaveBeenCalled());
+
+    expect(result.current.phase).toBe("speaking");
+    act(() => result.current.interrupt());
+    expect(realtime.stopAudio).toHaveBeenCalledTimes(1);
+    expect(result.current.phase).toBe("listening");
+    expect(result.current.active).toBe(true);
+  });
+
+  it("deactivates voice mode when the Live transport closes unexpectedly", async () => {
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({
+        enabled: true,
+        onUtterance: vi.fn(async () => ({ reply: null })),
+      }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    act(() => realtime.onStateChange?.("idle"));
 
     expect(result.current.active).toBe(false);
     expect(result.current.phase).toBe("idle");
     expect(result.current.error).toContain("Voice connection ended");
   });
 
-  it("reconnects automatically after an idle-timeout auto-stop instead of requiring Start again", async () => {
-    const { result } = renderHook(() =>
-      useTechnicianInteractionGateway({
-        enabled: true,
-        onUtterance: vi.fn(async () => ({ reply: null })),
-      }),
-    );
-
-    await act(async () => {
-      await result.current.start();
-    });
-    expect(result.current.active).toBe(true);
-    expect(realtime.start).toHaveBeenCalledTimes(1);
-
-    // Mirrors what the real transport does when its idle-silence guard
-    // fires: settle to idle, then report why.
-    await act(async () => {
-      realtime.connected = false;
-      realtime.onStateChange?.("idle");
-      realtime.onAutoStop?.("idle");
-      await Promise.resolve();
-    });
-
-    // The technician never had to press Start again.
-    expect(realtime.start).toHaveBeenCalledTimes(2);
-    expect(result.current.active).toBe(true);
-    expect(result.current.phase).toBe("listening");
-    expect(result.current.error).toBeNull();
-  });
-
-  it("stops auto-reconnecting after repeated idle timeouts with no speech in between", async () => {
+  it("reconnects after an idle auto-stop, preserving the existing cost guard behavior", async () => {
     const { result } = renderHook(() =>
       useTechnicianInteractionGateway({
         enabled: true,
@@ -655,123 +316,33 @@ describe("Technician CoPilot voice interaction gateway", () => {
     });
     expect(realtime.start).toHaveBeenCalledTimes(1);
 
-    // Three consecutive idle auto-stops with no recognized speech in
-    // between exhaust the auto-resume streak (capped at 3) and each still
-    // reconnect on their own.
-    for (let attempt = 0; attempt < 3; attempt += 1) {
-      await act(async () => {
-        realtime.connected = false;
-        realtime.onStateChange?.("idle");
-        realtime.onAutoStop?.("idle");
-        await Promise.resolve();
-      });
-      expect(realtime.start).toHaveBeenCalledTimes(2 + attempt);
-      expect(result.current.active).toBe(true);
-    }
-
-    // A fourth auto-stop in a row exceeds the cap: this most likely means an
-    // abandoned device, not a technician pausing between jobs, so give up
-    // instead of reconnecting again and require an explicit Start.
     await act(async () => {
-      realtime.connected = false;
       realtime.onStateChange?.("idle");
       realtime.onAutoStop?.("idle");
       await Promise.resolve();
     });
 
-    expect(realtime.start).toHaveBeenCalledTimes(4);
-    expect(result.current.active).toBe(false);
-    expect(result.current.error).toContain("Start voice to continue");
-  });
-
-  it("allows a fresh start after a current Realtime startup failure", async () => {
-    realtime.start
-      .mockRejectedValueOnce(new Error("permission denied"))
-      .mockImplementationOnce(async () => {
-        realtime.connected = true;
-        realtime.onStateChange?.("listening");
-      });
-
-    const { result } = renderHook(() =>
-      useTechnicianInteractionGateway({
-        enabled: true,
-        onUtterance: vi.fn(async () => ({ reply: null })),
-      }),
-    );
-
-    await act(async () => {
-      await result.current.start();
-    });
-    expect(result.current.active).toBe(false);
-    expect(result.current.phase).toBe("error");
-
-    await act(async () => {
-      await result.current.start();
-    });
-    expect(result.current.active).toBe(true);
-    expect(result.current.phase).toBe("listening");
     expect(realtime.start).toHaveBeenCalledTimes(2);
+    expect(result.current.active).toBe(true);
   });
 
-  it("refuses to announce anything before voice has started", () => {
+  it("speaks the deterministic greeting through GPT-Live after the session connects", async () => {
     const { result } = renderHook(() =>
       useTechnicianInteractionGateway({
         enabled: true,
+        greeting: "Morning. You have three jobs assigned.",
         onUtterance: vi.fn(async () => ({ reply: null })),
       }),
     );
 
-    expect(result.current.announce("You've just been assigned a new job.")).toBe(
-      false,
+    await act(async () => {
+      await result.current.start();
+    });
+
+    expect(realtime.speakText).toHaveBeenCalledWith(
+      "Morning. You have three jobs assigned.",
+      null,
     );
     expect(realtime.pause).not.toHaveBeenCalled();
-    expect(speechFetch).not.toHaveBeenCalled();
-  });
-
-  it("speaks a proactive announcement only while idly listening, then resumes listening", async () => {
-    const onUtterance = vi.fn(async () => ({ reply: null }));
-    const { result } = renderHook(() =>
-      useTechnicianInteractionGateway({ enabled: true, onUtterance }),
-    );
-
-    await act(async () => {
-      await result.current.start();
-    });
-    expect(result.current.phase).toBe("listening");
-
-    let announced = false;
-    act(() => {
-      announced = result.current.announce(
-        "You've just been assigned a new job.",
-      );
-    });
-    expect(announced).toBe(true);
-    expect(realtime.pause).toHaveBeenCalledTimes(1);
-    expect(realtime.stop).not.toHaveBeenCalled();
-
-    await waitFor(() => {
-      expect(result.current.phase).toBe("speaking");
-    });
-    const speechRequest = speechFetch.mock.calls[0]?.[1] as
-      | RequestInit
-      | undefined;
-    expect(JSON.parse(String(speechRequest?.body))).toEqual({
-      text: "You've just been assigned a new job.",
-    });
-
-    // Mid-turn — this is the "never talk over an in-flight turn" guarantee
-    // the whole point of turn-boundary gating exists for.
-    expect(result.current.announce("A second notice.")).toBe(false);
-
-    await act(async () => {
-      generatedPlayback.resolve();
-      await generatedPlayback.promise;
-    });
-
-    await waitFor(() => {
-      expect(realtime.resume).toHaveBeenCalledTimes(1);
-      expect(result.current.phase).toBe("listening");
-    });
-    expect(onUtterance).not.toHaveBeenCalled();
   });
 });

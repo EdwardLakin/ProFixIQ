@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import {
+  estimateOpenAIInspectionTranscriptionCostUsd,
+  estimateOpenAILiveCostUsd,
   estimateOpenAISpeechCostUsd,
   estimateOpenAITextCostUsd,
 } from "@/features/shared/lib/server/ai-cost";
@@ -53,5 +55,29 @@ describe("AI ledger rate calculations", () => {
 
   it("does not apply legacy character pricing to gpt-4o-mini-tts", () => {
     expect(estimateOpenAISpeechCostUsd("gpt-4o-mini-tts", 2_000)).toBeNull();
+  });
+
+  it("prices GPT-Live per second at $0.05 per minute", () => {
+    expect(estimateOpenAILiveCostUsd("gpt-live-1", 600)).toBe(0.5);
+    expect(estimateOpenAILiveCostUsd("gpt-live-1", 90)).toBe(0.075);
+  });
+
+  it("does not invent a Live price for unknown models", () => {
+    expect(estimateOpenAILiveCostUsd("unknown-live-model", 60)).toBeNull();
+  });
+
+  it("prices inspection transcription far below premium GPT-Live", () => {
+    expect(
+      estimateOpenAIInspectionTranscriptionCostUsd(
+        "gpt-live-transcribe",
+        180 * 60,
+      ),
+    ).toBe(3.06);
+    expect(
+      estimateOpenAIInspectionTranscriptionCostUsd(
+        "gpt-live-transcribe",
+        30 * 60,
+      ),
+    ).toBe(0.51);
   });
 });

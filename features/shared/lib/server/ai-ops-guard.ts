@@ -383,3 +383,23 @@ function emitAlert(
     }),
   );
 }
+
+
+export function settleAIUsageReservation(input: {
+  feature: AIOpsFeature;
+  shopId: string | null;
+  reservedCostUsd: number;
+  actualCostUsd: number;
+}): void {
+  const nowDate = new Date();
+  const key = usageKey(input.shopId, input.feature, nowDate);
+  const reserved = Math.max(0, input.reservedCostUsd);
+  const actual = Math.max(0, Math.min(reserved, input.actualCostUsd));
+  const refund = reserved - actual;
+  if (refund <= 0) return;
+
+  const current = monthUsage.get(key);
+  if (current == null) return;
+
+  monthUsage.set(key, Math.max(0, current - refund));
+}
