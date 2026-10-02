@@ -1,6 +1,6 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { getOpenAIRealtimeTranscriptionModel } from "@/features/shared/lib/openai-realtime-models";
+import { getOpenAILiveModel } from "@/features/shared/lib/openai-realtime-models";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import {
@@ -12,69 +12,46 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-type OpenAIRealtimeSessionConfig = {
-  session: {
-    type: "transcription";
-    audio: {
-      input: {
-        format: {
-          type: "audio/pcm";
-          rate: number;
-        };
-        noise_reduction?: {
-          type: "near_field" | "far_field";
-        };
-        transcription: {
-          model: string;
-          languages?: string[];
-          delay?: "minimal" | "low" | "medium" | "high" | "xhigh";
-        };
-        turn_detection?: null;
-      };
-    };
-  };
+type LiveSurface = "technician_copilot" | "inspection";
+
+type LiveSessionRequest = {
+  sdp?: unknown;
+  surface?: unknown;
 };
 
-function extractToken(
-  data: unknown,
-): { token: string; expiresAt?: number } | null {
-  if (
-    typeof data === "object" &&
-    data !== null &&
-    "value" in data &&
-    typeof (data as { value?: unknown }).value === "string"
-  ) {
-    const d = data as { value: string; expires_at?: number };
-    return { token: d.value, expiresAt: d.expires_at };
-  }
-
-  if (
-    typeof data === "object" &&
-    data !== null &&
-    "client_secret" in data
-  ) {
-    const cs = (data as { client_secret?: unknown }).client_secret;
-    if (
-      typeof cs === "object" &&
-      cs !== null &&
-      "value" in cs &&
-      typeof (cs as { value?: unknown }).value === "string"
-    ) {
-      const secret = cs as { value: string; expires_at?: number };
-      return { token: secret.value, expiresAt: secret.expires_at };
-    }
-  }
-
-  return null;
+function getLiveSurface(value: unknown): LiveSurface {
+  return value === "technician_copilot" ? "technician_copilot" : "inspection";
 }
 
-export async function GET() {
+function liveInstructions(surface: LiveSurface): string {
+  if (surface === "technician_copilot") {
+    return [
+      "You are the spoken interface for ProFixIQ Technician Copilot.",
+      "Keep the conversation concise, natural, and shop-floor friendly.",
+      "Delegate every request that depends on repair state, work orders, inspections, parts, labor, diagnosis, customer data, or application state to the client backend.",
+      "Never invent repair facts, tool results, approvals, parts, labor, or completed actions.",
+      "Only present backend-dependent facts after the client returns them.",
+      "When the technician interrupts, stop speaking and listen.",
+      "Use brief acknowledgments while backend work is running, without guessing the result.",
+    ].join(" ");
+  }
+
+  return [
+    "You are the spoken interface for ProFixIQ inspection and dictation voice control.",
+    "Delegate every meaningful technician utterance to the client application.",
+    "Do not alter inspection data yourself and do not answer from your own knowledge.",
+    "Stay quiet unless the client provides commentary to speak.",
+    "Never invent inspection findings, measurements, parts, labor, or completed actions.",
+    "When interrupted, stop speaking and listen.",
+  ].join(" ");
+}
+
+export async function POST(request: NextRequest) {
   const startedAt = Date.now();
   const policy = getAIPolicy("openai_realtime_token");
   const access = await requireShopScopedApiAccess();
-  if (!access.ok) {
-    return access.response;
-  }
+  if (!access.ok) return access.response;
+
   const enforcement = enforceAIOperationalPolicy({
     feature: "openai_realtime_token",
     endpoint: "/api/openai/realtime-token",
@@ -82,60 +59,64 @@ export async function GET() {
   });
   if (!enforcement.allowed) {
     return NextResponse.json(
-      { error: "AI token issuance temporarily limited", code: enforcement.code },
+      { error: "AI voice session temporarily limited", code: enforcement.code },
       { status: 429 },
     );
   }
 
+  const apiKey = process.env.OPENAI_API_KEY;
+  const model = getOpenAILiveModel();
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: "Voice service is not configured", code: "realtime_not_configured" },
+      { status: 503 },
+    );
+  }
+
+  let body: LiveSessionRequest;
   try {
-    const apiKey = process.env.OPENAI_API_KEY;
-    const transcriptionModel = getOpenAIRealtimeTranscriptionModel();
+    body = (await request.json()) as LiveSessionRequest;
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid voice session request", code: "live_invalid_request" },
+      { status: 400 },
+    );
+  }
 
-    if (!apiKey) {
-      console.error("[realtime-token] Missing OPENAI_API_KEY");
-      return NextResponse.json(
-        {
-          error: "Voice service is not configured",
-          code: "realtime_not_configured",
-        },
-        { status: 503 },
-      );
-    }
+  const sdp = typeof body.sdp === "string" ? body.sdp.trim() : "";
+  if (!sdp) {
+    return NextResponse.json(
+      { error: "An SDP offer is required", code: "live_missing_sdp" },
+      { status: 400 },
+    );
+  }
+  const surface = getLiveSurface(body.surface);
 
-    const sessionConfig: OpenAIRealtimeSessionConfig = {
-      session: {
-        type: "transcription",
-        audio: {
-          input: {
-            format: {
-              type: "audio/pcm",
-              rate: 24000,
-            },
-            noise_reduction: {
-              type: "near_field",
-            },
-            transcription: {
-              model: transcriptionModel,
-              languages: ["en"],
-              delay: "low",
-            },
-            // gpt-live-transcribe does not support server_vad. The shared
-            // browser transport performs end-of-speech detection and commits
-            // each completed input buffer explicitly.
-            turn_detection: null,
-          },
-        },
-      },
-    };
-
+  try {
     const response = await Promise.race([
-      fetch("https://api.openai.com/v1/realtime/client_secrets", {
+      fetch("https://api.openai.com/v1/live/sessions", {
         method: "POST",
         headers: {
           Authorization: `Bearer ${apiKey}`,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify(sessionConfig),
+        body: JSON.stringify({
+          session: {
+            model,
+            instructions: liveInstructions(surface),
+            audio: {
+              output: {
+                voice: surface === "technician_copilot" ? "vesper" : "marin",
+              },
+            },
+            delegation: { type: "client" },
+            store: false,
+          },
+          transport: {
+            type: "webrtc",
+            sdp,
+          },
+        }),
       }),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("AI request timed out")), policy.timeoutMs),
@@ -143,55 +124,28 @@ export async function GET() {
     ]);
 
     const rawText = await response.text();
-
-    let parsed: unknown;
+    let parsed: unknown = null;
     try {
       parsed = JSON.parse(rawText);
     } catch {
-      console.error("[realtime-token] Invalid JSON from OpenAI", rawText);
-      return NextResponse.json(
-        {
-          error: "Voice service returned an invalid response",
-          code: "realtime_invalid_response",
-        },
-        { status: 502 },
-      );
+      // handled below
     }
 
-    if (!response.ok) {
-      console.error("[realtime-token] OpenAI error", {
+    if (!response.ok || !parsed) {
+      console.error("[live-session] OpenAI session creation failed", {
         status: response.status,
         statusText: response.statusText,
-        body: parsed,
       });
-
       return NextResponse.json(
         {
           error: "Voice service could not start",
-          code: "realtime_session_rejected",
+          code: "live_session_rejected",
           upstreamStatus: response.status,
         },
         { status: 502 },
       );
     }
 
-    const extracted = extractToken(parsed);
-
-    if (!extracted) {
-      console.error("[realtime-token] Unexpected response shape", parsed);
-      return NextResponse.json(
-        {
-          error: "Voice service returned an invalid response",
-          code: "realtime_invalid_response",
-        },
-        { status: 502 },
-      );
-    }
-
-    // Issuing a client secret is not the billable realtime session itself.
-    // Persist it as a zero-cost control-plane ledger event. Preserve the
-    // established synthetic cost in the legacy operational guard until Phase 4
-    // meters the actual realtime session.
     const legacyEstimatedCostUsd = estimateAICostUsd("openai_realtime_token", 1);
     await recordDurableAIUsage({
       feature: "openai_realtime_token",
@@ -199,7 +153,7 @@ export async function GET() {
       shop_id: access.profile.shop_id,
       user_id: access.profile.id,
       provider: "openai",
-      model: transcriptionModel,
+      model,
       modality: "realtime",
       latency_ms: Date.now() - startedAt,
       prompt_tokens: null,
@@ -214,33 +168,26 @@ export async function GET() {
       feature: "openai_realtime_token",
       endpoint: "/api/openai/realtime-token",
       shopId: access.profile.shop_id,
-      model: transcriptionModel,
+      model,
       totalTokens: 1,
       estimatedCostUsd: legacyEstimatedCostUsd,
       status: "success",
       errorCode: null,
     });
 
-    return NextResponse.json(
-      {
-        token: extracted.token,
-        expiresAt: extracted.expiresAt ?? null,
-        transcriptionModel,
-      },
-      {
-        status: 200,
-        headers: { "Cache-Control": "no-store" },
-      },
-    );
-  } catch (err) {
-    const message = err instanceof Error ? err.message : "Unhandled realtime token error";
+    return NextResponse.json(parsed, {
+      status: 201,
+      headers: { "Cache-Control": "no-store" },
+    });
+  } catch (caught) {
+    const message = caught instanceof Error ? caught.message : "Unhandled live session error";
     await recordDurableAIUsage({
       feature: "openai_realtime_token",
       endpoint: "/api/openai/realtime-token",
       shop_id: access.profile.shop_id,
       user_id: access.profile.id,
       provider: "openai",
-      model: getOpenAIRealtimeTranscriptionModel(),
+      model,
       modality: "realtime",
       latency_ms: Date.now() - startedAt,
       prompt_tokens: null,
@@ -248,27 +195,27 @@ export async function GET() {
       total_tokens: null,
       estimated_cost_usd: 0,
       status: "error",
-      error_code: "realtime_token_error",
+      error_code: "live_session_error",
       error_message: message,
     });
     registerAIUsageEvent({
       feature: "openai_realtime_token",
       endpoint: "/api/openai/realtime-token",
       shopId: access.profile.shop_id,
-      model: getOpenAIRealtimeTranscriptionModel(),
+      model,
       totalTokens: null,
       estimatedCostUsd: 0,
       status: "error",
-      errorCode: "realtime_token_error",
+      errorCode: "live_session_error",
     });
-    console.error("[realtime-token] Unhandled error", err);
+
     const timedOut = message === "AI request timed out";
     return NextResponse.json(
       {
         error: timedOut
           ? "Voice service took too long to respond"
           : "Voice service could not start",
-        code: timedOut ? "realtime_upstream_timeout" : "realtime_token_error",
+        code: timedOut ? "realtime_upstream_timeout" : "live_session_error",
       },
       { status: timedOut ? 504 : 500 },
     );
