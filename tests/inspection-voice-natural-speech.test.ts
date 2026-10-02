@@ -36,11 +36,16 @@ describe("inspection voice control: GPT-Live output", () => {
     expect(screen).toContain("if (!isCurrent()) return;");
   });
 
-  it("uses the inspection Live surface rather than the Technician Copilot surface", () => {
+  it("uses the inspection transcription transport rather than the Technician Copilot surface", () => {
     const wrapper = read(
       "features/inspections/lib/inspection/useRealtimeVoice.ts",
     );
-    expect(wrapper).toContain('surface: "inspection"');
+    const transport = read(
+      "features/inspections/lib/inspection/useCostOptimizedInspectionVoice.ts",
+    );
+    expect(wrapper).toContain("useCostOptimizedInspectionVoice");
     expect(wrapper).not.toContain('surface: "technician_copilot"');
+    expect(transport).toContain("/api/openai/inspection-transcription-token");
+    expect(transport).not.toContain('surface: "technician_copilot"');
   });
 });

@@ -21917,9 +21917,9 @@ export type Database = {
           stripe_subscription_status: string | null
           stripe_trial_end: string | null
           subscription_package: string | null
-          technician_copilot_licensed_seats: number
           supplies_percent: number | null
           tax_rate: number | null
+          technician_copilot_licensed_seats: number
           timezone: string | null
           updated_at: string | null
           use_ai: boolean | null
@@ -22004,9 +22004,9 @@ export type Database = {
           stripe_subscription_status?: string | null
           stripe_trial_end?: string | null
           subscription_package?: string | null
-          technician_copilot_licensed_seats?: number
           supplies_percent?: number | null
           tax_rate?: number | null
+          technician_copilot_licensed_seats?: number
           timezone?: string | null
           updated_at?: string | null
           use_ai?: boolean | null
@@ -22091,9 +22091,9 @@ export type Database = {
           stripe_subscription_status?: string | null
           stripe_trial_end?: string | null
           subscription_package?: string | null
-          technician_copilot_licensed_seats?: number
           supplies_percent?: number | null
           tax_rate?: number | null
+          technician_copilot_licensed_seats?: number
           timezone?: string | null
           updated_at?: string | null
           use_ai?: boolean | null
@@ -23318,6 +23318,59 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      technician_copilot_seat_assignments: {
+        Row: {
+          active: boolean
+          assigned_at: string
+          assigned_by: string | null
+          profile_id: string
+          shop_id: string
+        }
+        Insert: {
+          active?: boolean
+          assigned_at?: string
+          assigned_by?: string | null
+          profile_id: string
+          shop_id: string
+        }
+        Update: {
+          active?: boolean
+          assigned_at?: string
+          assigned_by?: string | null
+          profile_id?: string
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "technician_copilot_seat_assignments_assigned_by_fkey"
+            columns: ["assigned_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technician_copilot_seat_assignments_profile_id_fkey"
+            columns: ["profile_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technician_copilot_seat_assignments_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "technician_copilot_seat_assignments_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
         ]
@@ -26633,59 +26686,6 @@ export type Database = {
             columns: ["work_order_line_id"]
             isOneToOne: false
             referencedRelation: "work_order_lines"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      technician_copilot_seat_assignments: {
-        Row: {
-          active: boolean
-          assigned_at: string
-          assigned_by: string | null
-          profile_id: string
-          shop_id: string
-        }
-        Insert: {
-          active?: boolean
-          assigned_at?: string
-          assigned_by?: string | null
-          profile_id: string
-          shop_id: string
-        }
-        Update: {
-          active?: boolean
-          assigned_at?: string
-          assigned_by?: string | null
-          profile_id?: string
-          shop_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "technician_copilot_seat_assignments_assigned_by_fkey"
-            columns: ["assigned_by"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "technician_copilot_seat_assignments_profile_id_fkey"
-            columns: ["profile_id"]
-            isOneToOne: false
-            referencedRelation: "profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "technician_copilot_seat_assignments_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shop_public_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "technician_copilot_seat_assignments_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
         ]
@@ -31586,24 +31586,6 @@ export type Database = {
         Returns: undefined
       }
       set_authenticated: { Args: { uid: string }; Returns: undefined }
-      settle_live_ai_usage_ledger: {
-        Args: {
-          p_actual_cost_usd: number
-          p_duration_seconds: number
-          p_session_id: string
-          p_shop_id: string
-          p_user_id: string
-        }
-        Returns: Json
-      }
-      set_technician_copilot_licensed_seats: {
-        Args: { p_seats: number; p_shop_id: string }
-        Returns: boolean
-      }
-      technician_copilot_has_paid_access: {
-        Args: { p_profile_id: string; p_shop_id: string }
-        Returns: boolean
-      }
       set_current_shop_id: { Args: { p_shop_id: string }; Returns: undefined }
       set_last_active_now: { Args: never; Returns: undefined }
       set_part_request_status: {
@@ -31622,6 +31604,20 @@ export type Database = {
           p_capability_key: string
           p_effect: string
           p_target_profile_id: string
+        }
+        Returns: Json
+      }
+      set_technician_copilot_licensed_seats: {
+        Args: { p_seats: number; p_shop_id: string }
+        Returns: boolean
+      }
+      settle_live_ai_usage_ledger: {
+        Args: {
+          p_actual_cost_usd: number
+          p_duration_seconds: number
+          p_session_id: string
+          p_shop_id: string
+          p_user_id: string
         }
         Returns: Json
       }
@@ -32099,6 +32095,10 @@ export type Database = {
       sync_work_order_line_flat_rate_credits: {
         Args: { p_line_id: string }
         Returns: undefined
+      }
+      technician_copilot_has_paid_access: {
+        Args: { p_profile_id: string; p_shop_id: string }
+        Returns: boolean
       }
       transition_legacy_quote_send_atomic: {
         Args: {

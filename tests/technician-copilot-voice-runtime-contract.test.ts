@@ -86,8 +86,10 @@ describe("Technician CoPilot GPT-Live voice bridge boundaries", () => {
     expect(technicianRealtimeSource).toContain(
       'from "@/features/shared/voice/useRealtimeTranscription"',
     );
+    // Inspection dictation intentionally uses the cost-optimized transcription
+    // transport rather than the shared conversational GPT-Live hook.
     expect(inspectionRealtimeSource).toContain(
-      'from "@/features/shared/voice/useRealtimeTranscription"',
+      "useCostOptimizedInspectionVoice",
     );
     expect(sharedRealtimeTransportSource).toContain(
       "export function useRealtimeTranscription(",
@@ -102,7 +104,6 @@ describe("Technician CoPilot GPT-Live voice bridge boundaries", () => {
     expect(technicianRealtimeSource).toContain(
       'surface: "technician_copilot"',
     );
-    expect(inspectionRealtimeSource).toContain('surface: "inspection"');
     expect(technicianRealtimeSource).not.toContain("new RTCPeerConnection(");
     expect(inspectionRealtimeSource).not.toContain("new RTCPeerConnection(");
   });
@@ -116,13 +117,12 @@ describe("Technician CoPilot GPT-Live voice bridge boundaries", () => {
   });
 
   it("reserves bounded GPT-Live session spend in the existing operational budget", () => {
-    expect(liveRouteSource).toContain("LIVE_SESSION_RESERVED_COST_USD");
+    expect(liveRouteSource).toContain("estimateOpenAILiveCostUsd(");
+    expect(liveRouteSource).toContain("LIVE_SESSION_MAX_SECONDS");
     expect(liveRouteSource).toContain(
       'operation: "live_session_reservation"',
     );
-    expect(liveRouteSource).toContain(
-      "estimatedCostUsd: LIVE_SESSION_RESERVED_COST_USD",
-    );
+    expect(liveRouteSource).toContain("estimatedCostUsd: reservedCostUsd");
   });
 
   it("requires a paid assigned Technician Copilot seat outside the tester override", () => {
