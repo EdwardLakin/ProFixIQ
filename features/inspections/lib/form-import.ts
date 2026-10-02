@@ -22,6 +22,11 @@ export type InspectionFormItem = {
   item: string;
   unit?: string | null;
   fieldType?: InspectionFormFieldType;
+  /**
+   * How the row was printed, when the importer turned a reading into a
+   * pass/fail check because a grid captures it. Turning the grid off restores it.
+   */
+  printedAs?: { fieldType: InspectionFormFieldType; unit: string | null };
 };
 
 /**
@@ -41,6 +46,11 @@ export type InspectionFormSection = {
   title: string;
   items: InspectionFormItem[];
   generatedGrid?: GeneratedGridMeta;
+  /**
+   * The section as printed, kept when the importer rewrote it (an air-brake
+   * checklist switched to hydraulic) so switching back restores it.
+   */
+  adaptedFrom?: InspectionFormSection;
 };
 
 /**
@@ -217,10 +227,15 @@ export function normalizeInspectionFormSections(
       const fieldType = normalizeInspectionFormFieldType(
         item.fieldType ?? item.field_type ?? item.kind,
       );
+      const printed = record(item.printedAs);
+      const printedType = normalizeInspectionFormFieldType(printed.fieldType);
       items.push({
         item: label,
         unit: nullableText(item.unit),
         ...(fieldType ? { fieldType } : {}),
+        ...(printedType
+          ? { printedAs: { fieldType: printedType, unit: nullableText(printed.unit) } }
+          : {}),
       });
     }
     const grid = record(section.generatedGrid);
@@ -235,11 +250,16 @@ export function normalizeInspectionFormSections(
               : {}),
           }
         : null;
+    const adaptedFrom =
+      Object.keys(record(section.adaptedFrom)).length > 0
+        ? normalizeInspectionFormSections([section.adaptedFrom])[0]
+        : undefined;
     if (items.length) {
       sections.push({
         title,
         items,
         ...(generatedGrid ? { generatedGrid } : {}),
+        ...(adaptedFrom ? { adaptedFrom } : {}),
       });
     }
   }
