@@ -21854,6 +21854,8 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           default_stock_location_id: string | null
+          demo_prospect_profile_id: string | null
+          demo_shop_archived_at: string | null
           diagnostic_fee: number | null
           email: string | null
           email_on_complete: boolean | null
@@ -21938,6 +21940,8 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           default_stock_location_id?: string | null
+          demo_prospect_profile_id?: string | null
+          demo_shop_archived_at?: string | null
           diagnostic_fee?: number | null
           email?: string | null
           email_on_complete?: boolean | null
@@ -22022,6 +22026,8 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           default_stock_location_id?: string | null
+          demo_prospect_profile_id?: string | null
+          demo_shop_archived_at?: string | null
           diagnostic_fee?: number | null
           email?: string | null
           email_on_complete?: boolean | null
@@ -22091,6 +22097,13 @@ export type Database = {
           user_limit?: number | null
         }
         Relationships: [
+          {
+            foreignKeyName: "shops_demo_prospect_profile_id_fkey"
+            columns: ["demo_prospect_profile_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "shops_owner_fk"
             columns: ["owner_id"]

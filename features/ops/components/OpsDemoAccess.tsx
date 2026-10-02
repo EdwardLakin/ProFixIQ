@@ -30,9 +30,11 @@ function formatDateTime(value: string | null): string {
 }
 
 function stateTone(state: DemoProspect["state"]): string {
-  return state === "active"
-    ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
-    : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-muted)]";
+  if (state === "active") return "border-emerald-500/40 bg-emerald-500/10 text-emerald-300";
+  if (state === "archived") {
+    return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-muted)]";
+  }
+  return "border-amber-500/40 bg-amber-500/10 text-amber-300";
 }
 
 async function postJson(url: string, body: unknown): Promise<{ ok: boolean; error?: string }> {
@@ -559,9 +561,11 @@ export default function OpsDemoAccess({
           Temporary prospect access — {shop.shopDisplayName}
         </h1>
         <p className="mt-2 max-w-2xl text-sm text-[color:var(--theme-text-secondary)]">
-          Issues and revokes temporary owner accounts scoped to the one
-          configured Demo Shop. Does not create shops or manage any other
-          tenant.
+          Issues and revokes temporary owner accounts, each cloned into their
+          own isolated shop from the {shop.shopDisplayName} template so
+          prospects never see each other&apos;s data. A shop is archived
+          (never deleted) 24 hours after its access expires; extending a
+          prospect past that point restores their shop automatically.
         </p>
       </section>
 
@@ -609,6 +613,9 @@ export default function OpsDemoAccess({
                     <span>Created {formatDateTime(prospect.createdAt)}</span>
                     <span>Last sign-in {formatDateTime(prospect.lastSignInAt)}</span>
                     <span>Expires {formatDateTime(prospect.expiresAt)}</span>
+                    {prospect.archivedAt ? (
+                      <span>Archived {formatDateTime(prospect.archivedAt)}</span>
+                    ) : null}
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-start gap-2 sm:items-end">

@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 const DEMO_SHOP_ID = "10101010-1010-4101-8101-101010101010";
 const OTHER_SHOP_ID = "20202020-2020-4202-8202-202020202020";
 const PROSPECT_PROFILE_ID = "30303030-3030-4303-8303-303030303030";
+const PROSPECT_SHOP_ID = "40404040-4040-4404-8404-404040404040";
 
 type MockResult = { data?: unknown; error?: unknown };
 
@@ -98,9 +99,17 @@ describe("computeDemoAccessState", () => {
     const future = new Date(Date.now() + 60_000).toISOString();
     const past = new Date(Date.now() - 60_000).toISOString();
 
-    expect(computeDemoAccessState(future)).toBe("active");
-    expect(computeDemoAccessState(past)).toBe("expired");
-    expect(computeDemoAccessState(new Date().toISOString())).toBe("expired");
+    expect(computeDemoAccessState(future, null)).toBe("active");
+    expect(computeDemoAccessState(past, null)).toBe("expired");
+    expect(computeDemoAccessState(new Date().toISOString(), null)).toBe("expired");
+  });
+
+  it("is archived whenever an archive timestamp is present, regardless of expiresAt", async () => {
+    const { computeDemoAccessState } = await import("@/features/ops/server/demoAccess");
+    const future = new Date(Date.now() + 60_000).toISOString();
+    const archivedAt = new Date().toISOString();
+
+    expect(computeDemoAccessState(future, archivedAt)).toBe("archived");
   });
 });
 
@@ -163,14 +172,19 @@ describe("resolveDemoShopOrFail — hard safety boundary", () => {
 });
 
 describe("extendDemoProspect / revokeDemoProspect — profile ownership boundary", () => {
+  // Each prospect now owns their own cloned shop, so extend/revoke resolve
+  // it via resolveProspectShopId(): a "profiles" select (id, shop_id) for
+  // the prospect, then a "shops" select confirming demo_prospect_profile_id
+  // = that profile and billing_entitlement_override = 'internal_demo' --
+  // never resolveDemoShopOrFail()/the template shop.
   it("extends demo_access_expires_at for a genuine tracked prospect", async () => {
     createAdminSupabaseMock.mockReturnValue(
       createAdminMock({
-        shops: [{ data: internalDemoShopRow, error: null }],
         profiles: [
-          { data: { id: PROSPECT_PROFILE_ID }, error: null },
+          { data: { id: PROSPECT_PROFILE_ID, shop_id: PROSPECT_SHOP_ID }, error: null },
           { data: null, error: null },
         ],
+        shops: [{ data: { id: PROSPECT_SHOP_ID, demo_shop_archived_at: null }, error: null }],
       }),
     );
 
@@ -182,12 +196,35 @@ describe("extendDemoProspect / revokeDemoProspect — profile ownership boundary
     ).resolves.toEqual({ expiresAt: future });
   });
 
-  it("rejects extending a profileId that is not a tracked prospect of the configured demo shop", async () => {
+  it("un-archives the prospect's shop when extending past an already-archived expiry", async () => {
+    const admin = createAdminMock({
+      profiles: [
+        { data: { id: PROSPECT_PROFILE_ID, shop_id: PROSPECT_SHOP_ID }, error: null },
+        { data: null, error: null },
+      ],
+      shops: [
+        { data: { id: PROSPECT_SHOP_ID, demo_shop_archived_at: "2026-01-01T00:00:00.000Z" }, error: null },
+        { data: null, error: null },
+      ],
+    });
+    createAdminSupabaseMock.mockReturnValue(admin);
+
+    const { extendDemoProspect } = await import("@/features/ops/server/demoAccess");
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+
+    await expect(
+      extendDemoProspect({ profileId: PROSPECT_PROFILE_ID, expiresAt: future }),
+    ).resolves.toEqual({ expiresAt: future });
+    // Two "shops" reads/writes: resolveProspectShopId's select, then the
+    // archived_at-clearing update.
+    expect(admin.from).toHaveBeenCalledWith("shops");
+  });
+
+  it("rejects extending a profileId that is not a tracked prospect", async () => {
     createAdminSupabaseMock.mockReturnValue(
       createAdminMock({
-        shops: [{ data: internalDemoShopRow, error: null }],
-        // The verification select finds nothing: either a different shop,
-        // a non-owner role, or a permanent (non-demo) account.
+        // The profile verification select finds nothing: either a
+        // non-owner role or a permanent (non-demo) account.
         profiles: [{ data: null, error: null }],
       }),
     );
@@ -200,10 +237,26 @@ describe("extendDemoProspect / revokeDemoProspect — profile ownership boundary
     ).rejects.toThrow("This account is not a tracked Demo Shop prospect.");
   });
 
-  it("rejects extending to a non-future expiration", async () => {
+  it("rejects extending when the profile's shop is no longer a tracked demo prospect shop", async () => {
     createAdminSupabaseMock.mockReturnValue(
-      createAdminMock({ shops: [{ data: internalDemoShopRow, error: null }] }),
+      createAdminMock({
+        profiles: [{ data: { id: PROSPECT_PROFILE_ID, shop_id: PROSPECT_SHOP_ID }, error: null }],
+        // e.g. demo_prospect_profile_id no longer matches, or the shop's
+        // internal_demo override was removed.
+        shops: [{ data: null, error: null }],
+      }),
     );
+
+    const { extendDemoProspect } = await import("@/features/ops/server/demoAccess");
+    const future = new Date(Date.now() + 86_400_000).toISOString();
+
+    await expect(
+      extendDemoProspect({ profileId: PROSPECT_PROFILE_ID, expiresAt: future }),
+    ).rejects.toThrow("This account is not a tracked Demo Shop prospect.");
+  });
+
+  it("rejects extending to a non-future expiration", async () => {
+    createAdminSupabaseMock.mockReturnValue(createAdminMock({}));
 
     const { extendDemoProspect } = await import("@/features/ops/server/demoAccess");
     const past = new Date(Date.now() - 60_000).toISOString();
@@ -215,11 +268,11 @@ describe("extendDemoProspect / revokeDemoProspect — profile ownership boundary
 
   it("revokes by setting demo_access_expires_at to now, without deleting the user", async () => {
     const admin = createAdminMock({
-      shops: [{ data: internalDemoShopRow, error: null }],
       profiles: [
-        { data: { id: PROSPECT_PROFILE_ID }, error: null },
+        { data: { id: PROSPECT_PROFILE_ID, shop_id: PROSPECT_SHOP_ID }, error: null },
         { data: null, error: null },
       ],
+      shops: [{ data: { id: PROSPECT_SHOP_ID, demo_shop_archived_at: null }, error: null }],
     });
     createAdminSupabaseMock.mockReturnValue(admin);
 
@@ -234,10 +287,9 @@ describe("extendDemoProspect / revokeDemoProspect — profile ownership boundary
     expect(admin.auth.admin.deleteUser).not.toHaveBeenCalled();
   });
 
-  it("rejects revoking a profileId that is not a tracked prospect of the configured demo shop", async () => {
+  it("rejects revoking a profileId that is not a tracked prospect", async () => {
     createAdminSupabaseMock.mockReturnValue(
       createAdminMock({
-        shops: [{ data: internalDemoShopRow, error: null }],
         profiles: [{ data: null, error: null }],
       }),
     );
@@ -279,19 +331,74 @@ describe("demoAccess.ts — provisioning contract", () => {
   it("emails the prospect their real temporary password, unlike the internal staff invite flow", () => {
     const createFn = source.slice(
       source.indexOf("export async function createDemoProspect"),
-      source.indexOf("async function requireDemoProspectProfile"),
+      source.indexOf("async function resolveProspectShopId"),
     );
     expect(createFn).toContain("tempPassword,");
     expect(createFn).not.toContain("tempPassword: null");
   });
 
   it("revoke never deletes the prospect's auth user", () => {
-    const revokeFn = source.slice(source.indexOf("export async function revokeDemoProspect"));
+    const revokeFn = source.slice(
+      source.indexOf("export async function revokeDemoProspect"),
+      source.indexOf("export async function archiveExpiredDemoProspects"),
+    );
     expect(revokeFn).not.toContain("deleteUser");
   });
 
   it("sets demo_access_expires_at from validated input on create and extend", () => {
     expect(source).toContain("demo_access_expires_at: input.expiresAt");
+  });
+
+  it("clones every prospect into their own shop instead of sharing the template", () => {
+    expect(source).toContain("cloneDemoShopForProspect");
+    expect(source).toContain("demo_prospect_profile_id: newUserId");
+    expect(source).toContain("seedDemoShopFixtures");
+  });
+
+  it("the cloned-shop field allow-list never includes Stripe identifiers or other cross-tenant references", () => {
+    const listStart = source.indexOf("const CLONED_SHOP_DISPLAY_FIELDS = [");
+    const listEnd = source.indexOf("] as const;", listStart);
+    const list = source.slice(listStart, listEnd);
+
+    for (const forbidden of [
+      "stripe_account_id",
+      "stripe_customer_id",
+      "stripe_subscription_id",
+      "stripe_checkout_session_id",
+      "organization_id",
+      "default_stock_location_id",
+      "owner_pin",
+      '"slug"',
+      "owner_id",
+    ]) {
+      expect(list).not.toContain(forbidden);
+    }
+    // stripe_pricing_model is a model label, not an external identifier --
+    // it's expected and safe to clone.
+    expect(list).toContain("stripe_pricing_model");
+  });
+
+  it("rollback clears fixture tables (deepest dependency first) before deleting the cloned shop", () => {
+    const rollbackFn = source.slice(
+      source.indexOf("async function rollbackCreatedProspect"),
+      source.indexOf("async function cloneDemoShopForProspect"),
+    );
+    const workOrderLinesIdx = rollbackFn.indexOf('"work_order_lines"');
+    const workOrdersIdx = rollbackFn.indexOf('"work_orders"');
+    const customersIdx = rollbackFn.indexOf('"customers"');
+    const shopsDeleteIdx = rollbackFn.indexOf('.from("shops").delete()');
+
+    expect(workOrderLinesIdx).toBeGreaterThan(-1);
+    expect(shopsDeleteIdx).toBeGreaterThan(-1);
+    expect(workOrderLinesIdx).toBeLessThan(workOrdersIdx);
+    expect(workOrdersIdx).toBeLessThan(customersIdx);
+    expect(customersIdx).toBeLessThan(shopsDeleteIdx);
+  });
+
+  it("archiving only ever marks shops, never deletes prospect data", () => {
+    const archiveFn = source.slice(source.indexOf("export async function archiveExpiredDemoProspects"));
+    expect(archiveFn).toContain("demo_shop_archived_at: new Date().toISOString()");
+    expect(archiveFn).not.toContain(".delete(");
   });
 });
 
