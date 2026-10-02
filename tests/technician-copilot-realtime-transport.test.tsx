@@ -177,12 +177,20 @@ describe("Technician CoPilot GPT-Live WebRTC transport", () => {
             target: "client",
           },
         });
-        vi.advanceTimersByTime(200);
+        vi.advanceTimersByTime(350);
       });
 
-      expect(onTranscript).toHaveBeenCalledWith("Rear U-joint has play.");
+      expect(onTranscript).toHaveBeenCalledWith(
+        "Rear U-joint has play.",
+        "item_delegate_1",
+      );
 
-      expect(result.current.speakText("Documented rear U-joint play.")).toBe(true);
+      expect(
+        result.current.speakText(
+          "Documented rear U-joint play.",
+          "item_delegate_1",
+        ),
+      ).toBe(true);
       const sent = channels[0]?.send.mock.calls.map(([payload]) =>
         JSON.parse(String(payload)) as Record<string, unknown>,
       );
