@@ -8,7 +8,10 @@ const realtime = vi.hoisted(() => ({
   resume: vi.fn(() => true),
   speakText: vi.fn(() => true),
   stop: vi.fn(),
-  onFinal: null as null | ((text: string, delegationId?: string) => void),
+  onFinal: null as null | ((
+    text: string,
+    delegationId?: string,
+  ) => void | Promise<unknown>),
   onStateChange: null as null | ((
     state: "idle" | "connecting" | "listening" | "error",
   ) => void),
@@ -18,7 +21,10 @@ const realtime = vi.hoisted(() => ({
 
 vi.mock("@/features/copilot/technician/voice/useTechnicianRealtimeVoice", () => ({
   useTechnicianRealtimeVoice: (
-    onFinal: (text: string, delegationId?: string) => void,
+    onFinal: (
+      text: string,
+      delegationId?: string,
+    ) => void | Promise<unknown>,
     _wake: (text: string) => string | null,
     options?: {
       onStateChange?: (
@@ -235,10 +241,10 @@ describe("Technician Copilot GPT-Live interaction gateway", () => {
     });
     await waitFor(() => expect(realtime.speakText).toHaveBeenCalled());
 
-    // The gateway immediately returns to listening after handing verified text
-    // to GPT-Live, so ordinary acoustic barge-in is handled by Live itself.
-    // stopAudio remains wired for explicit interruption while the UI observes
-    // a speaking phase or fallback speech.
+    expect(result.current.phase).toBe("speaking");
+    act(() => result.current.interrupt());
+    expect(realtime.stopAudio).toHaveBeenCalledTimes(1);
+    expect(result.current.phase).toBe("listening");
     expect(result.current.active).toBe(true);
   });
 
