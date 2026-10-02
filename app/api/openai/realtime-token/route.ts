@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import {
+  requireTechnicianCopilotAccess,
+  TechnicianCopilotAccessError,
+} from "@/features/copilot/technician/server/auth";
 import { getOpenAILiveModel } from "@/features/shared/lib/openai-realtime-models";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import {
   enforceAIOperationalPolicy,
-  estimateAICostUsd,
   registerAIUsageEvent,
 } from "@/features/shared/lib/server/ai-ops-guard";
 
@@ -19,9 +22,26 @@ type LiveSessionRequest = {
   surface?: unknown;
 };
 
-function getLiveSurface(value: unknown): LiveSurface {
-  return value === "technician_copilot" ? "technician_copilot" : "inspection";
+function getLiveSurface(value: unknown): LiveSurface | null {
+  if (value === "technician_copilot" || value === "inspection") return value;
+  return null;
 }
+
+function envNumber(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : fallback;
+}
+
+// Conservative reservation for the bounded Live session. The browser transport
+// caps streaming at ten minutes by default, so charge a configurable maximum
+// session proxy up-front in the existing monthly operational budget instead of
+// treating every Live connection as the old $0.001 token-issuance event.
+const LIVE_SESSION_RESERVED_COST_USD = envNumber(
+  "AI_LIVE_SESSION_RESERVED_COST_USD",
+  0.5,
+);
 
 function liveInstructions(surface: LiveSurface): string {
   if (surface === "technician_copilot") {
@@ -49,48 +69,6 @@ function liveInstructions(surface: LiveSurface): string {
 export async function POST(request: NextRequest) {
   const startedAt = Date.now();
   const policy = getAIPolicy("openai_realtime_token");
-  const access = await requireShopScopedApiAccess();
-  if (!access.ok) return access.response;
-
-  const enforcement = enforceAIOperationalPolicy({
-    feature: "openai_realtime_token",
-    endpoint: "/api/openai/realtime-token",
-    shopId: access.profile.shop_id,
-  });
-  if (!enforcement.allowed) {
-    return NextResponse.json(
-      { error: "AI voice session temporarily limited", code: enforcement.code },
-      { status: 429 },
-    );
-  }
-
-  const apiKey = process.env.OPENAI_API_KEY;
-  const model = getOpenAILiveModel();
-  if (!apiKey) {
-    return NextResponse.json(
-      { error: "Voice service is not configured", code: "realtime_not_configured" },
-      { status: 503 },
-    );
-  }
-
-  let body: LiveSessionRequest;
-  try {
-    body = (await request.json()) as LiveSessionRequest;
-  } catch {
-    return NextResponse.json(
-      { error: "Invalid voice session request", code: "live_invalid_request" },
-      { status: 400 },
-    );
-  }
-
-  const sdp = typeof body.sdp === "string" ? body.sdp.trim() : "";
-  if (!sdp) {
-    return NextResponse.json(
-      { error: "An SDP offer is required", code: "live_missing_sdp" },
-      { status: 400 },
-    );
-  }
-  const surface = getLiveSurface(body.surface);
 
   try {
     const response = await Promise.race([
@@ -146,12 +124,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const legacyEstimatedCostUsd = estimateAICostUsd("openai_realtime_token", 1);
     await recordDurableAIUsage({
       feature: "openai_realtime_token",
       endpoint: "/api/openai/realtime-token",
-      shop_id: access.profile.shop_id,
-      user_id: access.profile.id,
+      shop_id: shopId,
+      user_id: userId,
       provider: "openai",
       model,
       modality: "realtime",
@@ -159,18 +136,20 @@ export async function POST(request: NextRequest) {
       prompt_tokens: null,
       completion_tokens: null,
       total_tokens: null,
-      estimated_cost_usd: 0,
+      duration_seconds: 10 * 60,
+      estimated_cost_usd: LIVE_SESSION_RESERVED_COST_USD,
       status: "success",
       error_code: null,
       error_message: null,
+      operation: "live_session_reservation",
     });
     registerAIUsageEvent({
       feature: "openai_realtime_token",
       endpoint: "/api/openai/realtime-token",
-      shopId: access.profile.shop_id,
+      shopId: shopId,
       model,
-      totalTokens: 1,
-      estimatedCostUsd: legacyEstimatedCostUsd,
+      totalTokens: null,
+      estimatedCostUsd: LIVE_SESSION_RESERVED_COST_USD,
       status: "success",
       errorCode: null,
     });
@@ -184,8 +163,8 @@ export async function POST(request: NextRequest) {
     await recordDurableAIUsage({
       feature: "openai_realtime_token",
       endpoint: "/api/openai/realtime-token",
-      shop_id: access.profile.shop_id,
-      user_id: access.profile.id,
+      shop_id: shopId,
+      user_id: userId,
       provider: "openai",
       model,
       modality: "realtime",
@@ -197,11 +176,12 @@ export async function POST(request: NextRequest) {
       status: "error",
       error_code: "live_session_error",
       error_message: message,
+      operation: "live_session_creation",
     });
     registerAIUsageEvent({
       feature: "openai_realtime_token",
       endpoint: "/api/openai/realtime-token",
-      shopId: access.profile.shop_id,
+      shopId: shopId,
       model,
       totalTokens: null,
       estimatedCostUsd: 0,
