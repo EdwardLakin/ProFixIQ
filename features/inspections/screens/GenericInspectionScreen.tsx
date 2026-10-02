@@ -597,44 +597,6 @@ function speakLocal(text: string, onDone?: () => void): void {
   }
 }
 
-const NATURAL_SPEECH_TIMEOUT_MS = 20_000;
-
-/**
- * Fetches a natural-sounding spoken rendering of `text` from the shared
- * neural voice endpoint — the same gpt-4o-mini-tts "marin" voice the
- * Technician CoPilot uses (see features/shared/lib/server/naturalSpeech.ts).
- * Deliberately does not touch the mic/voice session at all — the caller
- * (speak()) only mutes it once this resolves and there's actual audio ready
- * to play, so a technician's commands aren't silently dropped for the
- * whole round trip. Returns null on any failure so the caller falls back to
- * speakLocal rather than staying silent.
- */
-async function fetchNaturalSpeechAudio(text: string): Promise<ArrayBuffer | null> {
-  const controller = new AbortController();
-  const timeout = window.setTimeout(
-    () => controller.abort(),
-    NATURAL_SPEECH_TIMEOUT_MS,
-  );
-  try {
-    const response = await fetch("/api/inspections/speech", {
-      method: "POST",
-      cache: "no-store",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-      signal: controller.signal,
-    });
-    if (!response.ok) return null;
-    const audio = await response.arrayBuffer();
-    if (audio.byteLength === 0) return null;
-    return audio;
-  } catch {
-    return null;
-  } finally {
-    window.clearTimeout(timeout);
-  }
-}
-
 /* ---------------------- section picker for strict_context (NO FOCUS) ---------------------- */
 
 function normalizeForMatch(s: string): string {
@@ -2410,82 +2372,32 @@ type SmartMatchRow = {
     },
   );
 
-  // Bumped on every voice.stop() so a speak() whose natural-speech fetch is
-  // still in flight can tell its session was torn down meanwhile (Stop
-  // clicked, or a fresh voice.start() begun) and skip resuming/falling back
-  // into a session that no longer exists.
+  // Bumped on every voice.stop() so stale feedback from an older session can
+  // never be spoken into a newly-started Live conversation.
   const voiceGenerationRef = useRef(0);
   const stopVoice = (): void => {
     voiceGenerationRef.current += 1;
     voice.stop();
   };
 
-  /**
-   * Speaks feedback with the natural neural voice (fetched first, with the
-   * mic left live so voice commands during the up-to-20s round trip aren't
-   * silently dropped), falling back to the flat device voice only if that
-   * fails. Either way, playback goes through the shared Realtime
-   * transport's own audio graph (see
-   * features/shared/voice/useRealtimeTranscription.ts) or the browser's
-   * speechSynthesis. The mic is muted only right before something is
-   * actually about to play, and unmuted once it finishes — the same
-   * self-hearing guard the Technician CoPilot's voice bridge relies on —
-   * and never touched at all if the voice session was stopped while the
-   * fetch was pending, so a technician who hits Stop doesn't hear delayed
-   * feedback from a session that's already gone.
-   */
+  // Voice feedback now stays inside the active GPT-Live session. The browser
+  // voice is only an emergency fallback if the Live data channel cannot accept
+  // the verified inspection feedback.
   const speakSeqRef = useRef(0);
   const speak = (text: string): void => {
     const generation = voiceGenerationRef.current;
-    // Latest reply wins: an older reply that finishes after a newer one has
-    // started must not unmute the mic underneath it.
     const seq = (speakSeqRef.current += 1);
     const isCurrent = (): boolean =>
       voiceGenerationRef.current === generation && speakSeqRef.current === seq;
+    if (!isCurrent()) return;
 
-    void (async () => {
-      const audio = await fetchNaturalSpeechAudio(text);
-      if (!isCurrent()) return;
+    const sentToLive = voice.speakText?.(text) ?? false;
+    if (sentToLive) return;
 
-      if (audio && typeof voice.playAudio === "function") {
-        const paused = voice.pause();
-        if (paused) {
-          let timer: number | undefined;
-          let timedOut = false;
-          try {
-            await Promise.race([
-              voice.playAudio(audio),
-              new Promise<never>((_, reject) => {
-                timer = window.setTimeout(() => {
-                  timedOut = true;
-                  reject(new Error("playback timed out"));
-                }, SPEECH_PLAYBACK_MAX_MS);
-              }),
-            ]);
-            if (isCurrent()) voice.resume();
-            return;
-          } catch {
-            // A timeout means playback hung: cut it and hand the mic back
-            // rather than layering a second voice on top. Any other failure
-            // falls through to the device-voice fallback below.
-            voice.stopAudio?.();
-            if (!isCurrent()) return;
-            if (timedOut) {
-              voice.resume();
-              return;
-            }
-          } finally {
-            if (timer !== undefined) window.clearTimeout(timer);
-          }
-        }
-      }
-
-      if (!isCurrent()) return;
-      const paused = voice.pause();
-      speakLocal(text, () => {
-        if (paused && isCurrent()) voice.resume();
-      });
-    })();
+    const paused = voice.pause();
+    speakLocal(text, () => {
+      if (paused && isCurrent()) voice.resume();
+    });
   };
 
   const startListening = async (): Promise<void> => {
