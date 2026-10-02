@@ -214,6 +214,56 @@ describe("Technician CoPilot GPT-Live WebRTC transport", () => {
     }
   });
 
+  it("uses only the latest input turn for a delegation and excludes earlier nondelegated speech", async () => {
+    vi.useFakeTimers();
+    try {
+      const onTranscript = vi.fn();
+      const { unmount } = await startVoice(onTranscript);
+
+      act(() => {
+        channels[0]?.emit({
+          type: "session.input_transcript.delta",
+          delta: "Good morning.",
+          end_ms: 300,
+        });
+        channels[0]?.emit({
+          type: "session.input_transcript.done",
+          transcript: "Good morning.",
+          end_ms: 300,
+        });
+        channels[0]?.emit({
+          type: "session.input_transcript.delta",
+          delta: "Open the rear brake inspection.",
+          end_ms: 1100,
+        });
+        channels[0]?.emit({
+          type: "session.input_transcript.done",
+          transcript: "Open the rear brake inspection.",
+          end_ms: 1100,
+        });
+        channels[0]?.emit({
+          type: "session.delegation.created",
+          offset_ms: 1150,
+          delegation: {
+            id: "item_delegate_2",
+            type: "delegation",
+            target: "client",
+          },
+        });
+        vi.advanceTimersByTime(350);
+      });
+
+      expect(onTranscript).toHaveBeenCalledTimes(1);
+      expect(onTranscript).toHaveBeenCalledWith(
+        "Open the rear brake inspection.",
+        "item_delegate_2",
+      );
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("mutes and resumes the microphone without ending the Live session", async () => {
     const { result, track, unmount } = await startVoice();
 
