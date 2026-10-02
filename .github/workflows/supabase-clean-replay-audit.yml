@@ -448,6 +448,20 @@ jobs:
             -f tests/security/seat-limit-constraint-null-override.runtime.sql \
             2>&1 | tee seat-limit-constraint-null-override-runtime.log
 
+      - name: Execute demo prospect shop isolation integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/demo-prospect-shop-isolation.runtime.sql \
+            2>&1 | tee demo-prospect-shop-isolation-runtime.log
+
       - name: Execute Mobile handoff assignment compatibility integration
         shell: bash
         env:
@@ -799,6 +813,7 @@ jobs:
             demo-shop-seat-limit-exemption-runtime.log
             package-aware-seat-limits-runtime.log
             seat-limit-constraint-null-override-runtime.log
+            demo-prospect-shop-isolation-runtime.log
             mobile-handoff-assignment-compatibility-runtime.log
             p0-005-ai-route-governance-runtime.log
             p0-006-stripe-identity-runtime.log

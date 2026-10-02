@@ -22,6 +22,7 @@ type Page = { data?: ShopRow[]; error?: { message: string } | null };
 
 type QueryNode = {
   select: (columns: string) => QueryNode;
+  is: (column: string, value: null) => QueryNode;
   order: (column: string, opts?: { ascending?: boolean }) => QueryNode;
   limit: (count: number) => QueryNode;
   gt: (column: string, value: string) => QueryNode;
@@ -37,6 +38,7 @@ function createShopsQuery(pages: Page[]): QueryNode {
     const page = pages[index] ?? { data: [], error: null };
     const node: QueryNode = {
       select: vi.fn(() => node),
+      is: vi.fn(() => node),
       order: vi.fn(() => node),
       limit: vi.fn(() => node),
       gt: vi.fn((col: string, value: string) => {

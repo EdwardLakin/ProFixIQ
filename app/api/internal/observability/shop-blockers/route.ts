@@ -29,6 +29,11 @@ function authorizeInternalRequest(
 // page would be selected on every run. Page through the full table by
 // created_at instead so a growing shop count degrades run time, not
 // coverage.
+//
+// Excludes archived demo shops (demo_shop_archived_at is not null): kept
+// indefinitely once archived (never deleted), so without this filter every
+// expired prospect shop would keep costing observability work forever. See
+// the matching filter in features/shared/lib/server/fetchAllShopIds.ts.
 async function fetchAllShopIds(
   supabase: SupabaseClient<Database>,
 ): Promise<string[]> {
@@ -39,6 +44,7 @@ async function fetchAllShopIds(
     let query = supabase
       .from("shops")
       .select("id, created_at")
+      .is("demo_shop_archived_at", null)
       .order("created_at", { ascending: true })
       .limit(SHOP_PAGE_SIZE);
 

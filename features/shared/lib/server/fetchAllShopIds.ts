@@ -17,6 +17,17 @@ const SHOP_PAGE_SIZE = 500;
  * skip every remaining shop at that boundary once one page ends mid-tie.
  * Cursor on the (created_at, id) pair instead: id is unique, so ties are
  * broken deterministically and no shop is ever skipped.
+ *
+ * Excludes archived demo shops (demo_shop_archived_at is not null): these
+ * crons (appointment staging, daily digest, urgent alerts) do real work and
+ * send real notifications per shop, and demo prospect shops are kept
+ * indefinitely once archived (never deleted -- see
+ * 20261002000000_demo_prospect_shop_isolation.sql), so without this filter
+ * every expired-and-archived prospect shop would keep costing cron work and
+ * generating notifications for an account nobody can log into anymore,
+ * forever. Active (non-archived) demo shops are still included -- a
+ * prospect mid-trial should see the same notification behavior as any
+ * other shop.
  */
 export async function fetchAllShopIds(
   supabase: SupabaseClient<Database>,
@@ -28,6 +39,7 @@ export async function fetchAllShopIds(
     let query = supabase
       .from("shops")
       .select("id, created_at")
+      .is("demo_shop_archived_at", null)
       .order("created_at", { ascending: true })
       .order("id", { ascending: true })
       .limit(SHOP_PAGE_SIZE);
