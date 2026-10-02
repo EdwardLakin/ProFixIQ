@@ -36,8 +36,8 @@ function envNumber(name: string, fallback: number): number {
 
 // Conservative reservation for the bounded Live session. The browser transport
 // caps streaming at ten minutes by default, so charge a configurable maximum
-// session proxy up-front in the existing monthly operational budget instead of
-// treating every Live connection as the old $0.001 token-issuance event.
+// session proxy into the existing monthly operational budget instead of
+// treating every Live connection as the old fixed token-issuance event.
 const LIVE_SESSION_RESERVED_COST_USD = envNumber(
   "AI_LIVE_SESSION_RESERVED_COST_USD",
   0.5,
@@ -70,6 +70,91 @@ export async function POST(request: NextRequest) {
   const startedAt = Date.now();
   const policy = getAIPolicy("openai_realtime_token");
 
+  let body: LiveSessionRequest;
+  try {
+    body = (await request.json()) as LiveSessionRequest;
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid voice session request", code: "live_invalid_request" },
+      { status: 400 },
+    );
+  }
+
+  const sdp = typeof body.sdp === "string" ? body.sdp.trim() : "";
+  const surface = getLiveSurface(body.surface);
+  if (!sdp) {
+    return NextResponse.json(
+      { error: "An SDP offer is required", code: "live_missing_sdp" },
+      { status: 400 },
+    );
+  }
+  if (!surface) {
+    return NextResponse.json(
+      { error: "A valid voice surface is required", code: "live_invalid_surface" },
+      { status: 400 },
+    );
+  }
+
+  let shopId: string;
+  let userId: string;
+
+  if (surface === "technician_copilot") {
+    try {
+      const access = await requireTechnicianCopilotAccess();
+      if (!access.capabilities.voice) {
+        return NextResponse.json(
+          {
+            error: "Technician CoPilot voice is not enabled.",
+            code: "technician_copilot_voice_disabled",
+          },
+          { status: 404 },
+        );
+      }
+      shopId = access.shopId;
+      userId = access.profileId;
+    } catch (caught) {
+      if (caught instanceof TechnicianCopilotAccessError) {
+        return NextResponse.json(
+          { error: caught.message, code: caught.code },
+          { status: caught.status },
+        );
+      }
+      console.error("[live-session] Technician access check failed", caught);
+      return NextResponse.json(
+        { error: "Technician CoPilot access could not be verified." },
+        { status: 500 },
+      );
+    }
+  } else {
+    const access = await requireShopScopedApiAccess({
+      requiredCapability: "canRunInspections",
+    });
+    if (!access.ok) return access.response;
+    shopId = access.profile.shop_id;
+    userId = access.profile.id;
+  }
+
+  const enforcement = enforceAIOperationalPolicy({
+    feature: "openai_realtime_token",
+    endpoint: "/api/openai/realtime-token",
+    shopId,
+  });
+  if (!enforcement.allowed) {
+    return NextResponse.json(
+      { error: "AI voice session temporarily limited", code: enforcement.code },
+      { status: 429 },
+    );
+  }
+
+  const apiKey = process.env.OPENAI_API_KEY;
+  const model = getOpenAILiveModel();
+  if (!apiKey) {
+    return NextResponse.json(
+      { error: "Voice service is not configured", code: "realtime_not_configured" },
+      { status: 503 },
+    );
+  }
+
   try {
     const response = await Promise.race([
       fetch("https://api.openai.com/v1/live/sessions", {
@@ -97,7 +182,10 @@ export async function POST(request: NextRequest) {
         }),
       }),
       new Promise<never>((_, reject) =>
-        setTimeout(() => reject(new Error("AI request timed out")), policy.timeoutMs),
+        setTimeout(
+          () => reject(new Error("AI request timed out")),
+          policy.timeoutMs,
+        ),
       ),
     ]);
 
@@ -146,7 +234,7 @@ export async function POST(request: NextRequest) {
     registerAIUsageEvent({
       feature: "openai_realtime_token",
       endpoint: "/api/openai/realtime-token",
-      shopId: shopId,
+      shopId,
       model,
       totalTokens: null,
       estimatedCostUsd: LIVE_SESSION_RESERVED_COST_USD,
@@ -159,7 +247,8 @@ export async function POST(request: NextRequest) {
       headers: { "Cache-Control": "no-store" },
     });
   } catch (caught) {
-    const message = caught instanceof Error ? caught.message : "Unhandled live session error";
+    const message =
+      caught instanceof Error ? caught.message : "Unhandled live session error";
     await recordDurableAIUsage({
       feature: "openai_realtime_token",
       endpoint: "/api/openai/realtime-token",
@@ -181,7 +270,7 @@ export async function POST(request: NextRequest) {
     registerAIUsageEvent({
       feature: "openai_realtime_token",
       endpoint: "/api/openai/realtime-token",
-      shopId: shopId,
+      shopId,
       model,
       totalTokens: null,
       estimatedCostUsd: 0,
