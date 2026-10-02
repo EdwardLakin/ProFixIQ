@@ -31,8 +31,10 @@ export type InspectionFormItem = {
  * say who made a section.
  */
 export type GeneratedGridMeta = {
-  kind: "tire" | "brake";
+  kind: "tire" | "brake" | "battery";
   brakeMode: "air" | "hydraulic";
+  /** Source sections this grid replaced; restored if the grid is removed. */
+  replaced?: InspectionFormSection[];
 };
 
 export type InspectionFormSection = {
@@ -49,6 +51,8 @@ export type InspectionFormSection = {
 export type ImportGridPlan = {
   tireGrid: boolean;
   brakeGrid: boolean;
+  /** Optional: a battery (rated / tested CCA) grid. Off unless chosen. */
+  batteryGrid?: boolean;
   brakeMode: "air" | "hydraulic";
 };
 
@@ -64,6 +68,7 @@ export function normalizeImportGridPlan(value: unknown): ImportGridPlan | null {
   return {
     tireGrid: plan.tireGrid,
     brakeGrid: plan.brakeGrid,
+    batteryGrid: plan.batteryGrid === true,
     brakeMode: plan.brakeMode,
   };
 }
@@ -220,9 +225,15 @@ export function normalizeInspectionFormSections(
     }
     const grid = record(section.generatedGrid);
     const generatedGrid: GeneratedGridMeta | null =
-      (grid.kind === "tire" || grid.kind === "brake") &&
+      (grid.kind === "tire" || grid.kind === "brake" || grid.kind === "battery") &&
       (grid.brakeMode === "air" || grid.brakeMode === "hydraulic")
-        ? { kind: grid.kind, brakeMode: grid.brakeMode }
+        ? {
+            kind: grid.kind,
+            brakeMode: grid.brakeMode,
+            ...(Array.isArray(grid.replaced) && grid.replaced.length
+              ? { replaced: normalizeInspectionFormSections(grid.replaced) }
+              : {}),
+          }
         : null;
     if (items.length) {
       sections.push({
@@ -487,6 +498,43 @@ export function certificationFieldKind(
   }
   if (/\bdate\b.*\binspection\b|\binspection\s+date\b/.test(l)) {
     return "inspectionDate";
+  }
+  return null;
+}
+
+export type VehicleFieldKind =
+  | "unitNumber"
+  | "vin"
+  | "licensePlate"
+  | "year"
+  | "make"
+  | "model"
+  | "makeModel"
+  | "odometer"
+  | "engineHours"
+  | "customerName";
+
+/**
+ * Header fields ProFixIQ already knows from the work order's vehicle and
+ * customer. A trailer's fields are never matched: the work order's vehicle is
+ * the power unit, and a trailer number on the form is a different unit.
+ */
+export function vehicleFieldKind(label: string): VehicleFieldKind | null {
+  const l = label.trim().toLowerCase();
+  if (!l || /\b(?:trailer|driver|dolly)\b/.test(l)) return null;
+  if (/\bvin\b/.test(l)) return "vin";
+  if (/\bunit\b/.test(l)) return "unitNumber";
+  if (/\bplate\b/.test(l)) return "licensePlate";
+  if (/\bodometer\b|\bmileage\b|\bkilomet(?:er|re)s?\b|\bmiles\b/.test(l)) {
+    return "odometer";
+  }
+  if (/\bhour[\s-]*meter\b|\bengine\s+hours\b/.test(l)) return "engineHours";
+  if (/\bmodel\s+year\b|^year$/.test(l)) return "year";
+  if (/\bmake\b.*\bmodel\b/.test(l)) return "makeModel";
+  if (/^make$/.test(l)) return "make";
+  if (/^model$/.test(l)) return "model";
+  if (/^(?:customer|carrier|company|owner|fleet)(?:\s+name)?$/.test(l)) {
+    return "customerName";
   }
   return null;
 }

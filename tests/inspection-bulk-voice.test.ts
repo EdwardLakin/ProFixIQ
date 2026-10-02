@@ -133,3 +133,19 @@ describe("parseBulkCommands: review hardening", () => {
     expect(parseBulkCommands("all tread depths 8 thirty seconds", hydraulic).commands[0].unit).toBe("32nds");
   });
 });
+
+describe("parseBulkCommands — dual axles with inner and outer pressure", () => {
+  const dual = mk([
+    [
+      "Steer 1 Left Tire Pressure", "Steer 1 Right Tire Pressure",
+      "Drive 1 Left Tire Pressure (Outer)", "Drive 1 Left Tire Pressure (Inner)",
+      "Drive 1 Right Tire Pressure (Outer)", "Drive 1 Right Tire Pressure (Inner)",
+    ],
+  ]);
+
+  it("all tire pressures reaches the inner tires too", () => {
+    const { commands } = parseBulkCommands("all tire pressures 100", dual);
+    expect(commands[0].targets).toHaveLength(6);
+    expect(labels(commands[0])).toContain("Drive 1 Right Tire Pressure (Inner)");
+  });
+});

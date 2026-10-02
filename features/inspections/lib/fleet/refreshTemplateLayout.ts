@@ -125,6 +125,7 @@ export function refreshTemplateLayout(input: {
     : {
         tireGrid: detection.tireGrid && !input.declined?.tireGrid,
         brakeGrid: detection.brakeGrid && !input.declined?.brakeGrid,
+        batteryGrid: false,
         brakeMode: detection.brakeMode,
       };
   const gridPlan: ImportGridPlan = { ...base, ...input.plan };
@@ -172,11 +173,28 @@ export function refreshTemplateLayout(input: {
   if (gridPlan.brakeGrid && (!hadBrake || modeChanged)) summary.push(`Add the ${describe("brake corner grid")}.`);
   if (!gridPlan.tireGrid && hadTire) summary.push("Remove the tire grid.");
   if (!gridPlan.brakeGrid && hadBrake) summary.push("Remove the brake corner grid.");
-  if (detection.sourceHasTireMeasurements && gridPlan.tireGrid) {
-    summary.push("Note: this form already has its own tire measurement rows, so the tire grid repeats them.");
+  const hadBattery = input.sections.some((s) => s.generatedGrid?.kind === "battery");
+  if (gridPlan.batteryGrid && !hadBattery) summary.push("Add the battery grid (rated / tested CCA).");
+  if (!gridPlan.batteryGrid && hadBattery) summary.push("Remove the battery grid.");
+
+  const keptTitles = new Set(sections.map((s) => s.title));
+  const replaced = input.sections
+    .filter((s) => !isImportGridSection(s) && !keptTitles.has(s.title))
+    .map((s) => s.title);
+  if (replaced.length) {
+    summary.push(
+      `Remove the form's own measurement table${replaced.length === 1 ? "" : "s"} the grids replace (${replaced.join(", ")}).`,
+    );
   }
-  if (detection.sourceHasBrakeMeasurements && gridPlan.brakeGrid) {
-    summary.push("Note: this form already has its own brake measurement rows, so the brake grid repeats them.");
+
+  const gridTitles = (list: readonly InspectionFormSection[]) =>
+    list.filter(isImportGridSection).map((s) => s.title);
+  const gridsBefore = input.sections.findIndex(isImportGridSection);
+  if (
+    gridsBefore > 0 &&
+    JSON.stringify(gridTitles(input.sections)) === JSON.stringify(gridTitles(sections))
+  ) {
+    summary.push("Move the grids to the top of the checklist.");
   }
 
   const changed =

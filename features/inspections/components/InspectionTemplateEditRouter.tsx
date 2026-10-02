@@ -92,9 +92,15 @@ function normalizedSections(value: unknown): ImportedSection[] {
         : null;
       const generatedGrid: GeneratedGridMeta | null =
         grid &&
-        (grid.kind === "tire" || grid.kind === "brake") &&
+        (grid.kind === "tire" || grid.kind === "brake" || grid.kind === "battery") &&
         (grid.brakeMode === "air" || grid.brakeMode === "hydraulic")
-          ? { kind: grid.kind, brakeMode: grid.brakeMode }
+          ? {
+              kind: grid.kind,
+              brakeMode: grid.brakeMode,
+              ...(Array.isArray(grid.replaced) && grid.replaced.length
+                ? { replaced: normalizedSections(grid.replaced) }
+                : {}),
+            }
           : null;
       return items.length
         ? ({
@@ -374,6 +380,16 @@ function ImportedFleetTemplateEditor({
               }
             />
             Brake grid (pads, linings, push rod)
+          </label>
+          <label className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={Boolean(refresh.gridPlan.batteryGrid)}
+              onChange={(event) =>
+                setPlanChoice((c) => ({ ...c, batteryGrid: event.target.checked }))
+              }
+            />
+            Battery grid (rated / tested CCA)
           </label>
           <label className="flex items-center gap-2">
             Brake system

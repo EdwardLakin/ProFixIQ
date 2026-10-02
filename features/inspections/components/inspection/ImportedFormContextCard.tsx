@@ -1,12 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import type {
+  SessionCustomer,
+  SessionVehicle,
+} from "@inspections/lib/inspection/types";
 import {
   INSPECTION_FORM_CONTEXT_BLOCKS,
   certificationFieldKind,
   inspectionFormContextValueKey,
   isInspectionFormContextEmpty,
   isSignaturePanelField,
+  vehicleFieldKind,
   type InspectionFormContext,
   type InspectionFormContextBlock,
 } from "@/features/inspections/lib/form-import";
@@ -77,6 +82,8 @@ export default function ImportedFormContextCard({
   placement,
   onChange,
   onChangeMany,
+  vehicle,
+  customer,
   disabled = false,
 }: {
   context: InspectionFormContext | null | undefined;
@@ -89,6 +96,9 @@ export default function ImportedFormContextCard({
    * the captured values, so each would overwrite the one before it.
    */
   onChangeMany?: (updates: Record<string, string>) => void;
+  /** The work order's vehicle / customer, used to fill the header block. */
+  vehicle?: Partial<SessionVehicle> | null;
+  customer?: Partial<SessionCustomer> | null;
   disabled?: boolean;
 }) {
   const [defaults, setDefaults] = useState<CertificationDefaults | null>(null);
@@ -161,6 +171,56 @@ export default function ImportedFormContextCard({
     if (onChangeMany) onChangeMany(updates);
     else for (const key of keys) onChange(key, updates[key]);
   }, [context, defaults, disabled, onChange, onChangeMany, placement, values]);
+
+  // The printed trip/vehicle header (unit, VIN, make, odometer, ...) is filled
+  // from the work order's vehicle and customer, like every other inspection.
+  // Once per field and only while empty, so a technician's edit stands.
+  useEffect(() => {
+    if (placement !== "before" || disabled || !context) return;
+    const known = (value: unknown) => String(value ?? "").trim();
+    const customerName =
+      known(customer?.business_name) ||
+      known(customer?.name) ||
+      [known(customer?.first_name), known(customer?.last_name)]
+        .filter(Boolean)
+        .join(" ");
+    const makeModel = [known(vehicle?.make), known(vehicle?.model)]
+      .filter(Boolean)
+      .join(" ");
+    const byKind: Record<string, string> = {
+      unitNumber: known(vehicle?.unit_number),
+      vin: known(vehicle?.vin),
+      licensePlate: known(vehicle?.license_plate),
+      year: known(vehicle?.year),
+      make: known(vehicle?.make),
+      model: known(vehicle?.model),
+      makeModel,
+      odometer: known(vehicle?.mileage),
+      engineHours: known(vehicle?.engine_hours),
+      customerName,
+    };
+    const updates: Record<string, string> = {};
+    context.header.forEach((section, sectionIndex) => {
+      section.items.forEach((item) => {
+        if (item.fieldType === "instruction") return;
+        const kind = vehicleFieldKind(item.item);
+        if (!kind || !byKind[kind]) return;
+        const key = inspectionFormContextValueKey(
+          "header",
+          sectionIndex,
+          section.title,
+          item.item,
+        );
+        if (appliedRef.current.has(key) || (values[key] ?? "").trim()) return;
+        updates[key] = byKind[kind];
+      });
+    });
+    const keys = Object.keys(updates);
+    if (!keys.length) return;
+    for (const key of keys) appliedRef.current.add(key);
+    if (onChangeMany) onChangeMany(updates);
+    else for (const key of keys) onChange(key, updates[key]);
+  }, [context, customer, disabled, onChange, onChangeMany, placement, values, vehicle]);
 
   if (!context || isInspectionFormContextEmpty(context)) return null;
 

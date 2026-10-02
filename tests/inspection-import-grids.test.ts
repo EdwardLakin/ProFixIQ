@@ -70,14 +70,14 @@ describe("detectImportGridPlan", () => {
     expect(detectImportGridPlan({ sections: blank }).brakeMode).toBe("hydraulic");
   });
 
-  it("does not add a second grid where the form measures it itself", () => {
+  it("offers both grids even where the form measures them itself, and says they replace its table", () => {
     const calgary: InspectionFormSection[] = [
       { title: "Brake Adjustment", items: [measure("Push Rod Travel Axle 1 Left"), measure("Push Rod Travel Axle 1 Right")] },
       { title: "Tires", items: [measure("LF Tire Pressure"), measure("RF Tread Depth")] },
     ];
     const plan = detectImportGridPlan({ sections: calgary });
     expect(plan).toMatchObject({
-      brakeGrid: false, tireGrid: false,
+      brakeGrid: true, tireGrid: true, batteryGrid: false,
       sourceHasBrakeMeasurements: true, sourceHasTireMeasurements: true,
     });
     // pass/fail rows named "Tire Tread Depth" are not measurements
@@ -88,12 +88,69 @@ describe("detectImportGridPlan", () => {
 describe("applyImportGrids", () => {
   const air = { tireGrid: true, brakeGrid: true, brakeMode: "air" as const };
 
-  it("puts the brake grid after Air Brakes and the tire grid after Tires & Wheels", () => {
-    const out = applyImportGrids(hansens(), air, { vehicleType: "truck" });
+  it("puts the grids at the top in the builder's order: brakes, tires, battery, then the checklist", () => {
+    const out = applyImportGrids(hansens(), { ...air, batteryGrid: true }, { vehicleType: "truck" });
     expect(titles(out)).toEqual([
-      "Powertrain", "Suspension", "Air Brakes", "Corner Grid (Air)", "Steering",
-      "Lighting System", "Tires & Wheels", "Tire Grid — Air Brake (HD)", "Head Rack",
+      "Corner Grid (Air)", "Tire Grid — Air Brake (HD)", "Battery Grid",
+      "Powertrain", "Suspension", "Air Brakes", "Steering",
+      "Lighting System", "Tires & Wheels", "Head Rack",
     ]);
+    const battery = out.find((s) => s.title === "Battery Grid")!;
+    expect(battery.generatedGrid?.kind).toBe("battery");
+    expect(battery.items.map((i) => i.item)).toEqual(["Battery 1 Rated CCA", "Battery 1 Tested CCA"]);
+    expect(currentImportGridPlan(out, "air").batteryGrid).toBe(true);
+  });
+
+  it("drops the form's own measurement-only tire table instead of repeating it, but keeps check rows", () => {
+    const withTable: InspectionFormSection[] = [
+      ...hansens(),
+      { title: "TIRE TREAD DEPTH & PRESSURE", items: [measure("Outside / Inside"), measure("Inside / Outside")] },
+    ];
+    const out = applyImportGrids(withTable, air);
+    expect(titles(out)).not.toContain("TIRE TREAD DEPTH & PRESSURE");
+    expect(titles(out)).toContain("Tires & Wheels");
+    // with the tire grid off the form's table is left alone
+    expect(titles(applyImportGrids(withTable, { ...air, tireGrid: false }))).toContain("TIRE TREAD DEPTH & PRESSURE");
+  });
+
+  it("brings the form's table back when the grid that replaced it is turned off", () => {
+    const withTable: InspectionFormSection[] = [
+      ...hansens(),
+      { title: "TIRE TREAD DEPTH & PRESSURE", items: [measure("Outside / Inside"), measure("Inside / Outside")] },
+    ];
+    const on = applyImportGrids(withTable, air);
+    const off = applyImportGrids(on, { ...air, tireGrid: false });
+    expect(titles(off)).toContain("TIRE TREAD DEPTH & PRESSURE");
+    expect(titles(off)).not.toContain("Tire Grid — Air Brake (HD)");
+    // and survives being saved and reloaded
+    const reloaded = normalizeInspectionFormSections(JSON.parse(JSON.stringify(on)));
+    expect(titles(applyImportGrids(reloaded, { ...air, tireGrid: false }))).toContain("TIRE TREAD DEPTH & PRESSURE");
+  });
+
+  it("finds a plainly titled table by its rows, the way detection does", () => {
+    const plain: InspectionFormSection[] = [
+      ...hansens(),
+      { title: "Tires", items: [measure("LF Tire Pressure"), measure("RF Tread Depth")] },
+    ];
+    expect(titles(applyImportGrids(plain, air))).not.toContain("Tires");
+    // a titled-only match needs every row to be a measurement
+    const mixed: InspectionFormSection[] = [
+      { title: "Tires", items: [measure("LF Tire Pressure"), check("Sidewall condition")] },
+    ];
+    expect(titles(applyImportGrids(mixed, air))).toContain("Tires");
+  });
+
+  it("gives every dual axle an inner and an outer pressure", () => {
+    const out = applyImportGrids(hansens(), air);
+    const labels = out.find((s) => s.title.startsWith("Tire Grid"))!.items.map((i) => i.item);
+    for (const axle of ["Drive 1", "Rear 1"]) {
+      for (const side of ["Left", "Right"]) {
+        expect(labels).toContain(`${axle} ${side} Tire Pressure (Outer)`);
+        expect(labels).toContain(`${axle} ${side} Tire Pressure (Inner)`);
+      }
+    }
+    const trailer = applyImportGrids(hansens(), air, { vehicleType: "trailer" }).find((s) => s.title === "Trailer Tire Grid")!;
+    expect(trailer.items.map((i) => i.item)).toContain("Trailer 1 Left Tire Pressure (Inner)");
   });
 
   it("builds runnable measurement rows and keeps condition rows as checks", () => {
@@ -127,9 +184,9 @@ describe("applyImportGrids", () => {
     expect(currentImportGridPlan(hydTrailer, "air").brakeMode).toBe("hydraulic");
   });
 
-  it("appends at the end when the form has no tires or brakes section", () => {
+  it("puts the grids first even when the form has no tires or brakes section", () => {
     const out = applyImportGrids([{ title: "Lights", items: [check("Headlights")] }], air);
-    expect(titles(out)).toEqual(["Lights", "Corner Grid (Air)", "Tire Grid — Air Brake (HD)"]);
+    expect(titles(out)).toEqual(["Corner Grid (Air)", "Tire Grid — Air Brake (HD)", "Lights"]);
   });
 
   it("is repeatable: re-applying replaces grids, and turning one off removes it", () => {

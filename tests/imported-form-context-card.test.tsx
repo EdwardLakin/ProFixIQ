@@ -121,3 +121,70 @@ describe("certification block", () => {
     expect(screen.getByDisplayValue("E. Lakin")).toBeTruthy();
   });
 });
+
+describe("trip and vehicle header autofill", () => {
+  const header = () => {
+    const c = emptyInspectionFormContext();
+    c.header = [
+      {
+        title: "Vehicle",
+        items: [
+          { item: "Unit #" },
+          { item: "VIN" },
+          { item: "Make/Model" },
+          { item: "Odometer Reading" },
+          { item: "Trailer #" },
+          { item: "Driver Name" },
+          { item: "Customer" },
+        ],
+      },
+    ];
+    return c;
+  };
+  const hkey = (label: string) =>
+    inspectionFormContextValueKey("header", 0, "Vehicle", label);
+
+  it("fills the unit, VIN, make/model, odometer and customer from the work order as one update", async () => {
+    const onChange = vi.fn();
+    const onChangeMany = vi.fn();
+    render(
+      <ImportedFormContextCard
+        context={header()}
+        values={{}}
+        placement="before"
+        onChange={onChange}
+        onChangeMany={onChangeMany}
+        vehicle={{ unit_number: "T-42", vin: "1HTMK", make: "Kenworth", model: "T680", mileage: "412000" }}
+        customer={{ business_name: "Hansen's Trucking" }}
+      />,
+    );
+    await waitFor(() => expect(onChangeMany).toHaveBeenCalledTimes(1));
+    expect(onChangeMany.mock.calls[0][0]).toEqual({
+      [hkey("Unit #")]: "T-42",
+      [hkey("VIN")]: "1HTMK",
+      [hkey("Make/Model")]: "Kenworth T680",
+      [hkey("Odometer Reading")]: "412000",
+      [hkey("Customer")]: "Hansen's Trucking",
+    });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it("never overwrites a typed value and leaves trailer and driver fields alone", async () => {
+    const onChangeMany = vi.fn();
+    render(
+      <ImportedFormContextCard
+        context={header()}
+        values={{ [hkey("VIN")]: "MINE" }}
+        placement="before"
+        onChange={vi.fn()}
+        onChangeMany={onChangeMany}
+        vehicle={{ unit_number: "T-42", vin: "1HTMK" }}
+      />,
+    );
+    await waitFor(() => expect(onChangeMany).toHaveBeenCalled());
+    const filled = onChangeMany.mock.calls[0][0];
+    expect(filled[hkey("VIN")]).toBeUndefined();
+    expect(filled[hkey("Trailer #")]).toBeUndefined();
+    expect(filled[hkey("Driver Name")]).toBeUndefined();
+  });
+});
