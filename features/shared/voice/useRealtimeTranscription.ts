@@ -49,7 +49,7 @@ type LiveResources = {
   paused: boolean;
   guardTimer: ReturnType<typeof setInterval> | null;
   pauseTimer: ReturnType<typeof setTimeout> | null;
-  closeTimer: ReturnType<typeof setTimeout> | null;
+  closeTimer: number | null;
   sessionId: string | null;
   latestUsageSeconds: number | null;
   sessionStartedAt: number | null;
