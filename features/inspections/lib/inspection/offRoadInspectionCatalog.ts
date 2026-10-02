@@ -461,3 +461,47 @@ export function offRoadProfileByValue(
   if (!value) return null;
   return offRoadEquipmentProfiles.find((profile) => profile.value === value) ?? null;
 }
+
+
+export function buildOffRoadFromMaster({
+  profileValue,
+  targetCount,
+}: {
+  profileValue: string;
+  targetCount: number;
+}): OffRoadInspectionCategory[] {
+  const profile = offRoadProfileByValue(profileValue);
+  if (!profile) return [];
+
+  const sections = offRoadCategoriesForFamily(profile.family);
+  const ranked = sections
+    .flatMap((section, sectionIndex) =>
+      section.items.map((entry, itemIndex) => ({
+        sectionTitle: section.title,
+        sectionIndex,
+        itemIndex,
+        entry,
+      })),
+    )
+    .sort((a, b) => {
+      const requiredDelta = Number(Boolean(b.entry.required)) - Number(Boolean(a.entry.required));
+      if (requiredDelta !== 0) return requiredDelta;
+      const priorityDelta = (b.entry.priority ?? 0) - (a.entry.priority ?? 0);
+      if (priorityDelta !== 0) return priorityDelta;
+      if (a.sectionIndex !== b.sectionIndex) return a.sectionIndex - b.sectionIndex;
+      return a.itemIndex - b.itemIndex;
+    });
+
+  const requiredCount = ranked.filter((row) => row.entry.required).length;
+  const take = Math.max(requiredCount, Math.max(1, targetCount));
+  const selected = new Set(ranked.slice(0, take).map((row) => `${row.sectionTitle}\u0000${row.entry.item}`));
+
+  return sections
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((entry) =>
+        selected.has(`${section.title}\u0000${entry.item}`),
+      ),
+    }))
+    .filter((section) => section.items.length > 0);
+}
