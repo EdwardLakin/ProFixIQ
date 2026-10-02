@@ -361,7 +361,8 @@ export async function syncCanonicalShopBilling(params: {
         p_snapshot: snapshot,
       });
 
-    let result = await applySnapshot(shopId);
+    let resolvedShopId = shopId;
+    let result = await applySnapshot(resolvedShopId);
     if (result.error?.message === "billing shop not found") {
       const recoveredShopId = await recoverWebhookShopId({
         stripe,
@@ -382,12 +383,13 @@ export async function syncCanonicalShopBilling(params: {
         staleShopId: shopId,
         recoveredShopId,
       });
-      result = await applySnapshot(recoveredShopId);
+      resolvedShopId = recoveredShopId;
+      result = await applySnapshot(resolvedShopId);
     }
 
     if (result.error) throw new Error(result.error.message);
     if (result.data === true) {
-      await syncTechnicianCopilotSeats(supabase, shopId, sub);
+      await syncTechnicianCopilotSeats(supabase, resolvedShopId, sub);
     }
     return { applied: result.data === true };
   }
