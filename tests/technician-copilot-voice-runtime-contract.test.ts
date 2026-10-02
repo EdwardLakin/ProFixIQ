@@ -34,7 +34,7 @@ const sharedRealtimeTransportSource = readFileSync(
   "utf8",
 );
 
-describe("Technician CoPilot Realtime voice bridge boundaries", () => {
+describe("Technician CoPilot GPT-Live voice bridge boundaries", () => {
   it("returns the resolved voice capability to the call surface", () => {
     expect(sessionRouteSource).toContain(
       "voice: access.capabilities.voice",
@@ -66,14 +66,7 @@ describe("Technician CoPilot Realtime voice bridge boundaries", () => {
     expect(componentSource).not.toContain("buildGoal");
   });
 
-  // Phase A of the inspection-voice-to-CoPilot conversion: the CoPilot voice
-  // bridge and inspection/dictation voice control used to each carry their
-  // own independently-maintained copy of the raw WebSocket/audio transport.
-  // They now both delegate to one shared, hardened implementation instead —
-  // the turn/gateway isolation above still holds (neither feature's
-  // higher-level abstraction imports the other's), but the underlying
-  // transport is intentionally no longer duplicated.
-  it("shares one Realtime transcription transport instead of duplicating it", () => {
+  it("shares one GPT-Live WebRTC transport without merging feature authority", () => {
     expect(technicianRealtimeSource).toContain(
       'from "@/features/shared/voice/useRealtimeTranscription"',
     );
@@ -83,10 +76,18 @@ describe("Technician CoPilot Realtime voice bridge boundaries", () => {
     expect(sharedRealtimeTransportSource).toContain(
       "export function useRealtimeTranscription(",
     );
-    // Neither feature-owned file should carry its own copy of the transport
-    // implementation anymore — only the shared module should open the
-    // WebSocket.
-    expect(technicianRealtimeSource).not.toContain("new WebSocket(");
-    expect(inspectionRealtimeSource).not.toContain("new WebSocket(");
+    expect(sharedRealtimeTransportSource).toContain("new RTCPeerConnection()");
+    expect(sharedRealtimeTransportSource).toContain(
+      'createDataChannel("oai-events")',
+    );
+    expect(sharedRealtimeTransportSource).toContain(
+      '"session.delegation.created"',
+    );
+    expect(technicianRealtimeSource).toContain(
+      'surface: "technician_copilot"',
+    );
+    expect(inspectionRealtimeSource).toContain('surface: "inspection"');
+    expect(technicianRealtimeSource).not.toContain("new RTCPeerConnection(");
+    expect(inspectionRealtimeSource).not.toContain("new RTCPeerConnection(");
   });
 });
