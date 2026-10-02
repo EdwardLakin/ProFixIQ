@@ -35,6 +35,8 @@ type ImportedSection = {
   items: ImportedItem[];
   /** Set on a tire/brake grid ProFixIQ generated; must survive every save. */
   generatedGrid?: GeneratedGridMeta;
+  /** The section as printed, when switching brake system rewrote it. */
+  adaptedFrom?: ImportedSection;
 };
 
 type TemplateRow = {
@@ -102,11 +104,15 @@ function normalizedSections(value: unknown): ImportedSection[] {
                 : {}),
             }
           : null;
+      const adaptedFrom = isRecord(rawSection.adaptedFrom)
+        ? normalizedSections([rawSection.adaptedFrom])[0]
+        : undefined;
       return items.length
         ? ({
             title,
             items,
             ...(generatedGrid ? { generatedGrid } : {}),
+            ...(adaptedFrom ? { adaptedFrom } : {}),
           } satisfies ImportedSection)
         : null;
     })
@@ -213,6 +219,7 @@ function ImportedFleetTemplateEditor({
         ...(section.generatedGrid
           ? { generatedGrid: section.generatedGrid }
           : {}),
+        ...(section.adaptedFrom ? { adaptedFrom: section.adaptedFrom } : {}),
         items: section.items
           .map((item) => ({
             item: item.item.trim(),

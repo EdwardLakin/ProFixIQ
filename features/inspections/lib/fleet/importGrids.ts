@@ -287,6 +287,71 @@ function isMeasurementOnlyTable(
   );
 }
 
+// An air-brake checklist read from a heavy-vehicle form, rewritten for a
+// hydraulic system when the reviewer says the vehicle has hydraulic brakes.
+// Air-only rows with no hydraulic counterpart are dropped; the printed section
+// is kept on `adaptedFrom` so switching back restores it exactly.
+const AIR_SECTION_TITLE_RE = /\bair\s*brakes?\b/i;
+const HYDRAULIC_ROW_MAP: ReadonlyArray<readonly [RegExp, string | null]> = [
+  [/air\s*system\s*leak/i, "Hydraulic System Leakage"],
+  [/air\s*tanks?/i, "Brake Fluid Reservoir / Master Cylinder"],
+  [/brake\s*valves?/i, "Brake Lines & Hoses"],
+  [/tractor\s*protection/i, null],
+  [/brake\s*chambers?/i, "Calipers / Wheel Cylinders"],
+  [/slack\s*adjust|push\s*rods?|compressor|air\s*dryer|governor/i, null],
+];
+
+function adaptBrakeChecklists(
+  sections: readonly InspectionFormSection[],
+  mode: BrakeMode,
+): InspectionFormSection[] {
+  // Always start from the printed form, so the result never depends on what
+  // an earlier pass did.
+  const printed = sections.map((section) => section.adaptedFrom ?? section);
+  if (mode !== "hydraulic") return printed;
+  return printed.map((section) => {
+    if (isImportGridSection(section) || !AIR_SECTION_TITLE_RE.test(section.title)) {
+      return section;
+    }
+    const items = section.items.flatMap((item) => {
+      const hit = HYDRAULIC_ROW_MAP.find(([re]) => re.test(item.item));
+      if (!hit) return [item];
+      return hit[1] === null ? [] : [{ ...item, item: hit[1] }];
+    });
+    if (!items.length) return section;
+    return {
+      title: section.title.replace(AIR_SECTION_TITLE_RE, "Hydraulic Brakes"),
+      items,
+      adaptedFrom: section,
+    };
+  });
+}
+
+/**
+ * With a tire (or brake) grid on, a stray reading row inside a checklist
+ * section ("Tire Tread Depth") is the grid's job. Left as a measurement it
+ * shows a value box beside a plain pass/fail list, so it becomes OK / FAIL / NA.
+ */
+function readingRowsToChecks(
+  sections: readonly InspectionFormSection[],
+  rowRes: readonly RegExp[],
+): InspectionFormSection[] {
+  if (rowRes.length === 0) return [...sections];
+  return sections.map((section) =>
+    isImportGridSection(section)
+      ? section
+      : {
+          ...section,
+          items: section.items.map((item) =>
+            item.fieldType === "measurement" &&
+            rowRes.some((re) => re.test(item.item))
+              ? { ...item, fieldType: "check" as const, unit: null }
+              : item,
+          ),
+        },
+  );
+}
+
 /** Printed units say whether tread is read in 32nds of an inch. */
 function prefersThirtySeconds(text: string): boolean {
   return /\/\s*32\b|\b32nds?\b|thirty[\s-]?seconds?/i.test(text);
@@ -316,10 +381,10 @@ export function applyImportGrids(
   const restored = sections
     .filter(isImportGridSection)
     .flatMap((section) => section.generatedGrid?.replaced ?? []);
-  const base = [
-    ...restored,
-    ...sections.filter((section) => !isImportGridSection(section)),
-  ];
+  const base = adaptBrakeChecklists(
+    [...restored, ...sections.filter((section) => !isImportGridSection(section))],
+    plan.brakeMode,
+  );
   const trailer = /trailer/i.test(context.vehicleType ?? "");
   const treadUnit =
     context.treadUnit === "32nds"
@@ -355,7 +420,10 @@ export function applyImportGrids(
       )
     : [];
   const replaced = new Set([...tireReplaced, ...brakeReplaced]);
-  const rest = base.filter((section) => !replaced.has(section));
+  const rest = readingRowsToChecks(
+    base.filter((section) => !replaced.has(section)),
+    [...(tire ? [TIRE_MEASURE_RE] : []), ...(brake ? [BRAKE_MEASURE_RE] : [])],
+  );
   const remember = (
     grid: InspectionFormSection | null,
     dropped: InspectionFormSection[],

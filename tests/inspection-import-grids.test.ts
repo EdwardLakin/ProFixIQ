@@ -270,3 +270,53 @@ describe("import grid wiring", () => {
     expect(review).toContain('aria-label="Brake system"');
   });
 });
+
+describe("applyImportGrids — hydraulic brake system and stray reading rows", () => {
+  const airForm = (): InspectionFormSection[] => [
+    {
+      title: "Air Brakes",
+      items: [
+        "Air System Leakage", "Air Tank(s)", "Brake Pedal / Actuator", "Brake Valves & Controls",
+        "Tractor Protection Valve", "Parking Brake & Emergency Application", "Brake Chambers",
+        "Drum or Disk Brake Components", "ABS System",
+      ].map(check),
+    },
+    { title: "Tires & Wheels", items: [measure("Tire Tread Depth"), check("Tire Tread & Sidewall Condition")] },
+  ];
+  const hyd = { tireGrid: true, brakeGrid: true, brakeMode: "hydraulic" as const };
+  const air = { ...hyd, brakeMode: "air" as const };
+
+  it("turns the air-brake checklist into a hydraulic one, dropping air-only rows", () => {
+    const out = applyImportGrids(airForm(), hyd);
+    const section = out.find((s) => s.title === "Hydraulic Brakes")!;
+    expect(titles(out)).not.toContain("Air Brakes");
+    expect(section.items.map((i) => i.item)).toEqual([
+      "Hydraulic System Leakage", "Brake Fluid Reservoir / Master Cylinder", "Brake Pedal / Actuator",
+      "Brake Lines & Hoses", "Parking Brake & Emergency Application", "Calipers / Wheel Cylinders",
+      "Drum or Disk Brake Components", "ABS System",
+    ]);
+    expect(section.items.every((i) => i.fieldType === "check")).toBe(true);
+  });
+
+  it("restores the printed air-brake section when switched back, also after save and reload", () => {
+    const asHyd = applyImportGrids(airForm(), hyd);
+    const reloaded = normalizeInspectionFormSections(JSON.parse(JSON.stringify(asHyd)));
+    const back = applyImportGrids(reloaded, air);
+    expect(titles(back)).toContain("Air Brakes");
+    expect(titles(back)).not.toContain("Hydraulic Brakes");
+    expect(back.find((s) => s.title === "Air Brakes")!.items.map((i) => i.item)).toContain("Tractor Protection Valve");
+  });
+
+  it("is idempotent on re-apply", () => {
+    const once = applyImportGrids(airForm(), hyd);
+    expect(applyImportGrids(once, hyd)).toEqual(once);
+  });
+
+  it("makes 'Tire Tread Depth' in the checklist a pass/fail row once the tire grid is on", () => {
+    const on = applyImportGrids(airForm(), air);
+    const row = on.find((s) => s.title === "Tires & Wheels")!.items.find((i) => i.item === "Tire Tread Depth")!;
+    expect(row).toMatchObject({ fieldType: "check", unit: null });
+    const off = applyImportGrids(airForm(), { ...air, tireGrid: false });
+    expect(off.find((s) => s.title === "Tires & Wheels")!.items[0].fieldType).toBe("measurement");
+  });
+});

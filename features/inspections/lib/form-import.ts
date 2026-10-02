@@ -41,6 +41,11 @@ export type InspectionFormSection = {
   title: string;
   items: InspectionFormItem[];
   generatedGrid?: GeneratedGridMeta;
+  /**
+   * The section as printed, kept when the importer rewrote it (an air-brake
+   * checklist switched to hydraulic) so switching back restores it.
+   */
+  adaptedFrom?: InspectionFormSection;
 };
 
 /**
@@ -235,11 +240,16 @@ export function normalizeInspectionFormSections(
               : {}),
           }
         : null;
+    const adaptedFrom =
+      Object.keys(record(section.adaptedFrom)).length > 0
+        ? normalizeInspectionFormSections([section.adaptedFrom])[0]
+        : undefined;
     if (items.length) {
       sections.push({
         title,
         items,
         ...(generatedGrid ? { generatedGrid } : {}),
+        ...(adaptedFrom ? { adaptedFrom } : {}),
       });
     }
   }

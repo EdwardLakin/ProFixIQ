@@ -77,7 +77,7 @@ describe("refreshTemplateLayout", () => {
       treadUnit: "32nds",
     });
     expect(custom.sections.map((s) => s.title)).toEqual([
-      "Tire Grid — Hydraulic", "Air Brakes", "Tires & Wheels",
+      "Tire Grid — Hydraulic", "Hydraulic Brakes", "Tires & Wheels",
     ]);
     const tread = custom.sections.find((s) => s.title.startsWith("Tire Grid"))!.items.filter((i) => /tread/i.test(i.item));
     expect(tread.every((i) => i.unit === "32nds")).toBe(true);
@@ -211,5 +211,37 @@ describe("refreshTemplateLayout — grid layout", () => {
     const text = out.summary.join("\n");
     expect(text).toMatch(/TIRE TREAD DEPTH & PRESSURE/);
     expect(text).toMatch(/battery grid/i);
+  });
+});
+
+describe("refreshTemplateLayout — brake system switch", () => {
+  it("says what the hydraulic switch changes and restores on the way back", () => {
+    const sections: InspectionFormSection[] = [
+      { title: "Air Brakes", items: [check("Air System Leakage"), check("ABS System")] },
+    ];
+    const hyd = refreshTemplateLayout({ sections, vehicleType: "truck", plan: { tireGrid: true, brakeGrid: true, brakeMode: "hydraulic" } });
+    expect(hyd.summary.join("\n")).toMatch(/Switch "Air Brakes" to hydraulic brakes/);
+    const back = refreshTemplateLayout({ sections: hyd.sections, vehicleType: "truck", plan: { brakeMode: "air" } });
+    expect(back.summary.join("\n")).toMatch(/Restore the printed "Air Brakes"/);
+  });
+});
+
+describe("refreshTemplateLayout — template saved by the earlier layout", () => {
+  it("moves the grids to the top, drops the duplicate tread table and fixes the tread row", () => {
+    const old: InspectionFormSection[] = [
+      { title: "Air Brakes", items: [check("Air System Leakage"), check("Brake Chambers"), check("ABS System")] },
+      { title: "Corner Grid (Hydraulic)", items: [{ item: "LF Brake Pad", unit: "mm", fieldType: "measurement" }], generatedGrid: { kind: "brake", brakeMode: "hydraulic" } },
+      { title: "Body & Chassis", items: [check("Hood")] },
+      { title: "Tires & Wheels", items: [{ item: "Tire Tread Depth", unit: "mm", fieldType: "measurement" }, check("Wheel Hub")] },
+      { title: "TIRE TREAD DEPTH & PRESSURE", items: [{ item: "Outside / Inside", unit: "/32", fieldType: "measurement" }, { item: "Inside / Outside", unit: "/32", fieldType: "measurement" }] },
+      { title: "Tire Grid — Hydraulic", items: [{ item: "LF Tire Pressure", unit: "psi", fieldType: "measurement" }], generatedGrid: { kind: "tire", brakeMode: "hydraulic" } },
+    ];
+    const out = refreshTemplateLayout({ sections: old, vehicleType: "truck", title: "Hansen's Quarterly" });
+    expect(out.sections.map((s) => s.title)).toEqual([
+      "Corner Grid (Hydraulic)", "Tire Grid — Hydraulic", "Hydraulic Brakes", "Body & Chassis", "Tires & Wheels",
+    ]);
+    const tread = out.sections.find((s) => s.title === "Tires & Wheels")!.items[0];
+    expect(tread).toMatchObject({ item: "Tire Tread Depth", fieldType: "check", unit: null });
+    expect(out.summary.join("\n")).toMatch(/TIRE TREAD DEPTH & PRESSURE/);
   });
 });

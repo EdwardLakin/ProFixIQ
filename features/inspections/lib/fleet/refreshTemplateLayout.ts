@@ -177,6 +177,19 @@ export function refreshTemplateLayout(input: {
   if (gridPlan.batteryGrid && !hadBattery) summary.push("Add the battery grid (rated / tested CCA).");
   if (!gridPlan.batteryGrid && hadBattery) summary.push("Remove the battery grid.");
 
+  const adaptedNow = sections.filter((s) => s.adaptedFrom && !input.sections.some((o) => o.title === s.title));
+  for (const section of adaptedNow) {
+    summary.push(`Switch "${section.adaptedFrom?.title}" to hydraulic brakes ("${section.title}"); air-only rows are dropped.`);
+  }
+  const restoredNow = sections.filter(
+    (s) =>
+      !s.adaptedFrom &&
+      input.sections.some((o) => o.adaptedFrom?.title === s.title),
+  );
+  for (const section of restoredNow) {
+    summary.push(`Restore the printed "${section.title}" section.`);
+  }
+
   const keptTitles = new Set(sections.map((s) => s.title));
   const replaced = input.sections
     .filter((s) => !isImportGridSection(s) && !keptTitles.has(s.title))
