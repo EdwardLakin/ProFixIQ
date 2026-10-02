@@ -32,6 +32,7 @@ function deferred<T>() {
 const sockets: FakeWebSocket[] = [];
 const audioContexts: FakeAudioContext[] = [];
 const audioSources: FakeAudioBufferSource[] = [];
+const audioWorklets: FakeAudioWorkletNode[] = [];
 
 class FakeWebSocket {
   static readonly CONNECTING = 0;
@@ -68,6 +69,10 @@ class FakeAudioWorkletNode {
   readonly port = { onmessage: null as ((event: MessageEvent) => void) | null };
   readonly connect = vi.fn();
   readonly disconnect = vi.fn();
+
+  constructor() {
+    audioWorklets.push(this);
+  }
 }
 
 class FakeAudioBufferSource {
@@ -124,7 +129,7 @@ describe("Technician CoPilot-owned Realtime transport", () => {
     ok: true,
     json: async () => ({
       token: "ephemeral-token",
-      transcriptionModel: "gpt-4o-mini-transcribe",
+      transcriptionModel: "gpt-live-transcribe",
     }),
   }));
 
@@ -133,6 +138,7 @@ describe("Technician CoPilot-owned Realtime transport", () => {
     sockets.splice(0, sockets.length);
     audioContexts.splice(0, audioContexts.length);
     audioSources.splice(0, audioSources.length);
+    audioWorklets.splice(0, audioWorklets.length);
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: { getUserMedia },
@@ -192,6 +198,66 @@ describe("Technician CoPilot-owned Realtime transport", () => {
     expect(result.current.resume()).toBe(false);
     expect(track.stop).toHaveBeenCalledTimes(1);
     expect(onStateChange).not.toHaveBeenLastCalledWith("idle");
+    unmount();
+  });
+
+  it("configures gpt-live-transcribe without server VAD and commits turns from client audio", async () => {
+    const { stream } = fakeStream();
+    getUserMedia.mockResolvedValue(stream);
+    const { result, unmount } = renderHook(() =>
+      useTechnicianRealtimeVoice(vi.fn(), (text) => text),
+    );
+
+    await act(async () => {
+      await result.current.start();
+    });
+    act(() => sockets[0]?.open());
+
+    const sentOnOpen = (sockets[0]?.send.mock.calls ?? [])
+      .map(([payload]) => JSON.parse(String(payload)) as Record<string, unknown>);
+    const update = sentOnOpen.find((message) => message.type === "session.update") as
+      | {
+          session?: {
+            audio?: {
+              input?: {
+                transcription?: Record<string, unknown>;
+                turn_detection?: unknown;
+              };
+            };
+          };
+        }
+      | undefined;
+    expect(update?.session?.audio?.input?.transcription).toEqual(
+      expect.objectContaining({
+        model: "gpt-live-transcribe",
+        languages: ["en"],
+        delay: "low",
+      }),
+    );
+    expect(update?.session?.audio?.input?.transcription).not.toHaveProperty(
+      "language",
+    );
+    expect(update?.session?.audio?.input?.turn_detection).toBeNull();
+
+    const worklet = audioWorklets[0];
+    expect(worklet?.port.onmessage).toBeTypeOf("function");
+    const speech = new Float32Array(2_400);
+    speech.fill(0.05);
+    const silence = new Float32Array(2_400);
+
+    act(() => {
+      worklet?.port.onmessage?.({ data: speech } as MessageEvent);
+      for (let i = 0; i < 9; i += 1) {
+        worklet?.port.onmessage?.({ data: silence } as MessageEvent);
+      }
+    });
+
+    const messages = (sockets[0]?.send.mock.calls ?? []).map(([payload]) =>
+      JSON.parse(String(payload)) as Record<string, unknown>,
+    );
+    expect(
+      messages.some((message) => message.type === "input_audio_buffer.commit"),
+    ).toBe(true);
     unmount();
   });
 
@@ -366,21 +432,21 @@ describe("Technician CoPilot-owned Realtime transport", () => {
       unmount();
     });
 
-    it("ignores raw server-VAD events, so shop noise cannot hold a session open", async () => {
+    it("does not treat client audio energy as recognized activity for the idle cap", async () => {
       const { onAutoStop, unmount } = await startGuarded();
+      const worklet = audioWorklets[0];
+      const shopNoise = new Float32Array(2_400);
+      shopNoise.fill(0.05);
 
-      // Server VAD's threshold is a speech-probability gate, so a radio or a
-      // conversation across the bay trips these with nobody dictating. They
-      // must not count as activity or the idle cap never fires where it
-      // matters most.
+      // Client VAD must commit likely speech for gpt-live-transcribe, but raw
+      // energy alone cannot keep an unattended shop-floor session alive. Only
+      // an actual transcript delta/final resets the idle window.
       for (let i = 0; i < 4; i += 1) {
         await act(async () => {
           vi.advanceTimersByTime(IDLE_TIMEOUT_MS / 4);
         });
         act(() => {
-          sockets[0]?.emit({ type: "input_audio_buffer.speech_started" });
-          sockets[0]?.emit({ type: "input_audio_buffer.speech_stopped" });
-          sockets[0]?.emit({ type: "input_audio_buffer.committed" });
+          worklet?.port.onmessage?.({ data: shopNoise } as MessageEvent);
         });
       }
 
