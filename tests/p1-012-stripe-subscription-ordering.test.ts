@@ -92,6 +92,7 @@ describe("P1-012 Stripe subscription ordering", () => {
         data: null,
         error: { message: "billing shop not found" },
       })
+      .mockResolvedValueOnce({ data: true, error: null })
       .mockResolvedValueOnce({ data: true, error: null });
     const limit = vi.fn().mockResolvedValue({
       data: [{ id: RECOVERED_SHOP_ID }],
@@ -134,6 +135,14 @@ describe("P1-012 Stripe subscription ordering", () => {
       2,
       "apply_stripe_subscription_webhook_snapshot",
       expect.objectContaining({ p_shop_id: RECOVERED_SHOP_ID }),
+    );
+    expect(rpc).toHaveBeenNthCalledWith(
+      3,
+      "set_technician_copilot_licensed_seats",
+      {
+        p_shop_id: RECOVERED_SHOP_ID,
+        p_seats: 0,
+      },
     );
     expect(warn).toHaveBeenCalledWith(
       "[stripe/webhook] recovered stale billing shop identity",
