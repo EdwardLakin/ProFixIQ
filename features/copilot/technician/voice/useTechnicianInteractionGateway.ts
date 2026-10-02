@@ -186,7 +186,7 @@ export function useTechnicianInteractionGateway({
 
   const cancelSpeechOutput = useCallback(() => {
     speechPlaybackAttemptRef.current += 1;
-        speechRequestControllerRef.current?.abort();
+    speechRequestControllerRef.current?.abort();
     speechRequestControllerRef.current = null;
     try {
       realtimeRef.current?.stopAudio?.();
@@ -711,15 +711,18 @@ export function useTechnicianInteractionGateway({
   stopRef.current = stop;
 
   const interrupt = useCallback(() => {
-    if (!activeRef.current || phaseRef.current !== "speaking") return;
+    if (!activeRef.current) return;
+    // GPT-Live is full duplex and handles spoken barge-in itself. Keep the
+    // explicit UI interrupt useful as well by forwarding a stop-speaking
+    // instruction even though the gateway can already be back in "listening".
     cancelSpeechOutput();
     utteranceRef.current = null;
     if (typeof window !== "undefined") {
       window.speechSynthesis?.cancel();
     }
     clearSpeechWatchdog();
-    void startListeningRef.current();
-  }, [cancelSpeechOutput, clearSpeechWatchdog]);
+    setVoicePhase("listening");
+  }, [cancelSpeechOutput, clearSpeechWatchdog, setVoicePhase]);
 
   useEffect(() => {
     if (typeof navigator === "undefined" || typeof document === "undefined") {
