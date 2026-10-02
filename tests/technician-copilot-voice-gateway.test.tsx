@@ -8,7 +8,7 @@ const realtime = vi.hoisted(() => ({
   resume: vi.fn(() => true),
   speakText: vi.fn(() => true),
   stop: vi.fn(),
-  onFinal: null as null | ((text: string) => void),
+  onFinal: null as null | ((text: string, delegationId?: string) => void),
   onStateChange: null as null | ((
     state: "idle" | "connecting" | "listening" | "error",
   ) => void),
@@ -17,7 +17,7 @@ const realtime = vi.hoisted(() => ({
 
 vi.mock("@/features/copilot/technician/voice/useTechnicianRealtimeVoice", () => ({
   useTechnicianRealtimeVoice: (
-    onFinal: (text: string) => void,
+    onFinal: (text: string, delegationId?: string) => void,
     _wake: (text: string) => string | null,
     options?: {
       onStateChange?: (
@@ -68,7 +68,7 @@ describe("Technician Copilot GPT-Live interaction gateway", () => {
     expect(result.current.phase).toBe("listening");
 
     await act(async () => {
-      realtime.onFinal?.("Rear U-joint has play.");
+      realtime.onFinal?.("Rear U-joint has play.", "item_delegate_1");
       await Promise.resolve();
     });
 
@@ -76,6 +76,7 @@ describe("Technician Copilot GPT-Live interaction gateway", () => {
       expect(onUtterance).toHaveBeenCalledWith("Rear U-joint has play.");
       expect(realtime.speakText).toHaveBeenCalledWith(
         "Rear U-joint play documented.",
+        "item_delegate_1",
       );
     });
     expect(realtime.pause).not.toHaveBeenCalled();
@@ -129,6 +130,7 @@ describe("Technician Copilot GPT-Live interaction gateway", () => {
     );
     expect(realtime.speakText).toHaveBeenCalledWith(
       "You've just been assigned a new job.",
+      undefined,
     );
     expect(realtime.pause).not.toHaveBeenCalled();
   });
@@ -209,6 +211,7 @@ describe("Technician Copilot GPT-Live interaction gateway", () => {
 
     expect(realtime.speakText).toHaveBeenCalledWith(
       "Morning. You have three jobs assigned.",
+      undefined,
     );
     expect(realtime.pause).not.toHaveBeenCalled();
   });
