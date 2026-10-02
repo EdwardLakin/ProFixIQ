@@ -447,7 +447,7 @@ export function useCostOptimizedInspectionVoice(
 
   // Inspection feedback intentionally does not use premium GPT-Live output.
   // Returning false sends the existing screen down its local speech fallback.
-  function speakText(): boolean {
+  function speakText(_text: string): boolean {
     return false;
   }
 
