@@ -11,7 +11,7 @@ import {
 import { buildInspectionFromSelections } from "@inspections/lib/inspection/buildFromSelections";
 import { highwayMasterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
 import {
-  offRoadCategoriesForFamily,
+  offRoadCategoriesForProfile,
   offRoadEquipmentProfiles,
   offRoadProfileByValue,
 } from "@inspections/lib/inspection/offRoadInspectionCatalog";
@@ -99,7 +99,7 @@ export default function FleetMaintenanceInspectionBuilder({
     const search = query.trim().toLowerCase();
     const offRoadProfile = offRoadProfileByValue(vehicleType);
     const sourceSections = offRoadProfile
-      ? offRoadCategoriesForFamily(offRoadProfile.family)
+      ? offRoadCategoriesForProfile(offRoadProfile)
       : highwayMasterInspectionList;
 
     if (!search) return sourceSections;

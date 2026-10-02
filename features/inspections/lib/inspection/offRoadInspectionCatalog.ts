@@ -26,6 +26,26 @@ export type OffRoadEquipmentProfile = {
   family: OffRoadEquipmentFamily;
 };
 
+/**
+ * Narrows (or widens) an item beyond its families, per equipment profile value.
+ * Families are coarse (a forklift and a telehandler share one), so these rules
+ * keep e.g. mast chains off telehandlers and engine checks off electric lifts.
+ */
+export type OffRoadProfileRules = {
+  /** Within the item's families, apply only to these profiles. */
+  only?: string[];
+  /** Apply to these profiles even if their family is not listed. */
+  also?: string[];
+  /** Never apply to these profiles. */
+  exclude?: string[];
+};
+
+/**
+ * `required` and `priority` currently drive only `buildOffRoadFromMaster`
+ * (quick builds in the shared Shop/Field builder). Manual selection and the
+ * Fleet PM builder show every applicable row and do not use either field, and
+ * neither is persisted into saved templates.
+ */
 export type OffRoadInspectionItem = {
   item: string;
   unit?: string | null;
@@ -33,6 +53,7 @@ export type OffRoadInspectionItem = {
   required?: boolean;
   catalogScope: "off_road";
   equipmentFamilies: OffRoadEquipmentFamily[];
+  profileRules?: OffRoadProfileRules;
 };
 
 export type OffRoadInspectionCategory = {
@@ -80,8 +101,10 @@ const HYDRAULIC: OffRoadEquipmentFamily[] = [
   "snow_municipal",
   "utility_site",
   "stationary_towable",
-  "attachments",
 ];
+
+// Everything except platforms (no ROPS/FOPS structure on aerial work platforms).
+const ROPS_FAMILIES = ALL_MOBILE.filter((family) => family !== "aerial_access");
 
 const TRACKED: OffRoadEquipmentFamily[] = [
   "excavation",
@@ -94,6 +117,29 @@ const TRACKED: OffRoadEquipmentFamily[] = [
   "forestry",
   "utility_site",
 ];
+
+// Machines with no combustion engine (typically electric); engine, coolant and
+// fuel rows do not apply to them.
+const ELECTRIC_ONLY = ["scissor_lift", "vertical_mast_lift"];
+const NO_ENGINE: OffRoadProfileRules = { exclude: ELECTRIC_ONLY };
+
+// Wheeled or walking machines that share a family with tracked ones.
+const NOT_TRACKED = [
+  "wheel_loader", "skid_steer", "backhoe_loader", "wheeled_excavator",
+  "rigid_haul_truck", "underground_haul_truck", "underground_lhd",
+  "dragline", "utv_atv",
+];
+const TRACKED_RULES: OffRoadProfileRules = { exclude: NOT_TRACKED, also: ["snowcat"] };
+
+// Tracked-only machines that share a family with rubber-tyred ones.
+const NOT_TYRED = [
+  "compact_track_loader", "hydraulic_mining_shovel", "electric_rope_shovel",
+  "dragline", "snowcat",
+];
+const TYRE_RULES: OffRoadProfileRules = { exclude: NOT_TYRED, also: ["wheeled_excavator"] };
+
+const MAST_FORKLIFTS = ["forklift", "rough_terrain_forklift"];
+const BOOM_HANDLERS = ["telehandler", "reach_stacker"];
 
 export const offRoadEquipmentProfiles: OffRoadEquipmentProfile[] = [
   { value: "mini_excavator", label: "Mini excavator", family: "excavation" },
@@ -145,7 +191,10 @@ export const offRoadEquipmentProfiles: OffRoadEquipmentProfile[] = [
 function item(
   label: string,
   equipmentFamilies: OffRoadEquipmentFamily[],
-  options: Pick<OffRoadInspectionItem, "unit" | "priority" | "required"> = {},
+  options: Pick<
+    OffRoadInspectionItem,
+    "unit" | "priority" | "required" | "profileRules"
+  > = {},
 ): OffRoadInspectionItem {
   return {
     item: label,
@@ -172,18 +221,18 @@ export const offRoadInspectionCategories: OffRoadInspectionCategory[] = [
   {
     title: "Off-Road — Engine, Cooling & Fuel",
     items: [
-      item("Engine oil level / condition", ALL_MOBILE, { required: true, priority: 95 }),
-      item("Engine oil leaks", ALL_MOBILE, { priority: 90 }),
-      item("Engine mounts", ALL_MOBILE, { priority: 70 }),
-      item("Air filter restriction / intake system", ALL_MOBILE, { priority: 90 }),
-      item("Turbocharger / charge-air piping", ALL_MOBILE, { priority: 75 }),
-      item("Coolant level / condition", ALL_MOBILE, { required: true, priority: 95 }),
-      item("Radiator / cooler pack condition", ALL_MOBILE, { required: true, priority: 90 }),
-      item("Cooler pack cleanliness / debris", ALL_MOBILE, { priority: 90 }),
-      item("Cooling fan / fan drive", ALL_MOBILE, { priority: 85 }),
-      item("Belts / tensioners / pulleys", ALL_MOBILE, { priority: 80 }),
-      item("Fuel tank / lines / hoses", ALL_MOBILE, { priority: 85 }),
-      item("Fuel filters / water separator", ALL_MOBILE, { priority: 80 }),
+      item("Engine oil level / condition", ALL_MOBILE, { required: true, priority: 95 , profileRules: NO_ENGINE }),
+      item("Engine oil leaks", ALL_MOBILE, { priority: 90 , profileRules: NO_ENGINE }),
+      item("Engine mounts", ALL_MOBILE, { priority: 70 , profileRules: NO_ENGINE }),
+      item("Air filter restriction / intake system", ALL_MOBILE, { priority: 90 , profileRules: NO_ENGINE }),
+      item("Turbocharger / charge-air piping", ALL_MOBILE, { priority: 75 , profileRules: NO_ENGINE }),
+      item("Coolant level / condition", ALL_MOBILE, { required: true, priority: 95 , profileRules: NO_ENGINE }),
+      item("Radiator / cooler pack condition", ALL_MOBILE, { required: true, priority: 90 , profileRules: NO_ENGINE }),
+      item("Cooler pack cleanliness / debris", ALL_MOBILE, { priority: 90 , profileRules: NO_ENGINE }),
+      item("Cooling fan / fan drive", ALL_MOBILE, { priority: 85 , profileRules: NO_ENGINE }),
+      item("Belts / tensioners / pulleys", ALL_MOBILE, { priority: 80 , profileRules: NO_ENGINE }),
+      item("Fuel tank / lines / hoses", ALL_MOBILE, { priority: 85 , profileRules: NO_ENGINE }),
+      item("Fuel filters / water separator", ALL_MOBILE, { priority: 80 , profileRules: NO_ENGINE }),
     ],
   },
   {
@@ -221,11 +270,11 @@ export const offRoadInspectionCategories: OffRoadInspectionCategory[] = [
   {
     title: "Off-Road — Drivetrain, Axles, Steering & Brakes",
     items: [
-      item("Transmission / hydrostatic drive — level / condition / leaks", ["loading","dozing_grading","hauling","material_handling","surface_mining","underground_mining","forestry","agriculture_industrial","snow_municipal","utility_site"], { priority: 95 }),
+      item("Transmission / hydrostatic drive — level / condition / leaks", ["loading","dozing_grading","hauling","material_handling","aerial_access","compaction","road_construction","surface_mining","underground_mining","forestry","agriculture_industrial","snow_municipal","utility_site"], { priority: 95 }),
       item("Driveshafts / U-joints / guards", ["loading","hauling","material_handling","surface_mining","agriculture_industrial","snow_municipal"], { priority: 85 }),
       item("Differentials / axle housings / final drives", ["loading","hauling","material_handling","surface_mining","underground_mining","agriculture_industrial"], { priority: 90 }),
-      item("Steering cylinders / linkage / pins", ["loading","dozing_grading","hauling","material_handling","surface_mining","agriculture_industrial","snow_municipal"], { priority: 95 }),
-      item("Articulation joint / center pins", ["loading","hauling","surface_mining","underground_mining","agriculture_industrial"], { priority: 95 }),
+      item("Steering cylinders / linkage / pins", ["loading","dozing_grading","hauling","material_handling","aerial_access","compaction","road_construction","surface_mining","underground_mining","agriculture_industrial","snow_municipal"], { priority: 95 }),
+      item("Articulation joint / center pins", ["loading","hauling","compaction","surface_mining","underground_mining","agriculture_industrial"], { priority: 95 }),
       item("Service brake operation", ALL_MOBILE, { required: true, priority: 100 }),
       item("Parking / emergency brake operation", ALL_MOBILE, { required: true, priority: 100 }),
       item("Brake accumulators / warning system", ["loading","hauling","surface_mining","underground_mining"], { priority: 90 }),
@@ -235,29 +284,29 @@ export const offRoadInspectionCategories: OffRoadInspectionCategory[] = [
   {
     title: "Off-Road — Undercarriage",
     items: [
-      item("Track shoes / grouser wear", TRACKED, { unit: "%", priority: 95 }),
-      item("Track shoe bolts", TRACKED, { priority: 90 }),
-      item("Track links / rail wear", TRACKED, { unit: "%", priority: 95 }),
-      item("Pins / bushings", TRACKED, { unit: "%", priority: 95 }),
-      item("Track tension / sag", TRACKED, { priority: 95 }),
-      item("Sprockets", TRACKED, { unit: "%", priority: 90 }),
-      item("Front idlers", TRACKED, { unit: "%", priority: 90 }),
-      item("Carrier rollers", TRACKED, { unit: "%", priority: 85 }),
-      item("Track rollers", TRACKED, { unit: "%", priority: 90 }),
-      item("Track frame / guards", TRACKED, { priority: 85 }),
-      item("Track adjuster / recoil system", TRACKED, { priority: 90 }),
-      item("Final drive / travel motor leaks", TRACKED, { priority: 95 }),
+      item("Track shoes / grouser wear", TRACKED, { unit: "%", priority: 95 , profileRules: TRACKED_RULES }),
+      item("Track shoe bolts", TRACKED, { priority: 90 , profileRules: TRACKED_RULES }),
+      item("Track links / rail wear", TRACKED, { unit: "%", priority: 95 , profileRules: TRACKED_RULES }),
+      item("Pins / bushings", TRACKED, { unit: "%", priority: 95 , profileRules: TRACKED_RULES }),
+      item("Track tension / sag", TRACKED, { priority: 95 , profileRules: TRACKED_RULES }),
+      item("Sprockets", TRACKED, { unit: "%", priority: 90 , profileRules: TRACKED_RULES }),
+      item("Front idlers", TRACKED, { unit: "%", priority: 90 , profileRules: TRACKED_RULES }),
+      item("Carrier rollers", TRACKED, { unit: "%", priority: 85 , profileRules: TRACKED_RULES }),
+      item("Track rollers", TRACKED, { unit: "%", priority: 90 , profileRules: TRACKED_RULES }),
+      item("Track frame / guards", TRACKED, { priority: 85 , profileRules: TRACKED_RULES }),
+      item("Track adjuster / recoil system", TRACKED, { priority: 90 , profileRules: TRACKED_RULES }),
+      item("Final drive / travel motor leaks", TRACKED, { priority: 95 , profileRules: TRACKED_RULES }),
     ],
   },
   {
     title: "Off-Road — Tires, Wheels & Rims",
     items: [
-      item("Tire condition — cuts / chunking / separation", ["loading","hauling","material_handling","aerial_access","compaction","road_construction","surface_mining","agriculture_industrial","oilfield_energy","snow_municipal","utility_site"], { required: true, priority: 95 }),
-      item("Tire pressure", ["loading","hauling","material_handling","aerial_access","compaction","road_construction","surface_mining","agriculture_industrial","oilfield_energy","snow_municipal","utility_site"], { unit: "psi", priority: 90 }),
-      item("Tread depth / remaining rubber", ["loading","hauling","material_handling","aerial_access","compaction","road_construction","agriculture_industrial","oilfield_energy","snow_municipal","utility_site"], { unit: "mm", priority: 80 }),
-      item("Wheel / rim condition", ["loading","hauling","material_handling","aerial_access","compaction","road_construction","surface_mining","agriculture_industrial","oilfield_energy","snow_municipal","utility_site"], { priority: 95 }),
-      item("Multi-piece rim / lock ring condition", ["loading","hauling","surface_mining"], { priority: 100 }),
-      item("Wheel fasteners / studs", ["loading","hauling","material_handling","aerial_access","compaction","road_construction","surface_mining","agriculture_industrial","oilfield_energy","snow_municipal","utility_site"], { priority: 95 }),
+      item("Tire condition — cuts / chunking / separation", ["loading","hauling","material_handling","aerial_access","compaction","road_construction","surface_mining","agriculture_industrial","oilfield_energy","snow_municipal","utility_site","underground_mining","forestry"], { required: true, priority: 95 , profileRules: TYRE_RULES }),
+      item("Tire pressure", ["loading","hauling","material_handling","aerial_access","compaction","road_construction","surface_mining","agriculture_industrial","oilfield_energy","snow_municipal","utility_site","underground_mining","forestry"], { unit: "psi", priority: 90 , profileRules: TYRE_RULES }),
+      item("Tread depth / remaining rubber", ["loading","hauling","material_handling","aerial_access","compaction","road_construction","agriculture_industrial","oilfield_energy","snow_municipal","utility_site","underground_mining","forestry"], { unit: "mm", priority: 80 , profileRules: TYRE_RULES }),
+      item("Wheel / rim condition", ["loading","hauling","material_handling","aerial_access","compaction","road_construction","surface_mining","agriculture_industrial","oilfield_energy","snow_municipal","utility_site","underground_mining","forestry"], { priority: 95 , profileRules: TYRE_RULES }),
+      item("Multi-piece rim / lock ring condition", ["loading","hauling","surface_mining","underground_mining"], { priority: 100 , profileRules: TYRE_RULES }),
+      item("Wheel fasteners / studs", ["loading","hauling","material_handling","aerial_access","compaction","road_construction","surface_mining","agriculture_industrial","oilfield_energy","snow_municipal","utility_site","underground_mining","forestry"], { priority: 95 , profileRules: TYRE_RULES }),
     ],
   },
   {
@@ -305,17 +354,17 @@ export const offRoadInspectionCategories: OffRoadInspectionCategory[] = [
   {
     title: "Off-Road — Forklift & Telehandler",
     items: [
-      item("Mast channels / rollers", ["material_handling"], { required: true, priority: 100 }),
-      item("Lift chains / anchors / chain tension", ["material_handling"], { required: true, priority: 100 }),
+      item("Mast channels / rollers", ["material_handling"], { required: true, priority: 100, profileRules: { only: MAST_FORKLIFTS } }),
+      item("Lift chains / anchors / chain tension", ["material_handling"], { required: true, priority: 100, profileRules: { only: MAST_FORKLIFTS } }),
       item("Lift / tilt cylinders", ["material_handling"], { priority: 95 }),
-      item("Carriage / carriage rollers", ["material_handling"], { priority: 95 }),
-      item("Forks — heel / blade / tip wear", ["material_handling"], { required: true, priority: 100 }),
-      item("Fork locking pins / retainers", ["material_handling"], { required: true, priority: 95 }),
+      item("Carriage / carriage rollers", ["material_handling"], { priority: 95, profileRules: { only: MAST_FORKLIFTS } }),
+      item("Forks — heel / blade / tip wear", ["material_handling"], { required: true, priority: 100, profileRules: { exclude: ["reach_stacker"] } }),
+      item("Fork locking pins / retainers", ["material_handling"], { required: true, priority: 95, profileRules: { exclude: ["reach_stacker"] } }),
       item("Load backrest / overhead guard", ["material_handling"], { required: true, priority: 95 }),
       item("Sideshift / fork positioner / attachment", ["material_handling"], { priority: 85 }),
-      item("Boom sections / wear pads / rollers", ["material_handling"], { priority: 95 }),
-      item("Stabilizers / outriggers / frame levelling", ["material_handling"], { priority: 90 }),
-      item("Load moment indicator / overload protection", ["material_handling"], { required: true, priority: 100 }),
+      item("Boom sections / wear pads / rollers", ["material_handling"], { priority: 95, profileRules: { only: BOOM_HANDLERS } }),
+      item("Stabilizers / outriggers / frame levelling", ["material_handling"], { priority: 90, profileRules: { only: BOOM_HANDLERS } }),
+      item("Load moment indicator / overload protection", ["material_handling"], { required: true, priority: 100, profileRules: { only: BOOM_HANDLERS } }),
       item("Capacity / data plate", ["material_handling"], { required: true, priority: 100 }),
     ],
   },
@@ -392,7 +441,7 @@ export const offRoadInspectionCategories: OffRoadInspectionCategory[] = [
     title: "Off-Road — Operator Station & Safety",
     items: [
       item("Seat / suspension / seat belt", ALL_MOBILE, { required: true, priority: 100 }),
-      item("ROPS / FOPS / cab structure", ALL_MOBILE, { required: true, priority: 100 }),
+      item("ROPS / FOPS / cab structure", ROPS_FAMILIES, { required: true, priority: 100 }),
       item("Doors / windows / windshield / wipers", ALL_MOBILE, { priority: 85 }),
       item("Mirrors / cameras / visibility aids", ALL_MOBILE, { priority: 90 }),
       item("Controls / joysticks / pedals", ALL_MOBILE, { required: true, priority: 95 }),
@@ -411,7 +460,7 @@ export const offRoadInspectionCategories: OffRoadInspectionCategory[] = [
       item("Engine / fuel shutdown interface", ["surface_mining","underground_mining","forestry","oilfield_energy"], { priority: 95 }),
       item("Automatic greaser reservoir / pump", HYDRAULIC, { priority: 90 }),
       item("Grease distribution blocks / lines / injectors", HYDRAULIC, { priority: 90 }),
-      item("Manual grease points / evidence of lubrication", HYDRAULIC, { priority: 95 }),
+      item("Manual grease points / evidence of lubrication", [...HYDRAULIC, "attachments"], { priority: 95 }),
       item("Blocked grease passage / seized grease fitting", HYDRAULIC, { priority: 90 }),
     ],
   },
@@ -442,6 +491,32 @@ export const offRoadInspectionCategories: OffRoadInspectionCategory[] = [
   },
 ];
 
+export function offRoadItemAppliesToProfile(
+  entry: OffRoadInspectionItem,
+  profile: OffRoadEquipmentProfile,
+): boolean {
+  const rules = entry.profileRules;
+  if (rules?.exclude?.includes(profile.value)) return false;
+  if (rules?.also?.includes(profile.value)) return true;
+  if (!entry.equipmentFamilies.includes(profile.family)) return false;
+  return rules?.only ? rules.only.includes(profile.value) : true;
+}
+
+/** Profile-aware sections: family match plus per-profile rules. */
+export function offRoadCategoriesForProfile(
+  profile: OffRoadEquipmentProfile,
+): OffRoadInspectionCategory[] {
+  return offRoadInspectionCategories
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((entry) =>
+        offRoadItemAppliesToProfile(entry, profile),
+      ),
+    }))
+    .filter((section) => section.items.length > 0);
+}
+
+/** Family-level sections (ignores per-profile rules). */
 export function offRoadCategoriesForFamily(
   family: OffRoadEquipmentFamily,
 ): OffRoadInspectionCategory[] {
@@ -473,7 +548,7 @@ export function buildOffRoadFromMaster({
   const profile = offRoadProfileByValue(profileValue);
   if (!profile) return [];
 
-  const sections = offRoadCategoriesForFamily(profile.family);
+  const sections = offRoadCategoriesForProfile(profile);
   const ranked = sections
     .flatMap((section, sectionIndex) =>
       section.items.map((entry, itemIndex) => ({

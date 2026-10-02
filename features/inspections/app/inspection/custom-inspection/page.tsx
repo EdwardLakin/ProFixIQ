@@ -23,7 +23,7 @@ import {
 } from "@inspections/lib/inspection/masterInspectionList";
 import {
   buildOffRoadFromMaster,
-  offRoadCategoriesForFamily,
+  offRoadCategoriesForProfile,
   offRoadEquipmentProfiles,
   offRoadProfileByValue,
 } from "@inspections/lib/inspection/offRoadInspectionCatalog";
@@ -580,7 +580,7 @@ export default function CustomBuilderPage({
   const catalogSections = useMemo(
     () =>
       equipmentScope === "off_road" && offRoadProfile
-        ? offRoadCategoriesForFamily(offRoadProfile.family)
+        ? offRoadCategoriesForProfile(offRoadProfile)
         : highwayMasterInspectionList,
     [equipmentScope, offRoadProfile],
   );
@@ -688,6 +688,10 @@ export default function CustomBuilderPage({
     if (includeOil) qs.set("oil", oilEngineType);
     if (laborHours.trim()) qs.set("hours", laborHours.trim());
 
+    // Off-road runs must not inherit a stale road vehicle type from an earlier run.
+    if (equipmentScope === "off_road") {
+      sessionStorage.removeItem("inspection:vehicleType");
+    }
     sessionStorage.removeItem("customInspection:sections");
     sessionStorage.removeItem("customInspection:title");
     sessionStorage.removeItem("customInspection:gridMode");
@@ -973,8 +977,11 @@ export default function CustomBuilderPage({
       id: "prompt" as const,
       title: "Describe what you need",
       description:
-        "Turn a plain-language request into a structured inspection.",
+        equipmentScope === "off_road"
+          ? "Available for road vehicles only."
+          : "Turn a plain-language request into a structured inspection.",
       icon: Sparkles,
+      disabled: equipmentScope === "off_road",
     },
     {
       id: "manual" as const,
@@ -1084,6 +1091,11 @@ export default function CustomBuilderPage({
                   setSectionQuery("");
                   setItemQuery("");
                   if (next === "off_road") {
+                    // The AI prompt builder only knows highway vehicles.
+                    if (buildMethod === "prompt") setBuildMethod("template");
+                    if (![30, 60, 80, 120].includes(targetCount)) {
+                      setTargetCount(80);
+                    }
                     setGridTouched(true);
                     setGridMode("none");
                     setIncludeTireGrid(false);
@@ -1301,9 +1313,10 @@ export default function CustomBuilderPage({
                   key={method.id}
                   type="button"
                   aria-pressed={active}
+                  disabled={"disabled" in method && method.disabled}
                   onClick={() => setBuildMethod(method.id)}
                   className={cx(
-                    "flex min-h-[86px] items-start gap-3 rounded-xl border p-3 text-left transition",
+                    "flex min-h-[86px] items-start gap-3 rounded-xl border p-3 text-left transition disabled:cursor-not-allowed disabled:opacity-50",
                     active
                       ? "border-blue-500/30 bg-[color:var(--theme-surface-page)] shadow-sm ring-1 ring-blue-500/20"
                       : "border-transparent text-[color:var(--theme-text-secondary)] hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-page)]",
