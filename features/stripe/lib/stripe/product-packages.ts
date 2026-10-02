@@ -65,6 +65,9 @@ export const ADDITIONAL_FLEET_ASSET_LOOKUP_KEY =
   "profixiq_additional_fleet_asset_monthly_usd_v2";
 export const ADDITIONAL_USER_LOOKUP_KEY =
   "profixiq_additional_user_monthly_usd_v2";
+export const TECHNICIAN_COPILOT_LOOKUP_KEY =
+  "profixiq_technician_copilot_monthly_usd_v1";
+export const TECHNICIAN_COPILOT_MONTHLY_CENTS = 19_900;
 
 // Snapshot of the currently provisioned live USD Stripe catalog. Runtime
 // checkout still resolves by lookup key so test/sandbox catalogs and future
