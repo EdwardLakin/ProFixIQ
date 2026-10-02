@@ -49,8 +49,10 @@ type LiveResources = {
   paused: boolean;
   guardTimer: ReturnType<typeof setInterval> | null;
   pauseTimer: ReturnType<typeof setTimeout> | null;
-  streamedMs: number;
-  streamingSince: number | null;
+  closeTimer: ReturnType<typeof setTimeout> | null;
+  sessionId: string | null;
+  latestUsageSeconds: number | null;
+  sessionStartedAt: number | null;
   lastActivityAt: number;
   completedTranscriptTurns: TranscriptTurn[];
   currentTranscript: string;
@@ -66,27 +68,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function getString(value: unknown): string {
   return typeof value === "string" ? value : "";
-}
-
-function suspendStreamingClock(session: LiveResources, now: number): void {
-  if (session.streamingSince === null) return;
-  session.streamedMs += Math.max(0, now - session.streamingSince);
-  session.streamingSince = null;
-}
-
-function resumeStreamingClock(session: LiveResources, now: number): void {
-  if (session.streamingSince !== null) return;
-  session.streamingSince = now;
-  session.lastActivityAt = now;
-}
-
-function streamedTotalMs(session: LiveResources, now: number): number {
-  return (
-    session.streamedMs +
-    (session.streamingSince === null
-      ? 0
-      : Math.max(0, now - session.streamingSince))
-  );
 }
 
 // HTMLMediaElement.play() returns a promise in current browsers but may return
@@ -113,6 +94,36 @@ function sendEvent(
   return true;
 }
 
+function relayConfirmedLiveUsage(
+  sessionId: string,
+  usageSeconds: number,
+): void {
+  const payload = JSON.stringify({
+    sessionId,
+    usageSeconds,
+  });
+
+  try {
+    if (
+      typeof navigator !== "undefined" &&
+      typeof navigator.sendBeacon === "function"
+    ) {
+      const body = new Blob([payload], { type: "application/json" });
+      if (navigator.sendBeacon("/api/openai/live-settlement", body)) return;
+    }
+  } catch {}
+
+  try {
+    void fetch("/api/openai/live-settlement", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+      keepalive: true,
+    }).catch(() => undefined);
+  } catch {}
+}
+
 async function waitForIceGathering(peer: RTCPeerConnection): Promise<void> {
   if (peer.iceGatheringState === "complete") return;
   await new Promise<void>((resolve, reject) => {
@@ -134,8 +145,10 @@ async function waitForIceGathering(peer: RTCPeerConnection): Promise<void> {
 function cleanupSession(session: LiveResources): void {
   if (session.guardTimer) clearInterval(session.guardTimer);
   if (session.pauseTimer) clearTimeout(session.pauseTimer);
+  if (session.closeTimer) clearTimeout(session.closeTimer);
   session.guardTimer = null;
   session.pauseTimer = null;
+  session.closeTimer = null;
 
   try {
     session.events?.close();
@@ -158,7 +171,7 @@ function cleanupSession(session: LiveResources): void {
   }
   session.audio = null;
   session.paused = false;
-  session.streamingSince = null;
+  session.sessionStartedAt = null;
   session.completedTranscriptTurns = [];
   session.currentTranscript = "";
   session.currentTranscriptEndMs = null;
@@ -211,13 +224,15 @@ export function useRealtimeTranscription(
     opts?.onError?.(message);
   };
 
-  // Send session.close and give the data channel a moment to flush before the
-  // peer is torn down; the microphone is released immediately.
+  // Keep the data channel alive after session.close so OpenAI can emit the
+  // terminal session.closed event with final provider-reported usage.
   const closeGracefully = (session: LiveResources, eventId: string): void => {
     stopStream(session.mediaStream);
     session.mediaStream = null;
     if (sendEvent(session, { type: "session.close", event_id: eventId })) {
-      window.setTimeout(() => cleanupSession(session), 200);
+      session.closeTimer = window.setTimeout(() => {
+        cleanupSession(session);
+      }, 5_000);
     } else {
       cleanupSession(session);
     }
@@ -250,16 +265,17 @@ export function useRealtimeTranscription(
     session.guardTimer = setInterval(() => {
       if (!isCurrent(session)) return;
       const now = Date.now();
-      if (session.paused) {
-        suspendStreamingClock(session, now);
-        return;
-      }
-      resumeStreamingClock(session, now);
-
-      if (maxStreamingMs > 0 && streamedTotalMs(session, now) >= maxStreamingMs) {
+      // GPT-Live bills active session time even while muted, silent, or waiting
+      // on backend work. Cap wall-clock session duration, not microphone time.
+      if (
+        maxStreamingMs > 0 &&
+        session.sessionStartedAt !== null &&
+        now - session.sessionStartedAt >= maxStreamingMs
+      ) {
         autoStop(session, "max_duration");
         return;
       }
+      if (session.paused) return;
       if (idleTimeoutMs > 0 && now - session.lastActivityAt >= idleTimeoutMs) {
         autoStop(session, "idle");
       }
@@ -390,8 +406,10 @@ export function useRealtimeTranscription(
       paused: false,
       guardTimer: null,
       pauseTimer: null,
-      streamedMs: 0,
-      streamingSince: null,
+      closeTimer: null,
+      sessionId: null,
+      latestUsageSeconds: null,
+      sessionStartedAt: null,
       lastActivityAt: Date.now(),
       completedTranscriptTurns: [],
       currentTranscript: "",
@@ -439,7 +457,7 @@ export function useRealtimeTranscription(
       session.events = events;
 
       events.addEventListener("message", (event) => {
-        if (!isCurrent(session) || typeof event.data !== "string") return;
+        if (typeof event.data !== "string") return;
         let parsed: unknown;
         try {
           parsed = JSON.parse(event.data);
@@ -454,10 +472,47 @@ export function useRealtimeTranscription(
           console.log("[GPTLive] event:", type);
         }
 
+        if (type === "session.usage.updated") {
+          const usage = isRecord(parsed.usage) ? parsed.usage : null;
+          if (usage && typeof usage.seconds === "number") {
+            session.latestUsageSeconds = Math.max(0, usage.seconds);
+          }
+          return;
+        }
+
+        if (type === "session.closed") {
+          const usage = isRecord(parsed.usage) ? parsed.usage : null;
+          const finalSeconds =
+            usage && typeof usage.seconds === "number"
+              ? Math.max(0, usage.seconds)
+              : null;
+          if (finalSeconds !== null) {
+            session.latestUsageSeconds = finalSeconds;
+          }
+          if (
+            session.sessionId &&
+            session.latestUsageSeconds !== null
+          ) {
+            relayConfirmedLiveUsage(
+              session.sessionId,
+              session.latestUsageSeconds,
+            );
+          }
+          const current = detach(session);
+          cleanupSession(session);
+          if (current) setState("idle");
+          return;
+        }
+
+        if (!isCurrent(session)) return;
+
         if (type === "session.started") {
           session.lastActivityAt = Date.now();
-          // A pause() before the session started must not open the clock.
-          if (!session.paused) session.streamingSince = Date.now();
+          session.sessionStartedAt = Date.now();
+          const started = isRecord(parsed.session) ? parsed.session : null;
+          if (started && typeof started.id === "string" && started.id.trim()) {
+            session.sessionId = started.id.trim();
+          }
           setState("listening");
           startGuardTimer(session);
           return;
@@ -537,13 +592,6 @@ export function useRealtimeTranscription(
           return;
         }
 
-        if (type === "session.closed") {
-          const current = detach(session);
-          cleanupSession(session);
-          if (current) setState("idle");
-          return;
-        }
-
         if (type === "error") {
           const error = isRecord(parsed.error) ? parsed.error : null;
           fail(
@@ -602,8 +650,12 @@ export function useRealtimeTranscription(
       }
 
       const payload = (await response.json()) as {
+        session?: { id?: unknown };
         transport?: { sdp?: unknown };
       };
+      if (typeof payload.session?.id === "string" && payload.session.id.trim()) {
+        session.sessionId = payload.session.id.trim();
+      }
       const answerSdp =
         typeof payload.transport?.sdp === "string"
           ? payload.transport.sdp
@@ -636,7 +688,6 @@ export function useRealtimeTranscription(
     const session = activeSessionRef.current;
     if (!session || stoppedRef.current || session.paused) return false;
     session.paused = true;
-    suspendStreamingClock(session, Date.now());
     try {
       session.mediaStream?.getAudioTracks().forEach((track) => {
         track.enabled = false;
@@ -671,7 +722,6 @@ export function useRealtimeTranscription(
       type: "session.input_audio.unmute",
       event_id: `profix_unmute_${Date.now()}`,
     });
-    resumeStreamingClock(session, Date.now());
     return true;
   }
 
