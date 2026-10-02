@@ -3,6 +3,15 @@ import "server-only";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { getTechnicianCopilotCapabilities } from "./capability";
 
+const TECHNICIAN_COPILOT_TESTER_EMAIL = "edwardlakin35@gmail.com";
+
+type CopilotEntitlementRpcClient = {
+  rpc: (
+    name: "technician_copilot_has_paid_access",
+    args: { p_shop_id: string; p_profile_id: string },
+  ) => PromiseLike<{ data: boolean | null; error: { message?: string } | null }>;
+};
+
 export class TechnicianCopilotAccessError extends Error {
   constructor(public status: number, public code: string, message: string) {
     super(message);
@@ -79,6 +88,34 @@ export async function requireTechnicianCopilotAccess() {
     profile.shop_id,
     profile.id,
   );
+
+  const testerOverride =
+    String(user.email ?? "").trim().toLowerCase() ===
+    TECHNICIAN_COPILOT_TESTER_EMAIL;
+  if (!testerOverride) {
+    const entitlementClient = supabase as unknown as CopilotEntitlementRpcClient;
+    const entitlement = await entitlementClient.rpc(
+      "technician_copilot_has_paid_access",
+      {
+        p_shop_id: profile.shop_id,
+        p_profile_id: profile.id,
+      },
+    );
+    if (entitlement.error) {
+      throw new TechnicianCopilotAccessError(
+        500,
+        "technician_copilot_entitlement_lookup_failed",
+        "Technician CoPilot subscription could not be verified.",
+      );
+    }
+    if (entitlement.data !== true) {
+      throw new TechnicianCopilotAccessError(
+        402,
+        "technician_copilot_subscription_required",
+        "Technician CoPilot requires an active paid technician license.",
+      );
+    }
+  }
   if (!capabilities.text) {
     throw new TechnicianCopilotAccessError(
       404,
