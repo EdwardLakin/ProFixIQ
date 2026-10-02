@@ -4,6 +4,7 @@ type ShopRow = { id: string; created_at: string };
 
 type QueryNode = {
   select: (columns: string) => QueryNode;
+  is: (column: string, value: null) => QueryNode;
   order: (column: string, opts?: { ascending?: boolean }) => QueryNode;
   limit: (count: number) => QueryNode;
   or: (filter: string) => QueryNode;
@@ -14,11 +15,16 @@ type QueryNode = {
 
 function createShopsQuery(pages: ShopRow[][]) {
   const orCalls: string[] = [];
+  const isCalls: Array<[string, unknown]> = [];
 
   function makePage(index: number): QueryNode {
     const rows = pages[index] ?? [];
     const node: QueryNode = {
       select: vi.fn(() => node),
+      is: vi.fn((column: string, value: null) => {
+        isCalls.push([column, value]);
+        return node;
+      }),
       order: vi.fn(() => node),
       limit: vi.fn(() => node),
       or: vi.fn((filter: string) => {
@@ -30,18 +36,19 @@ function createShopsQuery(pages: ShopRow[][]) {
     return node;
   }
 
-  return { root: makePage(0), orCalls };
+  return { root: makePage(0), orCalls, isCalls };
 }
 
 describe("fetchAllShopIds", () => {
   it("returns every shop id across a single page", async () => {
-    const { root } = createShopsQuery([[{ id: "s1", created_at: "t1" }]]);
+    const { root, isCalls } = createShopsQuery([[{ id: "s1", created_at: "t1" }]]);
     const supabase = { from: vi.fn(() => root) };
 
     const { fetchAllShopIds } = await import("@/features/shared/lib/server/fetchAllShopIds");
     const ids = await fetchAllShopIds(supabase as never);
 
     expect(ids).toEqual(["s1"]);
+    expect(isCalls).toContainEqual(["demo_shop_archived_at", null]);
   });
 
   it("does not skip shops that tie on created_at across a page boundary", async () => {

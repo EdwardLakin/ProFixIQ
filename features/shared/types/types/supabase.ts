@@ -28779,6 +28779,12 @@ export type Database = {
         }
         Returns: Json
       }
+      archive_expired_demo_shops: {
+        Args: { p_cutoff: string }
+        Returns: {
+          shop_id: string
+        }[]
+      }
       archive_work_order_atomic: {
         Args: {
           p_actor_user_id: string

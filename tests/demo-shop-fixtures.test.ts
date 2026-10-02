@@ -14,14 +14,32 @@ const ACTOR_PROFILE_ID = "60606060-6060-4606-8606-606060606060";
 
 function makeAlwaysNotFoundThenInsertedBuilder(table: string, idCounterRef: { n: number }) {
   const builder: Record<string, unknown> = {};
+  // A fresh builder is created per admin.from(table) call, and
+  // upsertByNaturalKey() calls admin.from(table) separately for the
+  // natural-key lookup chain (select().eq()...maybeSingle()) and, when that
+  // reports not-found, for the insert chain (insert().select().limit()
+  // .maybeSingle()). Track which one this particular instance is on so
+  // maybeSingle() can report "not found" for every lookup and only return
+  // an id for an actual insert -- otherwise (returning an id
+  // unconditionally) every lookup would report a false hit, the insert
+  // branch in upsertByNaturalKey() would never run, and this test would
+  // pass vacuously even if seedDemoShopFixtures never inserted anything.
+  let isInsert = false;
   const chain = () => builder;
   builder.select = vi.fn(chain);
   builder.eq = vi.fn(chain);
   builder.update = vi.fn(chain);
-  builder.insert = vi.fn(chain);
+  builder.insert = vi.fn(() => {
+    isInsert = true;
+    return builder;
+  });
   builder.limit = vi.fn(chain);
-  // Every natural-key lookup reports "not found" so every row is inserted.
   builder.maybeSingle = vi.fn(() => {
+    if (!isInsert) {
+      // Natural-key lookup: always reports "not found" so every row goes
+      // through the insert branch.
+      return Promise.resolve({ data: null, error: null });
+    }
     idCounterRef.n += 1;
     return Promise.resolve({ data: { id: `${table}-${idCounterRef.n}` }, error: null });
   });

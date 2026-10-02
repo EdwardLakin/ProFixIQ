@@ -21,6 +21,7 @@ function makeBuilder(result: MockResult) {
   const chain = () => builder;
   builder.select = vi.fn(chain);
   builder.eq = vi.fn(chain);
+  builder.neq = vi.fn(chain);
   builder.not = vi.fn(chain);
   builder.order = vi.fn(chain);
   builder.limit = vi.fn(chain);
@@ -323,9 +324,16 @@ describe("demoAccess.ts — provisioning contract", () => {
 
   it("rolls back the created auth user and dependent rows on provisioning failure", () => {
     expect(source).toContain("rollbackCreatedProspect");
-    expect(source).toContain('["shop_members", "user_id"]');
-    expect(source).toContain('["people_workforce_profiles", "user_id"]');
-    expect(source).toContain('["profiles", "id"]');
+    const rollbackFn = source.slice(
+      source.indexOf("async function rollbackCreatedProspect"),
+      source.indexOf("async function cloneDemoShopForProspect"),
+    );
+    // shop_members and people_workforce_profiles aren't deleted explicitly
+    // -- they cascade-delete on shops.id and on profiles.id, so deleting
+    // the shop and then the profile below already clears them.
+    expect(rollbackFn).toContain('.from("shops").delete()');
+    expect(rollbackFn).toContain('.from("profiles").delete()');
+    expect(rollbackFn).toContain("deleteUser");
   });
 
   it("emails the prospect their real temporary password, unlike the internal staff invite flow", () => {
@@ -397,8 +405,21 @@ describe("demoAccess.ts — provisioning contract", () => {
 
   it("archiving only ever marks shops, never deletes prospect data", () => {
     const archiveFn = source.slice(source.indexOf("export async function archiveExpiredDemoProspects"));
-    expect(archiveFn).toContain("demo_shop_archived_at: new Date().toISOString()");
+    // The actual archive mutation now runs inside a single atomic DB
+    // function (archive_expired_demo_shops(), see
+    // 20261002020000_archive_expired_demo_shops_fn.sql) rather than a
+    // client-side UPDATE, so the TS side is just the RPC call -- assert
+    // that, and separately assert the DB function itself only ever UPDATEs
+    // (never DELETEs) shops or profiles.
+    expect(archiveFn).toContain('.rpc("archive_expired_demo_shops"');
     expect(archiveFn).not.toContain(".delete(");
+
+    const archiveMigration = readFileSync(
+      "supabase/migrations/20261002020000_archive_expired_demo_shops_fn.sql",
+      "utf8",
+    );
+    expect(archiveMigration).toContain("SET demo_shop_archived_at = now()");
+    expect(archiveMigration.toUpperCase()).not.toContain("DELETE FROM");
   });
 });
 

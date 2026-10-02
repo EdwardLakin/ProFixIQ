@@ -167,6 +167,77 @@ async function fetchLastSignInAt(
   return data.user.last_sign_in_at ?? null;
 }
 
+const LIST_PAGE_SIZE = 500;
+
+type ProspectShopRow = {
+  id: string;
+  demo_prospect_profile_id: string | null;
+  demo_shop_archived_at: string | null;
+};
+
+/**
+ * Pages through every prospect shop rather than one unbounded SELECT: with
+ * archiving keeping shops indefinitely (never deleting), the number of
+ * prospect shops ever created only grows, and a single unpaginated query is
+ * silently capped at the Data API's default 1000-row limit
+ * (supabase/config.toml) -- past that cap, newer prospects would stop
+ * appearing in the ops list at all.
+ */
+async function fetchAllProspectShops(admin: AdminSupabase): Promise<ProspectShopRow[]> {
+  const rows: ProspectShopRow[] = [];
+  let from = 0;
+  for (;;) {
+    const { data, error } = await admin
+      .from("shops")
+      .select("id, demo_prospect_profile_id, demo_shop_archived_at")
+      .eq("billing_entitlement_override", DEMO_BILLING_ENTITLEMENT)
+      .not("demo_prospect_profile_id", "is", null)
+      .order("id", { ascending: true })
+      .range(from, from + LIST_PAGE_SIZE - 1)
+      .returns<ProspectShopRow[]>();
+    if (error) {
+      throw new Error(`Failed to list demo prospect shops: ${error.message}`);
+    }
+    const page = data ?? [];
+    rows.push(...page);
+    if (page.length < LIST_PAGE_SIZE) break;
+    from += LIST_PAGE_SIZE;
+  }
+  return rows;
+}
+
+type ProspectProfileRow = {
+  id: string;
+  full_name: string | null;
+  email: string | null;
+  username: string | null;
+  created_at: string | null;
+  demo_access_expires_at: string | null;
+};
+
+/** Same unbounded-growth concern as fetchAllProspectShops, chunked by id. */
+async function fetchProspectProfiles(
+  admin: AdminSupabase,
+  profileIds: string[],
+): Promise<ProspectProfileRow[]> {
+  const rows: ProspectProfileRow[] = [];
+  for (let i = 0; i < profileIds.length; i += LIST_PAGE_SIZE) {
+    const chunk = profileIds.slice(i, i + LIST_PAGE_SIZE);
+    const { data, error } = await admin
+      .from("profiles")
+      .select("id, full_name, email, username, created_at, demo_access_expires_at")
+      .in("id", chunk)
+      .eq("role", "owner")
+      .not("demo_access_expires_at", "is", null)
+      .returns<ProspectProfileRow[]>();
+    if (error) {
+      throw new Error(`Failed to list demo prospects: ${error.message}`);
+    }
+    rows.push(...(data ?? []));
+  }
+  return rows;
+}
+
 export async function listDemoProspects(): Promise<{
   shop: DemoShopContext;
   prospects: DemoProspect[];
@@ -178,20 +249,7 @@ export async function listDemoProspects(): Promise<{
   // Each prospect now owns their own cloned shop (demo_prospect_profile_id
   // not null) rather than sharing the template shop, so the prospect list
   // is driven from shops, not from profiles.shop_id = the template.
-  const { data: prospectShops, error: shopsError } = await admin
-    .from("shops")
-    .select("id, demo_prospect_profile_id, demo_shop_archived_at")
-    .eq("billing_entitlement_override", DEMO_BILLING_ENTITLEMENT)
-    .not("demo_prospect_profile_id", "is", null)
-    .returns<
-      { id: string; demo_prospect_profile_id: string | null; demo_shop_archived_at: string | null }[]
-    >();
-
-  if (shopsError) {
-    throw new Error(`Failed to list demo prospect shops: ${shopsError.message}`);
-  }
-
-  const shopRows = prospectShops ?? [];
+  const shopRows = await fetchAllProspectShops(admin);
   const profileIds = shopRows
     .map((row) => row.demo_prospect_profile_id)
     .filter((id): id is string => Boolean(id));
@@ -206,29 +264,11 @@ export async function listDemoProspects(): Promise<{
       .map((row) => [row.demo_prospect_profile_id, row]),
   );
 
-  const { data, error } = await admin
-    .from("profiles")
-    .select("id, full_name, email, username, created_at, demo_access_expires_at")
-    .in("id", profileIds)
-    .eq("role", "owner")
-    .not("demo_access_expires_at", "is", null)
-    .order("created_at", { ascending: false })
-    .returns<
-      {
-        id: string;
-        full_name: string | null;
-        email: string | null;
-        username: string | null;
-        created_at: string | null;
-        demo_access_expires_at: string | null;
-      }[]
-    >();
-
-  if (error) {
-    throw new Error(`Failed to list demo prospects: ${error.message}`);
-  }
-
-  const rows = data ?? [];
+  const rows = (await fetchProspectProfiles(admin, profileIds)).sort((a, b) => {
+    const aTime = a.created_at ? Date.parse(a.created_at) : 0;
+    const bTime = b.created_at ? Date.parse(b.created_at) : 0;
+    return bTime - aTime;
+  });
   const prospects: DemoProspect[] = await Promise.all(
     rows
       .filter(
@@ -260,15 +300,14 @@ async function rollbackCreatedProspect(args: {
   authUserId: string;
   shopId: string | null;
 }): Promise<void> {
-  const cleanupTables = [
-    ["shop_members", "user_id"],
-    ["people_workforce_profiles", "user_id"],
-    ["profiles", "id"],
-  ] as const;
-  for (const [table, column] of cleanupTables) {
-    await args.admin.from(table).delete().eq(column, args.authUserId);
-  }
-  if (args.shopId) {
+  const { admin, authUserId, shopId } = args;
+
+  // Cleanup order matters here because of a real FK cycle: shops.owner_id is
+  // NOT NULL with ON DELETE SET NULL to profiles(id), so deleting the
+  // profile first (while the cloned shop still references it as owner)
+  // fails the SET NULL action against that NOT NULL column. The shop must
+  // go first.
+  if (shopId) {
     // Fixture rows (seedDemoShopFixtures may have partially run before the
     // failure) must be cleared before the shop itself: customers has no
     // ON DELETE behavior on its shop_id FK (defaults to NO ACTION, which
@@ -277,11 +316,35 @@ async function rollbackCreatedProspect(args: {
     // dependency first avoids relying on any one FK's ON DELETE behavior.
     const fixtureTables = ["work_order_lines", "inspections", "work_orders", "vehicles", "customers"] as const;
     for (const table of fixtureTables) {
-      await args.admin.from(table).delete().eq("shop_id", args.shopId);
+      const { error } = await admin.from(table).delete().eq("shop_id", shopId);
+      if (error) {
+        console.error(`[ops/demo-access] rollback: failed to clear ${table} for shop ${shopId}`, error.message);
+      }
     }
-    await args.admin.from("shops").delete().eq("id", args.shopId);
+
+    // shop_members and people_workforce_profiles both cascade-delete on
+    // shops.id, so deleting the shop also clears them -- no need to delete
+    // those tables separately.
+    const { error: shopErr } = await admin.from("shops").delete().eq("id", shopId);
+    if (shopErr) {
+      console.error(`[ops/demo-access] rollback: failed to delete cloned shop ${shopId}`, shopErr.message);
+    }
   }
-  await args.admin.auth.admin.deleteUser(args.authUserId);
+
+  // Safe now that no shop references this profile via owner_id.
+  // profiles.id -> auth.users(id) has no ON DELETE clause (RESTRICT-like),
+  // so the profile must also be gone before deleteUser below; shop_members
+  // and people_workforce_profiles cascade-delete on profiles.id too, in
+  // case no shop was ever created (failure before cloneDemoShopForProspect).
+  const { error: profileErr } = await admin.from("profiles").delete().eq("id", authUserId);
+  if (profileErr) {
+    console.error("[ops/demo-access] rollback: failed to delete prospect profile", profileErr.message);
+  }
+
+  const { error: userErr } = await admin.auth.admin.deleteUser(authUserId);
+  if (userErr) {
+    console.error("[ops/demo-access] rollback: failed to delete prospect auth user", userErr.message);
+  }
 }
 
 /**
@@ -577,7 +640,11 @@ export async function extendDemoProspect(input: {
   }
 
   // Archiving never deletes data -- restore access to the prospect's own
-  // still-intact shop by clearing the archive marker.
+  // still-intact shop by clearing the archive marker, and restore every
+  // member profile archiving had expired alongside the owner (see
+  // archive_expired_demo_shops()) to this same new expiry, not just the
+  // owner's own profile -- otherwise staff would stay locked out forever
+  // even after their shop is un-archived.
   if (archivedAt) {
     const { error: unarchiveErr } = await admin
       .from("shops")
@@ -585,6 +652,16 @@ export async function extendDemoProspect(input: {
       .eq("id", shopId);
     if (unarchiveErr) {
       throw new Error(`Failed to restore the archived demo shop: ${unarchiveErr.message}`);
+    }
+
+    const { error: membersErr } = await admin
+      .from("profiles")
+      .update({ demo_access_expires_at: input.expiresAt })
+      .eq("shop_id", shopId)
+      .neq("id", input.profileId)
+      .not("demo_access_expires_at", "is", null);
+    if (membersErr) {
+      throw new Error(`Failed to restore the archived shop's member access: ${membersErr.message}`);
     }
   }
 
@@ -613,9 +690,15 @@ export async function revokeDemoProspect(input: {
 
 /**
  * Marks every prospect shop past its grace period as archived (never
- * deletes data -- see the shops.demo_shop_archived_at migration). Intended
- * to run from a scheduled job (see app/api/internal/demo/archive-expired),
- * not from any user-facing code path.
+ * deletes data -- see the shops.demo_shop_archived_at migration) and
+ * expires every member profile of each shop it archives, not just the
+ * owner -- see archive_expired_demo_shops() in
+ * 20261002020000_archive_expired_demo_shops_fn.sql for why. Runs as one
+ * atomic, uncapped database-side statement rather than separate
+ * SELECT/SELECT/UPDATE round trips, so it can't race a concurrent extend()
+ * and isn't bound by the Data API's row cap. Intended to run from a
+ * scheduled job (see app/api/internal/demo/archive-expired), not from any
+ * user-facing code path.
  */
 export async function archiveExpiredDemoProspects(args: {
   graceMs: number;
@@ -623,48 +706,13 @@ export async function archiveExpiredDemoProspects(args: {
   const admin = createAdminSupabase();
   const cutoff = new Date(Date.now() - args.graceMs).toISOString();
 
-  const { data: expiredProfiles, error: profilesErr } = await admin
-    .from("profiles")
-    .select("id")
-    .eq("role", "owner")
-    .not("demo_access_expires_at", "is", null)
-    .lt("demo_access_expires_at", cutoff)
-    .returns<{ id: string }[]>();
+  const { data, error } = await admin
+    .rpc("archive_expired_demo_shops", { p_cutoff: cutoff })
+    .returns<{ shop_id: string }[]>();
 
-  if (profilesErr) {
-    throw new Error(`Failed to list expired demo prospects: ${profilesErr.message}`);
+  if (error) {
+    throw new Error(`Failed to archive expired demo shops: ${error.message}`);
   }
 
-  const expiredProfileIds = (expiredProfiles ?? []).map((row) => row.id);
-  if (expiredProfileIds.length === 0) {
-    return { archivedShopIds: [] };
-  }
-
-  const { data: shopsToArchive, error: shopsErr } = await admin
-    .from("shops")
-    .select("id")
-    .eq("billing_entitlement_override", DEMO_BILLING_ENTITLEMENT)
-    .in("demo_prospect_profile_id", expiredProfileIds)
-    .is("demo_shop_archived_at", null)
-    .returns<{ id: string }[]>();
-
-  if (shopsErr) {
-    throw new Error(`Failed to list demo shops eligible for archiving: ${shopsErr.message}`);
-  }
-
-  const shopIds = (shopsToArchive ?? []).map((row) => row.id);
-  if (shopIds.length === 0) {
-    return { archivedShopIds: [] };
-  }
-
-  const { error: archiveErr } = await admin
-    .from("shops")
-    .update({ demo_shop_archived_at: new Date().toISOString() })
-    .in("id", shopIds);
-
-  if (archiveErr) {
-    throw new Error(`Failed to archive expired demo shops: ${archiveErr.message}`);
-  }
-
-  return { archivedShopIds: shopIds };
+  return { archivedShopIds: (data ?? []).map((row) => row.shop_id) };
 }
