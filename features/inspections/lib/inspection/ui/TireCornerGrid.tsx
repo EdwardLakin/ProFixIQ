@@ -29,6 +29,11 @@ type Props = {
   items: InspectionItem[];
   unitHint?: (label: string) => string;
   onAddAxle?: (axleLabel: string) => void;
+  /**
+   * Offered on a dual axle that has one pressure per side (older templates):
+   * splits it into outer and inner so the inner tire can be recorded.
+   */
+  onSplitPressure?: (axleLabel: string) => void;
   onSpecHint?: (metricLabel: string) => void;
 
   /** Fail/Rec recommend logic (mirrors SectionDisplay) */
@@ -330,6 +335,7 @@ export default function TireGrid(props: Props) {
     items,
     unitHint,
     onAddAxle,
+    onSplitPressure,
     requireNoteForAI,
     onUpdateParts,
     onUpdateLaborHours,
@@ -689,8 +695,21 @@ export default function TireGrid(props: Props) {
                 <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">
                   {t.axle}
                 </div>
-                <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
-                  {isDual ? "Dual" : "Single"} tire axle
+                <div className="flex items-center gap-2 text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
+                  {onSplitPressure &&
+                  isDual &&
+                  (t.dual.left.pressure || t.dual.right.pressure) &&
+                  !t.dual.left.pressureInner &&
+                  !t.dual.right.pressureInner ? (
+                    <button
+                      type="button"
+                      onClick={() => onSplitPressure(t.axle)}
+                      className="rounded-full border border-orange-500/60 bg-orange-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-orange-100 hover:bg-orange-500/20"
+                    >
+                      Add inner pressures
+                    </button>
+                  ) : null}
+                  <span>{isDual ? "Dual" : "Single"} tire axle</span>
                 </div>
               </div>
 

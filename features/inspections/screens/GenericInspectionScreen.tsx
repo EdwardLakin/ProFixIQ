@@ -56,6 +56,7 @@ import {
   normalizeInspectionFormContext,
   type InspectionFormContext,
 } from "@/features/inspections/lib/form-import";
+import { splitDualPressureItems } from "@inspections/lib/inspection/splitDualPressure";
 import { inferUnitSystem } from "@inspections/lib/inspection/inferUnitSystem";
 import SectionDisplay from "@inspections/lib/inspection/SectionDisplay";
 import CornerGrid from "@inspections/lib/inspection/ui/CornerGrid";
@@ -2990,6 +2991,29 @@ type SmartMatchRow = {
     updateSection(sectionIndex, { ...section, items: nextItems });
   };
 
+  /**
+   * A dual axle saved with one pressure per side (older templates and
+   * inspections) cannot record the inner tire. Rename that pressure to Outer
+   * and add the matching Inner row, keeping any value already entered.
+   */
+  const handleSplitDualPressureForSection = (
+    sectionIndex: number,
+    axleLabel: string,
+  ): void => {
+    if (!session) return;
+    if (guardLocked()) return;
+
+    const section = session.sections[sectionIndex];
+    if (!section) return;
+
+    const nextItems = splitDualPressureItems(
+      section.items ?? [],
+      axleLabel,
+    ) as typeof section.items;
+
+    updateSection(sectionIndex, { ...section, items: nextItems });
+  };
+
   const handleSigned = (): void => {
     applyLockedState(true);
     toast.success("Inspection snapshot locked by signature.");
@@ -3510,6 +3534,9 @@ type SmartMatchRow = {
                               unitHint={(label: string) => unitHintGeneric(label, unit)}
                               onAddAxle={(axleLabel: string) =>
                                 handleAddTireAxleForSection(sectionIndex, axleLabel)
+                              }
+                              onSplitPressure={(axleLabel: string) =>
+                                handleSplitDualPressureForSection(sectionIndex, axleLabel)
                               }
                               onSpecHint={(metricLabel: string) =>
                                 props.onSpecHint?.({

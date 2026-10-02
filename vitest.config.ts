@@ -8,6 +8,7 @@ export default defineConfig({
   resolve: {
     alias: {
       "@shared": resolve(__dirname, "features/shared"),
+      "@inspections": resolve(__dirname, "features/inspections"),
       "@": resolve(__dirname, "."),
       "server-only": resolve(__dirname, "tests/shims/server-only.ts"),
     },
