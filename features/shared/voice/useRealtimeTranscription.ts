@@ -10,7 +10,10 @@ export type RealtimeTranscriptionState =
 
 export type RealtimeAutoStopReason = "max_duration" | "idle";
 export type VoiceSurface = "technician_copilot" | "inspection";
-export type HandleTranscriptFn = (text: string) => void | Promise<unknown>;
+export type HandleTranscriptFn = (
+  text: string,
+  delegationId?: string,
+) => void | Promise<unknown>;
 
 export type RealtimeTranscriptionOptions = {
   onStateChange?: (state: RealtimeTranscriptionState) => void;
@@ -245,48 +248,67 @@ export function useRealtimeTranscription(
     delegationId: string,
     offsetMs: number,
   ): void => {
-    window.setTimeout(() => {
-      if (!isCurrent(session)) return;
+    const collect = (attempt: number): void => {
+      window.setTimeout(() => {
+        if (!isCurrent(session)) return;
 
-      const fragments = session.transcriptFragments.filter(
-        (fragment) =>
-          fragment.endMs > session.lastDelegationOffsetMs &&
-          fragment.endMs <= offsetMs + 500,
-      );
-      const rawText = fragments.map((fragment) => fragment.delta).join("").trim();
-      session.lastDelegationOffsetMs = Math.max(
-        session.lastDelegationOffsetMs,
-        offsetMs,
-      );
-      session.transcriptFragments = session.transcriptFragments.filter(
-        (fragment) => fragment.endMs > session.lastDelegationOffsetMs,
-      );
-      session.latestDelegationId = delegationId;
+        const fragments = session.transcriptFragments.filter(
+          (fragment) =>
+            fragment.endMs > session.lastDelegationOffsetMs &&
+            fragment.endMs <= offsetMs + 500,
+        );
+        const rawText = fragments
+          .map((fragment) => fragment.delta)
+          .join("")
+          .trim();
 
-      const command = (maybeHandleWakeWordRef.current(rawText) ?? "").trim();
-      if (!command) return;
-
-      const invoke = (): Promise<unknown> => {
-        try {
-          return Promise.resolve(handleTranscriptRef.current(command));
-        } catch (caught) {
-          return Promise.reject(caught);
+        // Live transcript delivery can trail the delegation event slightly.
+        // Retry briefly before declaring the delegated turn empty so a noisy
+        // shop/network jitter cannot silently drop a valid technician turn.
+        if (!rawText && attempt < 3) {
+          collect(attempt + 1);
+          return;
         }
-      };
-      const run =
-        pendingTranscriptsRef.current === 0
-          ? invoke()
-          : transcriptQueueRef.current.then(invoke);
-      pendingTranscriptsRef.current += 1;
-      transcriptQueueRef.current = run
-        .catch((caught) => {
-          // eslint-disable-next-line no-console
-          console.error("[GPTLive] delegated transcript handler failed", caught);
-        })
-        .finally(() => {
-          pendingTranscriptsRef.current -= 1;
-        });
-    }, 160);
+
+        session.lastDelegationOffsetMs = Math.max(
+          session.lastDelegationOffsetMs,
+          offsetMs,
+        );
+        session.transcriptFragments = session.transcriptFragments.filter(
+          (fragment) => fragment.endMs > session.lastDelegationOffsetMs,
+        );
+        if (!rawText) return;
+
+        const command = (maybeHandleWakeWordRef.current(rawText) ?? "").trim();
+        if (!command) return;
+
+        const invoke = (): Promise<unknown> => {
+          try {
+            session.latestDelegationId = delegationId;
+            return Promise.resolve(
+              handleTranscriptRef.current(command, delegationId),
+            );
+          } catch (caught) {
+            return Promise.reject(caught);
+          }
+        };
+        const run =
+          pendingTranscriptsRef.current === 0
+            ? invoke()
+            : transcriptQueueRef.current.then(invoke);
+        pendingTranscriptsRef.current += 1;
+        transcriptQueueRef.current = run
+          .catch((caught) => {
+            // eslint-disable-next-line no-console
+            console.error("[GPTLive] delegated transcript handler failed", caught);
+          })
+          .finally(() => {
+            pendingTranscriptsRef.current -= 1;
+          });
+      }, attempt === 0 ? 300 : 200);
+    };
+
+    collect(0);
   };
 
   async function start(): Promise<void> {
@@ -557,7 +579,10 @@ export function useRealtimeTranscription(
     return true;
   }
 
-  function speakText(text: string): boolean {
+  function speakText(
+    text: string,
+    delegationId?: string | null,
+  ): boolean {
     const session = activeSessionRef.current;
     const content = text.trim();
     if (!session || stoppedRef.current || !content) return false;
@@ -568,7 +593,7 @@ export function useRealtimeTranscription(
     return sendEvent(session, {
       type: "session.commentary.append",
       event_id: `profix_commentary_${Date.now()}`,
-      delegation_id: session.latestDelegationId,
+      delegation_id: delegationId ?? session.latestDelegationId,
       content,
     });
   }
