@@ -40,9 +40,9 @@ type TechnicianInteractionGatewayOptions = {
 type RealtimeTransport = {
   start: () => Promise<void>;
   pause?: () => boolean;
-  playAudio?: (encodedAudio: ArrayBuffer) => Promise<void>;
   stopAudio?: () => void;
   resume?: () => boolean;
+  speakText?: (text: string) => boolean;
   stop: () => void;
 };
 
@@ -61,8 +61,6 @@ type NavigatorWithWakeLock = Navigator & {
     request: (type: "screen") => Promise<ScreenWakeLockSentinel>;
   };
 };
-
-const COPILOT_SPEECH_TIMEOUT_MS = 20_000;
 
 // A recoverable turn failure (network blip, timeout, 5xx) resumes listening
 // silently apart from a transient error string, which is indistinguishable
@@ -188,7 +186,7 @@ export function useTechnicianInteractionGateway({
 
   const cancelSpeechOutput = useCallback(() => {
     speechPlaybackAttemptRef.current += 1;
-    speechRequestControllerRef.current?.abort();
+        speechRequestControllerRef.current?.abort();
     speechRequestControllerRef.current = null;
     try {
       realtimeRef.current?.stopAudio?.();
@@ -311,11 +309,9 @@ export function useTechnicianInteractionGateway({
         inFlightRef.current = true;
         setHeardTranscript(text);
         setVoicePhase("thinking");
-        const paused = realtimeRef.current?.pause?.() ?? false;
-        if (!paused) {
-          realtimeRef.current?.stop();
-          transportStartedRef.current = false;
-        }
+        // GPT-Live remains full duplex while the existing backend agent works.
+        // The backend still owns repair reasoning and actions; Live only owns
+        // the spoken conversation around that delegated work.
         setError(null);
 
         try {
@@ -585,73 +581,21 @@ export function useTechnicianInteractionGateway({
       const generation = generationRef.current;
       cancelSpeechOutput();
       const playbackAttempt = speechPlaybackAttemptRef.current;
-      const controller = new AbortController();
-      speechRequestControllerRef.current = controller;
       setVoicePhase("speaking");
 
-      void (async () => {
-        const timeout = window.setTimeout(
-          () => controller.abort(),
-          COPILOT_SPEECH_TIMEOUT_MS,
-        );
-        try {
-          const response = await fetch("/api/copilot/technician/speech", {
-            method: "POST",
-            cache: "no-store",
-            credentials: "same-origin",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ text }),
-            signal: controller.signal,
-          });
-          if (!response.ok) {
-            throw new Error("Generated CoPilot voice was unavailable.");
-          }
+      const sentToLive = realtimeRef.current?.speakText?.(text) ?? false;
+      if (sentToLive) {
+        // GPT-Live owns playback and interruption. There is intentionally no
+        // pause/resume cycle here: the microphone stays live so the technician
+        // can barge in while the backend result is being spoken.
+        setVoicePhase("listening");
+        return;
+      }
 
-          const encodedAudio = await response.arrayBuffer();
-          if (encodedAudio.byteLength === 0) {
-            throw new Error("Generated CoPilot voice returned no audio.");
-          }
-          if (
-            !activeRef.current ||
-            generationRef.current !== generation ||
-            speechPlaybackAttemptRef.current !== playbackAttempt
-          ) {
-            return;
-          }
-
-          const playAudio = realtimeRef.current?.playAudio;
-          if (!playAudio) {
-            throw new Error("CoPilot audio output is not ready.");
-          }
-          await playAudio(encodedAudio);
-          if (
-            !activeRef.current ||
-            generationRef.current !== generation ||
-            speechPlaybackAttemptRef.current !== playbackAttempt
-          ) {
-            return;
-          }
-
-          if (speechRequestControllerRef.current === controller) {
-            speechRequestControllerRef.current = null;
-          }
-          void startListeningRef.current();
-        } catch {
-          if (
-            !activeRef.current ||
-            generationRef.current !== generation ||
-            speechPlaybackAttemptRef.current !== playbackAttempt
-          ) {
-            return;
-          }
-          if (speechRequestControllerRef.current === controller) {
-            speechRequestControllerRef.current = null;
-          }
-          speakWithDeviceVoice(text, generation, playbackAttempt);
-        } finally {
-          window.clearTimeout(timeout);
-        }
-      })();
+      // Browser speech is retained only as a last-resort audible fallback if a
+      // live session exists locally but its data channel cannot accept the
+      // verified backend result.
+      speakWithDeviceVoice(text, generation, playbackAttempt);
     },
     [cancelSpeechOutput, setVoicePhase, speakWithDeviceVoice],
   );
@@ -676,24 +620,9 @@ export function useTechnicianInteractionGateway({
     const pendingGreeting = greetingRef.current;
     if (pendingGreeting && !greetingSpokenRef.current) {
       greetingSpokenRef.current = true;
-      // speakReply's generated-voice path plays audio through the realtime
-      // transport's own audio context, which only exists once that
-      // transport has been started — exactly like it already is by the
-      // time an ordinary turn's reply gets spoken (handleFinalTranscript
-      // pauses, doesn't stop, the transport before calling onUtterance).
-      // Speaking the greeting without ever having started that transport
-      // meant its playback call always threw "not ready" and every
-      // greeting silently fell back to the device voice, even when the
-      // generated audio itself was fine. Start (and immediately pause, the
-      // same way a normal turn does) before speaking so the greeting gets
-      // the same playback path.
+      // GPT-Live must be connected before commentary can be spoken.
       await startListeningRef.current();
       if (!activeRef.current || generationRef.current !== generation) return;
-      const paused = realtimeRef.current?.pause?.() ?? false;
-      if (!paused) {
-        realtimeRef.current?.stop();
-        transportStartedRef.current = false;
-      }
       speakReplyRef.current(pendingGreeting);
       return;
     }
@@ -821,27 +750,12 @@ export function useTechnicianInteractionGateway({
   useEffect(() => stop, [stop]);
 
   /**
-   * Speaks arbitrary text (a proactive notice, not a reply to something the
-   * technician said) through the same speak-then-resume-listening path a
-   * normal turn's reply uses. Only proceeds while the gateway is idle and
-   * actually listening — never while a turn is in flight or already
-   * speaking — so this can never talk over the technician or over another
-   * reply. Returns false when it isn't safe to speak right now; the caller
-   * is expected to hold the text and retry once phase returns to
-   * "listening" rather than treat false as a failure.
-   *
-   * This is turn-boundary-safe delivery, not acoustic barge-in: the
-   * microphone is still never open at the same time as playback, exactly
-   * as documented for this first voice bridge. True interruption-while-
-   * speaking remains future work.
+   * Sends proactive verified text into the active GPT-Live conversation.
+   * Live handles playback and acoustic interruption while the microphone
+   * remains open; application/backend state remains authoritative.
    */
   const announce = useCallback((text: string): boolean => {
     if (!activeRef.current || phaseRef.current !== "listening") return false;
-    const paused = realtimeRef.current?.pause?.() ?? false;
-    if (!paused) {
-      realtimeRef.current?.stop();
-      transportStartedRef.current = false;
-    }
     speakReplyRef.current(text);
     return true;
   }, []);
