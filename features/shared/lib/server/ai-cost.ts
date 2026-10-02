@@ -145,3 +145,23 @@ export function estimateOpenAILiveCostUsd(
   const seconds = Math.max(0, durationSeconds);
   return Number(((seconds / 60) * rate.perMinuteUsd).toFixed(8));
 }
+
+
+export function estimateOpenAIInspectionTranscriptionCostUsd(
+  model: string | null,
+  durationSeconds: number,
+): number | null {
+  const normalized = model?.trim().toLowerCase();
+  const perMinuteUsd =
+    normalized === "gpt-live-transcribe" ||
+    normalized?.startsWith("gpt-live-transcribe-")
+      ? 0.017
+      : normalized === "gpt-transcribe" ||
+          normalized?.startsWith("gpt-transcribe-")
+        ? 0.0045
+        : null;
+  if (perMinuteUsd == null) return null;
+  return Number(
+    ((Math.max(0, durationSeconds) / 60) * perMinuteUsd).toFixed(8),
+  );
+}
