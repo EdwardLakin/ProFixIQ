@@ -1,5 +1,7 @@
 // features/inspections/lib/masterInspectionList.ts
 
+import { offRoadInspectionCategories } from "./offRoadInspectionCatalog";
+
 /* --------------------------------- Types --------------------------------- */
 
 export type VehicleType = "car" | "truck" | "bus" | "trailer";
@@ -40,6 +42,11 @@ export interface InspectionItem {
    */
   specCode?: string | null;
   cvipCode?: string | null;
+
+  /** Catalog scope keeps off-road rows out of highway auto-pickers. */
+  catalogScope?: "on_road" | "off_road";
+  /** Optional off-road applicability metadata used by Fleet/Field builders. */
+  equipmentFamilies?: string[];
 }
 
 export interface InspectionCategory {
@@ -2377,6 +2384,7 @@ export const masterInspectionList: InspectionCategory[] = [
       },
     ],
   },
+  ...offRoadInspectionCategories,
 ];
 
 export default masterInspectionList;
@@ -2411,6 +2419,9 @@ export function buildFromMaster({
 
   for (const cat of masterInspectionList) {
     for (const it of cat.items) {
+      // Highway quick-builds must never pull equipment-only checks by accident.
+      if (it.catalogScope === "off_road") continue;
+
       // vehicle filter
       if (
         it.vehicleTypes &&
