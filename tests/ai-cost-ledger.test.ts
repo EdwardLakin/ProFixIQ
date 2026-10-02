@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("server-only", () => ({}));
 
 import {
+  estimateOpenAIInspectionTranscriptionCostUsd,
   estimateOpenAILiveCostUsd,
   estimateOpenAISpeechCostUsd,
   estimateOpenAITextCostUsd,
@@ -63,5 +64,20 @@ describe("AI ledger rate calculations", () => {
 
   it("does not invent a Live price for unknown models", () => {
     expect(estimateOpenAILiveCostUsd("unknown-live-model", 60)).toBeNull();
+  });
+
+  it("prices inspection transcription far below premium GPT-Live", () => {
+    expect(
+      estimateOpenAIInspectionTranscriptionCostUsd(
+        "gpt-live-transcribe",
+        180 * 60,
+      ),
+    ).toBe(3.06);
+    expect(
+      estimateOpenAIInspectionTranscriptionCostUsd(
+        "gpt-live-transcribe",
+        30 * 60,
+      ),
+    ).toBe(0.51);
   });
 });
