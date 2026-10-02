@@ -37,6 +37,9 @@ export const DEFAULT_MAX_STREAMING_MS = 10 * 60_000;
 export const DEFAULT_IDLE_TIMEOUT_MS = 90_000;
 
 const GUARD_TICK_MS = 1_000;
+const REALTIME_SAMPLE_RATE = 24_000;
+const CLIENT_VAD_SILENCE_MS = 850;
+const CLIENT_VAD_IDLE_CLEAR_MS = 650;
 
 type HandleTranscriptFn = (text: string) => void;
 
@@ -91,8 +94,12 @@ type RealtimeSessionResources = {
   streamedMs: number;
   /** When the current unpaused stretch began, or null while paused. */
   streamingSince: number | null;
-  /** Last upstream speech signal observed while streaming. */
+  /** Last recognized transcript activity observed while streaming. */
   lastActivityAt: number;
+  /** Client-side end-of-speech state for gpt-live-transcribe. */
+  speechActive: boolean;
+  speechSilenceMs: number;
+  idleBufferedMs: number;
 };
 
 /** Bank the open streaming stretch, if any. Safe to call repeatedly. */
@@ -242,21 +249,18 @@ function cleanupSession(session: RealtimeSessionResources): void {
   session.live = "";
   session.paused = false;
   session.streamingSince = null;
+  session.speechActive = false;
+  session.speechSilenceMs = 0;
+  session.idleBufferedMs = 0;
 }
 
 /**
  * Idle is measured against *recognized speech* — a non-empty transcription
- * delta or final — never against the raw `input_audio_buffer.speech_*` VAD
- * events. Server VAD's `threshold` is a speech-probability gate, so shop
- * noise, a radio or a conversation across the bay crosses it routinely with
- * nobody addressing the device; resetting on those would keep a parked
- * handset alive indefinitely, which is precisely the case the idle cap
- * exists to stop.
- *
- * Reading the transcription stream rather than gating the microphone also
- * leaves the audio we send untouched, so `prefix_padding_ms` /
- * `silence_duration_ms` still see the lead-in they need to catch the start of
- * an utterance.
+ * delta or final — never against raw audio energy. gpt-live-transcribe needs
+ * client-side end-of-speech commits, but shop noise, a radio or a conversation
+ * across the bay can still cross a simple RMS threshold without the technician
+ * actually dictating. Keeping session activity tied to recognized transcripts
+ * prevents those false positives from holding an unattended voice session open.
  */
 
 const TRANSCRIPTION_DELTA_TYPES = new Set<string>([
@@ -434,6 +438,9 @@ export function useRealtimeTranscription(
       streamedMs: 0,
       streamingSince: null,
       lastActivityAt: Date.now(),
+      speechActive: false,
+      speechSilenceMs: 0,
+      idleBufferedMs: 0,
     };
     activeSessionRef.current = session;
     setState("connecting");
@@ -483,7 +490,7 @@ export function useRealtimeTranscription(
         return;
       }
 
-      const audioCtx = new AudioContext({ sampleRate: 24000 });
+      const audioCtx = new AudioContext({ sampleRate: REALTIME_SAMPLE_RATE });
       session.audioCtx = audioCtx;
 
       if (audioCtx.state === "suspended") {
@@ -543,18 +550,16 @@ export function useRealtimeTranscription(
               type: "transcription",
               audio: {
                 input: {
-                  format: { type: "audio/pcm", rate: 24000 },
+                  format: { type: "audio/pcm", rate: REALTIME_SAMPLE_RATE },
                   noise_reduction: { type: "near_field" },
                   transcription: {
                     model: sessionTranscriptionModel,
-                    language: "en",
+                    languages: ["en"],
+                    delay: "low",
                   },
-                  turn_detection: {
-                    type: "server_vad",
-                    threshold: 0.45,
-                    prefix_padding_ms: 650,
-                    silence_duration_ms: 850,
-                  },
+                  // gpt-live-transcribe requires client-side VAD with an
+                  // explicit input_audio_buffer.commit at each turn boundary.
+                  turn_detection: null,
                 },
               },
             },
@@ -572,7 +577,18 @@ export function useRealtimeTranscription(
           typeof opts?.audioPulseThreshold === "number"
             ? opts.audioPulseThreshold
             : 0.02;
-        if (rms(data) >= threshold) pulse();
+        const level = rms(data);
+        const frameMs = (data.length / REALTIME_SAMPLE_RATE) * 1_000;
+        if (level >= threshold) {
+          pulse();
+          session.speechActive = true;
+          session.speechSilenceMs = 0;
+          session.idleBufferedMs = 0;
+        } else if (session.speechActive) {
+          session.speechSilenceMs += frameMs;
+        } else {
+          session.idleBufferedMs += frameMs;
+        }
 
         const pcm16 = new Int16Array(data.length);
         for (let i = 0; i < data.length; i++) {
@@ -589,6 +605,28 @@ export function useRealtimeTranscription(
             audio: base64FromArrayBuffer(pcm16.buffer),
           }),
         );
+
+        if (
+          session.speechActive &&
+          session.speechSilenceMs >= CLIENT_VAD_SILENCE_MS
+        ) {
+          socket.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+          session.speechActive = false;
+          session.speechSilenceMs = 0;
+          session.idleBufferedMs = 0;
+          return;
+        }
+
+        // Bound ambient audio while idle while retaining a short lead-in before
+        // the next detected utterance. Clearing the uncommitted buffer does not
+        // affect a turn that was already committed for transcription.
+        if (
+          !session.speechActive &&
+          session.idleBufferedMs >= CLIENT_VAD_IDLE_CLEAR_MS
+        ) {
+          socket.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
+          session.idleBufferedMs = 0;
+        }
       };
 
       ws.onmessage = (event) => {
@@ -736,6 +774,15 @@ export function useRealtimeTranscription(
     }
     session.paused = true;
     session.live = "";
+    session.speechActive = false;
+    session.speechSilenceMs = 0;
+    session.idleBufferedMs = 0;
+    const socket = session.ws;
+    if (socket?.readyState === WebSocket.OPEN) {
+      // A deliberate pause (normally before spoken output) must not leak a
+      // partial technician utterance into the next listening turn.
+      socket.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
+    }
     suspendStreamingClock(session, Date.now());
     try {
       session.mediaStream?.getTracks().forEach((track) => {
