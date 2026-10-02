@@ -6,7 +6,10 @@ import {
   buildFromMaster,
 } from "@/features/inspections/lib/inspection/masterInspectionList";
 import {
+  buildOffRoadFromMaster,
   offRoadCategoriesForFamily,
+  offRoadCategoriesForProfile,
+  offRoadProfileByValue,
   offRoadEquipmentProfiles,
   offRoadInspectionCategories,
 } from "@/features/inspections/lib/inspection/offRoadInspectionCatalog";
@@ -49,6 +52,36 @@ describe("off-road inspection catalog", () => {
     ).toBe(true);
   });
 
+  it("builds a focused equipment-specific off-road inspection", () => {
+    const built = buildOffRoadFromMaster({
+      profileValue: "crawler_excavator",
+      targetCount: 30,
+    });
+
+    const items = built.flatMap((section) =>
+      section.items.map((entry) => entry.item),
+    );
+
+    expect(items.length).toBeGreaterThanOrEqual(30);
+    expect(items).toContain("Swing bearing / swing play");
+    expect(
+      built.every((section) =>
+        section.items.every((entry) =>
+          entry.equipmentFamilies.includes("excavation"),
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("returns no sections for an unknown off-road profile", () => {
+    expect(
+      buildOffRoadFromMaster({
+        profileValue: "unknown-machine",
+        targetCount: 30,
+      }),
+    ).toEqual([]);
+  });
+
   it("does not leak off-road rows into existing highway quick builds", () => {
     const highway = buildFromMaster({
       vehicleType: "truck",
@@ -83,6 +116,63 @@ describe("off-road inspection catalog", () => {
     for (const section of offRoadInspectionCategories) {
       const names = section.items.map((entry) => entry.item);
       expect(new Set(names).size).toBe(names.length);
+    }
+  });
+
+  const itemsFor = (value: string) => {
+    const profile = offRoadProfileByValue(value);
+    if (!profile) throw new Error(`unknown profile ${value}`);
+    return offRoadCategoriesForProfile(profile).flatMap((section) =>
+      section.items.map((entry) => entry.item),
+    );
+  };
+
+  it("keeps engine, coolant and ROPS rows off electric platforms", () => {
+    for (const value of ["scissor_lift", "vertical_mast_lift"]) {
+      const items = itemsFor(value);
+      expect(items).not.toContain("Engine oil level / condition");
+      expect(items).not.toContain("Coolant level / condition");
+      expect(items).not.toContain("Fuel tank / lines / hoses");
+      expect(items).not.toContain("ROPS / FOPS / cab structure");
+    }
+    expect(itemsFor("boom_lift")).toContain("Engine oil level / condition");
+  });
+
+  it("gives rubber-tyred underground and forestry machines tire checks", () => {
+    for (const value of ["underground_lhd", "underground_haul_truck", "harvester_forwarder"]) {
+      expect(itemsFor(value)).toContain("Tire condition — cuts / chunking / separation");
+    }
+    expect(itemsFor("underground_lhd")).not.toContain("Track shoes / grouser wear");
+  });
+
+  it("separates wheeled and tracked machines that share a family", () => {
+    expect(itemsFor("wheel_loader")).not.toContain("Track shoes / grouser wear");
+    expect(itemsFor("compact_track_loader")).toContain("Track shoes / grouser wear");
+    expect(itemsFor("compact_track_loader")).not.toContain("Tire pressure");
+    expect(itemsFor("wheeled_excavator")).toContain("Tire pressure");
+    expect(itemsFor("wheeled_excavator")).not.toContain("Track shoes / grouser wear");
+    expect(itemsFor("crawler_excavator")).toContain("Track shoes / grouser wear");
+  });
+
+  it("separates mast forklifts from boom handlers", () => {
+    expect(itemsFor("forklift")).toContain("Lift chains / anchors / chain tension");
+    expect(itemsFor("forklift")).not.toContain("Boom sections / wear pads / rollers");
+    expect(itemsFor("telehandler")).toContain("Boom sections / wear pads / rollers");
+    expect(itemsFor("telehandler")).not.toContain("Lift chains / anchors / chain tension");
+    expect(itemsFor("telehandler")).toContain("Forks — heel / blade / tip wear");
+  });
+
+  it("gives every profile a non-empty, required-bearing build and attachments no pump rows", () => {
+    for (const profile of offRoadEquipmentProfiles) {
+      expect(itemsFor(profile.value).length).toBeGreaterThan(0);
+    }
+    expect(itemsFor("attachment")).not.toContain("Hydraulic pumps");
+  });
+
+  it("stores off-road profile values as valid fleet template vehicle types", () => {
+    for (const profile of offRoadEquipmentProfiles) {
+      expect(profile.value).toBe(profile.value.trim().toLowerCase());
+      expect(profile.value.length).toBeLessThanOrEqual(80);
     }
   });
 });

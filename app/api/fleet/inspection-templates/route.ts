@@ -4,6 +4,7 @@ import {
   canAdministerFleetForActor,
   resolveFleetActorContext,
 } from "@/features/fleet/lib/resolveFleetActorContext";
+import { offRoadProfileByValue } from "@/features/inspections/lib/inspection/offRoadInspectionCatalog";
 import type { InspectionSection } from "@/features/inspections/lib/inspection/types";
 import {
   createAdminSupabase,
@@ -32,6 +33,8 @@ function canonicalVehicleType(value: string): string {
   const trimmed = value.trim();
   const normalized = trimmed.toLowerCase();
   if (CANONICAL_VEHICLE_TYPES.has(normalized)) return normalized;
+  // Off-road equipment profile values (e.g. "crawler_excavator") are stored as-is.
+  if (offRoadProfileByValue(normalized)) return normalized;
   return LEGACY_VEHICLE_TYPE_ALIASES[normalized] ?? trimmed;
 }
 
