@@ -24,6 +24,7 @@ export type RealtimeTranscriptionOptions = {
   idleTimeoutMs?: number;
   maxPausedMs?: number;
   onAutoStop?: (reason: RealtimeAutoStopReason) => void;
+  onOutputStateChange?: (speaking: boolean) => void;
   surface?: VoiceSurface;
 };
 
@@ -33,8 +34,8 @@ export const DEFAULT_IDLE_TIMEOUT_MS = 90_000;
 const GUARD_TICK_MS = 1_000;
 const ICE_GATHER_TIMEOUT_MS = 10_000;
 
-type TranscriptFragment = {
-  delta: string;
+type TranscriptTurn = {
+  text: string;
   endMs: number;
 };
 
@@ -50,7 +51,9 @@ type LiveResources = {
   streamedMs: number;
   streamingSince: number | null;
   lastActivityAt: number;
-  transcriptFragments: TranscriptFragment[];
+  completedTranscriptTurns: TranscriptTurn[];
+  currentTranscript: string;
+  currentTranscriptEndMs: number;
   lastDelegationOffsetMs: number;
   latestDelegationId: string | null;
 };
@@ -146,7 +149,9 @@ function cleanupSession(session: LiveResources): void {
   session.audio = null;
   session.paused = false;
   session.streamingSince = null;
-  session.transcriptFragments = [];
+  session.completedTranscriptTurns = [];
+  session.currentTranscript = "";
+  session.currentTranscriptEndMs = 0;
   session.latestDelegationId = null;
 }
 
@@ -252,20 +257,22 @@ export function useRealtimeTranscription(
       window.setTimeout(() => {
         if (!isCurrent(session)) return;
 
-        const fragments = session.transcriptFragments.filter(
-          (fragment) =>
-            fragment.endMs > session.lastDelegationOffsetMs &&
-            fragment.endMs <= offsetMs + 500,
+        const candidates = session.completedTranscriptTurns.filter(
+          (turn) =>
+            turn.endMs > session.lastDelegationOffsetMs &&
+            turn.endMs <= offsetMs + 500,
         );
-        const rawText = fragments
-          .map((fragment) => fragment.delta)
-          .join("")
-          .trim();
+        if (session.currentTranscript.trim()) {
+          candidates.push({
+            text: session.currentTranscript.trim(),
+            endMs: session.currentTranscriptEndMs || offsetMs,
+          });
+        }
+        const selected = candidates
+          .filter((turn) => turn.endMs <= offsetMs + 500)
+          .sort((a, b) => b.endMs - a.endMs)[0];
 
-        // Live transcript delivery can trail the delegation event slightly.
-        // Retry briefly before declaring the delegated turn empty so a noisy
-        // shop/network jitter cannot silently drop a valid technician turn.
-        if (!rawText && attempt < 3) {
+        if (!selected && attempt < 3) {
           collect(attempt + 1);
           return;
         }
@@ -274,12 +281,14 @@ export function useRealtimeTranscription(
           session.lastDelegationOffsetMs,
           offsetMs,
         );
-        session.transcriptFragments = session.transcriptFragments.filter(
-          (fragment) => fragment.endMs > session.lastDelegationOffsetMs,
+        session.completedTranscriptTurns = session.completedTranscriptTurns.filter(
+          (turn) => turn.endMs > session.lastDelegationOffsetMs,
         );
-        if (!rawText) return;
+        if (!selected?.text.trim()) return;
 
-        const command = (maybeHandleWakeWordRef.current(rawText) ?? "").trim();
+        const command = (
+          maybeHandleWakeWordRef.current(selected.text) ?? ""
+        ).trim();
         if (!command) return;
 
         const invoke = (): Promise<unknown> => {
@@ -336,7 +345,9 @@ export function useRealtimeTranscription(
       streamedMs: 0,
       streamingSince: null,
       lastActivityAt: Date.now(),
-      transcriptFragments: [],
+      completedTranscriptTurns: [],
+      currentTranscript: "",
+      currentTranscriptEndMs: 0,
       lastDelegationOffsetMs: 0,
       latestDelegationId: null,
     };
@@ -406,11 +417,36 @@ export function useRealtimeTranscription(
         if (type === "session.input_transcript.delta") {
           const delta = getString(parsed.delta);
           if (!delta) return;
-          const endMs =
+          session.currentTranscript += delta;
+          session.currentTranscriptEndMs =
             typeof parsed.end_ms === "number" ? parsed.end_ms : Date.now();
-          session.transcriptFragments.push({ delta, endMs });
           session.lastActivityAt = Date.now();
           opts?.onPulse?.();
+          return;
+        }
+
+        if (
+          type === "session.input_transcript.done" ||
+          type === "session.input_transcript.completed"
+        ) {
+          const text =
+            getString(parsed.transcript).trim() ||
+            session.currentTranscript.trim();
+          const endMs =
+            typeof parsed.end_ms === "number"
+              ? parsed.end_ms
+              : session.currentTranscriptEndMs || Date.now();
+          if (text) {
+            session.completedTranscriptTurns.push({ text, endMs });
+            if (session.completedTranscriptTurns.length > 8) {
+              session.completedTranscriptTurns.splice(
+                0,
+                session.completedTranscriptTurns.length - 8,
+              );
+            }
+          }
+          session.currentTranscript = "";
+          session.currentTranscriptEndMs = 0;
           return;
         }
 
@@ -433,11 +469,22 @@ export function useRealtimeTranscription(
           return;
         }
 
-        if (type === "session.output_transcript.delta") {
-          // Remote audio is played by WebRTC. Transcript events are useful for
-          // activity/observability only; application state still comes from the
-          // existing backend agent/inspection engine.
+        if (
+          type === "session.output_transcript.delta" ||
+          type === "session.output_audio.started"
+        ) {
           session.lastActivityAt = Date.now();
+          opts?.onOutputStateChange?.(true);
+          return;
+        }
+
+        if (
+          type === "session.output_transcript.done" ||
+          type === "session.output_transcript.completed" ||
+          type === "session.output_audio.done"
+        ) {
+          session.lastActivityAt = Date.now();
+          opts?.onOutputStateChange?.(false);
           return;
         }
 
@@ -593,7 +640,8 @@ export function useRealtimeTranscription(
     return sendEvent(session, {
       type: "session.commentary.append",
       event_id: `profix_commentary_${Date.now()}`,
-      delegation_id: delegationId ?? session.latestDelegationId,
+      delegation_id:
+        delegationId === undefined ? session.latestDelegationId : delegationId,
       content,
     });
   }
