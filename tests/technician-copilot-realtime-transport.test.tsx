@@ -264,6 +264,63 @@ describe("Technician CoPilot GPT-Live WebRTC transport", () => {
     }
   });
 
+  it("still delegates the latest turn when events carry no stream offsets", async () => {
+    vi.useFakeTimers();
+    try {
+      const onTranscript = vi.fn();
+      const { unmount } = await startVoice(onTranscript);
+
+      act(() => {
+        channels[0]?.emit({
+          type: "session.input_transcript.done",
+          transcript: "Open the rear brake inspection.",
+        });
+        channels[0]?.emit({
+          type: "session.delegation.created",
+          delegation: { id: "item_no_offsets", type: "delegation", target: "client" },
+        });
+        vi.advanceTimersByTime(350);
+      });
+
+      expect(onTranscript).toHaveBeenCalledWith(
+        "Open the rear brake inspection.",
+        "item_no_offsets",
+      );
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("answers a delegation that has no usable input instead of leaving it open", async () => {
+    vi.useFakeTimers();
+    try {
+      const onTranscript = vi.fn();
+      const { unmount } = await startVoice(onTranscript);
+
+      act(() => {
+        channels[0]?.emit({
+          type: "session.delegation.created",
+          offset_ms: 500,
+          delegation: { id: "item_empty", type: "delegation", target: "client" },
+        });
+        vi.advanceTimersByTime(1500);
+      });
+
+      expect(onTranscript).not.toHaveBeenCalled();
+      const sent = channels[0]?.send.mock.calls.map(([raw]) => JSON.parse(raw));
+      expect(sent).toContainEqual(
+        expect.objectContaining({
+          type: "session.commentary.append",
+          delegation_id: "item_empty",
+        }),
+      );
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("mutes and resumes the microphone without ending the Live session", async () => {
     const { result, track, unmount } = await startVoice();
 

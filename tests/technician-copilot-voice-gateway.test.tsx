@@ -189,7 +189,9 @@ describe("Technician Copilot GPT-Live interaction gateway", () => {
     await act(async () => {
       await result.current.start();
     });
-    act(() => realtime.onFinal?.("Old turn"));
+    act(() => {
+      void realtime.onFinal?.("Old turn");
+    });
     await waitFor(() => expect(result.current.phase).toBe("thinking"));
 
     act(() => result.current.stop());
@@ -226,6 +228,41 @@ describe("Technician Copilot GPT-Live interaction gateway", () => {
       null,
     );
     expect(realtime.pause).not.toHaveBeenCalled();
+  });
+
+  it("does not send a Live stop instruction before speaking a normal reply", async () => {
+    const onUtterance = vi.fn(async () => ({ reply: "Verified reply" }));
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({ enabled: true, onUtterance }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+      await realtime.onFinal?.("Explain.", "item_delegate_1");
+    });
+
+    expect(realtime.speakText).toHaveBeenCalledWith(
+      "Verified reply",
+      "item_delegate_1",
+    );
+    expect(realtime.stopAudio).not.toHaveBeenCalled();
+  });
+
+  it("closes the delegation when the backend returns no speakable reply", async () => {
+    const onUtterance = vi.fn(async () => ({ reply: null }));
+    const { result } = renderHook(() =>
+      useTechnicianInteractionGateway({ enabled: true, onUtterance }),
+    );
+
+    await act(async () => {
+      await result.current.start();
+      await realtime.onFinal?.("Do it.", "item_delegate_9");
+    });
+
+    expect(realtime.speakText).toHaveBeenCalledWith(
+      expect.any(String),
+      "item_delegate_9",
+    );
   });
 
   it("sends explicit interrupt requests to the Live transport", async () => {

@@ -15,6 +15,9 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+// A browser SDP offer is a few KB; reject anything wildly larger.
+const MAX_SDP_BYTES = 64 * 1024;
+
 type LiveSurface = "technician_copilot" | "inspection";
 
 type LiveSessionRequest = {
@@ -25,6 +28,13 @@ type LiveSessionRequest = {
 function getLiveSurface(value: unknown): LiveSurface | null {
   if (value === "technician_copilot" || value === "inspection") return value;
   return null;
+}
+
+// The browser only needs the SDP answer to finish the WebRTC handshake.
+function liveAnswerSdp(parsed: unknown): string | null {
+  if (typeof parsed !== "object" || parsed === null) return null;
+  const sdp = (parsed as { transport?: { sdp?: unknown } }).transport?.sdp;
+  return typeof sdp === "string" && sdp ? sdp : null;
 }
 
 function envNumber(name: string, fallback: number): number {
@@ -86,6 +96,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       { error: "An SDP offer is required", code: "live_missing_sdp" },
       { status: 400 },
+    );
+  }
+  if (sdp.length > MAX_SDP_BYTES) {
+    return NextResponse.json(
+      { error: "The SDP offer is too large", code: "live_sdp_too_large" },
+      { status: 413 },
     );
   }
   if (!surface) {
@@ -197,7 +213,7 @@ export async function POST(request: NextRequest) {
       // handled below
     }
 
-    if (!response.ok || !parsed) {
+    if (!response.ok || !liveAnswerSdp(parsed)) {
       console.error("[live-session] OpenAI session creation failed", {
         status: response.status,
         statusText: response.statusText,
@@ -242,7 +258,9 @@ export async function POST(request: NextRequest) {
       errorCode: null,
     });
 
-    return NextResponse.json(parsed, {
+    const answerSdp = liveAnswerSdp(parsed) as string;
+
+    return NextResponse.json({ transport: { sdp: answerSdp } }, {
       status: 201,
       headers: { "Cache-Control": "no-store" },
     });

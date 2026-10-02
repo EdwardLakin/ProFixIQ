@@ -36,7 +36,8 @@ const ICE_GATHER_TIMEOUT_MS = 10_000;
 
 type TranscriptTurn = {
   text: string;
-  endMs: number;
+  /** Server stream offset, or null when the event did not carry one. */
+  endMs: number | null;
 };
 
 type LiveResources = {
@@ -53,8 +54,9 @@ type LiveResources = {
   lastActivityAt: number;
   completedTranscriptTurns: TranscriptTurn[];
   currentTranscript: string;
-  currentTranscriptEndMs: number;
-  lastDelegationOffsetMs: number;
+  currentTranscriptEndMs: number | null;
+  /** Highest server stream offset already consumed, or null if none. */
+  lastDelegationOffsetMs: number | null;
   latestDelegationId: string | null;
 };
 
@@ -85,6 +87,14 @@ function streamedTotalMs(session: LiveResources, now: number): number {
       ? 0
       : Math.max(0, now - session.streamingSince))
   );
+}
+
+// HTMLMediaElement.play() returns a promise in current browsers but may return
+// undefined elsewhere; never assume it can be chained.
+function playQuietly(audio: HTMLAudioElement): void {
+  try {
+    void Promise.resolve(audio.play()).catch(() => undefined);
+  } catch {}
 }
 
 function stopStream(stream: MediaStream | null): void {
@@ -151,7 +161,7 @@ function cleanupSession(session: LiveResources): void {
   session.streamingSince = null;
   session.completedTranscriptTurns = [];
   session.currentTranscript = "";
-  session.currentTranscriptEndMs = 0;
+  session.currentTranscriptEndMs = null;
   session.latestDelegationId = null;
 }
 
@@ -201,6 +211,18 @@ export function useRealtimeTranscription(
     opts?.onError?.(message);
   };
 
+  // Send session.close and give the data channel a moment to flush before the
+  // peer is torn down; the microphone is released immediately.
+  const closeGracefully = (session: LiveResources, eventId: string): void => {
+    stopStream(session.mediaStream);
+    session.mediaStream = null;
+    if (sendEvent(session, { type: "session.close", event_id: eventId })) {
+      window.setTimeout(() => cleanupSession(session), 200);
+    } else {
+      cleanupSession(session);
+    }
+  };
+
   const autoStop = (
     session: LiveResources,
     reason: RealtimeAutoStopReason,
@@ -209,11 +231,7 @@ export function useRealtimeTranscription(
       cleanupSession(session);
       return;
     }
-    sendEvent(session, {
-      type: "session.close",
-      event_id: `profix_autostop_${Date.now()}`,
-    });
-    cleanupSession(session);
+    closeGracefully(session, `profix_autostop_${Date.now()}`);
     setState("idle");
     opts?.onAutoStop?.(reason);
   };
@@ -251,45 +269,70 @@ export function useRealtimeTranscription(
   const dispatchDelegation = (
     session: LiveResources,
     delegationId: string,
-    offsetMs: number,
+    offsetMs: number | null,
   ): void => {
     const collect = (attempt: number): void => {
       window.setTimeout(() => {
         if (!isCurrent(session)) return;
 
-        const candidates = session.completedTranscriptTurns.filter(
-          (turn) =>
-            turn.endMs > session.lastDelegationOffsetMs &&
-            turn.endMs <= offsetMs + 500,
-        );
+        // Server offsets (end_ms / offset_ms) share one stream clock. Use
+        // them to bound the window only when both sides carry one; otherwise
+        // fall back to arrival order so a missing field can never make every
+        // turn ineligible. Mixing in wall-clock time is deliberately avoided.
+        const lastOffset = session.lastDelegationOffsetMs;
+        const withinWindow = (turn: TranscriptTurn): boolean => {
+          if (offsetMs === null || turn.endMs === null) return true;
+          if (lastOffset !== null && turn.endMs <= lastOffset) return false;
+          return turn.endMs <= offsetMs + 500;
+        };
+        const candidates = session.completedTranscriptTurns.filter(withinWindow);
         if (session.currentTranscript.trim()) {
-          candidates.push({
+          const inProgress: TranscriptTurn = {
             text: session.currentTranscript.trim(),
-            endMs: session.currentTranscriptEndMs || offsetMs,
-          });
+            endMs: session.currentTranscriptEndMs,
+          };
+          if (withinWindow(inProgress)) candidates.push(inProgress);
         }
-        const selected = candidates
-          .filter((turn) => turn.endMs <= offsetMs + 500)
-          .sort((a, b) => b.endMs - a.endMs)[0];
+        // Candidates are in arrival order; the latest eligible turn is the
+        // one this delegation was created for.
+        const selected = candidates[candidates.length - 1];
 
         if (!selected && attempt < 3) {
           collect(attempt + 1);
           return;
         }
 
-        session.lastDelegationOffsetMs = Math.max(
-          session.lastDelegationOffsetMs,
-          offsetMs,
-        );
-        session.completedTranscriptTurns = session.completedTranscriptTurns.filter(
-          (turn) => turn.endMs > session.lastDelegationOffsetMs,
-        );
-        if (!selected?.text.trim()) return;
+        if (offsetMs !== null) {
+          session.lastDelegationOffsetMs = Math.max(
+            session.lastDelegationOffsetMs ?? offsetMs,
+            offsetMs,
+          );
+        }
+        // Everything up to and including the selected turn is consumed so
+        // earlier non-delegated speech never leaks into a later backend turn.
+        const selectedIndex = selected
+          ? session.completedTranscriptTurns.indexOf(selected)
+          : -1;
+        session.completedTranscriptTurns =
+          selected && selectedIndex >= 0
+            ? session.completedTranscriptTurns.slice(selectedIndex + 1)
+            : session.completedTranscriptTurns.filter(
+                (turn) => !withinWindow(turn),
+              );
+        if (!selected?.text.trim()) {
+          // Never leave a client delegation open: tell Live it produced no
+          // usable input so it can ask the technician to repeat.
+          speakText("I didn't catch that. Please say it again.", delegationId);
+          return;
+        }
 
         const command = (
           maybeHandleWakeWordRef.current(selected.text) ?? ""
         ).trim();
-        if (!command) return;
+        if (!command) {
+          speakText("I didn't catch a command there.", delegationId);
+          return;
+        }
 
         const invoke = (): Promise<unknown> => {
           try {
@@ -310,6 +353,11 @@ export function useRealtimeTranscription(
           .catch((caught) => {
             // eslint-disable-next-line no-console
             console.error("[GPTLive] delegated transcript handler failed", caught);
+            // The backend turn threw before it could reply; close the
+            // delegation so Live does not wait on it indefinitely.
+            if (isCurrent(session)) {
+              speakText("Sorry, I couldn't complete that.", delegationId);
+            }
           })
           .finally(() => {
             pendingTranscriptsRef.current -= 1;
@@ -347,8 +395,8 @@ export function useRealtimeTranscription(
       lastActivityAt: Date.now(),
       completedTranscriptTurns: [],
       currentTranscript: "",
-      currentTranscriptEndMs: 0,
-      lastDelegationOffsetMs: 0,
+      currentTranscriptEndMs: null,
+      lastDelegationOffsetMs: null,
       latestDelegationId: null,
     };
     activeSessionRef.current = session;
@@ -367,7 +415,7 @@ export function useRealtimeTranscription(
         const stream =
           event.streams[0] ?? new MediaStream([event.track]);
         audio.srcObject = stream;
-        void audio.play().catch(() => undefined);
+        playQuietly(audio);
       });
 
       const microphone = await navigator.mediaDevices.getUserMedia({
@@ -408,7 +456,8 @@ export function useRealtimeTranscription(
 
         if (type === "session.started") {
           session.lastActivityAt = Date.now();
-          session.streamingSince = Date.now();
+          // A pause() before the session started must not open the clock.
+          if (!session.paused) session.streamingSince = Date.now();
           setState("listening");
           startGuardTimer(session);
           return;
@@ -419,7 +468,9 @@ export function useRealtimeTranscription(
           if (!delta) return;
           session.currentTranscript += delta;
           session.currentTranscriptEndMs =
-            typeof parsed.end_ms === "number" ? parsed.end_ms : Date.now();
+            typeof parsed.end_ms === "number"
+              ? parsed.end_ms
+              : session.currentTranscriptEndMs;
           session.lastActivityAt = Date.now();
           opts?.onPulse?.();
           return;
@@ -435,7 +486,7 @@ export function useRealtimeTranscription(
           const endMs =
             typeof parsed.end_ms === "number"
               ? parsed.end_ms
-              : session.currentTranscriptEndMs || Date.now();
+              : session.currentTranscriptEndMs;
           if (text) {
             session.completedTranscriptTurns.push({ text, endMs });
             if (session.completedTranscriptTurns.length > 8) {
@@ -446,7 +497,7 @@ export function useRealtimeTranscription(
             }
           }
           session.currentTranscript = "";
-          session.currentTranscriptEndMs = 0;
+          session.currentTranscriptEndMs = null;
           return;
         }
 
@@ -462,9 +513,7 @@ export function useRealtimeTranscription(
             return;
           }
           const offsetMs =
-            typeof parsed.offset_ms === "number"
-              ? parsed.offset_ms
-              : session.lastDelegationOffsetMs + 1;
+            typeof parsed.offset_ms === "number" ? parsed.offset_ms : null;
           dispatchDelegation(session, delegation.id, offsetMs);
           return;
         }
@@ -635,7 +684,7 @@ export function useRealtimeTranscription(
     if (!session || stoppedRef.current || !content) return false;
     if (session.audio) {
       session.audio.muted = false;
-      void session.audio.play().catch(() => undefined);
+      playQuietly(session.audio);
     }
     return sendEvent(session, {
       type: "session.commentary.append",
@@ -667,11 +716,7 @@ export function useRealtimeTranscription(
     const session = activeSessionRef.current;
     if (!session) return;
     detach(session);
-    sendEvent(session, {
-      type: "session.close",
-      event_id: `profix_close_${Date.now()}`,
-    });
-    cleanupSession(session);
+    closeGracefully(session, `profix_close_${Date.now()}`);
     setState("idle");
   }
 
@@ -682,11 +727,7 @@ export function useRealtimeTranscription(
       const session = activeSessionRef.current;
       activeSessionRef.current = null;
       if (session) {
-        sendEvent(session, {
-          type: "session.close",
-          event_id: `profix_unmount_${Date.now()}`,
-        });
-        cleanupSession(session);
+        closeGracefully(session, `profix_unmount_${Date.now()}`);
       }
     };
   }, []);

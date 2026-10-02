@@ -141,6 +141,7 @@ export function useTechnicianInteractionGateway({
   const onUtteranceRef = useRef(onUtterance);
   const realtimeRef = useRef<RealtimeTransport | null>(null);
   const startListeningRef = useRef<() => Promise<void>>(async () => undefined);
+  const turnQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const startRef = useRef<
     (opts?: { isAutoResume?: boolean }) => Promise<void>
   >(async () => undefined);
@@ -185,12 +186,29 @@ export function useTechnicianInteractionGateway({
     }
   }, []);
 
-  const cancelSpeechOutput = useCallback(() => {
+  // `interruptLive` forwards a stop instruction to GPT-Live. Only an explicit
+  // user interrupt should do that: starting a new reply must not tell Live to
+  // stop speaking immediately before the commentary it is about to receive.
+  const cancelSpeechOutput = useCallback((interruptLive = false) => {
     speechPlaybackAttemptRef.current += 1;
+    if (!interruptLive) return;
     try {
       realtimeRef.current?.stopAudio?.();
     } catch {}
   }, []);
+
+  // Every Live client delegation must be answered. When the backend turn
+  // yields nothing speakable (or fails), close it with brief commentary so
+  // Live is never left waiting on an open delegation.
+  const settleDelegation = useCallback(
+    (delegationId: string | undefined, text: string) => {
+      if (!delegationId) return;
+      try {
+        realtimeRef.current?.speakText?.(text, delegationId);
+      } catch {}
+    },
+    [],
+  );
 
   const releaseWakeLock = useCallback(() => {
     const wakeLock = wakeLockRef.current;
@@ -297,7 +315,11 @@ export function useTechnicianInteractionGateway({
       // clear the auto-resume streak the idle/session-limit guard counts.
       consecutiveAutoResumesRef.current = 0;
 
-      return (async () => {
+      // Serialize delegated turns here as well as in the transport queue so
+      // a follow-up command waits for the in-flight backend turn instead of
+      // running concurrently against the same repair state.
+      const runTurn = async (): Promise<void> => {
+        if (!activeRef.current || generationRef.current !== generation) return;
         inFlightRef.current = true;
         setHeardTranscript(text);
         setVoicePhase("thinking");
@@ -319,6 +341,7 @@ export function useTechnicianInteractionGateway({
           if (reply) {
             speakReplyRef.current(reply, delegationId);
           } else {
+            settleDelegation(delegationId, "I don't have anything further on that.");
             await startListeningRef.current();
           }
         } catch (caught) {
@@ -343,6 +366,10 @@ export function useTechnicianInteractionGateway({
 
           if (recoverable && !exhausted) {
             setError(failureMessage);
+            settleDelegation(
+              delegationId,
+              "Sorry, I couldn't complete that. Please try again.",
+            );
             await startListeningRef.current();
           } else {
             // Authorization, stale-session, capability, and configuration
@@ -370,9 +397,13 @@ export function useTechnicianInteractionGateway({
             inFlightRef.current = false;
           }
         }
-      })();
+      };
+
+      const queued = turnQueueRef.current.then(runTurn, runTurn);
+      turnQueueRef.current = queued.catch(() => undefined);
+      return queued;
     },
-    [invalidateGeneration, releaseWakeLock, setVoicePhase],
+    [invalidateGeneration, releaseWakeLock, setVoicePhase, settleDelegation],
   );
 
   const realtime = useTechnicianRealtimeVoice(
@@ -716,7 +747,7 @@ export function useTechnicianInteractionGateway({
     // GPT-Live is full duplex and handles spoken barge-in itself. Keep the
     // explicit UI interrupt useful as well by forwarding a stop-speaking
     // instruction even though the gateway can already be back in "listening".
-    cancelSpeechOutput();
+    cancelSpeechOutput(true);
     utteranceRef.current = null;
     if (typeof window !== "undefined") {
       window.speechSynthesis?.cancel();
