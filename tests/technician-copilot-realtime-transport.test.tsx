@@ -84,6 +84,7 @@ class FakePeerConnection {
 
 describe("Technician CoPilot GPT-Live WebRTC transport", () => {
   const getUserMedia = vi.fn();
+  const sendBeacon = vi.fn(() => true);
   const fetchSession = vi.fn(async () => ({
     ok: true,
     json: async () => ({
@@ -99,6 +100,10 @@ describe("Technician CoPilot GPT-Live WebRTC transport", () => {
     Object.defineProperty(navigator, "mediaDevices", {
       configurable: true,
       value: { getUserMedia },
+    });
+    Object.defineProperty(navigator, "sendBeacon", {
+      configurable: true,
+      value: sendBeacon,
     });
     vi.stubGlobal("fetch", fetchSession);
     vi.stubGlobal("RTCPeerConnection", FakePeerConnection);
@@ -360,6 +365,64 @@ describe("Technician CoPilot GPT-Live WebRTC transport", () => {
 
       expect(onAutoStop).toHaveBeenCalledWith("idle");
       expect(onStateChange).toHaveBeenLastCalledWith("idle");
+      unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("settles from the provider's final session.closed usage after stop", async () => {
+    const { result, unmount } = await startVoice();
+
+    act(() => {
+      channels[0]?.emit({
+        type: "session.usage.updated",
+        usage: { seconds: 12 },
+      });
+      result.current.stop();
+    });
+
+    expect(
+      channels[0]?.send.mock.calls.some(
+        ([payload]) => JSON.parse(String(payload)).type === "session.close",
+      ),
+    ).toBe(true);
+
+    act(() => {
+      channels[0]?.emit({
+        type: "session.closed",
+        reason: "close_requested",
+        session: { id: "live_123" },
+        usage: { seconds: 15 },
+      });
+    });
+
+    expect(sendBeacon).toHaveBeenCalledWith(
+      "/api/openai/live-settlement",
+      expect.any(Blob),
+    );
+    expect(peers[0]?.close).toHaveBeenCalled();
+    unmount();
+  });
+
+  it("counts paused time against the provider-billed session ceiling", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: false });
+    try {
+      const onAutoStop = vi.fn();
+      const { result, unmount } = await startVoice(vi.fn(), {
+        idleTimeoutMs: 0,
+        maxStreamingMs: 5_000,
+        onAutoStop,
+      });
+
+      act(() => {
+        result.current.pause();
+      });
+      await act(async () => {
+        vi.advanceTimersByTime(6_000);
+      });
+
+      expect(onAutoStop).toHaveBeenCalledWith("max_duration");
       unmount();
     } finally {
       vi.useRealTimers();
