@@ -401,7 +401,7 @@ export function useTechnicianInteractionGateway({
         );
       },
       onOutputStateChange: (speaking) => {
-        if (!activeRef.current || inFlightRef.current) return;
+        if (!activeRef.current) return;
         setVoicePhase(speaking ? "speaking" : "listening");
       },
       onError: (message) => {
