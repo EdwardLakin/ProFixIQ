@@ -142,7 +142,9 @@ describe("Technician CoPilot GPT-Live WebRTC transport", () => {
         credentials: "same-origin",
       }),
     );
-    const request = fetchSession.mock.calls[0]?.[1] as RequestInit;
+    const request = (fetchSession.mock.calls as unknown as Array<
+      [string, RequestInit]
+    >)[0]?.[1];
     expect(JSON.parse(String(request.body))).toEqual({
       sdp: "offer-sdp",
       surface: "technician_copilot",
@@ -166,6 +168,11 @@ describe("Technician CoPilot GPT-Live WebRTC transport", () => {
           type: "session.input_transcript.delta",
           delta: "Rear U-joint has play.",
           start_ms: 100,
+          end_ms: 900,
+        });
+        channels[0]?.emit({
+          type: "session.input_transcript.done",
+          transcript: "Rear U-joint has play.",
           end_ms: 900,
         });
         channels[0]?.emit({
