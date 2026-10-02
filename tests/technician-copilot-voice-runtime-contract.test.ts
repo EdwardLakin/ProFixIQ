@@ -33,6 +33,10 @@ const sharedRealtimeTransportSource = readFileSync(
   "features/shared/voice/useRealtimeTranscription.ts",
   "utf8",
 );
+const liveRouteSource = readFileSync(
+  "app/api/openai/realtime-token/route.ts",
+  "utf8",
+);
 
 describe("Technician CoPilot GPT-Live voice bridge boundaries", () => {
   it("returns the resolved voice capability to the call surface", () => {
@@ -90,4 +94,23 @@ describe("Technician CoPilot GPT-Live voice bridge boundaries", () => {
     expect(technicianRealtimeSource).not.toContain("new RTCPeerConnection(");
     expect(inspectionRealtimeSource).not.toContain("new RTCPeerConnection(");
   });
+  it("authorizes each GPT-Live surface at its owning capability boundary", () => {
+    expect(liveRouteSource).toContain("requireTechnicianCopilotAccess");
+    expect(liveRouteSource).toContain("access.capabilities.voice");
+    expect(liveRouteSource).toContain(
+      'requiredCapability: "canRunInspections"',
+    );
+    expect(liveRouteSource).toContain('code: "live_invalid_surface"');
+  });
+
+  it("reserves bounded GPT-Live session spend in the existing operational budget", () => {
+    expect(liveRouteSource).toContain("LIVE_SESSION_RESERVED_COST_USD");
+    expect(liveRouteSource).toContain(
+      'operation: "live_session_reservation"',
+    );
+    expect(liveRouteSource).toContain(
+      "estimatedCostUsd: LIVE_SESSION_RESERVED_COST_USD",
+    );
+  });
+
 });
