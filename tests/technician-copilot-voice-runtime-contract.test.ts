@@ -37,6 +37,18 @@ const liveRouteSource = readFileSync(
   "app/api/openai/realtime-token/route.ts",
   "utf8",
 );
+const technicianCopilotAuthSource = readFileSync(
+  "features/copilot/technician/server/auth.ts",
+  "utf8",
+);
+const inspectionVoiceWrapperSource = readFileSync(
+  "features/inspections/lib/inspection/useRealtimeVoice.ts",
+  "utf8",
+);
+const inspectionVoiceTransportSource = readFileSync(
+  "features/inspections/lib/inspection/useCostOptimizedInspectionVoice.ts",
+  "utf8",
+);
 
 describe("Technician CoPilot GPT-Live voice bridge boundaries", () => {
   it("returns the resolved voice capability to the call surface", () => {
@@ -110,6 +122,39 @@ describe("Technician CoPilot GPT-Live voice bridge boundaries", () => {
     );
     expect(liveRouteSource).toContain(
       "estimatedCostUsd: LIVE_SESSION_RESERVED_COST_USD",
+    );
+  });
+
+  it("requires a paid assigned Technician Copilot seat outside the tester override", () => {
+    expect(technicianCopilotAuthSource).toContain(
+      '"edwardlakin35@gmail.com"',
+    );
+    expect(technicianCopilotAuthSource).toContain(
+      '"technician_copilot_has_paid_access"',
+    );
+    expect(technicianCopilotAuthSource).toContain(
+      '"technician_copilot_subscription_required"',
+    );
+  });
+
+  it("keeps inspection voice off premium GPT-Live and sends only detected speech", () => {
+    expect(inspectionVoiceWrapperSource).toContain(
+      "useCostOptimizedInspectionVoice",
+    );
+    expect(inspectionVoiceTransportSource).toContain(
+      '"/api/openai/inspection-transcription-token"',
+    );
+    expect(inspectionVoiceTransportSource).toContain(
+      'type: "input_audio_buffer.append"',
+    );
+    expect(inspectionVoiceTransportSource).toContain(
+      "if (!session.speaking) return;",
+    );
+    expect(inspectionVoiceTransportSource).toContain(
+      "inspection-transcription-usage",
+    );
+    expect(inspectionVoiceWrapperSource).not.toContain(
+      "useRealtimeTranscription",
     );
   });
 
