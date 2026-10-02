@@ -24,6 +24,16 @@ type SettlementRpc = {
   durationSeconds?: unknown;
 };
 
+type SettlementRpcClient = {
+  rpc: (
+    name: "settle_live_ai_usage_ledger",
+    args: Record<string, unknown>,
+  ) => PromiseLike<{
+    data: SettlementRpc | null;
+    error: { message?: string; code?: string | null } | null;
+  }>;
+};
+
 function finiteNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -62,7 +72,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const admin = createAdminSupabase();
+  const admin = createAdminSupabase() as unknown as SettlementRpcClient;
   const { data, error } = await admin.rpc("settle_live_ai_usage_ledger", {
     p_shop_id: access.profile.shop_id,
     p_user_id: access.profile.id,
