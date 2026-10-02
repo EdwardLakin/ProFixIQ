@@ -150,7 +150,6 @@ export function useTechnicianInteractionGateway({
   const utteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
   const speechWatchdogRef = useRef<number | null>(null);
   const speechStartWatchdogRef = useRef<number | null>(null);
-  const speechRequestControllerRef = useRef<AbortController | null>(null);
   const speechPlaybackAttemptRef = useRef(0);
   const wakeLockRef = useRef<ScreenWakeLockSentinel | null>(null);
   const wakeLockRequestPendingRef = useRef(false);
@@ -188,8 +187,6 @@ export function useTechnicianInteractionGateway({
 
   const cancelSpeechOutput = useCallback(() => {
     speechPlaybackAttemptRef.current += 1;
-    speechRequestControllerRef.current?.abort();
-    speechRequestControllerRef.current = null;
     try {
       realtimeRef.current?.stopAudio?.();
     } catch {}
