@@ -1,21 +1,21 @@
 "use client";
 
 import {
-  useRealtimeTranscription,
-  type HandleTranscriptFn,
-  type RealtimeTranscriptionOptions,
-  type RealtimeTranscriptionState,
-} from "@/features/shared/voice/useRealtimeTranscription";
+  useCostOptimizedInspectionVoice,
+  type InspectionVoiceOptions,
+  type InspectionVoiceState,
+} from "./useCostOptimizedInspectionVoice";
 
-export type VoiceState = RealtimeTranscriptionState;
+export type VoiceState = InspectionVoiceState;
 
 export function useRealtimeVoice(
-  handleTranscript: HandleTranscriptFn,
+  handleTranscript: (text: string) => void | Promise<unknown>,
   maybeHandleWakeWord: (text: string) => string | null,
-  opts?: RealtimeTranscriptionOptions,
+  opts?: InspectionVoiceOptions,
 ) {
-  return useRealtimeTranscription(handleTranscript, maybeHandleWakeWord, {
-    ...opts,
-    surface: "inspection",
-  });
+  return useCostOptimizedInspectionVoice(
+    handleTranscript,
+    maybeHandleWakeWord,
+    opts,
+  );
 }
