@@ -16,11 +16,17 @@ import {
 import { buildInspectionFromSelections } from "@inspections/lib/inspection/buildFromSelections";
 import {
   buildFromMaster,
-  masterInspectionList,
+  highwayMasterInspectionList,
   type BrakeSystem,
   type CvipGroup,
   type VehicleType,
 } from "@inspections/lib/inspection/masterInspectionList";
+import {
+  buildOffRoadFromMaster,
+  offRoadCategoriesForFamily,
+  offRoadEquipmentProfiles,
+  offRoadProfileByValue,
+} from "@inspections/lib/inspection/offRoadInspectionCatalog";
 import {
   getInspectionBuilderNavigation,
   type InspectionBuilderSurface,
@@ -31,6 +37,7 @@ type DutyClass = "light" | "medium" | "heavy";
 type GridMode = "hyd" | "air" | "none";
 type EngineType = "gas" | "diesel";
 type BuildMethod = "template" | "prompt" | "manual";
+type EquipmentScope = "road" | "off_road";
 
 /** ✅ Upgraded item shape so we don't lose CVIP/spec metadata */
 type SectionItem = {
@@ -506,6 +513,8 @@ export default function CustomBuilderPage({
   const navigation = getInspectionBuilderNavigation(surface);
 
   const [title, setTitle] = useState(sp.get("template") || "Custom Inspection");
+  const [equipmentScope, setEquipmentScope] = useState<EquipmentScope>("road");
+  const [offRoadProfileValue, setOffRoadProfileValue] = useState("crawler_excavator");
   const [dutyClass, setDutyClass] = useState<DutyClass>("heavy");
   const [laborHours, setLaborHours] = useState<string>("");
 
@@ -540,7 +549,7 @@ export default function CustomBuilderPage({
   const [quickTouched, setQuickTouched] = useState(false);
   const [buildMethod, setBuildMethod] = useState<BuildMethod>("template");
   const [activeSectionTitle, setActiveSectionTitle] = useState(
-    masterInspectionList[0]?.title ?? "",
+    highwayMasterInspectionList[0]?.title ?? "",
   );
   const [sectionQuery, setSectionQuery] = useState("");
   const [itemQuery, setItemQuery] = useState("");
@@ -562,6 +571,24 @@ export default function CustomBuilderPage({
     () => inferCvipGroup(vehicleType, brakeSystem),
     [vehicleType, brakeSystem],
   );
+
+  const offRoadProfile = useMemo(
+    () => offRoadProfileByValue(offRoadProfileValue),
+    [offRoadProfileValue],
+  );
+
+  const catalogSections = useMemo(
+    () =>
+      equipmentScope === "off_road" && offRoadProfile
+        ? offRoadCategoriesForFamily(offRoadProfile.family)
+        : highwayMasterInspectionList,
+    [equipmentScope, offRoadProfile],
+  );
+
+  useEffect(() => {
+    if (catalogSections.some((section) => section.title === activeSectionTitle)) return;
+    setActiveSectionTitle(catalogSections[0]?.title ?? "");
+  }, [activeSectionTitle, catalogSections]);
 
   const dutyLabel =
     dutyClass === "light"
@@ -620,13 +647,16 @@ export default function CustomBuilderPage({
   ) {
     const base = Array.isArray(sections) ? (sections as Section[]) : [];
 
-    let finalSections = prepareSections(
-      base,
-      gridMode,
-      includeTireGrid,
-      includeBatteryGrid,
-      batteryCount,
-    );
+    let finalSections =
+      equipmentScope === "off_road"
+        ? base
+        : prepareSections(
+            base,
+            gridMode,
+            includeTireGrid,
+            includeBatteryGrid,
+            batteryCount,
+          );
 
     if (
       includeGreaseChassis &&
@@ -678,9 +708,12 @@ export default function CustomBuilderPage({
         greaseChassis: includeGreaseChassis,
         oil: includeOil ? oilEngineType : null,
         laborHours: laborHours.trim() || null,
-        vehicleType,
-        brakeSystem,
-        cvipGroup: cvipGroup ?? null,
+        vehicleType: equipmentScope === "road" ? vehicleType : null,
+        brakeSystem: equipmentScope === "road" ? brakeSystem : null,
+        cvipGroup: equipmentScope === "road" ? cvipGroup ?? null : null,
+        equipmentScope,
+        equipmentProfile:
+          equipmentScope === "off_road" ? offRoadProfileValue : null,
         targetCount,
       }),
     );
@@ -689,13 +722,19 @@ export default function CustomBuilderPage({
   }
 
   function startQuickFromMaster() {
-    const built = buildFromMaster({
-      vehicleType,
-      brakeSystem,
-      dutyClass,
-      targetCount,
-      cvipGroup,
-    }) as unknown as Section[];
+    const built =
+      equipmentScope === "off_road"
+        ? (buildOffRoadFromMaster({
+            profileValue: offRoadProfileValue,
+            targetCount,
+          }) as unknown as Section[])
+        : (buildFromMaster({
+            vehicleType,
+            brakeSystem,
+            dutyClass,
+            targetCount,
+            cvipGroup,
+          }) as unknown as Section[]);
 
     const withOil =
       includeOil &&
@@ -878,18 +917,18 @@ export default function CustomBuilderPage({
 
   const visibleSections = useMemo(() => {
     const query = sectionQuery.trim().toLowerCase();
-    if (!query) return masterInspectionList;
-    return masterInspectionList.filter((section) =>
+    if (!query) return catalogSections;
+    return catalogSections.filter((section) =>
       section.title.toLowerCase().includes(query),
     );
-  }, [sectionQuery]);
+  }, [catalogSections, sectionQuery]);
 
   const activeSection = useMemo(
     () =>
-      masterInspectionList.find(
+      catalogSections.find(
         (section) => section.title === activeSectionTitle,
-      ) ?? masterInspectionList[0],
-    [activeSectionTitle],
+      ) ?? catalogSections[0],
+    [activeSectionTitle, catalogSections],
   );
 
   const visibleActiveItems = useMemo(() => {
@@ -1024,7 +1063,7 @@ export default function CustomBuilderPage({
             </div>
           </div>
 
-          <div className="grid gap-4 p-5 md:grid-cols-[minmax(0,1.5fr)_minmax(180px,0.7fr)_minmax(150px,0.5fr)]">
+          <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_minmax(180px,0.7fr)_minmax(240px,0.9fr)_minmax(150px,0.5fr)]">
             <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
               Inspection name
               <input
@@ -1035,19 +1074,66 @@ export default function CustomBuilderPage({
               />
             </label>
             <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
-              Duty class
+              Equipment class
               <select
-                value={dutyClass}
-                onChange={(event) =>
-                  setDutyClass(event.target.value as DutyClass)
-                }
+                value={equipmentScope}
+                onChange={(event) => {
+                  const next = event.target.value as EquipmentScope;
+                  setEquipmentScope(next);
+                  setSelections({});
+                  setSectionQuery("");
+                  setItemQuery("");
+                  if (next === "off_road") {
+                    setGridTouched(true);
+                    setGridMode("none");
+                    setIncludeTireGrid(false);
+                  } else {
+                    setGridTouched(false);
+                    setQuickTouched(false);
+                  }
+                }}
                 className={cx(inputClass, "mt-1.5")}
               >
-                <option value="light">Light duty</option>
-                <option value="medium">Medium duty</option>
-                <option value="heavy">Heavy duty</option>
+                <option value="road">Road vehicle</option>
+                <option value="off_road">Off-road equipment</option>
               </select>
             </label>
+            {equipmentScope === "road" ? (
+              <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                Duty class
+                <select
+                  value={dutyClass}
+                  onChange={(event) =>
+                    setDutyClass(event.target.value as DutyClass)
+                  }
+                  className={cx(inputClass, "mt-1.5")}
+                >
+                  <option value="light">Light duty</option>
+                  <option value="medium">Medium duty</option>
+                  <option value="heavy">Heavy duty</option>
+                </select>
+              </label>
+            ) : (
+              <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                Equipment type
+                <select
+                  value={offRoadProfileValue}
+                  onChange={(event) => {
+                    setOffRoadProfileValue(event.target.value);
+                    setSelections({});
+                    setSectionQuery("");
+                    setItemQuery("");
+                  }}
+                  className={cx(inputClass, "mt-1.5")}
+                >
+                  {offRoadEquipmentProfiles.map((profile) => (
+                    <option key={profile.value} value={profile.value}>
+                      {profile.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
             <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
               Estimated labor
               <div className="relative mt-1.5">
@@ -1067,6 +1153,7 @@ export default function CustomBuilderPage({
             </label>
           </div>
 
+          {equipmentScope === "road" ? (
           <details className="border-t border-[color:var(--theme-border-soft)]">
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3.5 text-sm font-medium text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-subtle)] [&::-webkit-details-marker]:hidden">
               <span className="flex min-w-0 items-center gap-2">
@@ -1178,6 +1265,11 @@ export default function CustomBuilderPage({
               </div>
             </div>
           </details>
+          ) : (
+            <div className="border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-5 py-3 text-xs text-[color:var(--theme-text-secondary)]">
+              Off-road mode uses equipment-specific checks from the shared master library. Road brake/tire corner grids are intentionally disabled.
+            </div>
+          )}
         </section>
 
         <section
@@ -1253,6 +1345,7 @@ export default function CustomBuilderPage({
                       inspection library.
                     </p>
                   </div>
+                  {equipmentScope === "road" ? (
                   <div className="grid gap-4 md:grid-cols-3">
                     <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
                       Vehicle
@@ -1301,13 +1394,49 @@ export default function CustomBuilderPage({
                       </select>
                     </label>
                   </div>
+                  ) : (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                        Equipment type
+                        <select
+                          value={offRoadProfileValue}
+                          onChange={(event) => {
+                            setOffRoadProfileValue(event.target.value);
+                            setSelections({});
+                          }}
+                          className={cx(inputClass, "mt-1.5")}
+                        >
+                          {offRoadEquipmentProfiles.map((profile) => (
+                            <option key={profile.value} value={profile.value}>
+                              {profile.label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                        Inspection size
+                        <select
+                          value={String(targetCount)}
+                          onChange={(event) => setTargetCount(Number(event.target.value))}
+                          className={cx(inputClass, "mt-1.5")}
+                        >
+                          <option value="30">Focused · 30 checks</option>
+                          <option value="60">Standard · 60 checks</option>
+                          <option value="80">Detailed · 80 checks</option>
+                          <option value="120">Comprehensive · 120 checks</option>
+                        </select>
+                      </label>
+                    </div>
+                  )}
                   <div className="grid gap-3 rounded-xl border border-blue-500/20 bg-blue-500/10 p-4 sm:grid-cols-3">
                     <div>
                       <div className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
                         Vehicle profile
                       </div>
                       <div className="mt-1 text-sm font-medium capitalize">
-                        {vehicleType}
+                        {equipmentScope === "off_road"
+                          ? offRoadProfile?.label ?? offRoadProfileValue
+                          : vehicleType}
                       </div>
                     </div>
                     <div>
@@ -1315,9 +1444,11 @@ export default function CustomBuilderPage({
                         Brake checks
                       </div>
                       <div className="mt-1 text-sm font-medium">
-                        {brakeSystem === "air_brake"
-                          ? "Air brake"
-                          : "Hydraulic"}
+                        {equipmentScope === "off_road"
+                          ? "Equipment-specific"
+                          : brakeSystem === "air_brake"
+                            ? "Air brake"
+                            : "Hydraulic"}
                       </div>
                     </div>
                     <div>
@@ -1325,7 +1456,11 @@ export default function CustomBuilderPage({
                         Commercial coverage
                       </div>
                       <div className="mt-1 text-sm font-medium">
-                        {cvipGroup ? "Included" : "Not required"}
+                        {equipmentScope === "off_road"
+                          ? "Not applicable"
+                          : cvipGroup
+                            ? "Included"
+                            : "Not required"}
                       </div>
                     </div>
                   </div>
@@ -1570,16 +1705,22 @@ export default function CustomBuilderPage({
                 </div>
                 <div className="flex items-center justify-between py-2.5">
                   <dt className="text-[color:var(--theme-text-secondary)]">
-                    Duty class
+                    {equipmentScope === "off_road" ? "Equipment" : "Duty class"}
                   </dt>
-                  <dd className="font-semibold">{dutyLabel}</dd>
+                  <dd className="font-semibold">
+                    {equipmentScope === "off_road"
+                      ? offRoadProfile?.label ?? offRoadProfileValue
+                      : dutyLabel}
+                  </dd>
                 </div>
                 <div className="flex items-center justify-between py-2.5">
                   <dt className="text-[color:var(--theme-text-secondary)]">
                     Corner grid
                   </dt>
                   <dd className="font-semibold">
-                    {compactGridLabel(gridMode)}
+                    {equipmentScope === "off_road"
+                      ? "Not used"
+                      : compactGridLabel(gridMode)}
                   </dd>
                 </div>
                 <div className="flex items-center justify-between py-2.5">
