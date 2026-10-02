@@ -288,23 +288,16 @@ export function useTechnicianInteractionGateway({
   );
 
   const handleFinalTranscript = useCallback(
-    (rawText: string, delegationId?: string) => {
+    async (rawText: string, delegationId?: string) => {
       const text = normalizedTranscript(rawText);
-      if (
-        !text ||
-        !activeRef.current ||
-        inFlightRef.current ||
-        phaseRef.current !== "listening"
-      ) {
-        return;
-      }
+      if (!text || !activeRef.current) return;
       const generation = generationRef.current;
       // Real recognized speech, not just a reconnect — a genuinely idle
       // device never reaches this point, so this is the right place to
       // clear the auto-resume streak the idle/session-limit guard counts.
       consecutiveAutoResumesRef.current = 0;
 
-      void (async () => {
+      return (async () => {
         inFlightRef.current = true;
         setHeardTranscript(text);
         setVoicePhase("thinking");
@@ -406,6 +399,10 @@ export function useTechnicianInteractionGateway({
             ? "Voice stopped after several quiet stretches. Start voice to continue."
             : "Voice reached its session limit several times in a row. Start voice to continue.",
         );
+      },
+      onOutputStateChange: (speaking) => {
+        if (!activeRef.current || inFlightRef.current) return;
+        setVoicePhase(speaking ? "speaking" : "listening");
       },
       onError: (message) => {
         if (!activeRef.current) return;
@@ -585,17 +582,21 @@ export function useTechnicianInteractionGateway({
       const sentToLive =
         realtimeRef.current?.speakText?.(text, delegationId) ?? false;
       if (sentToLive) {
-        // GPT-Live owns playback and interruption. There is intentionally no
-        // pause/resume cycle here: the microphone stays live so the technician
-        // can barge in while the backend result is being spoken.
-        setVoicePhase("listening");
+        // Keep the speaking phase until Live reports output completion. The
+        // microphone remains live so normal acoustic barge-in still works.
         return;
       }
 
-      // Browser speech is retained only as a last-resort audible fallback if a
-      // live session exists locally but its data channel cannot accept the
-      // verified backend result.
+      // Device speech is an emergency fallback. Mute the Live microphone while
+      // it plays so GPT-Live cannot hear the app's own reply and delegate it
+      // back into the authoritative backend.
+      const paused = realtimeRef.current?.pause?.() ?? false;
       speakWithDeviceVoice(text, generation, playbackAttempt);
+      if (!paused) {
+        setError(
+          "Live voice output was unavailable and the microphone could not be muted for fallback speech.",
+        );
+      }
     },
     [cancelSpeechOutput, setVoicePhase, speakWithDeviceVoice],
   );
@@ -623,7 +624,7 @@ export function useTechnicianInteractionGateway({
       // GPT-Live must be connected before commentary can be spoken.
       await startListeningRef.current();
       if (!activeRef.current || generationRef.current !== generation) return;
-      speakReplyRef.current(pendingGreeting);
+      speakReplyRef.current(pendingGreeting, null);
       return;
     }
     await startListeningRef.current();
@@ -759,7 +760,7 @@ export function useTechnicianInteractionGateway({
    */
   const announce = useCallback((text: string): boolean => {
     if (!activeRef.current || phaseRef.current !== "listening") return false;
-    speakReplyRef.current(text);
+    speakReplyRef.current(text, null);
     return true;
   }, []);
 
