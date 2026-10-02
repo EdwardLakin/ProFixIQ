@@ -41,6 +41,8 @@ type Session = {
   silenceMs: number;
   turnMs: number;
   noiseFloor: number;
+  usageKey: string | null;
+  usageReported: boolean;
 };
 
 function encodePcm(data: Float32Array): string {
@@ -63,6 +65,40 @@ function level(data: Float32Array): number {
   let sum = 0;
   for (const value of data) sum += value * value;
   return Math.sqrt(sum / data.length);
+}
+
+function reportUsage(session: Session): void {
+  if (session.usageReported || !session.usageKey) return;
+  session.usageReported = true;
+  const payload = JSON.stringify({
+    usageKey: session.usageKey,
+    durationSeconds: Math.max(0, session.sentAudioMs / 1_000),
+  });
+  try {
+    if (
+      typeof navigator !== "undefined" &&
+      typeof navigator.sendBeacon === "function"
+    ) {
+      const blob = new Blob([payload], { type: "application/json" });
+      if (
+        navigator.sendBeacon(
+          "/api/openai/inspection-transcription-usage",
+          blob,
+        )
+      ) {
+        return;
+      }
+    }
+  } catch {}
+  try {
+    void fetch("/api/openai/inspection-transcription-usage", {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+      keepalive: true,
+    }).catch(() => undefined);
+  } catch {}
 }
 
 function stopStream(stream: MediaStream | null): void {
@@ -158,7 +194,10 @@ export function useCostOptimizedInspectionVoice(
   function stop(reason?: InspectionVoiceAutoStopReason): void {
     const session = activeRef.current;
     activeRef.current = null;
-    if (session) cleanup(session);
+    if (session) {
+      reportUsage(session);
+      cleanup(session);
+    }
     setState("idle");
     if (reason) opts?.onAutoStop?.(reason);
   }
@@ -173,7 +212,12 @@ export function useCostOptimizedInspectionVoice(
       credentials: "same-origin",
     });
     const tokenPayload = (await response.json().catch(() => null)) as
-      | { token?: unknown; transcriptionModel?: unknown; error?: unknown }
+      | {
+          token?: unknown;
+          transcriptionModel?: unknown;
+          usageKey?: unknown;
+          error?: unknown;
+        }
       | null;
     if (!response.ok || typeof tokenPayload?.token !== "string") {
       const message =
@@ -221,6 +265,11 @@ export function useCostOptimizedInspectionVoice(
       silenceMs: 0,
       turnMs: 0,
       noiseFloor: 0.006,
+      usageKey:
+        typeof tokenPayload.usageKey === "string"
+          ? tokenPayload.usageKey
+          : null,
+      usageReported: false,
     };
     activeRef.current = session;
 
@@ -287,6 +336,9 @@ export function useCostOptimizedInspectionVoice(
           for (const buffered of session.preRoll) sendAudio(session, buffered);
           session.preRoll = [];
           session.preRollMs = 0;
+          // The current frame is already part of pre-roll; do not send it twice.
+          session.turnMs += frameMs;
+          return;
         }
       }
 
@@ -349,6 +401,7 @@ export function useCostOptimizedInspectionVoice(
 
     ws.onerror = () => {
       if (activeRef.current !== session) return;
+      reportUsage(session);
       cleanup(session);
       activeRef.current = null;
       setState("error");
@@ -357,6 +410,7 @@ export function useCostOptimizedInspectionVoice(
 
     ws.onclose = () => {
       if (activeRef.current !== session) return;
+      reportUsage(session);
       cleanup(session);
       activeRef.current = null;
       setState("idle");
