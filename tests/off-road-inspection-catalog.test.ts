@@ -6,6 +6,7 @@ import {
   buildFromMaster,
 } from "@/features/inspections/lib/inspection/masterInspectionList";
 import {
+  buildOffRoadFromMaster,
   offRoadCategoriesForFamily,
   offRoadEquipmentProfiles,
   offRoadInspectionCategories,
@@ -47,6 +48,36 @@ describe("off-road inspection catalog", () => {
         (section) => section.title === "Off-Road — MEWP / Man Lift Safety",
       ),
     ).toBe(true);
+  });
+
+  it("builds a focused equipment-specific off-road inspection", () => {
+    const built = buildOffRoadFromMaster({
+      profileValue: "crawler_excavator",
+      targetCount: 30,
+    });
+
+    const items = built.flatMap((section) =>
+      section.items.map((entry) => entry.item),
+    );
+
+    expect(items.length).toBeGreaterThanOrEqual(30);
+    expect(items).toContain("Swing bearing / swing play");
+    expect(
+      built.every((section) =>
+        section.items.every((entry) =>
+          entry.equipmentFamilies.includes("excavation"),
+        ),
+      ),
+    ).toBe(true);
+  });
+
+  it("returns no sections for an unknown off-road profile", () => {
+    expect(
+      buildOffRoadFromMaster({
+        profileValue: "unknown-machine",
+        targetCount: 30,
+      }),
+    ).toEqual([]);
   });
 
   it("does not leak off-road rows into existing highway quick builds", () => {
