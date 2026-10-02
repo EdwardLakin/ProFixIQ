@@ -5,6 +5,7 @@ import {
   TechnicianCopilotAccessError,
 } from "@/features/copilot/technician/server/auth";
 import { getOpenAILiveModel } from "@/features/shared/lib/openai-realtime-models";
+import { estimateOpenAILiveCostUsd } from "@/features/shared/lib/server/ai-cost";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import {
@@ -37,21 +38,7 @@ function liveAnswerSdp(parsed: unknown): string | null {
   return typeof sdp === "string" && sdp ? sdp : null;
 }
 
-function envNumber(name: string, fallback: number): number {
-  const raw = process.env[name];
-  if (!raw) return fallback;
-  const value = Number(raw);
-  return Number.isFinite(value) && value >= 0 ? value : fallback;
-}
-
-// Conservative reservation for the bounded Live session. The browser transport
-// caps streaming at ten minutes by default, so charge a configurable maximum
-// session proxy into the existing monthly operational budget instead of
-// treating every Live connection as the old fixed token-issuance event.
-const LIVE_SESSION_RESERVED_COST_USD = envNumber(
-  "AI_LIVE_SESSION_RESERVED_COST_USD",
-  0.5,
-);
+const LIVE_SESSION_MAX_SECONDS = 10 * 60;
 
 function liveInstructions(surface: LiveSurface): string {
   if (surface === "technician_copilot") {
@@ -164,6 +151,19 @@ export async function POST(request: NextRequest) {
 
   const apiKey = process.env.OPENAI_API_KEY;
   const model = getOpenAILiveModel();
+  const reservedCostUsd = estimateOpenAILiveCostUsd(
+    model,
+    LIVE_SESSION_MAX_SECONDS,
+  );
+  if (reservedCostUsd == null) {
+    return NextResponse.json(
+      {
+        error: "Voice model pricing is not configured",
+        code: "live_rate_not_configured",
+      },
+      { status: 503 },
+    );
+  }
   if (!apiKey) {
     return NextResponse.json(
       { error: "Voice service is not configured", code: "realtime_not_configured" },
@@ -228,7 +228,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const sessionId =
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "session" in parsed &&
+      typeof (parsed as { session?: unknown }).session === "object" &&
+      (parsed as { session?: { id?: unknown } }).session !== null &&
+      typeof (parsed as { session?: { id?: unknown } }).session?.id === "string"
+        ? (parsed as { session: { id: string } }).session.id.trim()
+        : "";
+    if (!sessionId) {
+      return NextResponse.json(
+        {
+          error: "Voice service returned an invalid session",
+          code: "live_session_id_missing",
+        },
+        { status: 502 },
+      );
+    }
+
     await recordDurableAIUsage({
+      event_key: sessionId,
+      provider_request_id: sessionId,
       feature: "openai_realtime_token",
       endpoint: "/api/openai/realtime-token",
       shop_id: shopId,
@@ -240,8 +261,8 @@ export async function POST(request: NextRequest) {
       prompt_tokens: null,
       completion_tokens: null,
       total_tokens: null,
-      duration_seconds: 10 * 60,
-      estimated_cost_usd: LIVE_SESSION_RESERVED_COST_USD,
+      duration_seconds: LIVE_SESSION_MAX_SECONDS,
+      estimated_cost_usd: reservedCostUsd,
       status: "success",
       error_code: null,
       error_message: null,
@@ -253,7 +274,7 @@ export async function POST(request: NextRequest) {
       shopId,
       model,
       totalTokens: null,
-      estimatedCostUsd: LIVE_SESSION_RESERVED_COST_USD,
+      estimatedCostUsd: reservedCostUsd,
       status: "success",
       errorCode: null,
     });
