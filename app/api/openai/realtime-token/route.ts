@@ -26,14 +26,10 @@ type OpenAIRealtimeSessionConfig = {
         };
         transcription: {
           model: string;
-          language?: string;
+          languages?: string[];
+          delay?: "minimal" | "low" | "medium" | "high" | "xhigh";
         };
-        turn_detection?: {
-          type: "server_vad";
-          threshold?: number;
-          prefix_padding_ms?: number;
-          silence_duration_ms?: number;
-        };
+        turn_detection?: null;
       };
     };
   };
@@ -120,14 +116,13 @@ export async function GET() {
             },
             transcription: {
               model: transcriptionModel,
-              language: "en",
+              languages: ["en"],
+              delay: "low",
             },
-            turn_detection: {
-              type: "server_vad",
-              threshold: 0.5,
-              prefix_padding_ms: 300,
-              silence_duration_ms: 500,
-            },
+            // gpt-live-transcribe does not support server_vad. The shared
+            // browser transport performs end-of-speech detection and commits
+            // each completed input buffer explicitly.
+            turn_detection: null,
           },
         },
       },
