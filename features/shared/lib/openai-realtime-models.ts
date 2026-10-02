@@ -1,4 +1,4 @@
-const DEFAULT_REALTIME_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
+const DEFAULT_REALTIME_TRANSCRIPTION_MODEL = "gpt-live-transcribe";
 
 function env(name: string): string | undefined {
   const value = process.env[name]?.trim();
