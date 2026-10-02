@@ -29,6 +29,8 @@ type ImportedItem = {
   item: string;
   unit: string | null;
   fieldType: ImportedFieldType;
+  /** How the row was printed, when a grid took over its reading. */
+  printedAs?: { fieldType: ImportedFieldType; unit: string | null };
 };
 type ImportedSection = {
   title: string;
@@ -86,7 +88,24 @@ function normalizedSections(value: unknown): ImportedSection[] {
             : unit
               ? "measurement"
               : "check";
-          return { item, unit, fieldType } satisfies ImportedItem;
+          const rawPrinted = isRecord(rawItem.printedAs) ? rawItem.printedAs : null;
+          const printedType = String(rawPrinted?.fieldType ?? "").trim().toLowerCase();
+          const printedAs =
+            rawPrinted && FIELD_TYPES.has(printedType as ImportedFieldType)
+              ? {
+                  fieldType: printedType as ImportedFieldType,
+                  unit:
+                    typeof rawPrinted.unit === "string" && rawPrinted.unit.trim()
+                      ? rawPrinted.unit.trim()
+                      : null,
+                }
+              : undefined;
+          return {
+            item,
+            unit,
+            fieldType,
+            ...(printedAs ? { printedAs } : {}),
+          } satisfies ImportedItem;
         })
         .filter((item): item is ImportedItem => item !== null);
       const grid = isRecord(rawSection.generatedGrid)
@@ -225,6 +244,7 @@ function ImportedFleetTemplateEditor({
             item: item.item.trim(),
             unit: item.unit?.trim() || null,
             fieldType: item.fieldType,
+            ...(item.printedAs ? { printedAs: item.printedAs } : {}),
           }))
           .filter((item) => item.item.length > 0),
       }))

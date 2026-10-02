@@ -22,6 +22,11 @@ export type InspectionFormItem = {
   item: string;
   unit?: string | null;
   fieldType?: InspectionFormFieldType;
+  /**
+   * How the row was printed, when the importer turned a reading into a
+   * pass/fail check because a grid captures it. Turning the grid off restores it.
+   */
+  printedAs?: { fieldType: InspectionFormFieldType; unit: string | null };
 };
 
 /**
@@ -222,10 +227,15 @@ export function normalizeInspectionFormSections(
       const fieldType = normalizeInspectionFormFieldType(
         item.fieldType ?? item.field_type ?? item.kind,
       );
+      const printed = record(item.printedAs);
+      const printedType = normalizeInspectionFormFieldType(printed.fieldType);
       items.push({
         item: label,
         unit: nullableText(item.unit),
         ...(fieldType ? { fieldType } : {}),
+        ...(printedType
+          ? { printedAs: { fieldType: printedType, unit: nullableText(printed.unit) } }
+          : {}),
       });
     }
     const grid = record(section.generatedGrid);

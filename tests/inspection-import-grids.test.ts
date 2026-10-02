@@ -281,7 +281,7 @@ describe("applyImportGrids — hydraulic brake system and stray reading rows", (
         "Drum or Disk Brake Components", "ABS System",
       ].map(check),
     },
-    { title: "Tires & Wheels", items: [measure("Tire Tread Depth"), check("Tire Tread & Sidewall Condition")] },
+    { title: "Tires & Wheels", items: [{ item: "Tire Tread Depth", unit: "mm", fieldType: "measurement" as const }, check("Tire Tread & Sidewall Condition")] },
   ];
   const hyd = { tireGrid: true, brakeGrid: true, brakeMode: "hydraulic" as const };
   const air = { ...hyd, brakeMode: "air" as const };
@@ -318,5 +318,43 @@ describe("applyImportGrids — hydraulic brake system and stray reading rows", (
     expect(row).toMatchObject({ fieldType: "check", unit: null });
     const off = applyImportGrids(airForm(), { ...air, tireGrid: false });
     expect(off.find((s) => s.title === "Tires & Wheels")!.items[0].fieldType).toBe("measurement");
+  });
+
+  it("keeps a reviewer's edit to the adapted section while hydraulic stays selected", () => {
+    const once = applyImportGrids(airForm(), hyd);
+    const edited = once.map((s) =>
+      s.title === "Hydraulic Brakes"
+        ? { ...s, items: [...s.items, { item: "Brake fluid colour", fieldType: "check" as const }] }
+        : s,
+    );
+    const again = applyImportGrids(edited, { ...hyd, tireGrid: false });
+    expect(again.find((s) => s.title === "Hydraulic Brakes")!.items.map((i) => i.item)).toContain("Brake fluid colour");
+    // an explicit switch back to air restores the printed section
+    expect(titles(applyImportGrids(edited, air))).toContain("Air Brakes");
+  });
+
+  it("restores a reading row when its grid is turned off", () => {
+    const on = applyImportGrids(airForm(), air);
+    const off = applyImportGrids(on, { ...air, tireGrid: false });
+    const row = off.find((s) => s.title === "Tires & Wheels")!.items.find((i) => i.item === "Tire Tread Depth")!;
+    expect(row).toMatchObject({ fieldType: "measurement", unit: "mm" });
+    expect(row.printedAs).toBeUndefined();
+    // and survives save and reload
+    const reloaded = normalizeInspectionFormSections(JSON.parse(JSON.stringify(on)));
+    const back = applyImportGrids(reloaded, { ...air, tireGrid: false });
+    expect(back.find((s) => s.title === "Tires & Wheels")!.items[0]).toMatchObject({ fieldType: "measurement", unit: "mm" });
+  });
+
+  it("drops every air-only row, never relabelling an unknown air row as hydraulic", () => {
+    const out = applyImportGrids(
+      [{ title: "Air Brakes", items: [
+        "Park brake (spring brake) function", "Air supply system", "Tank drain valves", "Low air warning",
+        "Glad hands & air lines", "Brake pedal feel",
+      ].map(check) }],
+      hyd,
+    );
+    expect(out.find((s) => s.title === "Hydraulic Brakes")!.items.map((i) => i.item)).toEqual([
+      "Parking Brake Function", "Brake pedal feel",
+    ]);
   });
 });
