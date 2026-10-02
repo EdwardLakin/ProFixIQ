@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   masterInspectionList,
+  highwayMasterInspectionList,
   buildFromMaster,
 } from "@/features/inspections/lib/inspection/masterInspectionList";
 import {
@@ -59,5 +60,29 @@ describe("off-road inspection catalog", () => {
     expect(
       highway.some((section) => section.title.startsWith("Off-Road —")),
     ).toBe(false);
+  });
+
+  it("keeps off-road rows out of the highway-only master list", () => {
+    expect(
+      highwayMasterInspectionList.some((section) =>
+        section.title.startsWith("Off-Road —"),
+      ),
+    ).toBe(false);
+    expect(
+      highwayMasterInspectionList.every((section) =>
+        section.items.every((entry) => entry.catalogScope !== "off_road"),
+      ),
+    ).toBe(true);
+    expect(highwayMasterInspectionList.length).toBeGreaterThan(0);
+  });
+
+  it("gives every profile family at least one section and unique item names", () => {
+    for (const profile of offRoadEquipmentProfiles) {
+      expect(offRoadCategoriesForFamily(profile.family).length).toBeGreaterThan(0);
+    }
+    for (const section of offRoadInspectionCategories) {
+      const names = section.items.map((entry) => entry.item);
+      expect(new Set(names).size).toBe(names.length);
+    }
   });
 });

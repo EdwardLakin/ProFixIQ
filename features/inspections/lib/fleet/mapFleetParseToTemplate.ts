@@ -1,4 +1,4 @@
-import { masterInspectionList } from "@/features/inspections/lib/inspection/masterInspectionList";
+import { highwayMasterInspectionList } from "@/features/inspections/lib/inspection/masterInspectionList";
 import type { FleetFormProfile } from "./inferFleetFormProfile";
 import type { FleetParseSection } from "./normalizeFleetParse";
 
@@ -40,7 +40,7 @@ function getTargetSectionTitle(sourceTitle: string, profile: FleetFormProfile): 
 function getMasterItemsBySection(): Map<string, Set<string>> {
   const map = new Map<string, Set<string>>();
 
-  for (const section of masterInspectionList) {
+  for (const section of highwayMasterInspectionList) {
     map.set(
       section.title,
       new Set(section.items.map((item) => normalize(item.item))),

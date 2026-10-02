@@ -2387,6 +2387,15 @@ export const masterInspectionList: InspectionCategory[] = [
   ...offRoadInspectionCategories,
 ];
 
+/** Highway/on-road sections only; off-road catalog rows are excluded. */
+export const highwayMasterInspectionList: InspectionCategory[] =
+  masterInspectionList
+    .map((section) => ({
+      ...section,
+      items: section.items.filter((item) => item.catalogScope !== "off_road"),
+    }))
+    .filter((section) => section.items.length > 0);
+
 export default masterInspectionList;
 
 /* --------------------------- Deterministic picker ------------------------- */

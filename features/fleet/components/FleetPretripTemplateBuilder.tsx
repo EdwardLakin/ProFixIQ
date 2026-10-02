@@ -19,7 +19,7 @@ import type {
   FleetPretripTemplateItem,
   FleetPretripTemplateSection,
 } from "@/features/fleet/types/driverPortal";
-import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
+import { highwayMasterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
 
 const MAX_TEMPLATE_ITEMS = 200;
 
@@ -290,8 +290,8 @@ export default function FleetPretripTemplateBuilder({
 
   const visibleMasterSections = useMemo(() => {
     const query = masterQuery.trim().toLowerCase();
-    if (!query) return masterInspectionList;
-    return masterInspectionList
+    if (!query) return highwayMasterInspectionList;
+    return highwayMasterInspectionList
       .map((section) => ({
         ...section,
         items: section.items.filter((item) =>

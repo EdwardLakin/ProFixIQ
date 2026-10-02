@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 
 import { buildInspectionFromSelections } from "@inspections/lib/inspection/buildFromSelections";
-import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
+import { highwayMasterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
 import {
   offRoadCategoriesForFamily,
   offRoadEquipmentProfiles,
@@ -100,12 +100,7 @@ export default function FleetMaintenanceInspectionBuilder({
     const offRoadProfile = offRoadProfileByValue(vehicleType);
     const sourceSections = offRoadProfile
       ? offRoadCategoriesForFamily(offRoadProfile.family)
-      : masterInspectionList
-          .map((section) => ({
-            ...section,
-            items: section.items.filter((item) => item.catalogScope !== "off_road"),
-          }))
-          .filter((section) => section.items.length > 0);
+      : highwayMasterInspectionList;
 
     if (!search) return sourceSections;
     return sourceSections
@@ -267,7 +262,12 @@ export default function FleetMaintenanceInspectionBuilder({
             Applies to
             <select
               value={vehicleType}
-              onChange={(event) => setVehicleType(event.target.value)}
+              onChange={(event) => {
+                setVehicleType(event.target.value);
+                // Selections are tied to the equipment-specific list; drop them
+                // so hidden items are never counted or published.
+                setSelections({});
+              }}
               className="mt-1.5 w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3 py-2.5 text-sm"
             >
               {VEHICLE_TYPES.map((option) => (
