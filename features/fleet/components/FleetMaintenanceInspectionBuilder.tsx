@@ -9,7 +9,12 @@ import {
 } from "lucide-react";
 
 import { buildInspectionFromSelections } from "@inspections/lib/inspection/buildFromSelections";
-import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
+import { highwayMasterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
+import {
+  offRoadCategoriesForFamily,
+  offRoadEquipmentProfiles,
+  offRoadProfileByValue,
+} from "@inspections/lib/inspection/offRoadInspectionCatalog";
 
 type SavedTemplate = {
   id: string;
@@ -20,12 +25,16 @@ type SavedTemplate = {
 };
 
 const MAX_TEMPLATE_ITEMS = 200;
-const VEHICLE_TYPES = [
+const VEHICLE_TYPES: Array<{ value: string; label: string }> = [
   { value: "truck", label: "Heavy truck / highway tractor / service truck" },
   { value: "trailer", label: "Trailer" },
   { value: "bus", label: "Bus / coach" },
   { value: "car", label: "Light duty / pickup / SUV" },
-] as const;
+  ...offRoadEquipmentProfiles.map((profile) => ({
+    value: profile.value,
+    label: `Off-road · ${profile.label}`,
+  })),
+];
 
 function vehicleTypeLabel(value: string | null): string {
   return (
@@ -88,8 +97,13 @@ export default function FleetMaintenanceInspectionBuilder({
 
   const visibleSections = useMemo(() => {
     const search = query.trim().toLowerCase();
-    if (!search) return masterInspectionList;
-    return masterInspectionList
+    const offRoadProfile = offRoadProfileByValue(vehicleType);
+    const sourceSections = offRoadProfile
+      ? offRoadCategoriesForFamily(offRoadProfile.family)
+      : highwayMasterInspectionList;
+
+    if (!search) return sourceSections;
+    return sourceSections
       .map((section) => ({
         ...section,
         items: section.items.filter((item) =>
@@ -101,7 +115,7 @@ export default function FleetMaintenanceInspectionBuilder({
         ),
       }))
       .filter((section) => section.items.length > 0);
-  }, [query]);
+  }, [query, vehicleType]);
 
   const selectedCount = useMemo(
     () =>
@@ -248,7 +262,12 @@ export default function FleetMaintenanceInspectionBuilder({
             Applies to
             <select
               value={vehicleType}
-              onChange={(event) => setVehicleType(event.target.value)}
+              onChange={(event) => {
+                setVehicleType(event.target.value);
+                // Selections are tied to the equipment-specific list; drop them
+                // so hidden items are never counted or published.
+                setSelections({});
+              }}
               className="mt-1.5 w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] px-3 py-2.5 text-sm"
             >
               {VEHICLE_TYPES.map((option) => (
@@ -281,7 +300,7 @@ export default function FleetMaintenanceInspectionBuilder({
             <input
               value={query}
               onChange={(event) => setQuery(event.target.value)}
-              placeholder="Search brakes, tires, steering…"
+              placeholder="Search hydraulics, undercarriage, brakes…"
               className="w-full rounded-xl border border-[color:var(--theme-input-border)] bg-[color:var(--theme-input-bg)] py-2.5 pl-9 pr-3 text-sm"
             />
           </label>
