@@ -21,7 +21,7 @@ export default function PauseResumeButton({
           type="button"
           onClick={onResume}
           disabled={disabled}
-          className="rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white hover:bg-white/15 disabled:opacity-50"
+          className="rounded-lg border border-[color:var(--theme-border-strong)] bg-[color:var(--theme-surface-subtle)] px-4 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-hover)] disabled:opacity-50"
         >
           Resume
         </button>
@@ -30,7 +30,7 @@ export default function PauseResumeButton({
           type="button"
           onClick={onPause}
           disabled={disabled}
-          className="rounded-lg border border-white/20 bg-white/10 px-4 py-2 text-xs font-semibold text-white hover:bg-white/15 disabled:opacity-50"
+          className="rounded-lg border border-[color:var(--theme-border-strong)] bg-[color:var(--theme-surface-subtle)] px-4 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-hover)] disabled:opacity-50"
         >
           Pause
         </button>
