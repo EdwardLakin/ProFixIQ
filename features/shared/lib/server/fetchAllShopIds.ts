@@ -22,7 +22,7 @@ const SHOP_PAGE_SIZE = 500;
  * crons (appointment staging, daily digest, urgent alerts) do real work and
  * send real notifications per shop, and demo prospect shops are kept
  * indefinitely once archived (never deleted -- see
- * 20261002000000_demo_prospect_shop_isolation.sql), so without this filter
+ * 20261002151344_demo_prospect_shop_isolation.sql), so without this filter
  * every expired-and-archived prospect shop would keep costing cron work and
  * generating notifications for an account nobody can log into anymore,
  * forever. Active (non-archived) demo shops are still included -- a

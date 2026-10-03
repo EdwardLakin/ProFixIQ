@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(path, "utf8");
 const migration = read(
-  "supabase/migrations/20260930120000_parts_default_stock_locations.sql",
+  "supabase/migrations/20260930034527_parts_default_stock_locations.sql",
 );
 const inventory = read("app/parts/inventory/page.tsx");
 const locations = read("features/parts/lib/locations.ts");
