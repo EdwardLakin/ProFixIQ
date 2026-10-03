@@ -382,8 +382,8 @@ export default function PwaRuntime() {
     <div
       className={
         runtimeStatusTarget
-          ? "flex w-full flex-wrap items-center gap-2 rounded-xl border border-slate-700 bg-slate-950/95 px-3 py-2 text-xs font-semibold text-slate-100 shadow-lg"
-          : "fixed z-[100] flex max-w-[calc(100vw-2rem)] flex-wrap items-center justify-end gap-2 rounded-2xl border border-slate-700 bg-slate-950/95 px-3 py-2 text-xs font-semibold text-slate-100 shadow-xl backdrop-blur sm:flex-nowrap sm:rounded-full"
+          ? "flex w-full flex-wrap items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] shadow-lg"
+          : "fixed z-[100] flex max-w-[calc(100vw-2rem)] flex-wrap items-center justify-end gap-2 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-xs font-semibold text-[color:var(--theme-text-primary)] shadow-xl backdrop-blur sm:flex-nowrap sm:rounded-full"
       }
       style={
         runtimeStatusTarget
@@ -395,7 +395,7 @@ export default function PwaRuntime() {
       }
     >
       {runtimeStatusTarget ? (
-        <span className="w-full text-[10px] uppercase tracking-[0.16em] text-slate-400">
+        <span className="w-full text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
           App status
         </span>
       ) : null}
@@ -417,7 +417,7 @@ export default function PwaRuntime() {
         <button
           type="button"
           onClick={() => window.location.assign("/offline/sync")}
-          className="rounded-full border border-slate-600 px-3 py-1"
+          className="rounded-full border border-[color:var(--theme-border-soft)] px-3 py-1"
         >
           Details
         </button>
@@ -427,7 +427,7 @@ export default function PwaRuntime() {
           type="button"
           onClick={activateUpdate}
           disabled={activatingUpdate || pending > 0}
-          className="rounded-full bg-sky-400 px-3 py-1 text-slate-950"
+          className="rounded-full bg-[color:var(--brand-primary)] px-3 py-1 text-[color:var(--theme-text-on-accent)]"
         >
           {activatingUpdate
             ? "Updating…"
@@ -453,17 +453,17 @@ export default function PwaRuntime() {
         : runtimeStatusControl}
 
       {showIosInstructions && (
-        <div className="fixed inset-0 z-[110] grid place-items-center bg-slate-950/80 p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[110] grid place-items-center bg-[color:var(--theme-backdrop)] p-4 backdrop-blur-sm">
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="ios-install-title"
-            className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-5 text-left text-slate-100 shadow-2xl"
+            className="w-full max-w-sm rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5 text-left text-[color:var(--theme-text-primary)] shadow-2xl"
           >
             <h2 id="ios-install-title" className="text-lg font-semibold">
               Install ProFixIQ
             </h2>
-            <ol className="mt-4 space-y-3 text-sm font-normal text-slate-300">
+            <ol className="mt-4 space-y-3 text-sm font-normal text-[color:var(--theme-text-secondary)]">
               <li>1. Open ProFixIQ in Safari.</li>
               <li>2. Tap the Share button.</li>
               <li>3. Choose Add to Home Screen, then tap Add.</li>
@@ -471,7 +471,7 @@ export default function PwaRuntime() {
             <button
               type="button"
               onClick={() => setShowIosInstructions(false)}
-              className="mt-5 w-full rounded-xl bg-sky-400 px-4 py-2 font-semibold text-slate-950"
+              className="mt-5 w-full rounded-xl bg-[color:var(--brand-primary)] px-4 py-2 font-semibold text-[color:var(--theme-text-on-accent)]"
             >
               Done
             </button>

@@ -452,21 +452,21 @@ export function CustomerAccountDetails({ customerId, shopId }: Props) {
                   <span
                     className={`rounded-full border px-2.5 py-1 ${
                       commercial.account_status === "good_standing"
-                        ? "border-emerald-500/35 text-emerald-200"
-                        : "border-amber-500/40 text-amber-200"
+                        ? "border-emerald-500/35 text-emerald-700 dark:text-emerald-200"
+                        : "border-amber-500/40 text-amber-800 dark:text-amber-200"
                     }`}
                   >
                     {commercial.account_status.replaceAll("_", " ")}
                   </span>
                   {commercial.tax_exempt ? (
-                    <span className="rounded-full border border-sky-500/35 px-2.5 py-1 text-sky-200">
+                    <span className="rounded-full border border-sky-500/35 px-2.5 py-1 text-sky-700 dark:text-sky-200">
                       Tax exempt
                     </span>
                   ) : null}
                 </div>
               </div>
               {commercial.account_status !== "good_standing" ? (
-                <ShieldAlert className="h-5 w-5 text-amber-300" />
+                <ShieldAlert className="h-5 w-5 text-amber-800 dark:text-amber-300" />
               ) : null}
             </div>
             {commercial.customer_reference || commercial.billing_notes ? (
@@ -490,7 +490,7 @@ export function CustomerAccountDetails({ customerId, shopId }: Props) {
                 <div className="font-semibold text-[color:var(--theme-text-primary)]">
                   {account.fleet.name}
                 </div>
-                <div className="mt-1 text-xs capitalize text-emerald-200">
+                <div className="mt-1 text-xs capitalize text-emerald-700 dark:text-emerald-200">
                   {account.fleet.link_status.replaceAll("_", " ")}
                   {account.fleet_invite
                     ? ` · invite ${account.fleet_invite.status}`
@@ -509,7 +509,7 @@ export function CustomerAccountDetails({ customerId, shopId }: Props) {
         {showCommercialForm ? (
           <form
             onSubmit={saveCommercialControls}
-            className="border-t border-[color:var(--desktop-border)] bg-black/10 p-4 sm:p-5"
+            className="border-t border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-4 sm:p-5"
           >
             <div className="grid gap-3 lg:grid-cols-3">
               <label className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">
@@ -1015,7 +1015,7 @@ export function CustomerAccountDetails({ customerId, shopId }: Props) {
               <button
                 type="button"
                 onClick={() => setShowLifecycleForm("archive")}
-                className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/35 px-3 py-2 text-xs font-semibold text-amber-200"
+                className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/35 px-3 py-2 text-xs font-semibold text-amber-800 dark:text-amber-200"
               >
                 <Archive className="h-3.5 w-3.5" /> Archive account
               </button>

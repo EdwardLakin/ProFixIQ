@@ -179,7 +179,7 @@ export default function FleetPmProgramEditor({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/75 p-3 backdrop-blur-sm"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-[color:var(--theme-backdrop)] p-3 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
       aria-labelledby="pm-program-editor-title"
@@ -187,7 +187,7 @@ export default function FleetPmProgramEditor({
       <div className="max-h-[94dvh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] shadow-2xl">
         <div className="sticky top-0 z-10 flex items-start justify-between gap-4 border-b border-sky-400/20 bg-sky-500 px-5 py-4 text-white">
           <div>
-            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-sky-100">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/80">
               Fleet-owned maintenance template
             </p>
             <h2
@@ -201,7 +201,7 @@ export default function FleetPmProgramEditor({
             type="button"
             onClick={onClose}
             aria-label="Close PM program editor"
-            className="grid h-10 w-10 place-items-center rounded-xl bg-white/10 hover:bg-white/20"
+            className="grid h-10 w-10 place-items-center rounded-xl bg-[color:var(--theme-surface-subtle)] hover:bg-[color:var(--theme-surface-hover)]"
           >
             <X className="h-5 w-5" />
           </button>

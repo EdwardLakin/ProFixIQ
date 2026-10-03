@@ -50,7 +50,7 @@ export default function LaunchPage() {
   }, []);
 
   return (
-    <main className="grid min-h-screen place-items-center bg-slate-950 text-slate-100">
+    <main className="grid min-h-screen place-items-center bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
       <p className="text-sm uppercase tracking-[0.2em]">Opening ProFixIQ…</p>
     </main>
   );

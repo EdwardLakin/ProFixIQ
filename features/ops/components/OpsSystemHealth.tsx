@@ -23,9 +23,9 @@ function stateLabel(state: OpsHealthState): string {
 }
 
 function stateTone(state: OpsHealthState): string {
-  if (state === "healthy") return "border-emerald-500/40 bg-emerald-500/10 text-emerald-300";
-  if (state === "degraded") return "border-amber-500/40 bg-amber-500/10 text-amber-300";
-  return "border-red-500/40 bg-red-500/10 text-red-300";
+  if (state === "healthy") return "border-emerald-500/40 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300";
+  if (state === "degraded") return "border-amber-500/40 bg-amber-500/10 text-amber-800 dark:text-amber-300";
+  return "border-red-500/40 bg-red-500/10 text-red-700 dark:text-red-300";
 }
 
 function stateIcon(state: OpsHealthState) {
@@ -56,7 +56,7 @@ function ServiceCard({ service }: { service: OpsHealthService }) {
     <article className="overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] shadow-card">
       <div className="flex items-start justify-between gap-4 border-b border-[color:var(--theme-border-soft)] p-4 sm:p-5">
         <div className="flex min-w-0 items-start gap-3">
-          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-300">
+          <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-orange-500/10 text-orange-700 dark:text-orange-300">
             <Icon className="h-5 w-5" />
           </span>
           <div className="min-w-0">
@@ -146,7 +146,7 @@ export default function OpsSystemHealth({
         aria-label="Overall production health"
       >
         <div className="flex items-center gap-3">
-          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-black/10">
+          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[color:var(--theme-surface-inset)]">
             <OverallIcon className="h-6 w-6" />
           </span>
           <div>
@@ -173,7 +173,7 @@ export default function OpsSystemHealth({
       <section className="grid gap-4 lg:grid-cols-2">
         <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card sm:p-5">
           <div className="flex items-start gap-3">
-            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 text-sky-300">
+            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-500/10 text-sky-700 dark:text-sky-300">
               <ShieldAlert className="h-5 w-5" />
             </span>
             <div>
@@ -189,7 +189,7 @@ export default function OpsSystemHealth({
 
         <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card sm:p-5">
           <div className="flex items-start gap-3">
-            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-300">
+            <span className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">
               <Database className="h-5 w-5" />
             </span>
             <div>

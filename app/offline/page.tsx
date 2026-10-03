@@ -109,28 +109,28 @@ export default function OfflinePage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 px-5 py-10 text-slate-100">
+    <main className="min-h-screen bg-[color:var(--theme-surface-page)] px-5 py-10 text-[color:var(--theme-text-primary)]">
       <div className="mx-auto max-w-2xl space-y-6">
-        <section className="rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-300">
+        <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-6 shadow-2xl">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-info-text)]">
             ProFixIQ offline
           </p>
           <h1 className="mt-2 text-2xl font-semibold">
             Your saved work is still available.
           </h1>
-          <p className="mt-3 text-sm text-slate-300">
+          <p className="mt-3 text-sm text-[color:var(--theme-text-secondary)]">
             {online
               ? "Connection restored. Sync your queued updates now."
               : "Updates are stored on this device and will sync after reconnecting."}
           </p>
           <div className="mt-5 flex flex-wrap gap-3 text-sm">
-            <span className="rounded-full bg-slate-800 px-3 py-1">
+            <span className="rounded-full bg-[color:var(--theme-surface-hover)] px-3 py-1">
               {pending} pending
             </span>
-            <span className="rounded-full bg-slate-800 px-3 py-1">
+            <span className="rounded-full bg-[color:var(--theme-surface-hover)] px-3 py-1">
               {summary.failed} need retry
             </span>
-            <span className="rounded-full bg-slate-800 px-3 py-1">
+            <span className="rounded-full bg-[color:var(--theme-surface-hover)] px-3 py-1">
               {summary.conflicted} conflicts
             </span>
           </div>
@@ -138,13 +138,13 @@ export default function OfflinePage() {
             type="button"
             onClick={() => void reconnect()}
             disabled={!online}
-            className="mt-6 rounded-xl bg-sky-500 px-4 py-2 font-semibold text-slate-950 disabled:cursor-not-allowed disabled:opacity-40"
+            className="mt-6 rounded-xl bg-[color:var(--brand-primary)] px-4 py-2 font-semibold text-[color:var(--theme-text-on-accent)] disabled:cursor-not-allowed disabled:opacity-40"
           >
             Reconnect and sync
           </button>
           <Link
             href="/offline/sync"
-            className="ml-3 inline-flex rounded-xl border border-slate-700 px-4 py-2 text-sm font-semibold text-slate-200"
+            className="ml-3 inline-flex rounded-xl border border-[color:var(--theme-border-soft)] px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-primary)]"
           >
             Open Sync Center
           </Link>
@@ -152,18 +152,18 @@ export default function OfflinePage() {
 
         {orders.length > 0 && (
           <section className="space-y-3">
-            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-slate-300">
+            <h2 className="text-sm font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
               Recently saved work orders
             </h2>
             {orders.map((order, index) => (
               <article
                 key={order.id ?? index}
-                className="rounded-xl border border-slate-800 bg-slate-900/80 p-4"
+                className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4"
               >
                 <p className="font-semibold">
                   Work order {order.work_order_number ?? "—"}
                 </p>
-                <p className="mt-1 text-sm text-slate-300">
+                <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
                   {[order.customers?.first_name, order.customers?.last_name]
                     .filter(Boolean)
                     .join(" ") || "Customer"}
@@ -176,14 +176,14 @@ export default function OfflinePage() {
                     .filter(Boolean)
                     .join(" ") || "Vehicle"}
                 </p>
-                <p className="mt-2 text-xs uppercase tracking-wider text-sky-300">
+                <p className="mt-2 text-xs uppercase tracking-wider text-[color:var(--theme-info-text)]">
                   {order.status ?? "active"}
                 </p>
                 {details.some((detail) => detail.workOrder.id === order.id) && (
                   <button
                     type="button"
                     onClick={() => setSelectedId(order.id ?? null)}
-                    className="mt-3 rounded-lg border border-slate-700 px-3 py-1.5 text-xs font-semibold text-sky-200"
+                    className="mt-3 rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-info-text)]"
                   >
                     View saved details
                   </button>
@@ -194,10 +194,10 @@ export default function OfflinePage() {
         )}
 
         {selected && (
-          <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
+          <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs uppercase tracking-[0.16em] text-sky-300">
+                <p className="text-xs uppercase tracking-[0.16em] text-[color:var(--theme-info-text)]">
                   Saved work order
                 </p>
                 <h2 className="mt-1 text-xl font-semibold">
@@ -209,12 +209,12 @@ export default function OfflinePage() {
               <button
                 type="button"
                 onClick={() => setSelectedId(null)}
-                className="text-sm text-slate-300"
+                className="text-sm text-[color:var(--theme-text-secondary)]"
               >
                 Close
               </button>
             </div>
-            <p className="mt-2 text-sm text-slate-300">
+            <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
               {[selected.customer?.first_name, selected.customer?.last_name]
                 .filter(Boolean)
                 .join(" ") || "Customer"}
@@ -231,12 +231,12 @@ export default function OfflinePage() {
               {selected.lines.map((line, index) => (
                 <div
                   key={line.id ?? index}
-                  className="rounded-xl bg-slate-950/70 p-3"
+                  className="rounded-xl bg-[color:var(--theme-surface-inset)] p-3"
                 >
                   <p className="text-sm font-medium">
                     {line.description ?? "Job line"}
                   </p>
-                  <p className="mt-1 text-xs uppercase tracking-wider text-slate-400">
+                  <p className="mt-1 text-xs uppercase tracking-wider text-[color:var(--theme-text-muted)]">
                     {line.status ?? "awaiting"}
                   </p>
                 </div>
