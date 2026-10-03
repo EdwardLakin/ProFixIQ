@@ -111,9 +111,9 @@ export function OperationalViewSwitcher({
             href={href}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "whitespace-nowrap rounded-xl px-3 py-2 font-medium text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-orange-300/70",
+              "whitespace-nowrap rounded-xl px-3 py-2 font-medium text-[color:var(--theme-text-secondary)] transition hover:bg-[color:var(--theme-surface-subtle)] hover:text-[color:var(--theme-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-400/70",
               active &&
-                "bg-orange-500/20 text-orange-900 shadow-[inset_0_0_0_1px_rgba(251,146,60,0.35)] dark:text-orange-100",
+                "bg-blue-500/15 text-blue-800 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.4)] dark:text-blue-100",
             )}
           >
             {view.label}
