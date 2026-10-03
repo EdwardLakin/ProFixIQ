@@ -272,7 +272,7 @@ export default function MobileTechnicianAssistant({
                           {message.attachments.map((attachment) => (
                             <div
                               key={attachment.id}
-                              className="flex items-center gap-2 rounded-lg bg-[color:var(--theme-surface-inset)] p-1"
+                              className="flex items-center gap-2 rounded-lg bg-black/15 p-1"
                             >
                               {attachment.url ? (
                                 // eslint-disable-next-line @next/next/no-img-element

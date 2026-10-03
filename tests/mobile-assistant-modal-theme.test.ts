@@ -17,7 +17,10 @@ describe("mobile Ask ProFixIQ modal theming", () => {
   });
 
   it("keeps assistant text and surfaces on theme tokens in both themes", () => {
-    expect(assistant).not.toMatch(/\bbg-black\/\d+/);
+    // The attachment wash sits inside the always-blue user bubble, so it must
+    // stay a dark translucent wash (a light-mode inset token would wash out the
+    // white filename).
+    expect(assistant).toContain("rounded-lg bg-black/15 p-1");
     expect(assistant).not.toMatch(/\bbg-red-950\b/);
     expect(assistant).not.toMatch(/(?<![\w:-])text-(?:white|red-100|red-300)\b/);
     expect(assistant).toContain("text-[color:var(--theme-text-on-accent)]");
