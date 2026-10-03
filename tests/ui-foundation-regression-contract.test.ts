@@ -49,6 +49,33 @@ describe("premium UI foundation regressions", () => {
     expect(operationalSwitcher).toContain("dark:text-blue-100");
   });
 
+  it("keeps saved shop branding from overriding dark-mode surfaces and text", () => {
+    const darkBlock = globals.slice(
+      globals.indexOf('html[data-theme-mode="dark"] {'),
+      globals.indexOf("/* Legacy status pills"),
+    );
+    for (const token of [
+      "--theme-card-bg",
+      "--theme-card-border",
+      "--theme-surface-2",
+      "--theme-text-primary",
+      "--theme-text-secondary",
+      "--theme-text-muted",
+      "--theme-sidebar-bg",
+      "--theme-header-bg",
+      "--theme-input-bg",
+      "--theme-input-text",
+      "--theme-surface-page",
+      "--theme-surface-panel",
+    ]) {
+      expect(darkBlock).toMatch(new RegExp(`${token}:[^;]+!important;`));
+    }
+    expect(darkBlock).not.toMatch(/--brand-(primary|accent):/);
+    expect(darkBlock).not.toMatch(
+      /--theme-(button-primary|sidebar-active)-(bg|text):/,
+    );
+  });
+
   it("keeps the compact five-day schedule and the detailed calendar modal", () => {
     expect(weeklyCalendar).toContain("Array.from({ length: 5 }");
     expect(appointmentsPage).toContain("<FullCalendarModal");
