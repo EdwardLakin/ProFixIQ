@@ -71,6 +71,9 @@ describe("premium UI foundation regressions", () => {
       expect(darkBlock).toMatch(new RegExp(`${token}:[^;]+!important;`));
     }
     expect(darkBlock).not.toMatch(/--brand-(primary|accent):/);
+    expect(darkBlock).not.toMatch(
+      /--theme-(button-primary|sidebar-active)-(bg|text):/,
+    );
   });
 
   it("keeps the compact five-day schedule and the detailed calendar modal", () => {

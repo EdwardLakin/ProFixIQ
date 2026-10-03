@@ -366,7 +366,9 @@ html[data-theme-mode="dark"] {
   /* Mirror of the light block. BrandThemeBoot writes the saved shop palette
      inline, which would otherwise outrank the :root dark defaults and leave
      light cards, dark-on-dark text and white controls in dark mode. Brand
-     primary/accent colours are intentionally not overridden. */
+     primary/accent colours and the saved primary-button and
+     sidebar-active bg/text pairs are intentionally not overridden so their
+     contrast pairing is preserved. */
   --theme-surface-page: #050B16 !important;
   --theme-surface-page-rgb: 5 11 22 !important;
   --theme-border-rgb: 96 165 250 !important;
@@ -400,8 +402,6 @@ html[data-theme-mode="dark"] {
 
   --theme-sidebar-bg: #030914 !important;
   --theme-sidebar-text: #DCE7F8 !important;
-  --theme-sidebar-active-bg: var(--brand-primary) !important;
-  --theme-sidebar-active-text: #FFFFFF !important;
 
   --theme-header-bg: #050B16 !important;
   --theme-header-text: #F8FBFF !important;
@@ -410,8 +410,6 @@ html[data-theme-mode="dark"] {
   --theme-card-border: #243B61 !important;
   --theme-surface-2: #111F36 !important;
 
-  --theme-button-primary-bg: var(--brand-primary) !important;
-  --theme-button-primary-text: #FFFFFF !important;
   --theme-button-secondary-bg: #14243D !important;
   --theme-button-secondary-text: #EAF2FF !important;
 
