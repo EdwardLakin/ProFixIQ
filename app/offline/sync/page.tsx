@@ -566,7 +566,11 @@ function ReadinessItem(props: {
   return (
     <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
       <p className="text-xs uppercase tracking-wider text-[color:var(--theme-text-muted)]">{props.label}</p>
-      <p className={props.ready ? "mt-1 font-semibold text-[color:var(--theme-success-text)]" : "mt-1 font-semibold text-[color:var(--theme-warning-text)]"}>
+      <p className="mt-1 flex items-center gap-2 font-semibold text-[color:var(--theme-text-primary)]">
+        <span
+          aria-hidden
+          className={props.ready ? "h-2 w-2 shrink-0 rounded-full bg-emerald-500" : "h-2 w-2 shrink-0 rounded-full bg-amber-500"}
+        />
         {props.value}
       </p>
       <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{props.detail}</p>

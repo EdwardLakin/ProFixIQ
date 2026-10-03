@@ -53,7 +53,7 @@ export default function StartListeningButton({
         className={`inline-block h-2 w-2 rounded-full ${
           isListening
             ? "bg-orange-300 animate-pulse"
-            : "bg-[color:var(--theme-text-primary)]"
+            : "bg-[color:var(--theme-text-on-accent)]"
         }`}
       />
       {isListening ? "Listening…" : "Start Listening"}

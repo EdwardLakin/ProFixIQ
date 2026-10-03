@@ -453,7 +453,7 @@ export default function PwaRuntime() {
         : runtimeStatusControl}
 
       {showIosInstructions && (
-        <div className="fixed inset-0 z-[110] grid place-items-center bg-[color:var(--theme-surface-inset)] p-4 backdrop-blur-sm">
+        <div className="fixed inset-0 z-[110] grid place-items-center bg-[color:var(--theme-backdrop)] p-4 backdrop-blur-sm">
           <div
             role="dialog"
             aria-modal="true"
