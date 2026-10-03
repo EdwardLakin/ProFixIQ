@@ -187,8 +187,8 @@ export function PricingQuarantineRemediation({
 
   return (
     <div className="mt-3 rounded-xl border border-amber-500/30 bg-[color:var(--theme-surface-inset)] p-3">
-      <div className="font-semibold text-amber-50">Owner/admin remediation</div>
-      <p className="mt-1 text-amber-50/90">
+      <div className="font-semibold text-amber-800 dark:text-amber-50">Owner/admin remediation</div>
+      <p className="mt-1 text-amber-800/90 dark:text-amber-50/90">
         Enter the exact customer sell detail from the finalized decision. The
         item total must match{" "}
         {finalizedPartsTotal == null
@@ -281,8 +281,8 @@ export function PricingQuarantineRemediation({
         <div
           className={
             totalsMatch
-              ? "font-semibold text-emerald-100"
-              : "font-semibold text-amber-100"
+              ? "font-semibold text-emerald-700 dark:text-emerald-100"
+              : "font-semibold text-amber-800 dark:text-amber-100"
           }
         >
           Corrected total:{" "}

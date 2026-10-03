@@ -35,9 +35,9 @@ function meter(unit: FleetUnitListItem) {
 
 function StatusPill({ status }: { status: FleetUnitListItem["status"] }) {
   const styles = {
-    in_service: "bg-emerald-400/10 text-emerald-200",
-    limited: "bg-amber-300/10 text-amber-100",
-    oos: "bg-red-400/10 text-red-200",
+    in_service: "bg-emerald-400/10 text-emerald-700 dark:text-emerald-200",
+    limited: "bg-amber-300/10 text-amber-800 dark:text-amber-100",
+    oos: "bg-red-400/10 text-red-700 dark:text-red-200",
   };
   const labels = {
     in_service: "In service",
@@ -137,7 +137,7 @@ export default function FleetUnitsPage({
   return (
     <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 text-[color:var(--theme-text-primary)]">
       <header>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-300">
+        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">
           Fleet units
         </p>
         <h1 className="mt-2 text-2xl font-semibold">
@@ -157,7 +157,7 @@ export default function FleetUnitsPage({
               productRoutes ? "/pre-trips" : `${routePrefix}/pretrip-history`,
               fleetId,
             )}
-            className="inline-flex min-h-10 items-center rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-semibold text-sky-300 hover:bg-sky-300/10"
+            className="inline-flex min-h-10 items-center rounded-xl border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-semibold text-sky-700 dark:text-sky-300 hover:bg-sky-300/10"
           >
             {isDriver ? "My pre-trip history" : "Fleet-wide pre-trip history"}
           </Link>
@@ -178,7 +178,7 @@ export default function FleetUnitsPage({
       <section className="grid gap-3 sm:grid-cols-3">
         {!isDriver ? (
           <div className={`${panel} p-4`}>
-            <Truck size={17} className="text-sky-300" />
+            <Truck size={17} className="text-sky-700 dark:text-sky-300" />
             <div className="mt-3 text-2xl font-semibold">{units.length}</div>
             <div className="text-xs text-[color:var(--theme-text-muted)]">
               Active units
@@ -186,7 +186,7 @@ export default function FleetUnitsPage({
           </div>
         ) : null}
         <div className={`${panel} p-4`}>
-          <Wrench size={17} className="text-amber-200" />
+          <Wrench size={17} className="text-amber-800 dark:text-amber-200" />
           <div className="mt-3 text-2xl font-semibold">{attention}</div>
           <div className="text-xs text-[color:var(--theme-text-muted)]">
             Need attention
@@ -241,7 +241,7 @@ export default function FleetUnitsPage({
           </label>
         </div>
 
-        {error ? <p className="p-5 text-sm text-red-300">{error}</p> : null}
+        {error ? <p className="p-5 text-sm text-red-700 dark:text-red-300">{error}</p> : null}
         {loading ? (
           <p className="p-5 text-sm text-[color:var(--theme-text-secondary)]">
             Loading units…
@@ -260,7 +260,7 @@ export default function FleetUnitsPage({
               className="grid gap-3 p-4 transition hover:bg-[color:var(--theme-surface-hover)] md:grid-cols-[minmax(180px,1.1fr)_minmax(120px,.7fr)_minmax(160px,1fr)_minmax(150px,.8fr)_auto] md:items-center"
             >
               <div>
-                <div className="font-semibold text-sky-300">{unit.label}</div>
+                <div className="font-semibold text-sky-700 dark:text-sky-300">{unit.label}</div>
                 <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                   {unit.plate ?? "No plate"} • {unit.fleetName ?? "Fleet"}
                 </div>
@@ -285,7 +285,7 @@ export default function FleetUnitsPage({
               {isDriver ? (
                 <Link
                   href={`${productRoutes ? "/pre-trips/start" : "/portal/fleet/pretrip"}/${encodeURIComponent(unit.id)}?fleetId=${encodeURIComponent(unit.fleetId)}`}
-                  className="text-xs font-semibold text-sky-300"
+                  className="text-xs font-semibold text-sky-700 dark:text-sky-300"
                 >
                   Start inspection →
                 </Link>
@@ -296,7 +296,7 @@ export default function FleetUnitsPage({
                       ? `/assets/${encodeURIComponent(unit.id)}`
                       : `${routePrefix}/units/${encodeURIComponent(unit.id)}`
                   }?fleetId=${encodeURIComponent(unit.fleetId)}`}
-                  className="text-xs font-semibold text-sky-300"
+                  className="text-xs font-semibold text-sky-700 dark:text-sky-300"
                 >
                   Open unit →
                 </Link>

@@ -2981,7 +2981,7 @@ type SmartMatchRow = {
           type="button"
           variant="outline"
           size="sm"
-          className="font-medium border-amber-500/70 text-[11px] tracking-[0.16em] uppercase text-amber-100"
+          className="font-medium border-amber-500/70 text-[11px] tracking-[0.16em] uppercase text-amber-800 dark:text-amber-100"
           onClick={() => void handleReopenLockedInspection()}
         >
           Reopen inspection
@@ -3026,10 +3026,10 @@ type SmartMatchRow = {
             className={cn(
               "rounded-xl border px-3 py-2 text-xs",
               recoveryState === "conflicted"
-                ? "border-red-400/40 bg-red-950/20 text-red-100"
+                ? "border-red-400/40 bg-red-950/20 text-red-700 dark:text-red-100"
                 : recoveryState === "queued"
-                  ? "border-amber-400/40 bg-amber-950/20 text-amber-100"
-                  : "border-emerald-400/40 bg-emerald-950/20 text-emerald-100",
+                  ? "border-amber-400/40 bg-amber-950/20 text-amber-800 dark:text-amber-100"
+                  : "border-emerald-400/40 bg-emerald-950/20 text-emerald-700 dark:text-emerald-100",
             )}
           >
             {recoveryMessage}
@@ -3093,11 +3093,11 @@ type SmartMatchRow = {
                     <span key={`${height}-${index}`} className={cn("w-0.5 rounded-full bg-orange-300/80", !isListening && "opacity-25")} style={{ height }} />
                   ))}
                   {voiceHeld ? (
-                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-200">
+                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-amber-800 dark:text-amber-200">
                       Say “Buster resume”
                     </span>
                   ) : isListening ? (
-                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-orange-200">
+                    <span className="ml-2 text-[10px] font-semibold uppercase tracking-[0.14em] text-orange-700 dark:text-orange-200">
                       Any order · wake phrase optional
                     </span>
                   ) : null}
@@ -3194,8 +3194,8 @@ type SmartMatchRow = {
                         </div>
 
                         <div className="mt-1 flex items-center gap-2 text-[11px]">
-                          <span className="text-emerald-200">✓ {okCount}</span>
-                          <span className="text-red-200">✕ {failCount}</span>
+                          <span className="text-emerald-700 dark:text-emerald-200">✓ {okCount}</span>
+                          <span className="text-red-700 dark:text-red-200">✕ {failCount}</span>
                           <span className="text-[color:var(--theme-text-muted)]">parsed: {(e.parsed ?? []).length}</span>
                         </div>
                       </div>
@@ -3795,7 +3795,7 @@ type SmartMatchRow = {
           <div className="order-first text-[10px] font-medium text-[color:var(--theme-text-secondary)] sm:order-none">
             <span>{autosaveLabel}</span>
             {autosaveError && (
-              <span className="ml-2 text-red-300">{autosaveError}</span>
+              <span className="ml-2 text-red-700 dark:text-red-300">{autosaveError}</span>
             )}
           </div>
         </div>
@@ -3810,7 +3810,7 @@ type SmartMatchRow = {
 
       {showMissingLineWarning && (
         <div className={cn("inset-x-0 z-50 px-3", isEmbed ? "sticky bottom-[76px]" : "fixed bottom-[52px]")}>
-          <div className="mx-auto max-w-[1100px] rounded-xl border border-red-500/40 bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-xs text-red-200 shadow-[var(--theme-shadow-medium)]">
+          <div className="mx-auto max-w-[1100px] rounded-xl border border-red-500/40 bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-xs text-red-700 dark:text-red-200 shadow-[var(--theme-shadow-medium)]">
             Missing <code>workOrderLineId</code> — autosave/finish will be blocked.
           </div>
         </div>

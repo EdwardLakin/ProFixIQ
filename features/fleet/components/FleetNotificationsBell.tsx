@@ -24,9 +24,9 @@ const LEVEL_ICON = {
 } as const;
 
 const LEVEL_TONE = {
-  critical: "text-red-300",
-  warning: "text-amber-200",
-  info: "text-sky-300",
+  critical: "text-red-700 dark:text-red-300",
+  warning: "text-amber-800 dark:text-amber-200",
+  info: "text-sky-700 dark:text-sky-300",
 } as const;
 
 type NotificationLoadMode = "replace" | "append" | "refresh";
@@ -250,7 +250,7 @@ export default function FleetNotificationsBell({
       {open ? (
         <div className="fixed inset-x-3 top-[4.5rem] z-40 overflow-hidden rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] shadow-xl sm:absolute sm:inset-x-auto sm:right-0 sm:top-auto sm:mt-2 sm:w-80">
           <div className="border-b border-[color:var(--theme-border-soft)] px-4 py-3">
-            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-300">
+            <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">
               Fleet alerts
             </p>
             <p className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">

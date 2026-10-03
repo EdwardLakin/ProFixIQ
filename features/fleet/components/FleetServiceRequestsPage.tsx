@@ -38,13 +38,13 @@ function dateLabel(value: string | null) {
 
 function statusTone(status: string) {
   if (["completed", "closed"].includes(status)) {
-    return "text-emerald-300 bg-emerald-400/10";
+    return "text-emerald-700 dark:text-emerald-300 bg-emerald-400/10";
   }
   if (["cancelled", "declined", "rejected"].includes(status)) {
-    return "text-red-300 bg-red-400/10";
+    return "text-red-700 dark:text-red-300 bg-red-400/10";
   }
-  if (status === "scheduled") return "text-sky-300 bg-sky-400/10";
-  return "text-amber-200 bg-amber-300/10";
+  if (status === "scheduled") return "text-sky-700 dark:text-sky-300 bg-sky-400/10";
+  return "text-amber-800 dark:text-amber-200 bg-amber-300/10";
 }
 
 export default function FleetServiceRequestsPage({
@@ -142,7 +142,7 @@ export default function FleetServiceRequestsPage({
     <main className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 text-[color:var(--theme-text-primary)]">
       <header className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-300">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">
             {isDispatcher ? "Dispatch follow-through" : "Fleet requests"}
           </p>
           <h1 className="mt-2 text-2xl font-semibold">
@@ -188,7 +188,7 @@ export default function FleetServiceRequestsPage({
               ] as const)
           ).map(([label, value, Icon]) => (
             <div key={String(label)} className={`${panel} p-4`}>
-              <Icon size={17} className="text-sky-300" />
+              <Icon size={17} className="text-sky-700 dark:text-sky-300" />
               <div className="mt-3 text-2xl font-semibold">{String(value)}</div>
               <div className="text-xs text-[color:var(--theme-text-muted)]">
                 {String(label)}
@@ -246,7 +246,7 @@ export default function FleetServiceRequestsPage({
           </button>
         </div>
 
-        {error ? <p className="p-5 text-sm text-red-300">{error}</p> : null}
+        {error ? <p className="p-5 text-sm text-red-700 dark:text-red-300">{error}</p> : null}
         {loading && !payload ? (
           <p className="p-5 text-sm text-[color:var(--theme-text-secondary)]">
             Loading requests…
@@ -254,7 +254,7 @@ export default function FleetServiceRequestsPage({
         ) : null}
         {!loading && !error && visible.length === 0 ? (
           <div className="p-8 text-center">
-            <CheckCircle2 className="mx-auto text-emerald-300" />
+            <CheckCircle2 className="mx-auto text-emerald-700 dark:text-emerald-300" />
             <p className="mt-3 text-sm font-medium">Nothing in this view</p>
             <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
               Change the filter or create a service request.
@@ -272,7 +272,7 @@ export default function FleetServiceRequestsPage({
                 <div className="flex flex-wrap items-center gap-2">
                   <Link
                     href={assetHref(item.vehicleId)}
-                    className="text-sm font-semibold text-sky-300 hover:underline"
+                    className="text-sm font-semibold text-sky-700 dark:text-sky-300 hover:underline"
                   >
                     {item.unitLabel}
                   </Link>
@@ -285,7 +285,7 @@ export default function FleetServiceRequestsPage({
                     {item.status}
                   </span>
                   {!isDispatcher && item.workOrder?.needsApproval ? (
-                    <span className="rounded-full bg-amber-300/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-200">
+                    <span className="rounded-full bg-amber-300/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-amber-800 dark:text-amber-200">
                       Approval needed
                     </span>
                   ) : null}
@@ -328,7 +328,7 @@ export default function FleetServiceRequestsPage({
                   (item.workOrder?.outstandingBalance ?? 0) > 0 ? (
                     <Link
                       href={billingHref(item.workOrder?.id ?? "")}
-                      className="inline-flex items-center gap-2 rounded-lg border border-sky-300/30 px-3 py-2 text-xs font-medium text-sky-300 hover:bg-sky-300/10"
+                      className="inline-flex items-center gap-2 rounded-lg border border-sky-300/30 px-3 py-2 text-xs font-medium text-sky-700 dark:text-sky-300 hover:bg-sky-300/10"
                     >
                       <WalletCards size={14} />
                       {item.workOrder?.needsApproval

@@ -143,20 +143,20 @@ const CARD_INNER =
 const STATUS_CHIP_BASE =
   "inline-flex items-center whitespace-nowrap rounded-full border px-3 py-1 text-[11px] font-semibold tracking-wide";
 const STATUS_CHIP: Record<string, string> = {
-  awaiting: "bg-sky-900/35 border-sky-400/40 text-sky-100",
+  awaiting: "bg-sky-900/35 border-sky-400/40 text-sky-700 dark:text-sky-100",
   queued: "bg-indigo-900/35 border-indigo-400/40 text-indigo-100",
-  in_progress: "bg-amber-900/30 border-amber-400/40 text-amber-100",
-  on_hold: "bg-amber-900/35 border-amber-400/45 text-amber-100",
-  waiting_parts: "bg-amber-900/35 border-amber-400/45 text-amber-100",
-  waiting_for_parts: "bg-amber-900/35 border-amber-400/45 text-amber-100",
-  awaiting_approval: "bg-sky-900/35 border-sky-400/40 text-sky-100",
-  approved: "bg-emerald-900/30 border-emerald-400/40 text-emerald-100",
-  sent: "bg-sky-900/35 border-sky-400/40 text-sky-100",
-  partially_approved: "bg-amber-900/35 border-amber-400/45 text-amber-100",
-  cancelled: "bg-rose-900/30 border-rose-400/40 text-rose-100",
-  canceled: "bg-rose-900/30 border-rose-400/40 text-rose-100",
-  completed: "bg-emerald-900/30 border-emerald-400/40 text-emerald-100",
-  ready_to_invoice: "bg-emerald-900/30 border-emerald-400/40 text-emerald-100",
+  in_progress: "bg-amber-900/30 border-amber-400/40 text-amber-800 dark:text-amber-100",
+  on_hold: "bg-amber-900/35 border-amber-400/45 text-amber-800 dark:text-amber-100",
+  waiting_parts: "bg-amber-900/35 border-amber-400/45 text-amber-800 dark:text-amber-100",
+  waiting_for_parts: "bg-amber-900/35 border-amber-400/45 text-amber-800 dark:text-amber-100",
+  awaiting_approval: "bg-sky-900/35 border-sky-400/40 text-sky-700 dark:text-sky-100",
+  approved: "bg-emerald-900/30 border-emerald-400/40 text-emerald-700 dark:text-emerald-100",
+  sent: "bg-sky-900/35 border-sky-400/40 text-sky-700 dark:text-sky-100",
+  partially_approved: "bg-amber-900/35 border-amber-400/45 text-amber-800 dark:text-amber-100",
+  cancelled: "bg-rose-900/30 border-rose-400/40 text-rose-700 dark:text-rose-100",
+  canceled: "bg-rose-900/30 border-rose-400/40 text-rose-700 dark:text-rose-100",
+  completed: "bg-emerald-900/30 border-emerald-400/40 text-emerald-700 dark:text-emerald-100",
+  ready_to_invoice: "bg-emerald-900/30 border-emerald-400/40 text-emerald-700 dark:text-emerald-100",
   invoiced: "bg-teal-900/30 border-teal-400/40 text-teal-100",
 };
 
@@ -1941,17 +1941,17 @@ export default function CustomerProfilePage(): JSX.Element {
             </div>
 
             {createCustomerError ? (
-              <div className="whitespace-pre-wrap rounded-xl border border-red-500/35 bg-red-950/50 p-3 text-sm text-red-200">
+              <div className="whitespace-pre-wrap rounded-xl border border-red-500/35 bg-red-950/50 p-3 text-sm text-red-700 dark:text-red-200">
                 {createCustomerError}
               </div>
             ) : null}
 
             {duplicateCandidates.length > 0 ? (
               <div className="rounded-xl border border-amber-400/40 bg-amber-950/30 p-3">
-                <div className="text-sm font-semibold text-amber-100">
+                <div className="text-sm font-semibold text-amber-800 dark:text-amber-100">
                   Possible duplicate accounts
                 </div>
-                <p className="mt-1 text-xs leading-5 text-amber-100/75">
+                <p className="mt-1 text-xs leading-5 text-amber-800/75 dark:text-amber-100/75">
                   Open an existing account when it is the same customer. Create
                   another only when you have confirmed these are separate
                   records.
@@ -1967,7 +1967,7 @@ export default function CustomerProfilePage(): JSX.Element {
                       <span className="font-semibold">
                         {candidate.display_name}
                       </span>
-                      <span className="ml-2 text-amber-100/65">
+                      <span className="ml-2 text-amber-800/65 dark:text-amber-100/65">
                         Matched {candidate.reasons.join(", ")}
                       </span>
                     </button>
@@ -1977,7 +1977,7 @@ export default function CustomerProfilePage(): JSX.Element {
                   type="button"
                   onClick={() => void createCustomer(true)}
                   disabled={creatingCustomer}
-                  className="mt-3 rounded-lg border border-amber-300/40 px-3 py-2 text-xs font-semibold text-amber-50 hover:bg-amber-200/10 disabled:opacity-60"
+                  className="mt-3 rounded-lg border border-amber-300/40 px-3 py-2 text-xs font-semibold text-amber-800 dark:text-amber-50 hover:bg-amber-200/10 disabled:opacity-60"
                 >
                   Confirm separate customer
                 </button>
@@ -2197,7 +2197,7 @@ export default function CustomerProfilePage(): JSX.Element {
       <GuidedPageStepPanel />
 
       {viewError && (
-        <div className="mb-4 whitespace-pre-wrap rounded-2xl border border-red-500/35 bg-red-950/50 p-3 text-sm text-red-200 shadow-[var(--theme-shadow-medium)]">
+        <div className="mb-4 whitespace-pre-wrap rounded-2xl border border-red-500/35 bg-red-950/50 p-3 text-sm text-red-700 dark:text-red-200 shadow-[var(--theme-shadow-medium)]">
           {viewError}
         </div>
       )}
@@ -2209,7 +2209,7 @@ export default function CustomerProfilePage(): JSX.Element {
           <div className={`${CARD_BASE} h-56 animate-pulse`} />
         </div>
       ) : !customer ? (
-        <div className={`${CARD_BASE} p-4 text-sm text-red-300`}>
+        <div className={`${CARD_BASE} p-4 text-sm text-red-700 dark:text-red-300`}>
           Customer not found.
         </div>
       ) : (
@@ -2248,7 +2248,7 @@ export default function CustomerProfilePage(): JSX.Element {
                             }
                           </span>
                           {fleetConnections.length > 0 ? (
-                            <span className="inline-flex rounded-full border border-emerald-500/35 bg-emerald-950/25 px-2.5 py-1 text-[10px] font-semibold text-emerald-200">
+                            <span className="inline-flex rounded-full border border-emerald-500/35 bg-emerald-950/25 px-2.5 py-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-200">
                               {fleetConnections.length === 1
                                 ? `Fleet connected · ${fleetConnections[0]?.name}`
                                 : `${fleetConnections.length} Fleet workspaces connected`}
@@ -2883,7 +2883,7 @@ export default function CustomerProfilePage(): JSX.Element {
         }
       >
         {editCustomerDuplicates.length > 0 ? (
-          <div className="mb-3 rounded-xl border border-amber-400/40 bg-amber-950/30 p-3 text-xs text-amber-100">
+          <div className="mb-3 rounded-xl border border-amber-400/40 bg-amber-950/30 p-3 text-xs text-amber-800 dark:text-amber-100">
             <div className="font-semibold">Possible duplicate accounts</div>
             <div className="mt-2 space-y-1">
               {editCustomerDuplicates.map((candidate) => (

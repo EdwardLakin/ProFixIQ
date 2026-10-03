@@ -32,6 +32,25 @@ describe("theme toggle surfaces", () => {
   });
 });
 
+describe("pale status text stays readable in light mode", () => {
+  // Pale -50..-300 text utilities are only legible on dark panels. Outside
+  // `rounded` pills the shared light-mode overrides do not catch them, so each
+  // use needs a paired `dark:` variant (or a solid saturated background).
+  const PALE_TEXT =
+    /(?<![\w:/\[-])text-(?:sky|amber|emerald|red|rose|cyan|blue|orange|yellow|green)-(?:50|100|200|300)\b/;
+
+  it.each(THEME_AWARE_FILES)("%s pairs pale text with a dark: variant", (file) => {
+    const offenders = readFileSync(file, "utf8")
+      .split("\n")
+      .filter(
+        (line) =>
+          PALE_TEXT.test(line) &&
+          !line.includes("dark:text-"),
+      );
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("inspection voice controls button", () => {
   it("uses theme tokens instead of white-alpha washes", () => {
     const source = readFileSync("features/inspections/screens/GenericInspectionScreen.tsx", "utf8");
