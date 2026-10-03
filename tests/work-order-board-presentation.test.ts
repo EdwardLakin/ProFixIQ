@@ -6,40 +6,45 @@ import {
 } from "@/features/shared/lib/workboard/presentation";
 import type { WorkOrderBoardStage } from "@/features/shared/lib/workboard/types";
 
-describe("work-order board stage presentation", () => {
-  it("gives every operational stage a color-coded column, card, and count", () => {
-    const stages: WorkOrderBoardStage[] = [
-      "intake",
-      "estimate",
-      "awaiting_approval",
-      "authorized",
-      "waiting",
-      "in_progress",
-      "quality_check",
-      "ready",
-      "closed",
-    ];
+const stages: WorkOrderBoardStage[] = [
+  "intake",
+  "estimate",
+  "awaiting_approval",
+  "authorized",
+  "waiting",
+  "in_progress",
+  "quality_check",
+  "ready",
+  "awaiting_pickup",
+  "closed",
+];
 
+describe("work-order board stage presentation", () => {
+  it("keeps board structure neutral while preserving semantic stage accents", () => {
     for (const stage of stages) {
       const surface = getWorkOrderBoardStageSurface(stage);
-      expect(surface.column).toMatch(
-        /border-(blue|cyan|amber|emerald|orange|violet|teal|lime|slate)-500/,
+
+      expect(surface.column).toContain(
+        "bg-[color:var(--theme-surface-panel)]",
       );
-      expect(surface.card).toMatch(
-        /bg-(blue|cyan|amber|emerald|orange|violet|teal|lime|slate)-500/,
+      expect(surface.card).toContain(
+        "bg-[color:var(--theme-surface-panel-strong)]",
       );
-      expect(surface.count).toMatch(
-        /text-(blue|cyan|amber|emerald|orange|violet|teal|lime|slate)-/,
-      );
+      expect(surface.column).toMatch(/border-t-[a-z]+-(400|500)\//);
+      expect(surface.card).toMatch(/border-l-[a-z]+-(400|500)\//);
+      expect(surface.count).toMatch(/text-[a-z]+-(700|800)/);
     }
   });
 
-  it("keeps stage color contracts distinct", () => {
-    const operational = Object.values(WORK_ORDER_BOARD_STAGE_SURFACES).map(
-      (surface) => surface.column,
+  it("keeps semantic edge accents distinct", () => {
+    const columnAccents = stages.map((stage) =>
+      getWorkOrderBoardStageSurface(stage).column.match(
+        /border-t-([a-z]+-(?:400|500))\//,
+      )?.[1],
     );
 
-    expect(new Set(operational).size).toBe(operational.length);
+    expect(columnAccents.every(Boolean)).toBe(true);
+    expect(new Set(columnAccents).size).toBe(columnAccents.length);
   });
 
   it("falls back to intake when a rolling deployment returns no stage", () => {
