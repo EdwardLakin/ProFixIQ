@@ -407,7 +407,7 @@ describe("demoAccess.ts — provisioning contract", () => {
     const archiveFn = source.slice(source.indexOf("export async function archiveExpiredDemoProspects"));
     // The actual archive mutation now runs inside a single atomic DB
     // function (archive_expired_demo_shops(), see
-    // 20261002020000_archive_expired_demo_shops_fn.sql) rather than a
+    // 20261002162857_archive_expired_demo_shops_fn.sql) rather than a
     // client-side UPDATE, so the TS side is just the RPC call -- assert
     // that, and separately assert the DB function itself only ever UPDATEs
     // (never DELETEs) shops or profiles.
@@ -415,7 +415,7 @@ describe("demoAccess.ts — provisioning contract", () => {
     expect(archiveFn).not.toContain(".delete(");
 
     const archiveMigration = readFileSync(
-      "supabase/migrations/20261002020000_archive_expired_demo_shops_fn.sql",
+      "supabase/migrations/20261002162857_archive_expired_demo_shops_fn.sql",
       "utf8",
     );
     expect(archiveMigration).toContain("SET demo_shop_archived_at = now()");

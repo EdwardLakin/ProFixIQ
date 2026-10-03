@@ -693,7 +693,7 @@ export async function revokeDemoProspect(input: {
  * deletes data -- see the shops.demo_shop_archived_at migration) and
  * expires every member profile of each shop it archives, not just the
  * owner -- see archive_expired_demo_shops() in
- * 20261002020000_archive_expired_demo_shops_fn.sql for why. Runs as one
+ * 20261002162857_archive_expired_demo_shops_fn.sql for why. Runs as one
  * atomic, uncapped database-side statement rather than separate
  * SELECT/SELECT/UPDATE round trips, so it can't race a concurrent extend()
  * and isn't bound by the Data API's row cap. Intended to run from a

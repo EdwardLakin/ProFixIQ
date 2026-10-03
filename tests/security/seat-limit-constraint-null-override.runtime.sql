@@ -1,6 +1,6 @@
 \set ON_ERROR_STOP on
 
--- Regression for a P1 review finding on 20260930000000_exempt_demo_shop_from_seat_limits.sql's
+-- Regression for a P1 review finding on 20260930063340_exempt_demo_shop_from_seat_limits.sql's
 -- shops_active_user_count_le_max_users constraint: its exemption clause
 -- compared billing_entitlement_override directly to 'internal_demo'.
 -- billing_entitlement_override is NULL for every ordinary (non-demo) shop,

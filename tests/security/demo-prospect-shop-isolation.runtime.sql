@@ -1,7 +1,7 @@
 \set ON_ERROR_STOP on
 
 -- Regression for the demo-prospect shop isolation migration
--- (20261002000000_demo_prospect_shop_isolation.sql): every demo prospect
+-- (20261002151344_demo_prospect_shop_isolation.sql): every demo prospect
 -- previously shared one single internal demo shop, with zero isolation
 -- beyond this app's standard "any staff sees the whole shop" visibility --
 -- two concurrent prospects could see each other's live work orders,
@@ -203,7 +203,7 @@ select set_config('request.jwt.claim.sub', '', true);
 
 -- A profile may own at most one prospect shop: a second shop pointed at the
 -- same demo_prospect_profile_id must be rejected by the unique partial
--- index added in 20261002000000_demo_prospect_shop_isolation.sql.
+-- index added in 20261002151344_demo_prospect_shop_isolation.sql.
 do $demo_prospect_profile_uniqueness$
 begin
   insert into public.shops (
