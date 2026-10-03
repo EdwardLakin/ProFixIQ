@@ -1962,7 +1962,7 @@ export default function CustomerProfilePage(): JSX.Element {
                       key={candidate.id}
                       type="button"
                       onClick={() => router.push(`/customers/${candidate.id}`)}
-                      className="w-full rounded-lg border border-amber-300/25 bg-black/15 p-2 text-left text-xs text-amber-50 hover:border-amber-300/60"
+                      className="w-full rounded-lg border border-amber-300/25 bg-[color:var(--theme-surface-inset)] p-2 text-left text-xs text-[color:var(--theme-text-primary)] hover:border-amber-300/60"
                     >
                       <span className="font-semibold">
                         {candidate.display_name}

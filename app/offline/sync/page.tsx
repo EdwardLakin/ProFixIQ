@@ -84,12 +84,12 @@ function formatBytes(bytes: number): string {
 }
 
 function statusTone(status: PendingMutation["status"]): string {
-  if (status === "synced") return "border-emerald-500/40 text-emerald-200";
+  if (status === "synced") return "border-emerald-500/40 text-[color:var(--theme-success-text)]";
   if (status === "failed" || status === "conflicted") {
-    return "border-red-500/40 text-red-200";
+    return "border-red-500/40 text-[color:var(--theme-danger-text)]";
   }
-  if (status === "syncing") return "border-sky-500/40 text-sky-200";
-  return "border-amber-500/40 text-amber-200";
+  if (status === "syncing") return "border-sky-500/40 text-[color:var(--theme-info-text)]";
+  return "border-amber-500/40 text-[color:var(--theme-warning-text)]";
 }
 
 export default function OfflineSyncPage() {
@@ -237,33 +237,33 @@ export default function OfflineSyncPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100">
+    <main className="min-h-screen bg-[color:var(--theme-surface-page)] px-4 py-8 text-[color:var(--theme-text-primary)]">
       <div className="mx-auto max-w-3xl space-y-5">
         <header className="flex items-start justify-between gap-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-300">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-info-text)]">
               ProFixIQ offline
             </p>
             <h1 className="mt-2 text-2xl font-semibold">Sync Center</h1>
-            <p className="mt-2 text-sm text-slate-300">
+            <p className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">
               Review work stored for the active user and shop on this device.
             </p>
           </div>
           <Link
             href="/offline"
-            className="rounded-lg border border-slate-700 px-3 py-2 text-sm"
+            className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-sm"
           >
             Back
           </Link>
         </header>
 
-        <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
+        <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <p className="font-semibold">
                 {online ? "Connected" : "Offline"}
               </p>
-              <p className="text-sm text-slate-400">
+              <p className="text-sm text-[color:var(--theme-text-muted)]">
                 {mutations.filter((item) => item.status !== "synced").length}{" "}
                 updates require attention
               </p>
@@ -272,19 +272,19 @@ export default function OfflineSyncPage() {
               type="button"
               disabled={!online || busy}
               onClick={() => void syncNow()}
-              className="rounded-xl bg-sky-400 px-4 py-2 font-semibold text-slate-950 disabled:opacity-40"
+              className="rounded-xl bg-[color:var(--brand-primary)] px-4 py-2 font-semibold text-[color:var(--theme-text-on-accent)] disabled:opacity-40"
             >
               Sync now
             </button>
           </div>
           {message && (
-            <p className="mt-3 rounded-lg bg-slate-950/70 px-3 py-2 text-sm text-slate-200">
+            <p className="mt-3 rounded-lg bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)]">
               {message}
             </p>
           )}
         </section>
 
-        <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
+        <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5">
           <h2 className="font-semibold">Pilot readiness</h2>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <ReadinessItem
@@ -337,11 +337,11 @@ export default function OfflineSyncPage() {
         </section>
 
         {persistenceHealth.suspectedEviction && (
-          <section className="rounded-2xl border border-red-500/50 bg-red-950/30 p-5">
-            <h2 className="font-semibold text-red-100">
+          <section className="rounded-2xl border border-red-500/50 bg-red-500/10 p-5">
+            <h2 className="font-semibold text-[color:var(--theme-danger-text)]">
               Device storage may have been cleared
             </h2>
-            <p className="mt-2 text-sm text-red-100/80">
+            <p className="mt-2 text-sm text-[color:var(--theme-danger-text)]">
               This device previously recorded {persistenceHealth.expectedPendingMutations}{" "}
               pending update{persistenceHealth.expectedPendingMutations === 1 ? "" : "s"},
               but the offline database is now empty. Reconnect, verify the server record,
@@ -362,13 +362,13 @@ export default function OfflineSyncPage() {
                   "Completed history cleared.",
                 )
               }
-              className="text-xs font-semibold text-sky-300 disabled:opacity-40"
+              className="text-xs font-semibold text-[color:var(--theme-info-text)] disabled:opacity-40"
             >
               Clear completed
             </button>
           </div>
           {mutations.length === 0 ? (
-            <div className="rounded-2xl border border-slate-800 bg-slate-900/70 p-5 text-sm text-slate-400">
+            <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5 text-sm text-[color:var(--theme-text-muted)]">
               No offline updates are stored for this user and shop.
             </div>
           ) : (
@@ -378,7 +378,7 @@ export default function OfflineSyncPage() {
               return (
                 <article
                   key={mutation.clientMutationId}
-                  className="rounded-2xl border border-slate-800 bg-slate-900 p-4"
+                  className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-4"
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
@@ -386,7 +386,7 @@ export default function OfflineSyncPage() {
                         {ACTION_LABELS[mutation.actionType] ??
                           mutation.actionType}
                       </p>
-                      <p className="mt-1 text-xs text-slate-400">
+                      <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
                         {new Date(mutation.createdAt).toLocaleString()} ·{" "}
                         {mutation.retryCount} retries
                       </p>
@@ -398,13 +398,13 @@ export default function OfflineSyncPage() {
                     </span>
                   </div>
                   {(mutation.conflictReason || mutation.lastError) && (
-                    <p className="mt-3 rounded-lg bg-slate-950/70 px-3 py-2 text-sm text-slate-300">
+                    <p className="mt-3 rounded-lg bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-secondary)]">
                       {mutation.conflictReason || mutation.lastError}
                     </p>
                   )}
                   {mutation.status === "conflicted" && deviceValue && (
-                    <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-950/20 px-3 py-2 text-sm text-slate-300">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-200">
+                    <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/10 px-3 py-2 text-sm text-[color:var(--theme-text-secondary)]">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-[color:var(--theme-warning-text)]">
                         Saved on this device
                       </p>
                       <p className="mt-1 line-clamp-3 whitespace-pre-wrap">
@@ -423,7 +423,7 @@ export default function OfflineSyncPage() {
                             await replayAndReconcileOfflineMutations();
                           }, "Device update retried and saved views refreshed.")
                         }
-                        className="rounded-lg border border-sky-500/50 px-3 py-1.5 text-xs font-semibold text-sky-200 disabled:opacity-40"
+                        className="rounded-lg border border-sky-500/50 px-3 py-1.5 text-xs font-semibold text-[color:var(--theme-info-text)] disabled:opacity-40"
                       >
                         Retry device update
                       </button>
@@ -440,7 +440,7 @@ export default function OfflineSyncPage() {
                             await reconcileOfflineTechnicianState([mutation]);
                           }, "Server state kept and this device's update removed.")
                         }
-                        className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 disabled:opacity-40"
+                        className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs text-[color:var(--theme-text-secondary)] disabled:opacity-40"
                       >
                         Use server state
                       </button>
@@ -459,7 +459,7 @@ export default function OfflineSyncPage() {
                               "Update removed from this device.",
                             )
                           }
-                          className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 disabled:opacity-40"
+                          className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs text-[color:var(--theme-text-secondary)] disabled:opacity-40"
                         >
                           Remove
                         </button>
@@ -467,7 +467,7 @@ export default function OfflineSyncPage() {
                     {target && (
                       <Link
                         href={target}
-                        className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300"
+                        className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-1.5 text-xs text-[color:var(--theme-text-secondary)]"
                       >
                         Open record
                       </Link>
@@ -479,11 +479,11 @@ export default function OfflineSyncPage() {
           )}
         </section>
 
-        <section className="rounded-2xl border border-slate-700 bg-slate-900 p-5">
+        <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-5">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
               <h2 className="font-semibold">Storage</h2>
-              <p className="mt-1 text-sm text-slate-400">
+              <p className="mt-1 text-sm text-[color:var(--theme-text-muted)]">
                 {formatBytes(browserStorage.usage)} used of{" "}
                 {browserStorage.quota
                   ? formatBytes(browserStorage.quota)
@@ -491,29 +491,29 @@ export default function OfflineSyncPage() {
               </p>
             </div>
             <span
-              className={`rounded-full border px-2.5 py-1 text-xs ${browserStorage.persistent ? "border-emerald-500/40 text-emerald-200" : "border-amber-500/40 text-amber-200"}`}
+              className={`rounded-full border px-2.5 py-1 text-xs ${browserStorage.persistent ? "border-emerald-500/40 text-[color:var(--theme-success-text)]" : "border-amber-500/40 text-[color:var(--theme-warning-text)]"}`}
             >
               {browserStorage.persistent ? "Protected" : "Best effort"}
             </span>
           </div>
-          <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-800">
+          <div className="mt-4 h-2 overflow-hidden rounded-full bg-[color:var(--theme-surface-hover)]">
             <div
               className="h-full bg-sky-400"
               style={{ width: `${quotaPercent}%` }}
             />
           </div>
-          <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs text-slate-300">
-            <div className="rounded-lg bg-slate-950/70 p-2">
+          <div className="mt-4 grid grid-cols-3 gap-2 text-center text-xs text-[color:var(--theme-text-secondary)]">
+            <div className="rounded-lg bg-[color:var(--theme-surface-inset)] p-2">
               {databaseStats.snapshots}
               <br />
               saved views
             </div>
-            <div className="rounded-lg bg-slate-950/70 p-2">
+            <div className="rounded-lg bg-[color:var(--theme-surface-inset)] p-2">
               {databaseStats.blobs}
               <br />
               files
             </div>
-            <div className="rounded-lg bg-slate-950/70 p-2">
+            <div className="rounded-lg bg-[color:var(--theme-surface-inset)] p-2">
               {formatBytes(databaseStats.blobBytes)}
               <br />
               photos
@@ -525,7 +525,7 @@ export default function OfflineSyncPage() {
                 type="button"
                 disabled={busy}
                 onClick={() => void requestPersistence()}
-                className="rounded-lg border border-sky-500/50 px-3 py-2 text-xs font-semibold text-sky-200 disabled:opacity-40"
+                className="rounded-lg border border-sky-500/50 px-3 py-2 text-xs font-semibold text-[color:var(--theme-info-text)] disabled:opacity-40"
               >
                 Protect offline storage
               </button>
@@ -534,7 +534,7 @@ export default function OfflineSyncPage() {
               type="button"
               disabled={busy}
               onClick={() => void cleanStorage()}
-              className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 disabled:opacity-40"
+              className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)] disabled:opacity-40"
             >
               Clean expired data
             </button>
@@ -542,12 +542,12 @@ export default function OfflineSyncPage() {
               type="button"
               disabled={busy}
               onClick={exportDiagnostics}
-              className="rounded-lg border border-slate-700 px-3 py-2 text-xs text-slate-300 disabled:opacity-40"
+              className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs text-[color:var(--theme-text-secondary)] disabled:opacity-40"
             >
               Export pilot diagnostics
             </button>
           </div>
-          <p className="mt-3 text-xs text-slate-500">
+          <p className="mt-3 text-xs text-[color:var(--theme-text-muted)]">
             Diagnostics contain aggregate device and queue health only—no customer,
             vehicle, message, note, user, or shop data.
           </p>
@@ -564,12 +564,12 @@ function ReadinessItem(props: {
   detail: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-800 bg-slate-950/60 p-3">
-      <p className="text-xs uppercase tracking-wider text-slate-400">{props.label}</p>
-      <p className={props.ready ? "mt-1 font-semibold text-emerald-300" : "mt-1 font-semibold text-amber-300"}>
+    <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-3">
+      <p className="text-xs uppercase tracking-wider text-[color:var(--theme-text-muted)]">{props.label}</p>
+      <p className={props.ready ? "mt-1 font-semibold text-[color:var(--theme-success-text)]" : "mt-1 font-semibold text-[color:var(--theme-warning-text)]"}>
         {props.value}
       </p>
-      <p className="mt-1 text-xs text-slate-400">{props.detail}</p>
+      <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{props.detail}</p>
     </div>
   );
 }

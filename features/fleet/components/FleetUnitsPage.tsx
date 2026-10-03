@@ -257,7 +257,7 @@ export default function FleetUnitsPage({
           {visible.map((unit) => (
             <div
               key={`${unit.fleetId}:${unit.id}`}
-              className="grid gap-3 p-4 transition hover:bg-white/[0.03] md:grid-cols-[minmax(180px,1.1fr)_minmax(120px,.7fr)_minmax(160px,1fr)_minmax(150px,.8fr)_auto] md:items-center"
+              className="grid gap-3 p-4 transition hover:bg-[color:var(--theme-surface-hover)] md:grid-cols-[minmax(180px,1.1fr)_minmax(120px,.7fr)_minmax(160px,1fr)_minmax(150px,.8fr)_auto] md:items-center"
             >
               <div>
                 <div className="font-semibold text-sky-300">{unit.label}</div>

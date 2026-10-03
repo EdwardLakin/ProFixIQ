@@ -351,7 +351,7 @@ export default function FleetBillingWorkspace({
               className={`rounded-lg px-3 py-1.5 text-xs font-medium ${
                 filter === value
                   ? "bg-sky-300 text-slate-950"
-                  : "text-[color:var(--theme-text-secondary)] hover:bg-white/5"
+                  : "text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-hover)]"
               }`}
             >
               {label}

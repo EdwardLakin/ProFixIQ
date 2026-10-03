@@ -186,7 +186,7 @@ export function PricingQuarantineRemediation({
   }
 
   return (
-    <div className="mt-3 rounded-xl border border-amber-200/30 bg-black/10 p-3">
+    <div className="mt-3 rounded-xl border border-amber-500/30 bg-[color:var(--theme-surface-inset)] p-3">
       <div className="font-semibold text-amber-50">Owner/admin remediation</div>
       <p className="mt-1 text-amber-50/90">
         Enter the exact customer sell detail from the finalized decision. The

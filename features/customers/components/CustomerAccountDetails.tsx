@@ -509,7 +509,7 @@ export function CustomerAccountDetails({ customerId, shopId }: Props) {
         {showCommercialForm ? (
           <form
             onSubmit={saveCommercialControls}
-            className="border-t border-[color:var(--desktop-border)] bg-black/10 p-4 sm:p-5"
+            className="border-t border-[color:var(--desktop-border)] bg-[color:var(--theme-surface-inset)] p-4 sm:p-5"
           >
             <div className="grid gap-3 lg:grid-cols-3">
               <label className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">

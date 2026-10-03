@@ -3110,7 +3110,7 @@ type SmartMatchRow = {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="border-white/20 bg-white/5 text-[11px] font-semibold text-white hover:bg-white/10"
+                className="border-[color:var(--theme-border-strong)] bg-[color:var(--theme-surface-subtle)] text-[11px] font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-hover)]"
                 onClick={() => setVoiceControlsOpen(true)}
               >
                 Voice controls
@@ -3121,7 +3121,7 @@ type SmartMatchRow = {
                   type="button"
                   variant="outline"
                   size="sm"
-                  className="border-white/20 bg-white/5 text-[11px] font-semibold text-white hover:bg-white/10"
+                  className="border-[color:var(--theme-border-strong)] bg-[color:var(--theme-surface-subtle)] text-[11px] font-semibold text-[color:var(--theme-text-primary)] hover:bg-[color:var(--theme-surface-hover)]"
                   onClick={stopListening}
                 >
                   Stop

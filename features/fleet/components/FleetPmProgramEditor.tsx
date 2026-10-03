@@ -201,7 +201,7 @@ export default function FleetPmProgramEditor({
             type="button"
             onClick={onClose}
             aria-label="Close PM program editor"
-            className="grid h-10 w-10 place-items-center rounded-xl bg-white/10 hover:bg-white/20"
+            className="grid h-10 w-10 place-items-center rounded-xl bg-[color:var(--theme-surface-subtle)] hover:bg-[color:var(--theme-surface-hover)]"
           >
             <X className="h-5 w-5" />
           </button>

@@ -146,7 +146,7 @@ export default function OpsSystemHealth({
         aria-label="Overall production health"
       >
         <div className="flex items-center gap-3">
-          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-black/10">
+          <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-[color:var(--theme-surface-inset)]">
             <OverallIcon className="h-6 w-6" />
           </span>
           <div>
