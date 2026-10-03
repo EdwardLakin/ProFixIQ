@@ -7,58 +7,63 @@ export type WorkOrderBoardStageSurface = {
   count: string;
 };
 
+const neutralColumn =
+  "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)]";
+const neutralCard =
+  "bg-[color:var(--theme-surface-panel-strong)]";
+
 export const WORK_ORDER_BOARD_STAGE_SURFACES: Record<
   WorkOrderBoardStage,
   WorkOrderBoardStageSurface
 > = {
   intake: {
-    column: "border-blue-500/25 bg-blue-500/[0.055]",
-    card: "border-blue-500/30 bg-blue-500/[0.075]",
+    column: `${neutralColumn} border-t-blue-500/55`,
+    card: `${neutralCard} border-blue-500/25 border-l-blue-500/70`,
     count: "bg-blue-500/15 text-blue-700 dark:text-blue-200",
   },
   estimate: {
-    column: "border-cyan-500/25 bg-cyan-500/[0.055]",
-    card: "border-cyan-500/30 bg-cyan-500/[0.075]",
+    column: `${neutralColumn} border-t-cyan-500/55`,
+    card: `${neutralCard} border-cyan-500/25 border-l-cyan-500/70`,
     count: "bg-cyan-500/15 text-cyan-800 dark:text-cyan-200",
   },
   awaiting_approval: {
-    column: "border-amber-500/25 bg-amber-500/[0.055]",
-    card: "border-amber-500/30 bg-amber-500/[0.075]",
-    count: "bg-amber-500/15 text-amber-800 dark:text-amber-200",
+    column: `${neutralColumn} border-t-amber-400/55`,
+    card: `${neutralCard} border-amber-400/25 border-l-amber-400/70`,
+    count: "bg-amber-400/12 text-amber-800 dark:text-amber-200",
   },
   authorized: {
-    column: "border-emerald-500/25 bg-emerald-500/[0.055]",
-    card: "border-emerald-500/30 bg-emerald-500/[0.075]",
+    column: `${neutralColumn} border-t-emerald-500/55`,
+    card: `${neutralCard} border-emerald-500/25 border-l-emerald-500/70`,
     count: "bg-emerald-500/15 text-emerald-800 dark:text-emerald-200",
   },
   waiting: {
-    column: "border-orange-500/25 bg-orange-500/[0.055]",
-    card: "border-orange-500/30 bg-orange-500/[0.075]",
-    count: "bg-orange-500/15 text-orange-800 dark:text-orange-200",
+    column: `${neutralColumn} border-t-sky-400/55`,
+    card: `${neutralCard} border-sky-400/25 border-l-sky-400/70`,
+    count: "bg-sky-400/12 text-sky-800 dark:text-sky-200",
   },
   in_progress: {
-    column: "border-violet-500/25 bg-violet-500/[0.055]",
-    card: "border-violet-500/30 bg-violet-500/[0.075]",
+    column: `${neutralColumn} border-t-violet-500/55`,
+    card: `${neutralCard} border-violet-500/25 border-l-violet-500/70`,
     count: "bg-violet-500/15 text-violet-700 dark:text-violet-200",
   },
   quality_check: {
-    column: "border-teal-500/25 bg-teal-500/[0.055]",
-    card: "border-teal-500/30 bg-teal-500/[0.075]",
+    column: `${neutralColumn} border-t-teal-500/55`,
+    card: `${neutralCard} border-teal-500/25 border-l-teal-500/70`,
     count: "bg-teal-500/15 text-teal-800 dark:text-teal-200",
   },
   ready: {
-    column: "border-lime-500/25 bg-lime-500/[0.055]",
-    card: "border-lime-500/30 bg-lime-500/[0.075]",
-    count: "bg-lime-500/15 text-lime-800 dark:text-lime-200",
+    column: `${neutralColumn} border-t-emerald-400/55`,
+    card: `${neutralCard} border-emerald-400/25 border-l-emerald-400/70`,
+    count: "bg-emerald-400/12 text-emerald-800 dark:text-emerald-200",
   },
   awaiting_pickup: {
-    column: "border-fuchsia-500/25 bg-fuchsia-500/[0.055]",
-    card: "border-fuchsia-500/30 bg-fuchsia-500/[0.075]",
-    count: "bg-fuchsia-500/15 text-fuchsia-800 dark:text-fuchsia-200",
+    column: `${neutralColumn} border-t-indigo-400/55`,
+    card: `${neutralCard} border-indigo-400/25 border-l-indigo-400/70`,
+    count: "bg-indigo-400/12 text-indigo-800 dark:text-indigo-200",
   },
   closed: {
-    column: "border-slate-500/25 bg-slate-500/[0.055]",
-    card: "border-slate-500/30 bg-slate-500/[0.075]",
+    column: `${neutralColumn} border-t-slate-500/45`,
+    card: `${neutralCard} border-slate-500/25 border-l-slate-500/55`,
     count: "bg-slate-500/15 text-slate-700 dark:text-slate-200",
   },
 };
