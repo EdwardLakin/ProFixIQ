@@ -362,6 +362,96 @@ html[data-theme-mode="light"] {
   color-scheme: light;
 }
 
+html[data-theme-mode="dark"] {
+  /* Mirror of the light block. BrandThemeBoot writes the saved shop palette
+     inline, which would otherwise outrank the :root dark defaults and leave
+     light cards, dark-on-dark text and white controls in dark mode. Brand
+     primary/accent colours are intentionally not overridden. */
+  --theme-surface-page: #050B16 !important;
+  --theme-surface-page-rgb: 5 11 22 !important;
+  --theme-border-rgb: 96 165 250 !important;
+  --theme-destructive-rgb: 239 68 68 !important;
+  --theme-surface-panel: #0D172A !important;
+  --theme-surface-panel-strong: #091426 !important;
+  --theme-surface-inset: rgba(0, 0, 0, 0.38) !important;
+  --theme-surface-subtle: rgba(96, 165, 250, 0.07) !important;
+  --theme-surface-hover: rgba(96, 165, 250, 0.12) !important;
+  --theme-surface-overlay: rgba(5, 11, 22, 0.95) !important;
+  --theme-backdrop: rgba(0, 0, 0, 0.68) !important;
+  --theme-border-soft: rgba(96, 165, 250, 0.16) !important;
+  --theme-border-strong: rgba(96, 165, 250, 0.3) !important;
+  --theme-text-inverse: #FFFFFF !important;
+  --theme-text-on-accent: #FFFFFF !important;
+  --theme-gradient-page:
+    radial-gradient(circle at top, color-mix(in srgb, var(--brand-primary) 16%, transparent), transparent 56%),
+    linear-gradient(180deg, #050B16, #030914) !important;
+  --theme-gradient-panel:
+    radial-gradient(circle at top left, color-mix(in srgb, var(--brand-primary) 12%, transparent), transparent 58%),
+    linear-gradient(160deg, rgba(13, 23, 42, 0.97), rgba(5, 11, 22, 0.99)) !important;
+  --theme-gradient-header:
+    linear-gradient(180deg, rgba(5, 11, 22, 0.97), rgba(3, 9, 20, 0.99)) !important;
+
+  --theme-text-primary: #F8FBFF !important;
+  --theme-text-secondary: #C3D2E8 !important;
+  --theme-text-muted: #8295B2 !important;
+
+  --theme-app-bg: #050B16 !important;
+  --theme-app-bg-secondary: #081225 !important;
+
+  --theme-sidebar-bg: #030914 !important;
+  --theme-sidebar-text: #DCE7F8 !important;
+  --theme-sidebar-active-bg: var(--brand-primary) !important;
+  --theme-sidebar-active-text: #FFFFFF !important;
+
+  --theme-header-bg: #050B16 !important;
+  --theme-header-text: #F8FBFF !important;
+
+  --theme-card-bg: #0D172A !important;
+  --theme-card-border: #243B61 !important;
+  --theme-surface-2: #111F36 !important;
+
+  --theme-button-primary-bg: var(--brand-primary) !important;
+  --theme-button-primary-text: #FFFFFF !important;
+  --theme-button-secondary-bg: #14243D !important;
+  --theme-button-secondary-text: #EAF2FF !important;
+
+  --theme-input-bg: #091426 !important;
+  --theme-input-border: #2B466F !important;
+  --theme-input-text: #F8FBFF !important;
+
+  --metal-bg: #050B16 !important;
+  --metal-panel: #0D172A !important;
+  --metal-border-soft: rgba(96, 165, 250, 0.28) !important;
+  --metal-border-strong: rgba(96, 165, 250, 0.5) !important;
+  --glass-bg: rgba(5, 11, 22, 0.42) !important;
+  --glass-bg-soft: rgba(5, 11, 22, 0.28) !important;
+
+  --desktop-bg-base: #050B16 !important;
+  --desktop-bg-secondary: #030914 !important;
+  --desktop-bg-tint: rgba(23, 71, 255, 0.17) !important;
+  --desktop-panel-bg: linear-gradient(160deg, rgba(13, 23, 42, 0.94), rgba(5, 11, 22, 0.97)) !important;
+  --desktop-panel-bg-soft: rgba(9, 20, 38, 0.86) !important;
+  --desktop-item-bg: rgba(10, 23, 43, 0.8) !important;
+  --desktop-border: rgba(72, 115, 180, 0.38) !important;
+  --desktop-border-strong: rgba(96, 165, 250, 0.58) !important;
+  --desktop-shadow-panel: 0 24px 72px rgba(0, 0, 0, 0.62) !important;
+  --desktop-shadow-card: 0 18px 45px rgba(0, 0, 0, 0.54) !important;
+  --desktop-focus-ring: color-mix(in srgb, #60A5FA 70%, var(--brand-primary)) !important;
+  --app-shell-bg:
+    radial-gradient(circle at top, var(--desktop-bg-tint), transparent 52%),
+    radial-gradient(circle at bottom, color-mix(in srgb, var(--desktop-bg-base) 86%, #020617), var(--desktop-bg-secondary) 76%) !important;
+  --app-shell-wash:
+    radial-gradient(1200px 680px at 50% -8%, rgba(23, 71, 255, 0.13), transparent 62%),
+    radial-gradient(950px 620px at 100% 100%, rgba(11, 183, 255, 0.08), transparent 64%) !important;
+
+  /* Dashboard backdrops are derived from the saved palette; keep them on the
+     dark surface tokens so they follow the toggle. */
+  --dashboard-shell-bg: var(--theme-gradient-page) !important;
+  --dashboard-hero-bg: var(--theme-gradient-panel) !important;
+
+  color-scheme: dark;
+}
+
 /* Legacy status pills were authored for the dark shell and use pale text
    utilities. Keep their hue in light mode while restoring readable contrast. */
 html[data-theme-mode="light"] [class*="rounded"][class*="text-red-"] {
