@@ -45,8 +45,8 @@ describe("premium UI foundation regressions", () => {
       'html[data-theme-mode="light"] .app-shell-action',
     );
     expect(appShell).toContain("app-shell-action");
-    expect(operationalSwitcher).toContain("text-orange-900");
-    expect(operationalSwitcher).toContain("dark:text-orange-100");
+    expect(operationalSwitcher).toContain("text-blue-800");
+    expect(operationalSwitcher).toContain("dark:text-blue-100");
   });
 
   it("keeps the compact five-day schedule and the detailed calendar modal", () => {
