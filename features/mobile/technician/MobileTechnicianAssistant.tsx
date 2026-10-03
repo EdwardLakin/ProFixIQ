@@ -272,7 +272,7 @@ export default function MobileTechnicianAssistant({
                           {message.attachments.map((attachment) => (
                             <div
                               key={attachment.id}
-                              className="flex items-center gap-2 rounded-lg bg-black/10 p-1"
+                              className="flex items-center gap-2 rounded-lg bg-black/15 p-1"
                             >
                               {attachment.url ? (
                                 // eslint-disable-next-line @next/next/no-img-element
@@ -352,7 +352,7 @@ export default function MobileTechnicianAssistant({
               disabled={sending || uploading}
             />
             <button
-              className="min-h-11 rounded-xl bg-[color:var(--accent-copper)] px-4 text-xs font-semibold uppercase tracking-[0.16em] text-white disabled:opacity-50"
+              className="min-h-11 rounded-xl bg-[color:var(--accent-copper)] px-4 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-on-accent)] disabled:opacity-50"
               disabled={sending || uploading || !canSend}
               type="submit"
             >
@@ -372,7 +372,7 @@ export default function MobileTechnicianAssistant({
               <button
                 type="button"
                 onClick={cancel}
-                className="text-[0.68rem] font-medium text-red-300"
+                className="text-[0.68rem] font-medium text-red-700 dark:text-red-300"
               >
                 Stop response
               </button>
@@ -382,7 +382,7 @@ export default function MobileTechnicianAssistant({
       </section>
 
       {error ? (
-        <div className="rounded-xl border border-red-500/40 bg-red-950/50 px-3 py-2 text-xs text-red-100">
+        <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-3 py-2 text-xs text-red-800 dark:text-red-100">
           {error}
         </div>
       ) : null}

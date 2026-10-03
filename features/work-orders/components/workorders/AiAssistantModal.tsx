@@ -77,8 +77,8 @@ export default function AiAssistantModal({
         aria-label="Ask ProFixIQ"
         className="relative z-[610] max-h-[100dvh] w-full overflow-hidden rounded-t-[28px] border border-b-0 border-[color:var(--theme-border-soft)] bg-[var(--theme-gradient-panel)] text-[color:var(--theme-text-primary)] shadow-[var(--theme-shadow-medium)]"
       >
-        <div className="absolute inset-x-0 top-0 h-[3px] bg-[linear-gradient(90deg,rgba(184,115,51,0),rgba(184,115,51,0.95),rgba(253,186,116,0.95),rgba(184,115,51,0))]" />
-        <div className="pointer-events-none absolute inset-x-10 top-0 h-24 bg-[radial-gradient(circle_at_top,rgba(184,115,51,0.14),transparent_72%)]" />
+        <div className="absolute inset-x-0 top-0 h-[3px] bg-[linear-gradient(90deg,transparent,var(--brand-primary),var(--brand-accent),transparent)]" />
+        <div className="pointer-events-none absolute inset-x-10 top-0 h-24 bg-[radial-gradient(circle_at_top,color-mix(in_srgb,var(--brand-primary)_18%,transparent),transparent_72%)]" />
 
         <div className="relative flex items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-4 py-2.5">
           <div className="min-w-0">
