@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
+import { useUserRole } from "@/features/shared/hooks/useUserRole";
+import { hasAnyRole, type CanonicalRole } from "@/features/shared/lib/rbac";
 import { supabaseBrowser as supabase } from "@/features/shared/lib/supabase/client";
 import MobileCustomerVehicleForm from "@/features/work-orders/mobile/MobileCustomerVehicleForm";
 import type {
@@ -16,6 +18,16 @@ type DB = Database;
 type WorkOrderRow = DB["public"]["Tables"]["work_orders"]["Row"];
 type CustomerRow = DB["public"]["Tables"]["customers"]["Row"];
 type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
+
+// Roles allowed to edit customer & vehicle details. Technicians (mechanic,
+// lead hand, foreman) and every other role get a view-only form.
+const CUSTOMER_VEHICLE_EDITOR_ROLES: readonly CanonicalRole[] = [
+  "owner",
+  "admin",
+  "manager",
+  "advisor",
+  "service",
+];
 
 function toYearValue(value: unknown): string | number | null {
   if (value === null || value === undefined) return null;
@@ -49,6 +61,10 @@ function toNumberOrNull(value: unknown): number | null {
 export default function MobileWorkOrderVehiclePage() {
   const params = useParams<{ id: string }>();
   const workOrderId = params?.id;
+  const { role, loading: roleLoading } = useUserRole();
+  // Fail closed: view-only until the role has resolved to an editor role.
+  const canEdit =
+    !roleLoading && hasAnyRole(role, CUSTOMER_VEHICLE_EDITOR_ROLES);
   const [workOrder, setWorkOrder] = useState<WorkOrderRow | null>(null);
   const [customer, setCustomer] = useState<MobileCustomer>({
     id: null,
@@ -240,6 +256,7 @@ export default function MobileWorkOrderVehiclePage() {
             onCustomerChange={setCustomer}
             onVehicleChange={setVehicle}
             supabase={supabase}
+            readOnly={!canEdit}
           />
         )}
       </div>
