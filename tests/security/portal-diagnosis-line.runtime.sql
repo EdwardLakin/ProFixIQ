@@ -73,11 +73,14 @@ begin
     public.add_portal_request_line_atomic(v_shop, v_customer, v_work_order, v_actor, 'custom', null, 'Brake noise', 'Squeals when cold', 'job', 'portal-diag:custom-job', now()),
     null
   );
-  insert into portal_diag_results values (
-    'custom_info',
-    public.add_portal_request_line_atomic(v_shop, v_customer, v_work_order, v_actor, 'custom', null, 'Customer note only', null, 'info', 'portal-diag:custom-info', now()),
-    null
-  );
+  -- Informational lines are no longer requested from the portal (they would
+  -- become punchable once approved); the request is refused.
+  begin
+    perform public.add_portal_request_line_atomic(v_shop, v_customer, v_work_order, v_actor, 'custom', null, 'Customer note only', null, 'info', 'portal-diag:custom-info', now());
+    insert into portal_diag_results values ('custom_info', null, 'NO_ERROR');
+  exception when others then
+    insert into portal_diag_results values ('custom_info', null, sqlerrm);
+  end;
   insert into portal_diag_results values (
     'menu',
     public.add_portal_request_line_atomic(v_shop, v_customer, v_work_order, v_actor, 'menu', '8d070000-0000-4000-8000-000000000001', null, null, null, 'portal-diag:menu', now()),
@@ -148,11 +151,12 @@ begin
     raise exception 'Replayed custom line was not reported as idempotent.';
   end if;
 
-  -- Info line: same path, never punchable.
-  select result into v_result from portal_diag_results where label = 'custom_info';
-  select * into v_line from public.work_order_lines where id = (v_result -> 'line' ->> 'id')::uuid;
-  if v_line.line_type is distinct from 'info' or v_line.punchable is not false then
-    raise exception 'Info line has the wrong shape: %', to_jsonb(v_line);
+  -- Info line: refused, and nothing is inserted.
+  if (select error from portal_diag_results where label = 'custom_info') is distinct from 'Informational lines cannot be requested from the portal.' then
+    raise exception 'Informational line request was not refused: %', (select error from portal_diag_results where label = 'custom_info');
+  end if;
+  if exists (select 1 from public.work_order_lines where external_id = 'portal_request:portal-diag:custom-info') then
+    raise exception 'A refused informational line request still inserted a line';
   end if;
 
   -- Menu lines keep their existing shape. (The inspection kind is not exercised:
