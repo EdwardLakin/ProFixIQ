@@ -63,23 +63,17 @@ create index if not exists portal_parts_quote_requests_shop_status_idx
 create index if not exists portal_parts_quote_requests_customer_idx
   on public.portal_parts_quote_requests (customer_id, created_at desc);
 
-drop trigger if exists trg_portal_parts_quote_requests_updated_at
-  on public.portal_parts_quote_requests;
 create trigger trg_portal_parts_quote_requests_updated_at
   before update on public.portal_parts_quote_requests
   for each row execute function public.set_updated_at();
 
 alter table public.portal_parts_quote_requests enable row level security;
 
-drop policy if exists portal_parts_quote_requests_customer_select
-  on public.portal_parts_quote_requests;
 create policy portal_parts_quote_requests_customer_select
   on public.portal_parts_quote_requests
   for select to authenticated
   using (public.profixiq_is_portal_customer_for(customer_id, shop_id));
 
-drop policy if exists portal_parts_quote_requests_staff_select
-  on public.portal_parts_quote_requests;
 create policy portal_parts_quote_requests_staff_select
   on public.portal_parts_quote_requests
   for select to authenticated
