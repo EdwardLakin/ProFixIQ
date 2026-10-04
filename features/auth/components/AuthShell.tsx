@@ -52,7 +52,7 @@ export default function AuthShell({
       <div className="pointer-events-none absolute -left-24 top-1/3 h-72 w-72 rounded-full bg-[color:color-mix(in_srgb,var(--accent-copper)_13%,transparent)] blur-3xl" />
       <div className="pointer-events-none absolute -right-28 bottom-10 h-80 w-80 rounded-full bg-[rgba(11,183,255,0.09)] blur-3xl" />
 
-      <header className="relative z-10 flex h-16 items-center justify-between border-b border-[color:var(--theme-border-soft)] bg-[color:color-mix(in_srgb,var(--theme-surface-overlay)_82%,transparent)] px-4 backdrop-blur-xl sm:px-7">
+      <header className="relative z-10 flex h-[calc(4rem+env(safe-area-inset-top,0px))] items-center pt-[env(safe-area-inset-top,0px)] justify-between border-b border-[color:var(--theme-border-soft)] bg-[color:color-mix(in_srgb,var(--theme-surface-overlay)_82%,transparent)] px-4 backdrop-blur-xl sm:px-7">
         <Link
           href={backHref}
           className="inline-flex items-center gap-3"
@@ -70,7 +70,7 @@ export default function AuthShell({
         <ThemeToggleButton />
       </header>
 
-      <main className="relative z-10 mx-auto grid min-h-[calc(100dvh-4rem)] w-full max-w-7xl items-center gap-8 px-4 py-8 lg:grid-cols-[minmax(0,1fr)_minmax(380px,520px)] lg:px-10 lg:py-12">
+      <main className="relative z-10 mx-auto grid min-h-[calc(100dvh-4rem-env(safe-area-inset-top,0px))] w-full max-w-7xl items-center gap-8 px-4 py-8 lg:grid-cols-[minmax(0,1fr)_minmax(380px,520px)] lg:px-10 lg:py-12">
         <section className="hidden max-w-2xl lg:block">
           <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-[color:color-mix(in_srgb,var(--accent-copper)_35%,var(--theme-border-soft))] bg-[color:color-mix(in_srgb,var(--accent-copper)_10%,transparent)] px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-[var(--accent-copper)]">
             <ShieldCheck className="h-4 w-4" aria-hidden />
