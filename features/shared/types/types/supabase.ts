@@ -15102,8 +15102,15 @@ export type Database = {
           {
             foreignKeyName: "portal_parts_quote_requests_part_request_id_fkey"
             columns: ["part_request_id"]
-            isOneToOne: true
+            isOneToOne: false
             referencedRelation: "part_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_parts_quote_requests_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
             referencedColumns: ["id"]
           },
           {
