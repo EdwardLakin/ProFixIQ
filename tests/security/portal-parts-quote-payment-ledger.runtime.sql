@@ -102,6 +102,12 @@ begin
 end;
 $$;
 
+-- The replayed baseline still carries the legacy work_orders_status_check, which
+-- production does not have (production's work_orders_status_chk allows
+-- 'invoiced'). finalize_invoice_version sets 'invoiced', so drop the stale
+-- legacy check for this proof only; the whole file is rolled back.
+alter table public.work_orders drop constraint if exists work_orders_status_check;
+
 do $ledger$
 declare
   v_shop constant uuid := 'b1000000-0000-4000-8000-0000000000b1';
