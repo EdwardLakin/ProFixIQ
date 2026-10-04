@@ -786,6 +786,20 @@ jobs:
             -f tests/security/vehicle-pickup-financial-lock.runtime.sql \
             2>&1 | tee vehicle-pickup-financial-lock-runtime.log
 
+      - name: Execute Portal parts quote approval anchoring integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/portal-parts-quote-approval-anchor.runtime.sql \
+            2>&1 | tee portal-parts-quote-approval-anchor-runtime.log
+
       - name: Upload replay diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -826,6 +840,7 @@ jobs:
             financial-read-rls-runtime.log
             existing-baseline-financial-rls-runtime.log
             work-order-parts-portal-policy-runtime.log
+            portal-parts-quote-approval-anchor-runtime.log
             payroll-period-pipeline-runtime.log
             agent-human-approval-proof-runtime.log
             p0-008-schema-reconciliation-runtime.log

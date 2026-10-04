@@ -1,17 +1,17 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-09-30T02:49:16.997Z
+Generated: 2026-10-04T05:36:10.910Z
 
 ## Summary
-- Total route count: **526**
-- Routes exporting GET: **192**
-- Routes exporting POST: **354**
+- Total route count: **538**
+- Routes exporting GET: **198**
+- Routes exporting POST: **362**
 - Routes exporting PUT: **12**
 - Routes exporting PATCH: **34**
 - Routes exporting DELETE: **15**
 - Routes with service-role pattern: **26**
-- Routes using requireShopScopedApiAccess: **213**
-- Routes with auth.getUser references: **121**
+- Routes using requireShopScopedApiAccess: **218**
+- Routes with auth.getUser references: **122**
 
 ## High-Risk Routes
 - `app/api/agent/requests/[id]/notify-discord/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
