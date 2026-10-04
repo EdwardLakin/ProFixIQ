@@ -19,6 +19,8 @@ type Props = {
   onCustomerChange: Dispatch<SetStateAction<MobileCustomer>>;
   onVehicleChange: Dispatch<SetStateAction<MobileVehicle>>;
   supabase: SupabaseClient<DB>; // kept for future lookups
+  /** View-only mode (e.g. technicians). Defaults to false to preserve existing callers. */
+  readOnly?: boolean;
 };
 
 export function MobileCustomerVehicleForm({
@@ -27,18 +29,25 @@ export function MobileCustomerVehicleForm({
   vehicle,
   onCustomerChange,
   onVehicleChange,
+  readOnly = false,
 }: Props): JSX.Element {
   const woLabel = wo?.custom_id ?? (wo ? wo.id.slice(0, 8) : null);
+
+  const readOnlyClass = readOnly
+    ? " cursor-default opacity-90 focus:ring-0 focus:border-[color:var(--theme-border-soft)]"
+    : "";
 
   const inputBase =
     "w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] " +
     "placeholder:text-[color:var(--theme-text-secondary)] focus:border-[var(--accent-copper-light)] " +
-    "focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]";
+    "focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]" +
+    readOnlyClass;
 
   const inputTight =
     "w-full rounded-md border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-2 py-2 text-sm text-[color:var(--theme-text-primary)] " +
     "placeholder:text-[color:var(--theme-text-secondary)] focus:border-[var(--accent-copper-light)] " +
-    "focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]";
+    "focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-light)]" +
+    readOnlyClass;
 
   const labelClass =
     "text-[11px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]";
@@ -52,7 +61,9 @@ export function MobileCustomerVehicleForm({
             Customer &amp; Vehicle
           </h2>
           <p className="text-[11px] text-[color:var(--theme-text-secondary)]">
-            Full customer and unit details for this work order.
+            {readOnly
+              ? "View only. Ask an advisor or manager to change these details."
+              : "Full customer and unit details for this work order."}
           </p>
         </div>
 
@@ -72,6 +83,8 @@ export function MobileCustomerVehicleForm({
             <div className="flex-1 space-y-1">
               <label className={labelClass}>First name</label>
               <input
+                readOnly={readOnly}
+                aria-readonly={readOnly || undefined}
                 className={inputBase}
                 value={customer.first_name ?? ""}
                 onChange={(e) =>
@@ -87,6 +100,8 @@ export function MobileCustomerVehicleForm({
             <div className="flex-1 space-y-1">
               <label className={labelClass}>Last name</label>
               <input
+                readOnly={readOnly}
+                aria-readonly={readOnly || undefined}
                 className={inputBase}
                 value={customer.last_name ?? ""}
                 onChange={(e) =>
@@ -103,6 +118,8 @@ export function MobileCustomerVehicleForm({
           <div className="space-y-1">
             <label className={labelClass}>Phone</label>
             <input
+              readOnly={readOnly}
+              aria-readonly={readOnly || undefined}
               className={inputBase}
               value={customer.phone ?? ""}
               onChange={(e) =>
@@ -118,6 +135,8 @@ export function MobileCustomerVehicleForm({
           <div className="space-y-1">
             <label className={labelClass}>Email</label>
             <input
+              readOnly={readOnly}
+              aria-readonly={readOnly || undefined}
               type="email"
               className={inputBase}
               value={customer.email ?? ""}
@@ -143,6 +162,8 @@ export function MobileCustomerVehicleForm({
             <div className="w-20 space-y-1">
               <label className={labelClass}>Year</label>
               <input
+                readOnly={readOnly}
+                aria-readonly={readOnly || undefined}
                 inputMode="numeric"
                 className={inputTight}
                 value={vehicle.year ?? ""}
@@ -159,6 +180,8 @@ export function MobileCustomerVehicleForm({
             <div className="flex-1 space-y-1">
               <label className={labelClass}>Make</label>
               <input
+                readOnly={readOnly}
+                aria-readonly={readOnly || undefined}
                 className={inputBase}
                 value={vehicle.make ?? ""}
                 onChange={(e) =>
@@ -174,6 +197,8 @@ export function MobileCustomerVehicleForm({
             <div className="flex-1 space-y-1">
               <label className={labelClass}>Model</label>
               <input
+                readOnly={readOnly}
+                aria-readonly={readOnly || undefined}
                 className={inputBase}
                 value={vehicle.model ?? ""}
                 onChange={(e) =>
@@ -192,6 +217,8 @@ export function MobileCustomerVehicleForm({
             <div className="flex-1 space-y-1">
               <label className={labelClass}>Unit #</label>
               <input
+                readOnly={readOnly}
+                aria-readonly={readOnly || undefined}
                 className={inputBase}
                 value={vehicle.unit_number ?? ""}
                 onChange={(e) =>
@@ -207,6 +234,8 @@ export function MobileCustomerVehicleForm({
             <div className="flex-1 space-y-1">
               <label className={labelClass}>Color</label>
               <input
+                readOnly={readOnly}
+                aria-readonly={readOnly || undefined}
                 className={inputBase}
                 value={vehicle.color ?? ""}
                 onChange={(e) =>
@@ -224,6 +253,8 @@ export function MobileCustomerVehicleForm({
           <div className="space-y-1">
             <label className={labelClass}>VIN</label>
             <input
+              readOnly={readOnly}
+              aria-readonly={readOnly || undefined}
               className={inputBase}
               value={vehicle.vin ?? ""}
               onChange={(e) =>
@@ -240,6 +271,8 @@ export function MobileCustomerVehicleForm({
           <div className="space-y-1">
             <label className={labelClass}>License plate</label>
             <input
+              readOnly={readOnly}
+              aria-readonly={readOnly || undefined}
               className={inputBase}
               value={vehicle.license_plate ?? ""}
               onChange={(e) =>
@@ -256,6 +289,8 @@ export function MobileCustomerVehicleForm({
           <div className="space-y-1">
             <label className={labelClass}>Odometer / mileage</label>
             <input
+              readOnly={readOnly}
+              aria-readonly={readOnly || undefined}
               inputMode="numeric"
               className={inputBase}
               value={vehicle.mileage ?? ""}
@@ -273,6 +308,8 @@ export function MobileCustomerVehicleForm({
           <div className="space-y-1">
             <label className={labelClass}>Engine hours</label>
             <input
+              readOnly={readOnly}
+              aria-readonly={readOnly || undefined}
               inputMode="numeric"
               className={inputBase}
               value={vehicle.engine_hours ?? ""}
@@ -290,6 +327,8 @@ export function MobileCustomerVehicleForm({
           <div className="space-y-1">
             <label className={labelClass}>Engine / Trim</label>
             <input
+              readOnly={readOnly}
+              aria-readonly={readOnly || undefined}
               className={inputBase}
               value={vehicle.engine ?? ""}
               onChange={(e) =>
@@ -306,6 +345,7 @@ export function MobileCustomerVehicleForm({
           <div className="space-y-1">
             <label className={labelClass}>Transmission</label>
             <select
+              disabled={readOnly}
               className={inputBase}
               value={vehicle.transmission ?? ""}
               onChange={(e) =>
@@ -328,6 +368,7 @@ export function MobileCustomerVehicleForm({
           <div className="space-y-1">
             <label className={labelClass}>Fuel type</label>
             <select
+              disabled={readOnly}
               className={inputBase}
               value={vehicle.fuel_type ?? ""}
               onChange={(e) =>
@@ -352,6 +393,7 @@ export function MobileCustomerVehicleForm({
           <div className="space-y-1">
             <label className={labelClass}>Drivetrain</label>
             <select
+              disabled={readOnly}
               className={inputBase}
               value={vehicle.drivetrain ?? ""}
               onChange={(e) =>
