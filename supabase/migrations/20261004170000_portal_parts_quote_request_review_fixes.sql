@@ -10,6 +10,13 @@ begin;
 --    so totals and the item snapshot are not readable through PostgREST before
 --    delivery. The portal itself reads through server routes.
 --
+-- 3. A parts-only quote creates no work order until the customer approves it.
+--    On approval the quote is anchored to a new work order, an approved job
+--    line and a new part request whose items copy the frozen snapshot (the
+--    canonical PO / receiving / handoff path requires that anchor). The
+--    portal row is re-pointed to the new request and the unanchored request is
+--    cancelled.
+--
 -- decide_portal_parts_quote_request_atomic is redefined with the same
 -- signature, owner and grants.
 
@@ -32,6 +39,12 @@ declare
   v_customer public.customers%rowtype;
   v_request public.portal_parts_quote_requests%rowtype;
   v_changed boolean := false;
+  v_vehicle public.vehicles%rowtype;
+  v_old_part_request_id uuid;
+  v_work_order_id uuid;
+  v_line_id uuid;
+  v_new_request_id uuid;
+  v_title text;
 begin
   if v_decision not in ('approve', 'decline') then
     raise exception using errcode = 'P0001', message = 'Decision must be approve or decline.';
@@ -139,9 +152,79 @@ begin
   end if;
 
   if v_decision = 'approve' then
+    v_old_part_request_id := v_request.part_request_id;
+    v_title := left(v_request.description, 200);
+
+    select * into v_vehicle
+    from public.vehicles
+    where id = v_request.vehicle_id
+      and customer_id = p_customer_id
+      and shop_id = v_request.shop_id;
+    if not found then
+      raise exception using errcode = 'P0001', message = 'Vehicle does not belong to this customer and shop.';
+    end if;
+
+    insert into public.work_orders (
+      shop_id, customer_id, vehicle_id, customer_name, status, approval_state,
+      external_id, notes
+    ) values (
+      v_request.shop_id, p_customer_id, v_request.vehicle_id,
+      nullif(trim(concat_ws(' ', v_customer.first_name, v_customer.last_name)), ''),
+      'new', 'approved', 'portal_parts_quote:' || v_request.id::text,
+      'Parts order approved by customer in the portal: ' || v_title
+    ) returning id into v_work_order_id;
+
+    insert into public.work_order_lines (
+      work_order_id, shop_id, vehicle_id, description, complaint, notes,
+      job_type, line_type, status, line_status, approval_state, external_id
+    ) values (
+      v_work_order_id, v_request.shop_id, v_request.vehicle_id,
+      'Parts order: ' || v_title, v_title, v_request.notes,
+      'repair', 'job', 'awaiting', 'authorized', 'approved',
+      'portal_parts_quote:' || v_request.id::text
+    ) returning id into v_line_id;
+
+    insert into public.part_requests (
+      shop_id, work_order_id, job_id, requested_by, status, notes, created_at
+    ) values (
+      v_request.shop_id, v_work_order_id, v_line_id::text, p_actor_user_id, 'requested',
+      'Approved customer portal parts quote', v_now
+    ) returning id into v_new_request_id;
+
+    insert into public.part_request_items (
+      request_id, shop_id, work_order_id, work_order_line_id, part_id, vendor_id,
+      requested_part_number, requested_manufacturer, description,
+      qty, qty_requested, qty_approved, unit_cost, unit_price, quoted_price,
+      status, approved
+    )
+    select
+      v_new_request_id, v_request.shop_id, v_work_order_id, v_line_id, old.part_id, old.vendor_id,
+      old.requested_part_number, old.requested_manufacturer,
+      coalesce(old.description, snap.description),
+      snap.qty, snap.qty, snap.qty, old.unit_cost, snap.unit_price, snap.unit_price,
+      'approved', true
+    from (
+      select
+        (entry ->> 'id')::uuid as id,
+        entry ->> 'description' as description,
+        (entry ->> 'qty')::numeric as qty,
+        (entry ->> 'unit_price')::numeric as unit_price
+      from jsonb_array_elements(v_request.priced_items) entry
+    ) snap
+    join public.part_request_items old
+      on old.id = snap.id and old.request_id = v_old_part_request_id
+    where snap.qty > 0;
+
     update public.portal_parts_quote_requests
-    set status = 'approved', approved_at = v_now, approval_choice = v_choice
+    set status = 'approved', approved_at = v_now, approval_choice = v_choice,
+        part_request_id = v_new_request_id
     where id = v_request.id;
+
+    update public.part_requests
+    set status = 'cancelled'
+    where id = v_old_part_request_id and shop_id = v_request.shop_id;
+
+    v_request.part_request_id := v_new_request_id;
   else
     update public.portal_parts_quote_requests
     set status = 'declined', declined_at = v_now
@@ -157,6 +240,7 @@ begin
     p_actor_user_id, 'portal_parts_quote_' || v_decision, 'portal_parts_quote_requests', v_request.id,
     jsonb_build_object(
       'part_request_id', v_request.part_request_id,
+      'work_order_id', v_work_order_id,
       'choice', case when v_decision = 'approve' then v_choice else null end
     )
   );
@@ -166,6 +250,7 @@ begin
     'requestId', v_request.id,
     'status', case when v_decision = 'approve' then 'approved' else 'declined' end,
     'choice', case when v_decision = 'approve' then v_choice else null end,
+    'workOrderId', v_work_order_id,
     'idempotent', false
   );
 end;

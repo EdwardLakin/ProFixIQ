@@ -55,10 +55,24 @@ describe("review fix migration", () => {
     const after = decideDefinition(fixSql);
     const start = after.indexOf("  -- The customer reviewed the frozen priced_items snapshot.".replace("priced_items ", ""));
     expect(start).toBeGreaterThan(0);
-    const blockEnd = after.indexOf("  if v_decision = 'approve' then\n    update public.portal_parts_quote_requests");
+    const blockEnd = after.indexOf("  if v_decision = 'approve' then\n    v_old_part_request_id");
     const removed = after.slice(start, blockEnd);
-    const restored = (after.slice(0, start) + after.slice(blockEnd)).replace("  v_changed boolean := false;\n", "");
+    // Undo the approval-time anchoring additions (covered by their own tests).
+    const anchorStart = after.indexOf("    v_old_part_request_id := v_request.part_request_id;");
+    const anchorEnd = after.indexOf("    v_request.part_request_id := v_new_request_id;\n");
+    expect(anchorStart).toBeGreaterThan(0);
+    expect(anchorEnd).toBeGreaterThan(anchorStart);
+    const withoutAnchor =
+      after.slice(0, anchorStart) +
+      "    update public.portal_parts_quote_requests\n    set status = 'approved', approved_at = v_now, approval_choice = v_choice\n    where id = v_request.id;\n" +
+      after.slice(anchorEnd + "    v_request.part_request_id := v_new_request_id;\n".length);
+    const restored = (withoutAnchor.slice(0, start) + withoutAnchor.slice(withoutAnchor.indexOf("  if v_decision = 'approve' then\n    update public.portal_parts_quote_requests")))
+      .replace("  v_changed boolean := false;\n", "")
+      .replace(/  v_vehicle public\.vehicles%rowtype;\n[\s\S]*?  v_title text;\n/, "")
+      .replace("      'work_order_id', v_work_order_id,\n", "")
+      .replace("    'workOrderId', v_work_order_id,\n", "");
     expect(removed).toContain("quote_changed");
+    expect(blockEnd).toBeGreaterThan(start);
     expect(normalize(restored)).toBe(normalize(before));
   });
 
@@ -189,5 +203,31 @@ describe("payments, client and staff workbench wiring", () => {
     const queue = read("app/parts/requests/page.tsx");
     expect(queue).toContain("const requestId = bucket.models[0]?.request.id;");
     expect(queue).toContain("/parts/requests/${encodeURIComponent(requestId)}");
+  });
+});
+
+describe("work order is created only on approval", () => {
+  const decide = normalize(decideDefinition(fixSql));
+
+  it("anchors the approved quote to a work order, approved line and new request", () => {
+    expect(decide).toContain("insert into public.work_orders");
+    expect(decide).toContain("insert into public.work_order_lines");
+    expect(decide).toContain("'repair', 'job', 'awaiting', 'authorized', 'approved'");
+    expect(decide).toContain("insert into public.part_requests");
+    expect(decide).toContain("part_request_id = v_new_request_id");
+    expect(decide).toContain("set status = 'cancelled'");
+  });
+
+  it("never creates a work order on request, pricing, send or decline", () => {
+    expect(flowSql).not.toContain("insert into public.work_orders");
+    const approveBranch = decide.slice(decide.indexOf("if v_decision = 'approve' then v_old_part_request_id"));
+    expect(approveBranch.indexOf("insert into public.work_orders")).toBeGreaterThan(-1);
+    expect(decide.split("insert into public.work_orders").length - 1).toBe(1);
+  });
+
+  it("runs the anchoring runtime proof in clean replay", () => {
+    expect(read(".github/workflows/supabase-clean-replay-audit.yml")).toContain(
+      "tests/security/portal-parts-quote-approval-anchor.runtime.sql",
+    );
   });
 });
