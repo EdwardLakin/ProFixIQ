@@ -116,5 +116,27 @@ export async function recordPortalPartsQuoteCheckoutSession(args: {
       requestId,
     });
   }
+
+  // Write the payment to the shop's payments ledger. This also runs for an
+  // idempotent replay so a previous attempt that recorded the payment but
+  // failed before the ledger write is completed on retry.
+  const feeMetadata = Number.parseInt(text(session.metadata?.platform_fee_cents), 10);
+  const { data: ledger, error: ledgerError } = await (supabase as RpcClient).rpc(
+    "record_portal_parts_quote_request_ledger_payment",
+    {
+      p_request_id: requestId,
+      p_platform_fee_cents: Number.isFinite(feeMetadata) && feeMetadata > 0 ? feeMetadata : 0,
+      p_at: new Date().toISOString(),
+    },
+  );
+  if (ledgerError) throw new Error(ledgerError.message);
+  const ledgerResult = (ledger ?? {}) as Record<string, unknown>;
+  if (ledgerResult.ok !== true) {
+    console.error("[portal/parts-quote-payment] payment ledger row was not written", {
+      sessionId: session.id,
+      error: ledgerResult.error ?? "unknown",
+    });
+    throw new Error(`Parts quote payment ledger write failed: ${String(ledgerResult.error ?? "unknown")}`);
+  }
   return { recorded: true };
 }

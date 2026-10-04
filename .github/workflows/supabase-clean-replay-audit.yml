@@ -828,6 +828,20 @@ jobs:
             -f tests/security/portal-line-rpc-hardening.runtime.sql \
             2>&1 | tee portal-line-rpc-hardening-runtime.log
 
+      - name: Execute Portal parts quote payment ledger integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/portal-parts-quote-payment-ledger.runtime.sql \
+            2>&1 | tee portal-parts-quote-payment-ledger-runtime.log
+
       - name: Upload replay diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -871,6 +885,7 @@ jobs:
             existing-baseline-financial-rls-runtime.log
             work-order-parts-portal-policy-runtime.log
             portal-parts-quote-approval-anchor-runtime.log
+            portal-parts-quote-payment-ledger-runtime.log
             payroll-period-pipeline-runtime.log
             agent-human-approval-proof-runtime.log
             p0-008-schema-reconciliation-runtime.log

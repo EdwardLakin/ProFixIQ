@@ -28,7 +28,7 @@ export async function GET() {
   const { data: rows, error } = await supabase
     .from("portal_parts_quote_requests")
     .select(
-      "id, status, description, notes, qty, part_request_id, customer_id, vehicle_id, total, currency, approval_choice, paid_at, created_at, sent_at, approved_at",
+      "id, status, description, notes, qty, part_request_id, customer_id, vehicle_id, total, currency, approval_choice, paid_at, work_order_id, payment_attention, prepaid_applied_cents, created_at, sent_at, approved_at",
     )
     .eq("shop_id", shopId)
     .in("status", ["requested", "quoted", "sent", "approved"])
@@ -87,6 +87,9 @@ export async function GET() {
       currency: row.currency,
       approvalChoice: row.approval_choice,
       paid: Boolean(row.paid_at),
+      workOrderId: row.work_order_id,
+      paymentAttention: row.payment_attention,
+      prepaidApplied: Number(row.prepaid_applied_cents ?? 0) / 100,
       createdAt: row.created_at,
       sentAt: row.sent_at,
       approvedAt: row.approved_at,
