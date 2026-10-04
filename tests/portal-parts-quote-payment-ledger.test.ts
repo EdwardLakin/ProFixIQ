@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 const read = (path: string) => readFileSync(path, "utf8").replaceAll("\r", "");
 
-const migration = read("supabase/migrations/20261004210000_portal_parts_quote_payment_ledger.sql");
+const migration = read("supabase/migrations/20261004222440_portal_parts_quote_payment_ledger.sql");
 const previousFinalize = read("supabase/migrations/20260803174543_fix_invoice_financial_integrity.sql");
 const previousDecide = read("supabase/migrations/20261004164130_portal_parts_quote_request_review_fixes.sql");
 
