@@ -6,6 +6,9 @@ import type { CustomerPartsRequestRow } from "@/features/parts/lib/requests/cust
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const SELECT_COLUMNS =
+  "id, status, description, notes, qty, part_request_id, customer_id, vehicle_id, total, currency, approval_choice, paid_at, work_order_id, payment_attention, prepaid_applied_cents, refunded_cents, created_at, sent_at, approved_at";
+
 const RESPONSE_HEADERS = { "Cache-Control": "private, no-store" } as const;
 
 function customerName(row: {
@@ -25,15 +28,29 @@ export async function GET() {
   const shopId = access.profile.shop_id;
   const { supabase } = access;
 
-  const { data: rows, error } = await supabase
-    .from("portal_parts_quote_requests")
-    .select(
-      "id, status, description, notes, qty, part_request_id, customer_id, vehicle_id, total, currency, approval_choice, paid_at, created_at, sent_at, approved_at",
-    )
-    .eq("shop_id", shopId)
-    .in("status", ["requested", "quoted", "sent", "approved"])
-    .order("created_at", { ascending: false })
-    .limit(100);
+  const [recentResult, attentionResult] = await Promise.all([
+    supabase
+      .from("portal_parts_quote_requests")
+      .select(SELECT_COLUMNS)
+      .eq("shop_id", shopId)
+      .in("status", ["requested", "quoted", "sent", "approved"])
+      .order("created_at", { ascending: false })
+      .limit(100),
+    // Payment problems must stay visible however old the request is.
+    supabase
+      .from("portal_parts_quote_requests")
+      .select(SELECT_COLUMNS)
+      .eq("shop_id", shopId)
+      .not("payment_attention", "is", null)
+      .order("payment_attention_at", { ascending: false })
+      .limit(100),
+  ]);
+  const error = recentResult.error ?? attentionResult.error;
+  const merged = new Map<string, NonNullable<typeof recentResult.data>[number]>();
+  for (const row of [...(attentionResult.data ?? []), ...(recentResult.data ?? [])]) {
+    merged.set(row.id, row);
+  }
+  const rows = [...merged.values()];
 
   if (error) {
     console.error("[parts/customer-requests] load failed", { shopId, message: error.message });
@@ -87,6 +104,10 @@ export async function GET() {
       currency: row.currency,
       approvalChoice: row.approval_choice,
       paid: Boolean(row.paid_at),
+      workOrderId: row.work_order_id,
+      paymentAttention: row.payment_attention,
+      prepaidApplied:
+        Math.max(Number(row.prepaid_applied_cents ?? 0) - Number(row.refunded_cents ?? 0), 0) / 100,
       createdAt: row.created_at,
       sentAt: row.sent_at,
       approvedAt: row.approved_at,

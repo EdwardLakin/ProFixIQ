@@ -15002,16 +15002,33 @@ export type Database = {
           customer_id: string
           declined_at: string | null
           description: string
+          dispute_amount_cents: number
+          dispute_event_at: string | null
+          dispute_status: string | null
+          disputed_at: string | null
           email_sent_at: string | null
           id: string
           notes: string | null
           operation_key: string
           paid_at: string | null
           part_request_id: string | null
+          payment_attention: string | null
+          payment_attention_at: string | null
+          payment_ledger_issue: boolean
+          payments_ledger_id: string | null
+          prepaid_applied_cents: number
+          prepaid_applied_version_id: string | null
+          prepaid_dispute_lost_posted: boolean
+          prepaid_hold_posted_cents: number
+          prepaid_leftover: boolean
+          prepaid_refund_baseline_cents: number
+          prepaid_refund_posted_cents: number
           priced_items: Json
           pricing_checked_at: string | null
           qty: number
           quoted_at: string | null
+          refunded_at: string | null
+          refunded_cents: number
           send_claimed_at: string | null
           sent_at: string | null
           shop_id: string
@@ -15025,6 +15042,7 @@ export type Database = {
           total: number | null
           updated_at: string
           vehicle_id: string | null
+          work_order_id: string | null
         }
         Insert: {
           amount_paid_cents?: number | null
@@ -15036,16 +15054,33 @@ export type Database = {
           customer_id: string
           declined_at?: string | null
           description: string
+          dispute_amount_cents?: number
+          dispute_event_at?: string | null
+          dispute_status?: string | null
+          disputed_at?: string | null
           email_sent_at?: string | null
           id?: string
           notes?: string | null
           operation_key: string
           paid_at?: string | null
           part_request_id?: string | null
+          payment_attention?: string | null
+          payment_attention_at?: string | null
+          payment_ledger_issue?: boolean
+          payments_ledger_id?: string | null
+          prepaid_applied_cents?: number
+          prepaid_applied_version_id?: string | null
+          prepaid_dispute_lost_posted?: boolean
+          prepaid_hold_posted_cents?: number
+          prepaid_leftover?: boolean
+          prepaid_refund_baseline_cents?: number
+          prepaid_refund_posted_cents?: number
           priced_items?: Json
           pricing_checked_at?: string | null
           qty?: number
           quoted_at?: string | null
+          refunded_at?: string | null
+          refunded_cents?: number
           send_claimed_at?: string | null
           sent_at?: string | null
           shop_id: string
@@ -15059,6 +15094,7 @@ export type Database = {
           total?: number | null
           updated_at?: string
           vehicle_id?: string | null
+          work_order_id?: string | null
         }
         Update: {
           amount_paid_cents?: number | null
@@ -15070,16 +15106,33 @@ export type Database = {
           customer_id?: string
           declined_at?: string | null
           description?: string
+          dispute_amount_cents?: number
+          dispute_event_at?: string | null
+          dispute_status?: string | null
+          disputed_at?: string | null
           email_sent_at?: string | null
           id?: string
           notes?: string | null
           operation_key?: string
           paid_at?: string | null
           part_request_id?: string | null
+          payment_attention?: string | null
+          payment_attention_at?: string | null
+          payment_ledger_issue?: boolean
+          payments_ledger_id?: string | null
+          prepaid_applied_cents?: number
+          prepaid_applied_version_id?: string | null
+          prepaid_dispute_lost_posted?: boolean
+          prepaid_hold_posted_cents?: number
+          prepaid_leftover?: boolean
+          prepaid_refund_baseline_cents?: number
+          prepaid_refund_posted_cents?: number
           priced_items?: Json
           pricing_checked_at?: string | null
           qty?: number
           quoted_at?: string | null
+          refunded_at?: string | null
+          refunded_cents?: number
           send_claimed_at?: string | null
           sent_at?: string | null
           shop_id?: string
@@ -15093,6 +15146,7 @@ export type Database = {
           total?: number | null
           updated_at?: string
           vehicle_id?: string | null
+          work_order_id?: string | null
         }
         Relationships: [
           {
@@ -15107,6 +15161,20 @@ export type Database = {
             columns: ["part_request_id"]
             isOneToOne: false
             referencedRelation: "part_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_parts_quote_requests_payments_ledger_id_fkey"
+            columns: ["payments_ledger_id"]
+            isOneToOne: false
+            referencedRelation: "payments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_parts_quote_requests_prepaid_applied_version_id_fkey"
+            columns: ["prepaid_applied_version_id"]
+            isOneToOne: false
+            referencedRelation: "invoice_versions"
             referencedColumns: ["id"]
           },
           {
@@ -15128,6 +15196,41 @@ export type Database = {
             columns: ["vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_parts_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "portal_parts_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "portal_parts_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "portal_parts_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "portal_parts_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
         ]
@@ -28828,6 +28931,14 @@ export type Database = {
         }
         Returns: Json
       }
+      apply_portal_parts_quote_prepayments: {
+        Args: {
+          p_invoice_version_id: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
       apply_portal_quote_decision_atomic: {
         Args: {
           p_at?: string
@@ -31142,6 +31253,14 @@ export type Database = {
             Args: { p_plan: string; p_stripe_subscription_status: string }
             Returns: number
           }
+      portal_parts_quote_reconcile_invoice: {
+        Args: { p_request_id: string }
+        Returns: Json
+      }
+      portal_parts_quote_refresh: {
+        Args: { p_request_id: string }
+        Returns: undefined
+      }
       portal_request_start_atomic: {
         Args: {
           p_customer_id: string
@@ -31338,6 +31457,26 @@ export type Database = {
       record_portal_enrollment_scan: {
         Args: { p_slug: string }
         Returns: boolean
+      }
+      record_portal_parts_quote_payment_event: {
+        Args: {
+          p_amount_cents: number
+          p_at?: string
+          p_connected_account_id?: string
+          p_event_kind: string
+          p_payment_intent_id: string
+          p_processor_event_id: string
+          p_request_id?: string
+        }
+        Returns: Json
+      }
+      record_portal_parts_quote_request_ledger_payment: {
+        Args: {
+          p_at?: string
+          p_platform_fee_cents?: number
+          p_request_id: string
+        }
+        Returns: Json
       }
       record_portal_parts_quote_request_payment: {
         Args: {

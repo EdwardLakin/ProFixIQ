@@ -7,6 +7,7 @@ import { setCustomerRequestPartIds } from "@/features/parts/lib/requests/custome
 import {
   customerRequestStatusLabel,
   hiddenPartRequestIds,
+  paymentAttentionLabel,
   type CustomerPartsRequestRow,
 } from "@/features/parts/lib/requests/customer-requests";
 
@@ -94,6 +95,7 @@ export default function CustomerPartsQuoteRequestsPanel() {
       <ul className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-3">
         {(requests ?? []).map((request) => {
           const preApproval = request.status !== "approved";
+          const attention = paymentAttentionLabel(request.paymentAttention);
           return (
             <li
               key={request.id}
@@ -118,6 +120,19 @@ export default function CustomerPartsQuoteRequestsPanel() {
               {request.total != null ? (
                 <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
                   Quote total {money(request.total, request.currency)}
+                </div>
+              ) : null}
+              {attention ? (
+                <div
+                  role="alert"
+                  className="mt-2 rounded-md border border-red-400/60 bg-red-500/10 px-2 py-1 text-xs font-semibold text-red-200"
+                >
+                  {attention}
+                </div>
+              ) : null}
+              {request.prepaidApplied > 0 ? (
+                <div className="mt-1 text-xs text-emerald-300">
+                  Paid by the customer — {money(request.prepaidApplied, request.currency)} credited to the invoice.
                 </div>
               ) : null}
               {request.status === "approved" && request.approvalChoice === "book_install" ? (

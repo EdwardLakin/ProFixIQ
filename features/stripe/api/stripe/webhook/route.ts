@@ -30,6 +30,7 @@ import {
   isPortalPartsQuoteSession,
   recordPortalPartsQuoteCheckoutSession,
 } from "@/features/portal/server/recordPortalPartsQuotePayment";
+import { recordPortalPartsQuoteStripeEvent } from "@/features/portal/server/recordPortalPartsQuoteStripeEvent";
 
 type DB = Database;
 type AdminClient = ReturnType<typeof createAdminSupabase>;
@@ -559,6 +560,24 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
     case "charge.refunded": {
       const charge = event.data.object as Stripe.Charge;
       const intentId = toStripeId(charge.payment_intent, "pi_");
+      // A refund of a customer parts quote payment is recorded on the quote
+      // (and mirrored on its invoice when it was credited to one).
+      if (
+        (
+          await recordPortalPartsQuoteStripeEvent({
+            supabase,
+            paymentIntentId: intentId,
+            eventKind: "refund_succeeded",
+            amountCents: charge.amount_refunded,
+            eventId: event.id,
+            occurredAtSeconds: event.created,
+            requestId: charge.metadata?.parts_quote_request_id ?? null,
+            connectedAccountId: event.account ?? null,
+          })
+        ).handled
+      ) {
+        return;
+      }
       const intent = intentId
         ? await stripe.paymentIntents.retrieve(intentId, options)
         : null;
@@ -585,6 +604,27 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
       if (!chargeId) return;
       const charge = await stripe.charges.retrieve(chargeId, options);
       const intentId = toStripeId(charge.payment_intent, "pi_");
+      if (
+        (
+          await recordPortalPartsQuoteStripeEvent({
+            supabase,
+            paymentIntentId: intentId,
+            eventKind:
+              event.type === "charge.dispute.created"
+                ? "dispute_opened"
+                : dispute.status === "won"
+                  ? "dispute_won"
+                  : "dispute_lost",
+            amountCents: dispute.amount,
+            eventId: event.id,
+            occurredAtSeconds: event.created,
+            requestId: charge.metadata?.parts_quote_request_id ?? null,
+            connectedAccountId: event.account ?? null,
+          })
+        ).handled
+      ) {
+        return;
+      }
       const intent = intentId
         ? await stripe.paymentIntents.retrieve(intentId, options)
         : null;

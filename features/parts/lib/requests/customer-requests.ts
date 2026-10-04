@@ -19,6 +19,11 @@ export type CustomerPartsRequestRow = {
   currency: string;
   approvalChoice: string | null;
   paid: boolean;
+  workOrderId: string | null;
+  /** Staff alert raised by a refund, dispute or an unapplied prepayment. */
+  paymentAttention: string | null;
+  /** Amount of the customer's payment credited to an invoice, in dollars. */
+  prepaidApplied: number;
   createdAt: string;
   sentAt: string | null;
   approvedAt: string | null;
@@ -65,4 +70,24 @@ export function hiddenPartRequestIds(
     }
   }
   return ids;
+}
+
+/** Plain-language staff alert for a parts quote payment that needs attention. */
+export function paymentAttentionLabel(attention: string | null): string | null {
+  switch (attention) {
+    case "refunded":
+      return "Customer payment was refunded";
+    case "partially_refunded":
+      return "Customer payment was partly refunded";
+    case "dispute_open":
+      return "Payment dispute open";
+    case "dispute_lost":
+      return "Payment dispute lost";
+    case "credit_unapplied":
+      return "Prepaid amount is more than the invoice — review the leftover credit";
+    case "ledger_mismatch":
+      return "Payment could not be matched to the invoice — review the ledger";
+    default:
+      return null;
+  }
 }
