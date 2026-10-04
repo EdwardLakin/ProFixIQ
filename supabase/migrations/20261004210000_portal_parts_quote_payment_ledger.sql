@@ -5,18 +5,21 @@ begin;
 --
 -- 1. portal_parts_quote_requests (feature-owned table) gains the work order
 --    created at approval, a link to its payments ledger row, refund/dispute
---    state, a staff-alert flag, and what was applied to an invoice.
+--    state and what has been mirrored to an invoice, and a staff-alert flag.
 -- 2. decide_portal_parts_quote_request_atomic (feature-owned) records the
 --    work order it creates on the quote.
--- 3. A paid quote is written to the existing payments ledger exactly once.
+-- 3. A paid quote is written to the existing payments ledger exactly once
+--    (including a backfill of any quote already paid), and credited to the work
+--    order's issued invoice when one already exists.
 -- 4. finalize_invoice_version (existing, protected) gets ONE added guarded
 --    step at its end: apply this work order's paid parts-quote prepayments to
 --    the new invoice version through post_payment_event, so the customer is not
 --    billed the same parts twice. It does nothing when there are none and can
 --    never block invoicing.
--- 5. Stripe refunds and disputes on a parts quote charge update the quote and
---    its ledger row, raise a staff alert, and (when the payment was applied to
---    an invoice) post the matching event through post_payment_event.
+-- 5. Refunds and disputes are recorded as STATE on the quote (order-safe and
+--    idempotent) and the invoice mirror is derived from that state by one
+--    reconcile function that runs on every event, so a retry repairs a missing
+--    mirror and a reversal can never exceed the credited amount.
 --
 -- CREATE OR REPLACE keeps each function's owner and grants.
 
@@ -27,10 +30,18 @@ alter table public.portal_parts_quote_requests
   add column if not exists refunded_at timestamptz,
   add column if not exists dispute_status text,
   add column if not exists disputed_at timestamptz,
+  add column if not exists dispute_amount_cents integer not null default 0,
+  add column if not exists dispute_event_at timestamptz,
   add column if not exists payment_attention text,
   add column if not exists payment_attention_at timestamptz,
+  add column if not exists payment_ledger_issue boolean not null default false,
   add column if not exists prepaid_applied_cents integer not null default 0,
-  add column if not exists prepaid_applied_version_id uuid references public.invoice_versions(id) on delete set null;
+  add column if not exists prepaid_applied_version_id uuid references public.invoice_versions(id) on delete set null,
+  add column if not exists prepaid_refund_baseline_cents integer not null default 0,
+  add column if not exists prepaid_refund_posted_cents integer not null default 0,
+  add column if not exists prepaid_hold_posted_cents integer not null default 0,
+  add column if not exists prepaid_dispute_lost_posted boolean not null default false,
+  add column if not exists prepaid_leftover boolean not null default false;
 
 alter table public.portal_parts_quote_requests
   add constraint portal_parts_quote_requests_dispute_status_check
@@ -40,10 +51,12 @@ alter table public.portal_parts_quote_requests
       'refunded', 'partially_refunded', 'dispute_open', 'dispute_lost',
       'credit_unapplied', 'ledger_mismatch'
     )),
-  add constraint portal_parts_quote_requests_refunded_cents_check
-    check (refunded_cents >= 0),
-  add constraint portal_parts_quote_requests_prepaid_applied_cents_check
-    check (prepaid_applied_cents >= 0);
+  add constraint portal_parts_quote_requests_payment_state_check
+    check (
+      refunded_cents >= 0 and dispute_amount_cents >= 0
+      and prepaid_applied_cents >= 0 and prepaid_refund_baseline_cents >= 0
+      and prepaid_refund_posted_cents >= 0 and prepaid_hold_posted_cents >= 0
+    );
 
 create index if not exists portal_parts_quote_requests_work_order_idx
   on public.portal_parts_quote_requests (work_order_id);
@@ -51,12 +64,16 @@ create index if not exists portal_parts_quote_requests_payments_ledger_idx
   on public.portal_parts_quote_requests (payments_ledger_id);
 create index if not exists portal_parts_quote_requests_applied_version_idx
   on public.portal_parts_quote_requests (prepaid_applied_version_id);
+create index if not exists portal_parts_quote_requests_attention_idx
+  on public.portal_parts_quote_requests (shop_id, payment_attention_at desc)
+  where payment_attention is not null;
 create unique index if not exists portal_parts_quote_requests_payment_intent_unique
   on public.portal_parts_quote_requests (stripe_payment_intent_id)
   where stripe_payment_intent_id is not null;
 
--- Deterministic, observable backfill: quotes approved before work_order_id was
--- stored are matched through the external id the approval stamped on the order.
+-- Deterministic, observable backfills.
+-- (a) Quotes approved before work_order_id was stored are matched through the
+--     external id the approval stamped on the work order.
 update public.portal_parts_quote_requests q
 set work_order_id = wo.id
 from public.work_orders wo
@@ -64,6 +81,35 @@ where q.work_order_id is null
   and q.status = 'approved'
   and wo.shop_id = q.shop_id
   and wo.external_id = 'portal_parts_quote:' || q.id::text;
+
+-- (b) Quotes already paid before the payments ledger write existed.
+insert into public.payments (
+  shop_id, work_order_id, customer_id, stripe_session_id,
+  stripe_checkout_session_id, stripe_payment_intent_id,
+  stripe_connected_account_id, amount_cents, amount, currency, status,
+  paid_at, description, platform_fee_cents, metadata
+)
+select
+  q.shop_id, q.work_order_id, q.customer_id, q.stripe_checkout_session_id,
+  q.stripe_checkout_session_id, q.stripe_payment_intent_id,
+  q.stripe_connected_account_id, q.amount_paid_cents,
+  round(q.amount_paid_cents / 100.0, 2), q.currency, 'paid', q.paid_at,
+  left('Parts quote: ' || q.description, 500), 0,
+  jsonb_build_object('purpose', 'portal_parts_quote_payment', 'parts_quote_request_id', q.id)
+from public.portal_parts_quote_requests q
+where q.paid_at is not null
+  and q.stripe_checkout_session_id is not null
+  and coalesce(q.amount_paid_cents, 0) > 0
+  and q.payments_ledger_id is null
+on conflict do nothing;
+
+update public.portal_parts_quote_requests q
+set payments_ledger_id = p.id
+from public.payments p
+where q.payments_ledger_id is null
+  and q.paid_at is not null
+  and p.shop_id = q.shop_id
+  and p.stripe_session_id = q.stripe_checkout_session_id;
 
 create or replace function public.decide_portal_parts_quote_request_atomic(
   p_request_id uuid,
@@ -302,7 +348,194 @@ end;
 $$;
 
 -- ---------------------------------------------------------------------------
--- Ledger: one payments row per paid quote (idempotent).
+-- Derived staff alert, recomputed from state (never "sticky").
+-- ---------------------------------------------------------------------------
+-- Recomputes the staff alert and keeps the payments ledger row in step with
+-- the quote. The ledger status check has no partial-refund or dispute value,
+-- so those are carried in metadata and the row is 'refunded' only when the
+-- money is gone (full refund or a lost dispute).
+create or replace function public.portal_parts_quote_refresh(p_request_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_quote public.portal_parts_quote_requests%rowtype;
+  v_attention text;
+begin
+  select * into v_quote from public.portal_parts_quote_requests where id = p_request_id;
+  if not found then
+    return;
+  end if;
+  v_attention := case
+    when v_quote.payment_ledger_issue then 'ledger_mismatch'
+    when v_quote.dispute_status = 'open' then 'dispute_open'
+    when v_quote.dispute_status = 'lost' then 'dispute_lost'
+    when coalesce(v_quote.amount_paid_cents, 0) > 0
+      and v_quote.refunded_cents >= v_quote.amount_paid_cents then 'refunded'
+    when v_quote.refunded_cents > 0 then 'partially_refunded'
+    when v_quote.prepaid_leftover then 'credit_unapplied'
+    else null
+  end;
+  update public.portal_parts_quote_requests
+  set payment_attention = v_attention,
+      payment_attention_at = case
+        when payment_attention is distinct from v_attention then now()
+        else payment_attention_at
+      end
+  where id = v_quote.id;
+
+  if v_quote.payments_ledger_id is not null then
+    update public.payments p
+    set status = case
+          when v_quote.dispute_status = 'lost'
+            or (coalesce(v_quote.amount_paid_cents, 0) > 0 and v_quote.refunded_cents >= v_quote.amount_paid_cents)
+            then 'refunded'
+          else 'paid'
+        end,
+        metadata = p.metadata || jsonb_build_object(
+          'refunded_cents', v_quote.refunded_cents,
+          'dispute_status', v_quote.dispute_status,
+          'dispute_amount_cents', v_quote.dispute_amount_cents
+        )
+    where p.id = v_quote.payments_ledger_id;
+  end if;
+end;
+$$;
+
+revoke all on function public.portal_parts_quote_refresh(uuid)
+  from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Mirrors the quote's refund/dispute STATE onto the invoice version the
+-- prepayment was credited to, posting only the missing delta through
+-- post_payment_event. Idempotent: it runs on every event, so a retry repairs a
+-- mirror that failed earlier. Reversals are capped at the credited amount.
+-- Transient failures re-raise so the caller retries; anything else is
+-- recorded as a ledger issue and surfaced to staff.
+-- ---------------------------------------------------------------------------
+create or replace function public.portal_parts_quote_reconcile_invoice(p_request_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_quote public.portal_parts_quote_requests%rowtype;
+  v_version public.invoice_versions%rowtype;
+  v_desired_refund integer;
+  v_desired_hold integer;
+  v_key text;
+begin
+  select * into v_quote
+  from public.portal_parts_quote_requests
+  where id = p_request_id
+  for update;
+  if not found or v_quote.prepaid_applied_version_id is null or v_quote.prepaid_applied_cents <= 0 then
+    return jsonb_build_object('mirrored', false);
+  end if;
+
+  select * into v_version
+  from public.invoice_versions
+  where id = v_quote.prepaid_applied_version_id
+    and shop_id = v_quote.shop_id
+    and work_order_id = v_quote.work_order_id
+  for update;
+  if not found or v_version.lifecycle_status not in ('issued', 'partially_paid', 'paid') then
+    return jsonb_build_object('mirrored', false, 'reason', 'version_not_live');
+  end if;
+
+  v_desired_refund := least(
+    greatest(v_quote.refunded_cents - v_quote.prepaid_refund_baseline_cents, 0),
+    v_quote.prepaid_applied_cents
+  );
+  v_desired_hold := case
+    when v_quote.dispute_status in ('open', 'lost')
+      then least(v_quote.dispute_amount_cents, greatest(v_quote.prepaid_applied_cents - v_desired_refund, 0))
+    else 0
+  end;
+
+  begin
+    if v_desired_refund > v_quote.prepaid_refund_posted_cents then
+      v_key := 'portal-parts-quote-refund:' || v_quote.id::text || ':' || v_version.id::text || ':' || v_desired_refund::text;
+      perform public.post_payment_event(
+        v_quote.shop_id, v_quote.work_order_id, v_version.id, 'refund_succeeded',
+        round((v_desired_refund - v_quote.prepaid_refund_posted_cents) / 100.0, 2),
+        upper(v_quote.currency), 'card', 'stripe', v_key, v_quote.stripe_payment_intent_id,
+        v_key, null, now(),
+        jsonb_build_object('purpose', 'portal_parts_quote_payment', 'parts_quote_request_id', v_quote.id)
+      );
+      update public.portal_parts_quote_requests
+      set prepaid_refund_posted_cents = v_desired_refund
+      where id = v_quote.id;
+      v_quote.prepaid_refund_posted_cents := v_desired_refund;
+    end if;
+
+    if v_desired_hold > v_quote.prepaid_hold_posted_cents then
+      v_key := 'portal-parts-quote-hold:' || v_quote.id::text || ':' || v_version.id::text || ':' || v_desired_hold::text;
+      perform public.post_payment_event(
+        v_quote.shop_id, v_quote.work_order_id, v_version.id, 'dispute_opened',
+        round((v_desired_hold - v_quote.prepaid_hold_posted_cents) / 100.0, 2),
+        upper(v_quote.currency), 'card', 'stripe', v_key, v_quote.stripe_payment_intent_id,
+        v_key, null, coalesce(v_quote.disputed_at, now()),
+        jsonb_build_object('purpose', 'portal_parts_quote_payment', 'parts_quote_request_id', v_quote.id)
+      );
+      update public.portal_parts_quote_requests
+      set prepaid_hold_posted_cents = v_desired_hold
+      where id = v_quote.id;
+      v_quote.prepaid_hold_posted_cents := v_desired_hold;
+    elsif v_desired_hold < v_quote.prepaid_hold_posted_cents then
+      v_key := 'portal-parts-quote-release:' || v_quote.id::text || ':' || v_version.id::text || ':' || v_desired_hold::text;
+      perform public.post_payment_event(
+        v_quote.shop_id, v_quote.work_order_id, v_version.id, 'dispute_won',
+        round((v_quote.prepaid_hold_posted_cents - v_desired_hold) / 100.0, 2),
+        upper(v_quote.currency), 'card', 'stripe', v_key, v_quote.stripe_payment_intent_id,
+        v_key, null, coalesce(v_quote.dispute_event_at, now()),
+        jsonb_build_object('purpose', 'portal_parts_quote_payment', 'parts_quote_request_id', v_quote.id)
+      );
+      update public.portal_parts_quote_requests
+      set prepaid_hold_posted_cents = v_desired_hold
+      where id = v_quote.id;
+    end if;
+
+    if v_quote.dispute_status = 'lost' and not v_quote.prepaid_dispute_lost_posted and v_desired_hold > 0 then
+      v_key := 'portal-parts-quote-lost:' || v_quote.id::text || ':' || v_version.id::text;
+      perform public.post_payment_event(
+        v_quote.shop_id, v_quote.work_order_id, v_version.id, 'dispute_lost',
+        round(v_desired_hold / 100.0, 2), upper(v_quote.currency), 'card', 'stripe',
+        v_key, v_quote.stripe_payment_intent_id, v_key, null,
+        coalesce(v_quote.dispute_event_at, now()),
+        jsonb_build_object('purpose', 'portal_parts_quote_payment', 'parts_quote_request_id', v_quote.id)
+      );
+      update public.portal_parts_quote_requests
+      set prepaid_dispute_lost_posted = true
+      where id = v_quote.id;
+    end if;
+
+    update public.portal_parts_quote_requests
+    set payment_ledger_issue = false
+    where id = v_quote.id and payment_ledger_issue;
+  exception
+    when lock_not_available or serialization_failure or deadlock_detected or query_canceled then
+      raise;
+    when others then
+      update public.portal_parts_quote_requests
+      set payment_ledger_issue = true
+      where id = v_quote.id;
+      return jsonb_build_object('mirrored', false, 'reason', 'ledger_issue', 'error', sqlerrm);
+  end;
+
+  return jsonb_build_object('mirrored', true);
+end;
+$$;
+
+revoke all on function public.portal_parts_quote_reconcile_invoice(uuid)
+  from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Ledger: one payments row per paid quote (idempotent). Also credits the
+-- payment to the work order's invoice when one has already been issued.
 -- ---------------------------------------------------------------------------
 create or replace function public.record_portal_parts_quote_request_ledger_payment(
   p_request_id uuid,
@@ -316,57 +549,85 @@ as $$
 declare
   v_request public.portal_parts_quote_requests%rowtype;
   v_payment_id uuid;
+  v_version_id uuid;
 begin
+  select * into v_request
+  from public.portal_parts_quote_requests
+  where id = p_request_id;
+  if not found then
+    return jsonb_build_object('ok', false, 'error', 'not_found');
+  end if;
+  -- Lock order matches finalize_invoice_version: work order, then quote.
+  if v_request.work_order_id is not null then
+    perform 1 from public.work_orders where id = v_request.work_order_id for update;
+  end if;
   select * into v_request
   from public.portal_parts_quote_requests
   where id = p_request_id
   for update;
-  if not found then
-    return jsonb_build_object('ok', false, 'error', 'not_found');
-  end if;
+
   if v_request.paid_at is null or v_request.stripe_checkout_session_id is null then
     return jsonb_build_object('ok', false, 'error', 'not_paid');
   end if;
-  if v_request.payments_ledger_id is not null then
-    return jsonb_build_object('ok', true, 'idempotent', true, 'paymentId', v_request.payments_ledger_id);
-  end if;
 
-  insert into public.payments (
-    shop_id, work_order_id, customer_id, stripe_session_id,
-    stripe_checkout_session_id, stripe_payment_intent_id,
-    stripe_connected_account_id, amount_cents, amount, currency, status,
-    paid_at, description, platform_fee_cents, metadata
-  ) values (
-    v_request.shop_id, v_request.work_order_id, v_request.customer_id,
-    v_request.stripe_checkout_session_id, v_request.stripe_checkout_session_id,
-    v_request.stripe_payment_intent_id, v_request.stripe_connected_account_id,
-    v_request.amount_paid_cents, round(v_request.amount_paid_cents / 100.0, 2),
-    v_request.currency, 'paid', coalesce(v_request.paid_at, p_at),
-    left('Parts quote: ' || v_request.description, 500),
-    greatest(coalesce(p_platform_fee_cents, 0), 0),
-    jsonb_build_object(
-      'purpose', 'portal_parts_quote_payment',
-      'parts_quote_request_id', v_request.id
+  if v_request.payments_ledger_id is null then
+    insert into public.payments (
+      shop_id, work_order_id, customer_id, stripe_session_id,
+      stripe_checkout_session_id, stripe_payment_intent_id,
+      stripe_connected_account_id, amount_cents, amount, currency, status,
+      paid_at, description, platform_fee_cents, metadata
+    ) values (
+      v_request.shop_id, v_request.work_order_id, v_request.customer_id,
+      v_request.stripe_checkout_session_id, v_request.stripe_checkout_session_id,
+      v_request.stripe_payment_intent_id, v_request.stripe_connected_account_id,
+      v_request.amount_paid_cents, round(v_request.amount_paid_cents / 100.0, 2),
+      v_request.currency, 'paid', coalesce(v_request.paid_at, p_at),
+      left('Parts quote: ' || v_request.description, 500),
+      greatest(coalesce(p_platform_fee_cents, 0), 0),
+      jsonb_build_object(
+        'purpose', 'portal_parts_quote_payment',
+        'parts_quote_request_id', v_request.id
+      )
     )
-  )
-  on conflict do nothing
-  returning id into v_payment_id;
+    on conflict do nothing
+    returning id into v_payment_id;
 
-  if v_payment_id is null then
-    select id into v_payment_id
-    from public.payments
-    where stripe_session_id = v_request.stripe_checkout_session_id
-      and shop_id = v_request.shop_id;
+    if v_payment_id is null then
+      select id into v_payment_id
+      from public.payments
+      where stripe_session_id = v_request.stripe_checkout_session_id
+        and shop_id = v_request.shop_id;
+    end if;
+    if v_payment_id is null then
+      return jsonb_build_object('ok', false, 'error', 'ledger_conflict');
+    end if;
+
+    update public.portal_parts_quote_requests
+    set payments_ledger_id = v_payment_id
+    where id = v_request.id;
+  else
+    v_payment_id := v_request.payments_ledger_id;
   end if;
-  if v_payment_id is null then
-    return jsonb_build_object('ok', false, 'error', 'ledger_conflict');
+
+  -- An invoice may already exist (staff invoiced while Checkout was open).
+  -- Credit the payment to it; finalize only credits a version it creates.
+  if v_request.work_order_id is not null and v_request.prepaid_applied_version_id is null then
+    select iv.id into v_version_id
+    from public.invoice_versions iv
+    where iv.shop_id = v_request.shop_id
+      and iv.work_order_id = v_request.work_order_id
+      and iv.lifecycle_status in ('issued', 'partially_paid', 'paid')
+    order by iv.version_number desc
+    limit 1;
+    if v_version_id is not null then
+      perform public.apply_portal_parts_quote_prepayments(
+        v_request.shop_id, v_request.work_order_id, v_version_id
+      );
+    end if;
   end if;
 
-  update public.portal_parts_quote_requests
-  set payments_ledger_id = v_payment_id
-  where id = v_request.id;
-
-  return jsonb_build_object('ok', true, 'idempotent', false, 'paymentId', v_payment_id);
+  perform public.portal_parts_quote_refresh(v_request.id);
+  return jsonb_build_object('ok', true, 'paymentId', v_payment_id);
 end;
 $$;
 
@@ -396,6 +657,7 @@ declare
   v_available integer;
   v_apply integer;
   v_applied_total integer := 0;
+  v_key text;
 begin
   for v_quote in
     select q.*
@@ -430,32 +692,35 @@ begin
       and shop_id = p_shop_id
       and work_order_id = p_work_order_id
     for update;
-    if not found or v_version.lifecycle_status not in ('issued', 'partially_paid') then
+    if not found or v_version.lifecycle_status not in ('issued', 'partially_paid', 'paid') then
       exit;
     end if;
-    if lower(v_version.currency) is distinct from lower(v_quote.currency) then
+    -- A fully paid invoice, or a different currency, cannot take the credit.
+    if v_version.lifecycle_status = 'paid'
+       or lower(v_version.currency) is distinct from lower(v_quote.currency) then
       update public.portal_parts_quote_requests
-      set payment_attention = 'credit_unapplied', payment_attention_at = now()
+      set prepaid_leftover = true
       where id = v_quote.id;
+      perform public.portal_parts_quote_refresh(v_quote.id);
       continue;
     end if;
 
     v_apply := least(v_available, floor(greatest(v_version.outstanding_total, 0) * 100)::integer);
     if v_apply <= 0 then
       update public.portal_parts_quote_requests
-      set payment_attention = 'credit_unapplied', payment_attention_at = now()
+      set prepaid_leftover = true
       where id = v_quote.id;
+      perform public.portal_parts_quote_refresh(v_quote.id);
       continue;
     end if;
 
+    v_key := 'portal-parts-quote-prepay:' || v_quote.id::text || ':' || p_invoice_version_id::text;
     begin
       perform public.post_payment_event(
         p_shop_id, p_work_order_id, p_invoice_version_id, 'payment_succeeded',
         round(v_apply / 100.0, 2), upper(v_quote.currency), 'card', 'stripe',
         'portal-parts-quote:' || v_quote.stripe_checkout_session_id || ':' || p_invoice_version_id::text,
-        v_quote.stripe_payment_intent_id,
-        'portal-parts-quote-prepay:' || v_quote.id::text || ':' || p_invoice_version_id::text,
-        null, now(),
+        v_quote.stripe_payment_intent_id, v_key, null, v_quote.paid_at,
         jsonb_build_object(
           'purpose', 'portal_parts_quote_payment',
           'parts_quote_request_id', v_quote.id,
@@ -465,21 +730,23 @@ begin
       update public.portal_parts_quote_requests
       set prepaid_applied_cents = v_apply,
           prepaid_applied_version_id = p_invoice_version_id,
-          payment_attention = case
-            when v_apply < v_available then 'credit_unapplied'
-            else payment_attention
-          end,
-          payment_attention_at = case
-            when v_apply < v_available then now()
-            else payment_attention_at
-          end
+          prepaid_refund_baseline_cents = v_quote.refunded_cents,
+          prepaid_refund_posted_cents = 0,
+          prepaid_hold_posted_cents = 0,
+          prepaid_dispute_lost_posted = false,
+          prepaid_leftover = v_apply < v_available,
+          payment_ledger_issue = false
       where id = v_quote.id;
       v_applied_total := v_applied_total + v_apply;
-    exception when others then
-      update public.portal_parts_quote_requests
-      set payment_attention = 'ledger_mismatch', payment_attention_at = now()
-      where id = v_quote.id;
+    exception
+      when lock_not_available or serialization_failure or deadlock_detected or query_canceled then
+        raise;
+      when others then
+        update public.portal_parts_quote_requests
+        set payment_ledger_issue = true
+        where id = v_quote.id;
     end;
+    perform public.portal_parts_quote_refresh(v_quote.id);
   end loop;
 
   return jsonb_build_object('ok', true, 'appliedCents', v_applied_total);
@@ -492,16 +759,21 @@ grant execute on function public.apply_portal_parts_quote_prepayments(uuid, uuid
   to service_role;
 
 -- ---------------------------------------------------------------------------
--- Stripe refund / dispute events on a parts quote charge. Returns
--- handled = false when the charge does not belong to a parts quote, so the
--- caller falls through to the existing invoice handling.
+-- Stripe refund / dispute events on a parts quote charge. The quote is found
+-- by payment intent or, when the event arrives before the payment was
+-- recorded, by the request id in the PaymentIntent metadata (verified against
+-- the shop's connected account). Returns handled = false when the charge does
+-- not belong to a parts quote, so the caller falls through to the existing
+-- invoice handling.
 -- ---------------------------------------------------------------------------
 create or replace function public.record_portal_parts_quote_payment_event(
   p_payment_intent_id text,
   p_event_kind text,
   p_amount_cents integer,
   p_processor_event_id text,
-  p_at timestamptz default now()
+  p_at timestamptz default now(),
+  p_request_id uuid default null,
+  p_connected_account_id text default null
 ) returns jsonb
 language plpgsql
 security definer
@@ -511,108 +783,95 @@ declare
   v_quote public.portal_parts_quote_requests%rowtype;
   v_kind text := lower(trim(coalesce(p_event_kind, '')));
   v_amount integer := greatest(coalesce(p_amount_cents, 0), 0);
-  v_new_refunded integer;
-  v_delta integer;
-  v_applied boolean;
-  v_post_kind text;
-  v_post_amount integer;
-  v_ledger_error text;
+  v_intent text := nullif(trim(coalesce(p_payment_intent_id, '')), '');
+  v_at timestamptz := coalesce(p_at, now());
+  v_account text;
+  v_reconcile jsonb;
 begin
-  if nullif(trim(coalesce(p_payment_intent_id, '')), '') is null then
+  if v_intent is not null then
+    select * into v_quote
+    from public.portal_parts_quote_requests
+    where stripe_payment_intent_id = v_intent;
+  end if;
+  if v_quote.id is null and p_request_id is not null then
+    select * into v_quote
+    from public.portal_parts_quote_requests
+    where id = p_request_id
+      and (stripe_payment_intent_id is null or stripe_payment_intent_id = v_intent);
+  end if;
+  if v_quote.id is null then
     return jsonb_build_object('handled', false);
   end if;
-  select * into v_quote
-  from public.portal_parts_quote_requests
-  where stripe_payment_intent_id = p_payment_intent_id
-  for update;
-  if not found then
-    return jsonb_build_object('handled', false);
+  if p_connected_account_id is not null then
+    select stripe_account_id into v_account from public.shops where id = v_quote.shop_id;
+    if v_account is distinct from p_connected_account_id then
+      return jsonb_build_object('handled', false);
+    end if;
   end if;
   if v_kind not in ('refund_succeeded', 'dispute_opened', 'dispute_won', 'dispute_lost') then
     return jsonb_build_object('handled', true, 'ignored', true);
   end if;
 
-  v_applied := v_quote.prepaid_applied_version_id is not null and exists (
-    select 1 from public.invoice_versions iv
-    where iv.id = v_quote.prepaid_applied_version_id
-      and iv.lifecycle_status in ('issued', 'partially_paid', 'paid')
-  );
+  -- Lock order matches finalize_invoice_version: work order, then quote.
+  if v_quote.work_order_id is not null then
+    perform 1 from public.work_orders where id = v_quote.work_order_id for update;
+  end if;
+  select * into v_quote
+  from public.portal_parts_quote_requests
+  where id = v_quote.id
+  for update;
 
+  if v_quote.stripe_payment_intent_id is null and v_intent is not null then
+    update public.portal_parts_quote_requests q
+    set stripe_payment_intent_id = v_intent
+    where q.id = v_quote.id
+      and not exists (
+        select 1 from public.portal_parts_quote_requests o
+        where o.stripe_payment_intent_id = v_intent
+      );
+  end if;
+
+  -- State only moves forward, so redelivery and reordering are harmless.
   if v_kind = 'refund_succeeded' then
-    -- Stripe reports the cumulative refunded amount, so this is idempotent.
-    v_new_refunded := least(v_amount, v_quote.amount_paid_cents);
-    if v_new_refunded <= v_quote.refunded_cents then
-      return jsonb_build_object('handled', true, 'idempotent', true);
-    end if;
-    v_delta := v_new_refunded - v_quote.refunded_cents;
-    v_post_kind := 'refund_succeeded';
-    v_post_amount := v_delta;
     update public.portal_parts_quote_requests
-    set refunded_cents = v_new_refunded,
-        refunded_at = coalesce(refunded_at, coalesce(p_at, now())),
-        payment_attention = case
-          when v_new_refunded >= v_quote.amount_paid_cents then 'refunded'
-          else 'partially_refunded'
-        end,
-        payment_attention_at = now()
+    set refunded_cents = greatest(
+          refunded_cents,
+          case
+            when coalesce(amount_paid_cents, 0) > 0 then least(v_amount, amount_paid_cents)
+            else v_amount
+          end
+        ),
+        refunded_at = coalesce(refunded_at, v_at)
     where id = v_quote.id;
-    if v_new_refunded >= v_quote.amount_paid_cents and v_quote.payments_ledger_id is not null then
-      update public.payments set status = 'refunded' where id = v_quote.payments_ledger_id;
-    end if;
   elsif v_kind = 'dispute_opened' then
-    v_post_kind := 'dispute_opened';
-    v_post_amount := least(v_amount, v_quote.amount_paid_cents);
     update public.portal_parts_quote_requests
-    set dispute_status = 'open',
-        disputed_at = coalesce(disputed_at, coalesce(p_at, now())),
-        payment_attention = 'dispute_open',
-        payment_attention_at = now()
-    where id = v_quote.id;
-  elsif v_kind = 'dispute_won' then
-    v_post_kind := 'dispute_won';
-    v_post_amount := least(v_amount, v_quote.amount_paid_cents);
-    update public.portal_parts_quote_requests
-    set dispute_status = 'won',
-        payment_attention = case
-          when refunded_cents > 0 then payment_attention
-          else null
+    set dispute_status = case
+          when dispute_status in ('won', 'lost') then dispute_status
+          else 'open'
         end,
-        payment_attention_at = now()
+        disputed_at = coalesce(disputed_at, v_at),
+        dispute_amount_cents = case
+          when dispute_amount_cents = 0 then v_amount
+          else dispute_amount_cents
+        end,
+        dispute_event_at = greatest(coalesce(dispute_event_at, v_at), v_at)
     where id = v_quote.id;
   else
-    v_post_kind := 'dispute_lost';
-    v_post_amount := least(v_amount, v_quote.amount_paid_cents);
     update public.portal_parts_quote_requests
-    set dispute_status = 'lost',
-        payment_attention = 'dispute_lost',
-        payment_attention_at = now()
+    set dispute_status = case when v_kind = 'dispute_won' then 'won' else 'lost' end,
+        disputed_at = coalesce(disputed_at, v_at),
+        dispute_amount_cents = case
+          when v_amount > 0 then v_amount
+          else dispute_amount_cents
+        end,
+        dispute_event_at = greatest(coalesce(dispute_event_at, v_at), v_at)
     where id = v_quote.id;
   end if;
 
-  -- When the payment was credited to an invoice, mirror the event on the
-  -- canonical ledger so the invoice balance stays true. A mismatch there must
-  -- not lose the staff alert, so it is recorded and surfaced instead.
-  if v_applied and v_post_amount > 0 then
-    begin
-      perform public.post_payment_event(
-        v_quote.shop_id, v_quote.work_order_id, v_quote.prepaid_applied_version_id,
-        v_post_kind, round(v_post_amount / 100.0, 2), upper(v_quote.currency),
-        'card', 'stripe', 'portal-parts-quote-event:' || p_processor_event_id,
-        v_quote.stripe_payment_intent_id,
-        'portal-parts-quote-event:' || v_quote.id::text || ':' || p_processor_event_id,
-        null, coalesce(p_at, now()),
-        jsonb_build_object(
-          'purpose', 'portal_parts_quote_payment',
-          'parts_quote_request_id', v_quote.id
-        )
-      );
-    exception when others then
-      v_ledger_error := sqlerrm;
-      update public.portal_parts_quote_requests
-      set payment_attention = 'ledger_mismatch', payment_attention_at = now()
-      where id = v_quote.id;
-    end;
-  end if;
+  -- Always reconcile (not only when the state changed) so a redelivery repairs
+  -- an invoice mirror that failed earlier.
+  v_reconcile := public.portal_parts_quote_reconcile_invoice(v_quote.id);
+  perform public.portal_parts_quote_refresh(v_quote.id);
 
   insert into public.activity_logs (user_id, action, target_table, target_id, context)
   values (
@@ -620,25 +879,24 @@ begin
     jsonb_build_object(
       'amount_cents', v_amount,
       'processor_event_id', p_processor_event_id,
-      'applied_to_invoice', v_applied,
-      'ledger_error', v_ledger_error
+      'reconcile', v_reconcile
     )
   );
 
   return jsonb_build_object(
     'handled', true,
     'requestId', v_quote.id,
-    'appliedToInvoice', v_applied,
-    'ledgerError', v_ledger_error
+    'ledgerIssue', coalesce(v_reconcile ->> 'reason', '') = 'ledger_issue',
+    'ledgerError', v_reconcile ->> 'error'
   );
 end;
 $$;
 
 revoke all on function public.record_portal_parts_quote_payment_event(
-  text, text, integer, text, timestamptz
+  text, text, integer, text, timestamptz, uuid, text
 ) from public, anon, authenticated;
 grant execute on function public.record_portal_parts_quote_payment_event(
-  text, text, integer, text, timestamptz
+  text, text, integer, text, timestamptz, uuid, text
 ) to service_role;
 
 create or replace function public.finalize_invoice_version(

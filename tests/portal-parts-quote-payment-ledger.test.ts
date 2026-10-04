@@ -66,23 +66,28 @@ describe("parts quote payment migration", () => {
 
   it("posts prepayments and events only through post_payment_event", () => {
     const apply = definition(migration, "apply_portal_parts_quote_prepayments");
+    const reconcile = definition(migration, "portal_parts_quote_reconcile_invoice");
     const event = definition(migration, "record_portal_parts_quote_payment_event");
     expect(apply).toContain("perform public.post_payment_event(");
-    expect(event).toContain("perform public.post_payment_event(");
+    expect(reconcile).toContain("perform public.post_payment_event(");
+    expect(event).toContain("portal_parts_quote_reconcile_invoice(");
     // The canonical ledger tables are never written directly.
-    for (const body of [apply, event]) {
+    for (const body of [apply, reconcile, event]) {
       expect(body).not.toMatch(/insert into public\.(payment_events|payment_receipts|invoice_versions)/);
       expect(body).not.toMatch(/update public\.invoice_versions/);
     }
   });
 
-  it("is idempotent per payment, invoice version and Stripe event", () => {
+  it("is idempotent per payment and invoice version, and mirrors from state", () => {
     const apply = definition(migration, "apply_portal_parts_quote_prepayments");
     expect(apply).toContain("'portal-parts-quote-prepay:' || v_quote.id::text || ':' || p_invoice_version_id::text");
     expect(apply).toContain("v_quote.prepaid_applied_version_id is not null and exists");
+    const reconcile = definition(migration, "portal_parts_quote_reconcile_invoice");
+    expect(reconcile).toContain("v_desired_refund > v_quote.prepaid_refund_posted_cents");
+    expect(reconcile).toContain("v_desired_hold > v_quote.prepaid_hold_posted_cents");
     const event = definition(migration, "record_portal_parts_quote_payment_event");
-    expect(event).toContain("'portal-parts-quote-event:' || v_quote.id::text || ':' || p_processor_event_id");
-    expect(event).toContain("if v_new_refunded <= v_quote.refunded_cents then");
+    expect(event).toContain("portal_parts_quote_reconcile_invoice(v_quote.id)");
+    expect(event).toContain("greatest(");
   });
 
   it("does not credit disputed, lost or refunded money and caps at the outstanding balance", () => {
@@ -90,15 +95,21 @@ describe("parts quote payment migration", () => {
     expect(apply).toContain("coalesce(v_quote.dispute_status, '') in ('open', 'lost')");
     expect(apply).toContain("v_available := v_quote.amount_paid_cents - v_quote.refunded_cents;");
     expect(apply).toContain("least(v_available, floor(greatest(v_version.outstanding_total, 0) * 100)::integer)");
-    expect(apply).toContain("payment_attention = 'credit_unapplied'");
+    expect(apply).toContain("prepaid_leftover = true");
   });
 
-  it("never lets a ledger problem lose the staff alert or break invoicing", () => {
+  it("flags ledger problems for staff, retries transient errors and keeps lock order", () => {
     const apply = definition(migration, "apply_portal_parts_quote_prepayments");
-    const event = definition(migration, "record_portal_parts_quote_payment_event");
-    expect(apply).toContain("payment_attention = 'ledger_mismatch'");
-    expect(event).toContain("payment_attention = 'ledger_mismatch'");
-    expect(event).toContain("exception when others then");
+    const reconcile = definition(migration, "portal_parts_quote_reconcile_invoice");
+    for (const body of [apply, reconcile]) {
+      expect(body).toContain("payment_ledger_issue = true");
+      expect(body).toContain("when lock_not_available or serialization_failure or deadlock_detected or query_canceled then");
+    }
+    for (const name of ["record_portal_parts_quote_payment_event", "record_portal_parts_quote_request_ledger_payment"]) {
+      const body = definition(migration, name);
+      expect(body.indexOf("from public.work_orders where id = v_")).toBeGreaterThan(0);
+      expect(body.indexOf("from public.work_orders where id = v_")).toBeLessThan(body.lastIndexOf("for update;"));
+    }
   });
 
   it("is exercised by a runtime test in the clean replay workflow", () => {
@@ -237,6 +248,8 @@ describe("recordPortalPartsQuoteStripeEvent", () => {
       p_amount_cents: 2500,
       p_processor_event_id: "evt_1",
       p_at: "2023-11-14T22:13:20.000Z",
+      p_request_id: null,
+      p_connected_account_id: null,
     });
   });
 
@@ -249,6 +262,10 @@ describe("recordPortalPartsQuoteStripeEvent", () => {
 
   it("throws on a database failure so the webhook is retried", async () => {
     await expect(run(null, { message: "db down" })).rejects.toThrow("db down");
+  });
+
+  it("throws when the invoice mirror was rejected so Stripe redelivers", async () => {
+    await expect(run({ handled: true, ledgerIssue: true, ledgerError: "bad state" })).rejects.toThrow("bad state");
   });
 });
 

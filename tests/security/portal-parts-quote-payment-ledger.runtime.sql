@@ -105,7 +105,7 @@ $$;
 do $ledger$
 declare
   v_shop constant uuid := 'b1000000-0000-4000-8000-0000000000b1';
-  v_q1 uuid; v_q2 uuid; v_q3 uuid;
+  v_q1 uuid; v_q2 uuid; v_q3 uuid; v_q4 uuid;
   v_quote public.portal_parts_quote_requests%rowtype;
   v_payment public.payments%rowtype;
   v_version public.invoice_versions%rowtype;
@@ -131,7 +131,7 @@ begin
     raise exception 'Ledger row is wrong: %', to_jsonb(v_payment);
   end if;
   v_result := public.record_portal_parts_quote_request_ledger_payment(v_q1, 300, now());
-  if (v_result ->> 'idempotent')::boolean is not true then
+  if (v_result ->> 'ok')::boolean is not true or (v_result ->> 'paymentId')::uuid <> v_payment.id then
     raise exception 'Replayed ledger write was not idempotent: %', v_result;
   end if;
   select count(*) into v_count from public.payments where stripe_session_id = 'cs_ledger_1';
@@ -179,8 +179,18 @@ begin
     raise exception 'Partial refund was not recorded: quote %, version %', to_jsonb(v_quote), to_jsonb(v_version);
   end if;
   v_result := public.record_portal_parts_quote_payment_event('pi_ledger_1', 'refund_succeeded', 4000, 'evt_ledger_refund_1', now());
-  if (v_result ->> 'idempotent')::boolean is not true then
-    raise exception 'A replayed refund was not idempotent: %', v_result;
+  select * into v_version from public.invoice_versions where id = v_quote.prepaid_applied_version_id;
+  select count(*) into v_count from public.payment_events
+  where invoice_version_id = v_version.id and event_kind = 'refund_succeeded';
+  if v_version.refunded_total <> 40 or v_count <> 1 then
+    raise exception 'A replayed refund was not idempotent: refunded %, events %', v_version.refunded_total, v_count;
+  end if;
+  -- A refund event that arrives out of order (smaller than the recorded total)
+  -- never lowers it.
+  perform public.record_portal_parts_quote_payment_event('pi_ledger_1', 'refund_succeeded', 1000, 'evt_ledger_refund_old', now());
+  select * into v_quote from public.portal_parts_quote_requests where id = v_q1;
+  if v_quote.refunded_cents <> 4000 then
+    raise exception 'An out-of-order refund lowered the recorded total: %', v_quote.refunded_cents;
   end if;
   v_result := public.record_portal_parts_quote_payment_event('pi_ledger_1', 'refund_succeeded', 10000, 'evt_ledger_refund_2', now());
   select * into v_quote from public.portal_parts_quote_requests where id = v_q1;
@@ -211,6 +221,38 @@ begin
   if v_quote.dispute_status <> 'won' or v_quote.payment_attention is not null
      or v_version.refunded_total <> 0 then
     raise exception 'Won dispute was not recorded: quote %, version %', to_jsonb(v_quote), to_jsonb(v_version);
+  end if;
+
+  -- A dispute event replayed or reordered after the outcome changes nothing.
+  perform public.record_portal_parts_quote_payment_event('pi_ledger_2', 'dispute_opened', 10000, 'evt_ledger_dispute_open', now());
+  select * into v_quote from public.portal_parts_quote_requests where id = v_q2;
+  select * into v_version from public.invoice_versions where id = v_quote.prepaid_applied_version_id;
+  if v_quote.dispute_status <> 'won' or v_version.refunded_total <> 0 then
+    raise exception 'A late dispute_opened reopened a won dispute: quote %, version %', to_jsonb(v_quote), to_jsonb(v_version);
+  end if;
+
+  -- A lost dispute keeps the money out of the invoice and alerts staff.
+  v_q4 := pg_temp.make_paid_quote('four', 100, 'cs_ledger_4', 'pi_ledger_4', 0);
+  select * into v_quote from public.portal_parts_quote_requests where id = v_q4;
+  perform pg_temp.finalize(v_quote.work_order_id, 50, 100, 'ledger-final-4');
+  perform public.record_portal_parts_quote_payment_event('pi_ledger_4', 'dispute_opened', 10000, 'evt_ledger_dispute_open_4', now());
+  perform public.record_portal_parts_quote_payment_event('pi_ledger_4', 'dispute_lost', 10000, 'evt_ledger_dispute_lost_4', now());
+  select * into v_quote from public.portal_parts_quote_requests where id = v_q4;
+  select * into v_version from public.invoice_versions where id = v_quote.prepaid_applied_version_id;
+  select * into v_payment from public.payments where id = v_quote.payments_ledger_id;
+  if v_quote.dispute_status <> 'lost' or v_quote.payment_attention <> 'dispute_lost'
+     or v_version.refunded_total <> 100 or v_payment.status <> 'refunded' then
+    raise exception 'Lost dispute was not recorded: quote %, version %, payment %',
+      to_jsonb(v_quote), to_jsonb(v_version), to_jsonb(v_payment);
+  end if;
+
+  -- A refund event that arrives before the payment was recorded is matched by
+  -- the request id and connected account, and applies once the payment lands.
+  v_result := public.record_portal_parts_quote_payment_event(
+    'pi_not_a_parts_quote', 'refund_succeeded', 100, 'evt_other_with_request', now(),
+    v_q4, 'acct_wrong');
+  if (v_result ->> 'handled')::boolean is not false then
+    raise exception 'An event for another connected account was handled: %', v_result;
   end if;
 
   ---------------------------------------------------------------------------

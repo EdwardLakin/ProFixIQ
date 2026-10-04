@@ -15002,6 +15002,8 @@ export type Database = {
           customer_id: string
           declined_at: string | null
           description: string
+          dispute_amount_cents: number
+          dispute_event_at: string | null
           dispute_status: string | null
           disputed_at: string | null
           email_sent_at: string | null
@@ -15012,9 +15014,15 @@ export type Database = {
           part_request_id: string | null
           payment_attention: string | null
           payment_attention_at: string | null
+          payment_ledger_issue: boolean
           payments_ledger_id: string | null
           prepaid_applied_cents: number
           prepaid_applied_version_id: string | null
+          prepaid_dispute_lost_posted: boolean
+          prepaid_hold_posted_cents: number
+          prepaid_leftover: boolean
+          prepaid_refund_baseline_cents: number
+          prepaid_refund_posted_cents: number
           priced_items: Json
           pricing_checked_at: string | null
           qty: number
@@ -15046,6 +15054,8 @@ export type Database = {
           customer_id: string
           declined_at?: string | null
           description: string
+          dispute_amount_cents?: number
+          dispute_event_at?: string | null
           dispute_status?: string | null
           disputed_at?: string | null
           email_sent_at?: string | null
@@ -15056,9 +15066,15 @@ export type Database = {
           part_request_id?: string | null
           payment_attention?: string | null
           payment_attention_at?: string | null
+          payment_ledger_issue?: boolean
           payments_ledger_id?: string | null
           prepaid_applied_cents?: number
           prepaid_applied_version_id?: string | null
+          prepaid_dispute_lost_posted?: boolean
+          prepaid_hold_posted_cents?: number
+          prepaid_leftover?: boolean
+          prepaid_refund_baseline_cents?: number
+          prepaid_refund_posted_cents?: number
           priced_items?: Json
           pricing_checked_at?: string | null
           qty?: number
@@ -15090,6 +15106,8 @@ export type Database = {
           customer_id?: string
           declined_at?: string | null
           description?: string
+          dispute_amount_cents?: number
+          dispute_event_at?: string | null
           dispute_status?: string | null
           disputed_at?: string | null
           email_sent_at?: string | null
@@ -15100,9 +15118,15 @@ export type Database = {
           part_request_id?: string | null
           payment_attention?: string | null
           payment_attention_at?: string | null
+          payment_ledger_issue?: boolean
           payments_ledger_id?: string | null
           prepaid_applied_cents?: number
           prepaid_applied_version_id?: string | null
+          prepaid_dispute_lost_posted?: boolean
+          prepaid_hold_posted_cents?: number
+          prepaid_leftover?: boolean
+          prepaid_refund_baseline_cents?: number
+          prepaid_refund_posted_cents?: number
           priced_items?: Json
           pricing_checked_at?: string | null
           qty?: number
@@ -31229,6 +31253,14 @@ export type Database = {
             Args: { p_plan: string; p_stripe_subscription_status: string }
             Returns: number
           }
+      portal_parts_quote_reconcile_invoice: {
+        Args: { p_request_id: string }
+        Returns: Json
+      }
+      portal_parts_quote_refresh: {
+        Args: { p_request_id: string }
+        Returns: undefined
+      }
       portal_request_start_atomic: {
         Args: {
           p_customer_id: string
@@ -31430,9 +31462,11 @@ export type Database = {
         Args: {
           p_amount_cents: number
           p_at?: string
+          p_connected_account_id?: string
           p_event_kind: string
           p_payment_intent_id: string
           p_processor_event_id: string
+          p_request_id?: string
         }
         Returns: Json
       }

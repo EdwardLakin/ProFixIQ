@@ -571,6 +571,8 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
             amountCents: charge.amount_refunded,
             eventId: event.id,
             occurredAtSeconds: event.created,
+            requestId: charge.metadata?.parts_quote_request_id ?? null,
+            connectedAccountId: event.account ?? null,
           })
         ).handled
       ) {
@@ -616,6 +618,8 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
             amountCents: dispute.amount,
             eventId: event.id,
             occurredAtSeconds: event.created,
+            requestId: charge.metadata?.parts_quote_request_id ?? null,
+            connectedAccountId: event.account ?? null,
           })
         ).handled
       ) {

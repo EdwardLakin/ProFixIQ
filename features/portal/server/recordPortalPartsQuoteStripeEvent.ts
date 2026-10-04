@@ -28,31 +28,41 @@ export async function recordPortalPartsQuoteStripeEvent(args: {
   amountCents: number;
   eventId: string;
   occurredAtSeconds?: number | null;
+  /** parts_quote_request_id from the charge metadata, for events that arrive before the payment was recorded. */
+  requestId?: string | null;
+  /** Connected account the event came from; checked against the quote's shop. */
+  connectedAccountId?: string | null;
 }): Promise<{ handled: boolean }> {
   const paymentIntentId = args.paymentIntentId?.trim() ?? "";
-  if (!paymentIntentId) return { handled: false };
+  const requestId = args.requestId?.trim() ?? "";
+  if (!paymentIntentId && !requestId) return { handled: false };
 
   const { data, error } = await (args.supabase as RpcClient).rpc(
     "record_portal_parts_quote_payment_event",
     {
-      p_payment_intent_id: paymentIntentId,
+      p_payment_intent_id: paymentIntentId || null,
       p_event_kind: args.eventKind,
       p_amount_cents: Math.max(0, Math.trunc(args.amountCents || 0)),
       p_processor_event_id: args.eventId,
       p_at: new Date(
         (args.occurredAtSeconds ?? Math.floor(Date.now() / 1000)) * 1000,
       ).toISOString(),
+      p_request_id: args.requestId?.trim() || null,
+      p_connected_account_id: args.connectedAccountId?.trim() || null,
     },
   );
   if (error) throw new Error(error.message);
 
   const result = (data ?? {}) as Record<string, unknown>;
   if (result.handled !== true) return { handled: false };
-  if (typeof result.ledgerError === "string" && result.ledgerError) {
-    console.error("[portal/parts-quote-payment] invoice ledger rejected a payment event", {
-      eventId: args.eventId,
-      error: result.ledgerError,
-    });
+  // The quote state is saved, but the invoice mirror was rejected: fail the
+  // webhook so Stripe redelivers and the idempotent reconcile retries it.
+  if (result.ledgerIssue === true) {
+    throw new Error(
+      `Parts quote payment event ${args.eventId} could not be mirrored to the invoice: ${
+        typeof result.ledgerError === "string" ? result.ledgerError : "ledger issue"
+      }`,
+    );
   }
   return { handled: true };
 }
