@@ -187,7 +187,7 @@ begin
     insert into public.part_requests (
       shop_id, work_order_id, job_id, requested_by, status, notes, created_at
     ) values (
-      v_request.shop_id, v_work_order_id, v_line_id::text, p_actor_user_id, 'requested',
+      v_request.shop_id, v_work_order_id, v_line_id, p_actor_user_id, 'requested',
       'Approved customer portal parts quote', v_now
     ) returning id into v_new_request_id;
 
