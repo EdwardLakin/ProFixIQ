@@ -144,6 +144,20 @@ jobs:
             -f tests/security/manual-work-order-line-atomic.runtime.sql \
             2>&1 | tee manual-work-order-line-atomic-runtime.log
 
+      - name: Execute portal custom and diagnostic line integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/portal-diagnosis-line.runtime.sql \
+            2>&1 | tee portal-diagnosis-line-runtime.log
+
       - name: Execute approval actor-binding integration
         shell: bash
         env:
@@ -811,6 +825,7 @@ jobs:
             supabase-existing-baseline.log
             deferred-work-shared-integration-runtime.log
             manual-work-order-line-atomic-runtime.log
+            portal-diagnosis-line-runtime.log
             parts-use-handoff-runtime.log
             parts-request-purchase-order-runtime.log
             parts-request-purchase-order-locking-runtime.log
