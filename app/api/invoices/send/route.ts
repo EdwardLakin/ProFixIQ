@@ -296,7 +296,10 @@ export async function POST(request: Request) {
             .from("invoices")
             .update({ status: "issued", issued_at: now })
             .eq("id", invoiceId)
-            .eq("shop_id", workOrder.shop_id);
+            .eq("shop_id", workOrder.shop_id)
+            // A resend must not move an invoice that already progressed
+            // (paid, partially paid, refunded, voided) back to "issued".
+            .in("status", ["draft", "issued"]);
           if (error) throw new Error(error.message);
         },
       },
