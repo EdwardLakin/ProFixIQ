@@ -918,7 +918,7 @@ export default function MobileFocusedJob(props: {
     <>
       <div className="app-shell flex min-h-screen flex-col text-foreground">
         {/* Header */}
-        <header className="metal-bar sticky top-0 z-40 flex items-center justify-between gap-2 px-3 py-2">
+        <header className="metal-bar sticky top-0 z-40 flex items-center justify-between gap-2 px-3 pb-2 pt-[calc(0.5rem+env(safe-area-inset-top,0px))]">
           <button
             type="button"
             onClick={() => {

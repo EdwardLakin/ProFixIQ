@@ -664,7 +664,7 @@ export default function FleetProductShell({
           compact ? "lg:pl-[76px]" : "lg:pl-[286px]",
         )}
       >
-        <header className="sticky top-0 z-30 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-header-bg)]/88 backdrop-blur-xl">
+        <header className="sticky top-0 z-30 pt-[env(safe-area-inset-top,0px)] border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-header-bg)]/88 backdrop-blur-xl">
           <div className="flex min-h-16 items-center gap-3 px-3 sm:px-5 lg:px-6">
             <button
               type="button"

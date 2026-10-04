@@ -72,7 +72,7 @@ export default function OpsShell({
 
   return (
     <div className="min-h-dvh bg-[color:var(--theme-surface-page)] text-[color:var(--theme-text-primary)]">
-      <header className="sticky top-0 z-40 border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)]/95 backdrop-blur-xl">
+      <header className="sticky top-0 z-40 pt-[env(safe-area-inset-top,0px)] border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)]/95 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-[1600px] items-center justify-between px-4 sm:px-6">
           <div className="flex items-center gap-3">
             <button
