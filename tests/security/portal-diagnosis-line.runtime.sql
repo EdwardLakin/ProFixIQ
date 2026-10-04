@@ -159,9 +159,8 @@ begin
     raise exception 'A refused informational line request still inserted a line';
   end if;
 
-  -- Menu lines keep their existing shape. (The inspection kind is not exercised:
-  -- it reads inspection_templates.is_active, a column absent from the schema,
-  -- which is a separate pre-existing defect outside this change.)
+  -- Menu lines keep their existing shape. (The inspection kind is covered by
+  -- portal-inspection-line.runtime.sql.)
   select result into v_result from portal_diag_results where label = 'menu';
   select * into v_line from public.work_order_lines where id = (v_result -> 'line' ->> 'id')::uuid;
   if v_line.menu_item_id is distinct from '8d070000-0000-4000-8000-000000000001'::uuid
