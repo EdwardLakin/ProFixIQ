@@ -93,6 +93,13 @@ export async function decidePortalPartsQuoteRequest(args: {
   if (error) throw new Error(rpcMessage(error));
 
   const result = (data ?? {}) as Record<string, unknown>;
+  if (result.ok === false) {
+    throw new Error(
+      result.error === "quote_changed"
+        ? "The shop updated this quote after sending it. A corrected quote will be sent to you shortly."
+        : "Your decision could not be recorded.",
+    );
+  }
   return {
     status: typeof result.status === "string" ? result.status : "",
     choice: typeof result.choice === "string" ? result.choice : null,

@@ -524,6 +524,20 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
       return;
     }
 
+    case "checkout.session.async_payment_succeeded": {
+      // Only parts quote sessions are handled here; every other purpose keeps
+      // its existing behaviour (this event was previously ignored).
+      const session = event.data.object as Stripe.Checkout.Session;
+      if (isPortalPartsQuoteSession(session)) {
+        await recordPortalPartsQuoteCheckoutSession({
+          supabase,
+          session,
+          connectedAccountId: accountId,
+        });
+      }
+      return;
+    }
+
     case "payment_intent.payment_failed": {
       const intent = event.data.object as Stripe.PaymentIntent;
       await postStripeFinancialEvent({

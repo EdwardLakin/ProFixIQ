@@ -107,6 +107,11 @@ export default function PortalPartsQuoteClient({ quoteId }: { quoteId: string })
           ? "Approved. The shop will order your parts."
           : "Quote declined.",
       );
+    } catch {
+      // The request may have reached the shop before the connection dropped, so
+      // show the current state before allowing another attempt.
+      setError("We could not confirm your decision. Please check your connection; the quote below shows its current status.");
+      await load();
     } finally {
       setBusy(null);
     }
@@ -126,6 +131,9 @@ export default function PortalPartsQuoteClient({ quoteId }: { quoteId: string })
         return;
       }
       window.location.assign(json.url);
+    } catch {
+      setError("We could not start your payment. Please check your connection and try again.");
+      await load();
     } finally {
       setBusy(null);
     }

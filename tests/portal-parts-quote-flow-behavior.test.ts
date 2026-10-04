@@ -3,6 +3,7 @@ import { PortalAccessError } from "@/features/portal/server/portalAuth";
 
 const mocks = vi.hoisted(() => ({
   sendEmail: vi.fn(),
+  alreadyHandled: vi.fn(),
   notify: vi.fn(),
   paymentSettings: vi.fn(),
   createServerSupabaseRoute: vi.fn(),
@@ -11,8 +12,10 @@ const mocks = vi.hoisted(() => ({
   createCheckout: vi.fn(),
 }));
 
-vi.mock("@/features/email/server/sendPortalPartsQuoteEmail", () => ({
+vi.mock("@/features/email/server/sendPortalPartsQuoteEmail", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/features/email/server/sendPortalPartsQuoteEmail")>()),
   sendPortalPartsQuoteEmail: mocks.sendEmail,
+  portalPartsQuoteEmailAlreadyHandled: mocks.alreadyHandled,
 }));
 vi.mock("@/features/portal/server/upsertPortalNotification", () => ({
   upsertPortalNotification: mocks.notify,
@@ -89,7 +92,8 @@ describe("processPortalPartsQuotes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.paymentSettings.mockResolvedValue({ default_currency: "cad" });
-    mocks.sendEmail.mockResolvedValue({ providerMessageId: "m-1" });
+    mocks.sendEmail.mockResolvedValue({ status: "accepted", emailLogId: "log-1" });
+    mocks.alreadyHandled.mockResolvedValue(false);
     mocks.notify.mockResolvedValue(undefined);
   });
 
@@ -124,6 +128,8 @@ describe("processPortalPartsQuotes", () => {
     expect(mocks.sendEmail).toHaveBeenCalledTimes(1);
     const email = mocks.sendEmail.mock.calls[0][0] as Record<string, string>;
     expect(email.to).toBe("pat@example.com");
+    expect(email.shopId).toBe("shop-1");
+    expect(email.deliveryKey).toBe("portal-parts-quote:q-1:42000");
     expect(email.portalUrl).toMatch(/\/portal\/parts-quotes\/q-1$/);
     expect(mocks.notify).toHaveBeenCalledWith(
       expect.anything(),
@@ -140,6 +146,25 @@ describe("processPortalPartsQuotes", () => {
       "claim_portal_parts_quote_request_send",
       "mark_portal_parts_quote_request_sent",
     ]);
+  });
+
+  it("does not send the email again when a prior attempt already reached the provider", async () => {
+    mocks.alreadyHandled.mockResolvedValue(true);
+    const { client, rpc } = fakeClient({
+      tables: { portal_parts_quote_requests: PENDING, shops: SHOP, customers: CUSTOMER },
+      rpc: (fn) => {
+        if (fn === "price_portal_parts_quote_request") return { status: "quoted" };
+        if (fn === "claim_portal_parts_quote_request_send")
+          return { claimed: true, description: "Winter tires", total: 420, currency: "cad" };
+        return { ok: true };
+      },
+    });
+
+    const result = await run(client);
+
+    expect(result).toMatchObject({ sent: 1, failed: 0 });
+    expect(mocks.sendEmail).not.toHaveBeenCalled();
+    expect(rpc.mock.calls.map((call) => call[0])).toContain("mark_portal_parts_quote_request_sent");
   });
 
   it("does not claim or email while items are still unpriced", async () => {

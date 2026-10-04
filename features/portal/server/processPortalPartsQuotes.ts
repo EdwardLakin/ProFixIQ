@@ -3,9 +3,16 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { getShopPaymentSettings } from "@/features/stripe/lib/server/shop-payment-settings";
-import { sendPortalPartsQuoteEmail } from "@/features/email/server/sendPortalPartsQuoteEmail";
+import {
+  portalPartsQuoteDeliveryKey,
+  portalPartsQuoteEmailAlreadyHandled,
+  sendPortalPartsQuoteEmail,
+} from "@/features/email/server/sendPortalPartsQuoteEmail";
 import { upsertPortalNotification } from "@/features/portal/server/upsertPortalNotification";
-import { formatPartsQuoteMoney } from "@/features/portal/lib/partsQuotePresentation";
+import {
+  formatPartsQuoteMoney,
+  partsQuoteTotalCents,
+} from "@/features/portal/lib/partsQuotePresentation";
 
 type DB = Database;
 type RpcResult = Record<string, unknown>;
@@ -189,7 +196,14 @@ async function deliverQuote(
   const email = customer.email?.trim();
   if (!email) return;
 
+  // Delivery and the database transition are separate steps, so a crash after
+  // the provider accepted the message must not send it again on retry.
+  const deliveryKey = portalPartsQuoteDeliveryKey(requestId, partsQuoteTotalCents(quote.total));
+  if (await portalPartsQuoteEmailAlreadyHandled(supabase, shopId, deliveryKey)) return;
+
   await sendPortalPartsQuoteEmail({
+    shopId,
+    deliveryKey,
     to: email,
     shopName: pricing.name,
     customerName: [customer.first_name, customer.last_name].filter(Boolean).join(" ") || null,

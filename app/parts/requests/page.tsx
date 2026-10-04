@@ -282,7 +282,14 @@ function requestHref(bucket: WoBucket): string {
   if (bucket.menuItemId && !bucket.workOrderId) {
     return `/menu/item/${encodeURIComponent(bucket.menuItemId)}`;
   }
-  if (!bucket.workOrderId) return "/parts";
+  if (!bucket.workOrderId) {
+    // A request with no work order (for example an approved customer parts
+    // quote) opens on its own request detail page.
+    const requestId = bucket.models[0]?.request.id;
+    return requestId
+      ? `/parts/requests/${encodeURIComponent(requestId)}`
+      : "/parts";
+  }
   return `/parts/requests/${encodeURIComponent(
     bucket.customId || bucket.workOrderId,
   )}`;

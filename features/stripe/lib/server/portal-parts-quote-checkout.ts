@@ -94,6 +94,9 @@ export async function createPortalPartsQuoteCheckout(
 
   const params: CheckoutCreateParams = {
     mode: "payment",
+    // Immediate methods only: the quote is marked paid from a completed,
+    // paid session, so delayed methods (bank debits) are not offered.
+    payment_method_types: ["card"],
     customer_email: input.customerEmail ?? undefined,
     client_reference_id: input.requestId,
     line_items: [

@@ -290,6 +290,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
   const supabase = useMemo(() => createBrowserSupabase(), []);
 
   const [wo, setWo] = useState<WorkOrderRow | null>(null);
+  // Customer portal parts requests have no work order; their shop comes from the request.
+  const [standaloneShopId, setStandaloneShopId] = useState<string | null>(null);
+  const activeShopId = wo?.shop_id ?? standaloneShopId;
   const [lineById, setLineById] = useState<Map<string, LineLite>>(
     () => new Map(),
   );
@@ -468,6 +471,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     if (!preserveContent) setLoading(true);
 
     let requestFocusId: string | null = null;
+    let standaloneRequest: { id: string; shop_id: string } | null = null;
     let woRow = await resolveWorkOrder(routeId);
 
     // Quote Review may link to the canonical request id. Resolve that request
@@ -476,7 +480,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     if (!woRow && isUuid(routeId)) {
       const { data: requestById, error: requestLookupError } = await supabase
         .from("part_requests")
-        .select("id, work_order_id")
+        .select("id, work_order_id, shop_id")
         .eq("id", routeId)
         .maybeSingle();
 
@@ -488,11 +492,20 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
       if (linkedWorkOrderId && requestById) {
         woRow = await resolveWorkOrder(linkedWorkOrderId);
         requestFocusId = String(requestById.id);
+      } else if (requestById && !linkedWorkOrderId && requestById.shop_id) {
+        // A request with no work order (for example a customer portal parts
+        // quote) opens on its own, scoped to its shop, without a work order.
+        standaloneRequest = {
+          id: String(requestById.id),
+          shop_id: String(requestById.shop_id),
+        };
+        requestFocusId = standaloneRequest.id;
       }
     }
 
-    if (!woRow) {
+    if (!woRow && !standaloneRequest) {
       setWo(null);
+      setStandaloneShopId(null);
       setLineById(new Map());
       setRequests([]);
       setParts([]);
@@ -511,11 +524,14 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     }
 
     setWo(woRow);
+    setStandaloneShopId(woRow ? null : (standaloneRequest?.shop_id ?? null));
 
-    const requestQuery = supabase
-      .from("part_requests")
-      .select("*")
-      .eq("work_order_id", woRow.id);
+    const requestQuery = woRow
+      ? supabase.from("part_requests").select("*").eq("work_order_id", woRow.id)
+      : supabase
+          .from("part_requests")
+          .select("*")
+          .eq("id", standaloneRequest?.id ?? "");
     const { data: reqs, error: reqErr } = await requestQuery.order("created_at", {
       ascending: false,
     });
@@ -524,7 +540,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
     const reqList = (reqs ?? []) as RequestRow[];
     const reqIds = reqList.map((r) => r.id);
-    const shopId = woRow.shop_id ?? null;
+    const shopId = woRow?.shop_id ?? standaloneRequest?.shop_id ?? null;
 
     const itemsByRequest: Record<string, ItemRow[]> = {};
     const quoteRequestsByRequest: Record<string, SupplierQuoteRequestRow[]> = {};
@@ -627,7 +643,9 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     }
 
     // ✅ Load all line complaint/description for this work order (used for UI + fallback linking)
-    {
+    if (!woRow) {
+      setLineById(new Map());
+    } else {
       const { data: lines, error: lErr } = await supabase
         .from("work_order_lines")
         .select("id, complaint, description")
@@ -907,7 +925,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
   async function saveCreatedInventoryItem(nextDraft?: CreateInventoryDraft): Promise<void> {
     const draft = nextDraft ?? createInventoryDraft;
-    if (!wo?.shop_id || !draft) return;
+    if (!activeShopId || !draft) return;
     const name = draft.name.trim();
     const partNumber = draft.partNumber.trim();
     if (!name) {
@@ -944,7 +962,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     setSavingItemId(draft.itemId);
     try {
       const insert: DB["public"]["Tables"]["parts"]["Insert"] = {
-        shop_id: String(wo.shop_id),
+        shop_id: String(activeShopId),
         name,
         part_number: partNumber || null,
         sku: draft.sku.trim() || partNumber || null,
@@ -1513,7 +1531,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     reuseExistingPoId?: string | null,
     acquisitionCostOverride: number | null = null,
   ): Promise<boolean> {
-    if (!wo?.shop_id) {
+    if (!activeShopId) {
       toast.error("Missing shop_id.");
       return false;
     }
@@ -2066,7 +2084,10 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
     }
   }
 
-  const woDisplay = wo?.custom_id || (wo?.id ? `#${wo.id.slice(0, 8)}` : null);
+  const woDisplay =
+    wo?.custom_id ||
+    (wo?.id ? `#${wo.id.slice(0, 8)}` : null) ||
+    (standaloneShopId ? "Customer parts request" : null);
 
   const locOptions: Opt[] = locations.map((l) => ({
     value: String(l.id),
@@ -2184,7 +2205,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
 
       {loading ? (
         <div className={`${glassCard} p-4 text-[color:var(--theme-text-secondary)]`}>Loading…</div>
-      ) : !wo ? (
+      ) : !wo && !standaloneShopId ? (
         <div className={`${glassCard} p-4 text-[color:var(--theme-text-secondary)]`}>
           Work order not found / not visible.
         </div>
@@ -3371,7 +3392,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                               type="button"
                                               disabled={rowBusy}
                                               onClick={async () => {
-                                                if (!wo?.shop_id) return;
+                                                if (!activeShopId) return;
 
                                                 const raw = String(
                                                   it.ui_supplier_id ?? "",
@@ -3392,7 +3413,7 @@ export default function PartsRequestsForWorkOrderPage(): JSX.Element {
                                                   );
                                                   supplierId =
                                                     await ensureSupplierExists(
-                                                      String(wo.shop_id),
+                                                      String(activeShopId),
                                                       name,
                                                     );
                                                 } else {

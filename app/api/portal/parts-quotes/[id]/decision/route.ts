@@ -48,7 +48,7 @@ export async function POST(req: Request, context: RouteContext) {
       ? 404
       : normalized.includes("mismatch") || normalized.includes("invite required")
         ? 403
-        : normalized.includes("no longer awaiting")
+        : normalized.includes("no longer awaiting") || normalized.includes("updated this quote")
           ? 409
           : 400;
     return bad(message, status);
