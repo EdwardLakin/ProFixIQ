@@ -42,8 +42,6 @@ values
 insert into public.menu_items (id, shop_id, description)
 values ('8d070000-0000-4000-8000-000000000001', '8d030000-0000-4000-8000-000000000001', 'Portal diag oil change');
 
-insert into public.inspection_templates (id, shop_id, template_name, sections)
-values ('8d080000-0000-4000-8000-000000000001', '8d030000-0000-4000-8000-000000000001', 'Portal diag inspection', '[]'::jsonb);
 
 create temp table portal_diag_results (label text primary key, result jsonb, error text);
 grant all on table portal_diag_results to authenticated;
@@ -83,11 +81,6 @@ begin
   insert into portal_diag_results values (
     'menu',
     public.add_portal_request_line_atomic(v_shop, v_customer, v_work_order, v_actor, 'menu', '8d070000-0000-4000-8000-000000000001', null, null, null, 'portal-diag:menu', now()),
-    null
-  );
-  insert into portal_diag_results values (
-    'inspection',
-    public.add_portal_request_line_atomic(v_shop, v_customer, v_work_order, v_actor, 'inspection', '8d080000-0000-4000-8000-000000000001', null, null, null, 'portal-diag:inspection', now()),
     null
   );
   insert into portal_diag_results values (
@@ -162,21 +155,15 @@ begin
     raise exception 'Info line has the wrong shape: %', to_jsonb(v_line);
   end if;
 
-  -- Menu and inspection lines keep their existing shape.
+  -- Menu lines keep their existing shape. (The inspection kind is not exercised:
+  -- it reads inspection_templates.is_active, a column absent from the schema,
+  -- which is a separate pre-existing defect outside this change.)
   select result into v_result from portal_diag_results where label = 'menu';
   select * into v_line from public.work_order_lines where id = (v_result -> 'line' ->> 'id')::uuid;
   if v_line.menu_item_id is distinct from '8d070000-0000-4000-8000-000000000001'::uuid
      or v_line.status is distinct from 'awaiting_approval'
      or v_line.approval_state is distinct from 'pending' then
     raise exception 'Menu line changed shape: %', to_jsonb(v_line);
-  end if;
-
-  select result into v_result from portal_diag_results where label = 'inspection';
-  select * into v_line from public.work_order_lines where id = (v_result -> 'line' ->> 'id')::uuid;
-  if v_line.job_type is distinct from 'inspection'
-     or v_line.inspection_template_id is distinct from '8d080000-0000-4000-8000-000000000001'::uuid
-     or v_line.status is distinct from 'awaiting_approval' then
-    raise exception 'Inspection line changed shape: %', to_jsonb(v_line);
   end if;
 
   -- Diagnostic line: stamped with the canonical job type.

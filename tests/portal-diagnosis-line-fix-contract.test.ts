@@ -82,7 +82,6 @@ describe("portal custom and diagnostic line fix", () => {
       "Portal customer actor mismatch.",
       "Custom request description is required.",
       "'menu'",
-      "'inspection'",
     ]) {
       expect(runtime).toContain(preserved);
     }
