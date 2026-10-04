@@ -7,13 +7,21 @@ import {
   Plus,
   Wrench,
 } from "lucide-react";
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRSC,
+} from "@/features/shared/lib/supabase/server";
 import { requirePortalCustomerActor } from "@/features/portal/server/requirePortalActor";
 import {
   PortalPageHeader,
   PortalEmptyState,
 } from "@/features/portal/components/PortalUi";
 import { runBoundedRouteLoad } from "@/features/shared/lib/route-load";
+import { listPortalPartsQuotes } from "@/features/portal/server/portalPartsQuotes";
+import {
+  formatPartsQuoteMoney,
+  partsQuoteStatusLabel,
+} from "@/features/portal/lib/partsQuotePresentation";
 import {
   listPortalQuotesForCustomer,
   type PortalQuoteCard,
@@ -63,6 +71,21 @@ export default async function PortalQuotesPage() {
           })
         : [],
   );
+
+  const partsQuotes = shopId
+    ? await listPortalPartsQuotes({
+        admin: createAdminSupabase(),
+        shopId,
+        customerId: actor.customer.id,
+      })
+        .then((result) => result.quotes)
+        .catch((error: unknown) => {
+          console.error("[portal/quotes] parts quotes failed", {
+            message: error instanceof Error ? error.message : "unknown",
+          });
+          return [];
+        })
+    : [];
 
   const needsAttention = cards.filter(
     (card) => card.sent && card.pending && !card.approved && !isQuoteHistory(card),
@@ -184,7 +207,44 @@ export default async function PortalQuotesPage() {
         }
       />
 
-      {cards.length === 0 ? (
+      {partsQuotes.length > 0 ? (
+        <section className="space-y-3" aria-label="Parts quotes">
+          <div>
+            <h2 className="text-lg font-semibold text-[color:var(--theme-text-primary)]">
+              Parts quotes
+            </h2>
+            <p className="text-sm text-[color:var(--theme-text-secondary)]">
+              Parts you asked the shop to price. Review and approve them here.
+            </p>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            {partsQuotes.map((quote) => (
+              <Link
+                key={quote.id}
+                href={`/portal/parts-quotes/${quote.id}`}
+                className="rounded-3xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 shadow-card"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <PackageOpen className="h-5 w-5 text-[var(--accent-copper-light)]" aria-hidden="true" />
+                  <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2.5 py-1 text-[11px] text-[color:var(--theme-text-secondary)]">
+                    {partsQuoteStatusLabel(quote.status, quote.paid)}
+                  </span>
+                </div>
+                <h3 className="mt-3 text-sm font-semibold text-[color:var(--theme-text-primary)]">
+                  {quote.description}
+                </h3>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                  {[quote.vehicleLabel, quote.total != null ? formatPartsQuoteMoney(quote.total, quote.currency) : null]
+                    .filter(Boolean)
+                    .join(" • ")}
+                </p>
+              </Link>
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {cards.length === 0 && partsQuotes.length === 0 ? (
         <PortalEmptyState
           title="No quote requests yet"
           body="Request a repair estimate or ask Parts to price an item for pickup."

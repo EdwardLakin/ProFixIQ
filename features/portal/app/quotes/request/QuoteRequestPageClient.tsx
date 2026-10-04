@@ -79,6 +79,33 @@ export default function QuoteRequestPageClient() {
 
     setSubmitting(true);
     try {
+      if (requestKind === "parts_only") {
+        // Parts-only requests go to the shop Parts team and never create a work order.
+        const partsResponse = await fetch("/api/portal/parts-quotes", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Idempotency-Key": operationKey.current,
+          },
+          body: JSON.stringify({
+            vehicleId,
+            description: description.trim(),
+            notes: notes.trim() || null,
+            qty: Number(qty),
+          }),
+        });
+        const partsJson = (await partsResponse.json().catch(() => null)) as
+          | { requestId?: string; error?: string }
+          | null;
+        if (!partsResponse.ok || !partsJson?.requestId) {
+          setError(partsJson?.error ?? "We could not send the parts quote request.");
+          return;
+        }
+        operationKey.current = crypto.randomUUID();
+        router.replace(`/portal/parts-quotes/${encodeURIComponent(partsJson.requestId)}`);
+        return;
+      }
+
       const response = await fetch("/api/portal/request/add-quote-only", {
         method: "POST",
         headers: {
@@ -90,7 +117,7 @@ export default function QuoteRequestPageClient() {
           requestKind,
           description: description.trim(),
           notes: notes.trim() || null,
-          qty: requestKind === "parts_only" ? Number(qty) : 1,
+          qty: 1,
         }),
       });
       const json = (await response.json().catch(() => null)) as

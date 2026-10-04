@@ -13,7 +13,14 @@ import {
   SlidersHorizontal,
   Wrench,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { toast } from "sonner";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import RouteLoadPanel from "@/features/shared/components/ui/RouteLoadPanel";
@@ -24,6 +31,11 @@ import {
   type RouteLoadFailure,
 } from "@/features/shared/lib/route-load";
 import PickOrderTaskModal from "@/features/parts/components/PickOrderTaskModal";
+import {
+  getCustomerRequestPartIds,
+  getServerCustomerRequestPartIds,
+  subscribeCustomerRequestPartIds,
+} from "@/features/parts/lib/requests/customer-request-store";
 import MenuItemPartsIntakeModal, {
   type MenuIntakeQueueItem,
 } from "@/features/parts/components/MenuItemPartsIntakeModal";
@@ -671,6 +683,13 @@ export default function PartsRequestsPage(): JSX.Element {
   >(null);
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<QueueTab>("active");
+  // Customer requests awaiting pricing/approval are shown by the route layout's
+  // "Customer requests" section; keep them out of the regular queue buckets.
+  const customerRequestPartIds = useSyncExternalStore(
+    subscribeCustomerRequestPartIds,
+    getCustomerRequestPartIds,
+    getServerCustomerRequestPartIds,
+  );
   const [stageFilter, setStageFilter] = useState<StageFilter>("all");
   const [dismissingWorkOrder, setDismissingWorkOrder] = useState<string | null>(
     null,
@@ -899,8 +918,14 @@ export default function PartsRequestsPage(): JSX.Element {
     (liveState === "degraded" ? liveMessage : null);
 
   const models = useMemo(
-    () => (snapshot ? buildPartsRequestQueueModels(snapshot) : []),
-    [snapshot],
+    () =>
+      snapshot
+        ? buildPartsRequestQueueModels(snapshot).filter(
+            // Customer requests awaiting pricing/approval live in their own section.
+            (model) => !customerRequestPartIds.has(model.request.id),
+          )
+        : [],
+    [snapshot, customerRequestPartIds],
   );
   const workOrders = useMemo(
     () =>

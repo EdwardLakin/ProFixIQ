@@ -131,6 +131,7 @@ export default function PortalShell({
     if (exact) return exact.href;
     if (pathname.startsWith("/portal/request/")) return "/portal/request/when";
     if (pathname.startsWith("/portal/quotes/")) return "/portal/quotes";
+    if (pathname.startsWith("/portal/parts-quotes/")) return "/portal/quotes";
     if (
       pathname.startsWith("/portal/work-orders/")
     ) {

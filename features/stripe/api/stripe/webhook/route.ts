@@ -26,6 +26,10 @@ import {
   failStripeWebhookEvent,
 } from "@/features/stripe/lib/server/stripe-webhook-receipts";
 import { saveShopPaymentSettings } from "@/features/stripe/lib/server/shop-payment-settings";
+import {
+  isPortalPartsQuoteSession,
+  recordPortalPartsQuoteCheckoutSession,
+} from "@/features/portal/server/recordPortalPartsQuotePayment";
 
 type DB = Database;
 type AdminClient = ReturnType<typeof createAdminSupabase>;
@@ -471,6 +475,16 @@ async function processStripeWebhookEvent(ctx: WebhookContext): Promise<void> {
     case "checkout.session.completed": {
       const session = event.data.object as Stripe.Checkout.Session;
       if (session.mode === "payment") {
+        if (isPortalPartsQuoteSession(session)) {
+          // Parts quote payments are not invoice payments; record them on the
+          // quote and leave the invoice financial lifecycle untouched.
+          await recordPortalPartsQuoteCheckoutSession({
+            supabase,
+            session,
+            connectedAccountId: accountId,
+          });
+          return;
+        }
         const result = await postStripeFinancialEvent({
           supabase,
           metadata: session.metadata,

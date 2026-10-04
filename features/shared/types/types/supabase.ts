@@ -15009,6 +15009,7 @@ export type Database = {
           paid_at: string | null
           part_request_id: string | null
           priced_items: Json
+          pricing_checked_at: string | null
           qty: number
           quoted_at: string | null
           send_claimed_at: string | null
@@ -15042,6 +15043,7 @@ export type Database = {
           paid_at?: string | null
           part_request_id?: string | null
           priced_items?: Json
+          pricing_checked_at?: string | null
           qty?: number
           quoted_at?: string | null
           send_claimed_at?: string | null
@@ -15075,6 +15077,7 @@ export type Database = {
           paid_at?: string | null
           part_request_id?: string | null
           priced_items?: Json
+          pricing_checked_at?: string | null
           qty?: number
           quoted_at?: string | null
           send_claimed_at?: string | null
@@ -29224,6 +29227,10 @@ export type Database = {
           should_send: boolean
         }[]
       }
+      claim_portal_parts_quote_request_send: {
+        Args: { p_claim_seconds?: number; p_request_id: string }
+        Returns: Json
+      }
       claim_stripe_acquisition_intent: {
         Args: {
           p_checkout_email: string
@@ -29616,6 +29623,20 @@ export type Database = {
         }
         Returns: string
       }
+      create_portal_parts_quote_request_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_customer_id: string
+          p_description: string
+          p_notes: string
+          p_operation_key: string
+          p_qty: number
+          p_shop_id: string
+          p_vehicle_id: string
+        }
+        Returns: Json
+      }
       create_portal_quote_request_atomic: {
         Args: {
           p_actor_user_id: string
@@ -29750,6 +29771,17 @@ export type Database = {
         }
       }
       current_shop_id: { Args: never; Returns: string }
+      decide_portal_parts_quote_request_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_at?: string
+          p_choice: string
+          p_customer_id: string
+          p_decision: string
+          p_request_id: string
+        }
+        Returns: Json
+      }
       decline_deferred_recommendation: {
         Args: {
           p_action_id: string
@@ -30409,6 +30441,10 @@ export type Database = {
       mark_portal_notification_read: {
         Args: { p_notification_id: string }
         Returns: undefined
+      }
+      mark_portal_parts_quote_request_sent: {
+        Args: { p_at?: string; p_request_id: string }
+        Returns: Json
       }
       mark_work_order_picked_up_atomic: {
         Args: {
@@ -31142,6 +31178,10 @@ export type Database = {
         }
         Returns: Json
       }
+      price_portal_parts_quote_request: {
+        Args: { p_currency?: string; p_request_id: string; p_tax_rate?: number }
+        Returns: Json
+      }
       process_fleet_invitation_delivery_event: {
         Args: {
           p_email_log_id: string
@@ -31299,6 +31339,17 @@ export type Database = {
         Args: { p_slug: string }
         Returns: boolean
       }
+      record_portal_parts_quote_request_payment: {
+        Args: {
+          p_amount_cents: number
+          p_at?: string
+          p_connected_account_id: string
+          p_payment_intent_id: string
+          p_request_id: string
+          p_session_id: string
+        }
+        Returns: Json
+      }
       record_stripe_acquisition_completion: {
         Args: {
           p_checkout_email: string
@@ -31346,6 +31397,10 @@ export type Database = {
           p_worker_id: string
         }
         Returns: boolean
+      }
+      release_portal_parts_quote_request_send_claim: {
+        Args: { p_request_id: string }
+        Returns: Json
       }
       remediate_quote_line_pricing_quarantine: {
         Args: {
