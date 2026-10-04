@@ -20,8 +20,11 @@ describe("portal parts quote requests foundation migration", () => {
     expect(migration).toContain(
       "alter table public.portal_parts_quote_requests enable row level security",
     );
-    expect(migration).toContain("c.user_id = (select auth.uid())");
-    expect(migration).toContain("c.shop_id = portal_parts_quote_requests.shop_id");
+    expect(migration).toContain(
+      "using (public.profixiq_is_portal_customer_for(customer_id, shop_id))",
+    );
+    expect(migration).toContain("using (public.is_staff_for_shop(shop_id))");
+    expect(migration).not.toContain("from public.profiles p");
     expect(migration).toContain(
       "revoke all on table public.portal_parts_quote_requests from public, anon, authenticated",
     );

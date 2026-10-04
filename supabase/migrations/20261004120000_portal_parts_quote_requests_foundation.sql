@@ -76,28 +76,14 @@ drop policy if exists portal_parts_quote_requests_customer_select
 create policy portal_parts_quote_requests_customer_select
   on public.portal_parts_quote_requests
   for select to authenticated
-  using (
-    exists (
-      select 1
-      from public.customers c
-      where c.id = portal_parts_quote_requests.customer_id
-        and c.shop_id = portal_parts_quote_requests.shop_id
-        and c.user_id = (select auth.uid())
-    )
-  );
+  using (public.profixiq_is_portal_customer_for(customer_id, shop_id));
 
 drop policy if exists portal_parts_quote_requests_staff_select
   on public.portal_parts_quote_requests;
 create policy portal_parts_quote_requests_staff_select
   on public.portal_parts_quote_requests
   for select to authenticated
-  using (
-    shop_id in (
-      select p.shop_id
-      from public.profiles p
-      where p.id = (select auth.uid())
-    )
-  );
+  using (public.is_staff_for_shop(shop_id));
 
 -- Writes happen only through reviewed server functions running as service_role
 -- or security-definer RPCs; clients get read access scoped by the policies above.
