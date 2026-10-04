@@ -273,7 +273,7 @@ export default function MobileTechSettingsPage(): JSX.Element {
   if (loading) {
     return (
       <div className="app-shell flex min-h-screen flex-col text-foreground">
-        <header className="metal-bar sticky top-0 z-40 px-4 py-3">
+        <header className="metal-bar sticky top-0 z-40 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))]">
           <div className="text-sm font-blackops text-[var(--accent-copper-light)]">
             Tech Settings
           </div>
@@ -305,7 +305,7 @@ export default function MobileTechSettingsPage(): JSX.Element {
 
   return (
     <div className="app-shell flex min-h-screen flex-col text-foreground">
-      <header className="metal-bar sticky top-0 z-40 px-4 py-3">
+      <header className="metal-bar sticky top-0 z-40 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top,0px))]">
         <div className="flex items-start justify-between gap-3">
           <div className="space-y-0.5">
             <h1 className="text-lg font-blackops text-[var(--accent-copper-light)]">

@@ -161,7 +161,7 @@ export default function PortalShell({
     return (
       <div className="relative min-h-dvh overflow-x-hidden app-metal-bg text-[color:var(--theme-text-primary)]">
         <div className="pointer-events-none absolute inset-0 bg-[var(--theme-gradient-panel)]" />
-        <header className="metal-bar sticky top-0 z-40 flex min-h-14 items-center justify-between px-4 shadow-[var(--theme-shadow-medium)]">
+        <header className="metal-bar sticky top-0 z-40 flex min-h-[calc(3.5rem+env(safe-area-inset-top,0px))] items-center pt-[env(safe-area-inset-top,0px)] justify-between px-4 shadow-[var(--theme-shadow-medium)]">
           <Link href="/portal" className="flex flex-col leading-none">
             <span
               className="font-blackops text-xs tracking-[0.22em]"
@@ -180,7 +180,7 @@ export default function PortalShell({
             Portal home
           </Link>
         </header>
-        <main className="relative min-h-[calc(100dvh-56px)] w-full">
+        <main className="relative min-h-[calc(100dvh-56px-env(safe-area-inset-top,0px))] w-full">
           {children}
         </main>
       </div>
@@ -194,7 +194,7 @@ export default function PortalShell({
         <div className="absolute inset-0 bg-[var(--theme-gradient-panel)]" />
       </div>
 
-      <header className="metal-bar sticky top-0 z-40 flex min-h-14 items-center justify-between gap-3 border-b border-[color:var(--theme-border-soft)] px-3 shadow-[var(--theme-shadow-medium)] sm:px-4">
+      <header className="metal-bar sticky top-0 z-40 flex min-h-[calc(3.5rem+env(safe-area-inset-top,0px))] items-center pt-[env(safe-area-inset-top,0px)] justify-between gap-3 border-b border-[color:var(--theme-border-soft)] px-3 shadow-[var(--theme-shadow-medium)] sm:px-4">
         <div className="flex min-w-0 items-center gap-3">
           <button
             type="button"
@@ -342,7 +342,7 @@ export default function PortalShell({
             onClick={() => setMobileOpen(false)}
           />
           <aside className="absolute inset-y-0 left-0 flex w-[88vw] max-w-[360px] flex-col border-r border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] shadow-2xl">
-            <div className="flex min-h-16 items-center justify-between border-b border-[color:var(--theme-border-soft)] px-4">
+            <div className="flex min-h-[calc(4rem+env(safe-area-inset-top,0px))] items-center justify-between border-b border-[color:var(--theme-border-soft)] px-4 pt-[env(safe-area-inset-top,0px)]">
               <div>
                 <p
                   className="font-blackops text-base tracking-[0.16em]"

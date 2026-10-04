@@ -5,7 +5,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
-import PortalShell from "@/features/portal/components/PortalShell";
 import type { Database } from "@shared/types/types/supabase";
 
 type DB = Database;
@@ -80,10 +79,7 @@ export default function PortalPartsRequestsPage() {
   }, [supabase]);
 
   return (
-    <PortalShell
-      title="Customer Portal"
-      subtitle="Review parts requested by your shop and track approvals"
-    >
+    <>
       <div className="space-y-4">
         <div>
           <div className="text-xs uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
@@ -168,6 +164,6 @@ export default function PortalPartsRequestsPage() {
           </div>
         )}
       </div>
-    </PortalShell>
+    </>
   );
 }
