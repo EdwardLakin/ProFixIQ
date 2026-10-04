@@ -20,7 +20,7 @@ vi.mock("@/features/portal/server/requirePortalActor", () => ({
   requirePortalCustomerActor: mocks.requirePortalCustomerActor,
 }));
 
-const fixSql = read("supabase/migrations/20261004170000_portal_parts_quote_request_review_fixes.sql");
+const fixSql = read("supabase/migrations/20261004164130_portal_parts_quote_request_review_fixes.sql");
 const flowSql = read("supabase/migrations/20261004150000_portal_parts_quote_request_flow.sql");
 
 function decideDefinition(source: string): string {
