@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(path, "utf8").replaceAll("\r", "");
 
 const fix = read(
-  "supabase/migrations/20261004160000_fix_portal_custom_and_diagnostic_lines.sql",
+  "supabase/migrations/20261004160229_fix_portal_custom_and_diagnostic_lines.sql",
 );
 const requestLineMigration = read(
   "supabase/migrations/20260715080200_phase7_atomic_portal_request_lines.sql",
