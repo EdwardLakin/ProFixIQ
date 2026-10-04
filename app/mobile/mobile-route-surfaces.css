@@ -99,6 +99,19 @@
  * field fall back to the browser's much wider native
  * `input[type=number]` intrinsic width, squeezing its flex sibling. */
 
+/* Sized checkbox opt-in. `@tailwindcss/forms` renders checkboxes with
+ * `appearance: none`, so the `width: auto` rule above collapses them to just
+ * their border (a thin vertical bar) -- it out-ranks both the plugin's 1rem
+ * and any `w-*` utility. Controls that must stay visible and tappable (e.g.
+ * the inspection signature confirmation) add `.pfx-sized-checkbox` to get an
+ * explicit box that wins over that rule. */
+.mobile-command-route input[type="checkbox"].pfx-sized-checkbox {
+  width: 1.25rem;
+  height: 1.25rem;
+  min-width: 1.25rem;
+  flex: none;
+}
+
 /* Hard guard: a checkbox/radio row must wrap its label text instead of
  * overflowing the card, regardless of how wide the control ends up. */
 .mobile-command-route label:has(> input[type="checkbox"]),

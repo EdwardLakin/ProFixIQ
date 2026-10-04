@@ -327,7 +327,7 @@ const InspectionSignaturePanel: React.FC<InspectionSignaturePanelProps> = ({
           type="checkbox"
           checked={confirm}
           onChange={(event) => setConfirm(event.target.checked)}
-          className="mt-[1px] h-3.5 w-3.5 shrink-0 rounded border border-[color:var(--theme-border-strong)] bg-[color:var(--theme-surface-page)] text-[color:var(--brand-primary)]"
+          className="pfx-sized-checkbox mt-[1px] h-3.5 w-3.5 shrink-0 rounded border border-[color:var(--theme-border-strong)] bg-[color:var(--theme-surface-page)] text-[color:var(--brand-primary)]"
         />
         <span className="min-w-0 flex-1 break-words">
           {confirmText(role)}
