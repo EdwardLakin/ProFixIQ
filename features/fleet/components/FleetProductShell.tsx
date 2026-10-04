@@ -644,12 +644,12 @@ export default function FleetProductShell({
             className="absolute inset-0 bg-[color:var(--theme-backdrop)] backdrop-blur-sm"
             onClick={() => setMobileOpen(false)}
           />
-          <aside className="absolute inset-y-0 left-0 w-[min(88vw,340px)] border-r border-[color:var(--theme-border-soft)] bg-[color:var(--theme-sidebar-bg)] shadow-2xl">
+          <aside className="absolute inset-y-0 left-0 w-[min(88vw,340px)] pt-[env(safe-area-inset-top,0px)] border-r border-[color:var(--theme-border-soft)] bg-[color:var(--theme-sidebar-bg)] shadow-2xl">
             <button
               type="button"
               aria-label="Close navigation"
               onClick={() => setMobileOpen(false)}
-              className="absolute right-3 top-4 z-10 flex h-9 w-9 items-center justify-center rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
+              className="absolute right-3 top-[calc(1rem+env(safe-area-inset-top,0px))] z-10 flex h-9 w-9 items-center justify-center rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)]"
             >
               <X className="h-4 w-4" />
             </button>

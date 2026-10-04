@@ -120,7 +120,7 @@ export default function OpsShell({
       </header>
 
       <div className="mx-auto flex max-w-[1600px]">
-        <aside className="sticky top-16 hidden h-[calc(100dvh-4rem)] w-64 shrink-0 border-r border-[color:var(--theme-border-soft)] p-4 md:block">
+        <aside className="sticky top-[calc(4rem+env(safe-area-inset-top,0px))] hidden h-[calc(100dvh-4rem-env(safe-area-inset-top,0px))] w-64 shrink-0 border-r border-[color:var(--theme-border-soft)] p-4 md:block">
           <nav className="space-y-1" aria-label="Operations navigation">
             {navigation}
           </nav>

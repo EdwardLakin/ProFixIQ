@@ -1,4 +1,3 @@
-import PortalShell from "@/features/portal/components/PortalShell";
 import Link from "next/link";
 
 const muted = "text-[color:var(--theme-text-secondary)]";
@@ -7,10 +6,7 @@ const glass =
 
 export default function PortalPartsPage() {
   return (
-    <PortalShell
-      title="Customer Portal"
-      subtitle="Parts approvals, requested parts, and statuses"
-    >
+    <>
       <div className="space-y-4">
         <div>
           <div className="text-xs uppercase tracking-[0.16em] text-[color:var(--theme-text-muted)]">
@@ -51,6 +47,6 @@ export default function PortalPartsPage() {
           schema you’re using for portal approvals.
         </div>
       </div>
-    </PortalShell>
+    </>
   );
 }
