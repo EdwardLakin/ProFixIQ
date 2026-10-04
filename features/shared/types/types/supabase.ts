@@ -14991,6 +14991,137 @@ export type Database = {
           },
         ]
       }
+      portal_parts_quote_requests: {
+        Row: {
+          amount_paid_cents: number | null
+          approval_choice: string | null
+          approved_at: string | null
+          created_at: string
+          created_by: string | null
+          currency: string
+          customer_id: string
+          declined_at: string | null
+          description: string
+          email_sent_at: string | null
+          id: string
+          notes: string | null
+          operation_key: string
+          paid_at: string | null
+          part_request_id: string | null
+          priced_items: Json
+          qty: number
+          quoted_at: string | null
+          send_claimed_at: string | null
+          sent_at: string | null
+          shop_id: string
+          status: string
+          stripe_checkout_session_id: string | null
+          stripe_connected_account_id: string | null
+          stripe_payment_intent_id: string | null
+          subtotal: number | null
+          tax_rate: number | null
+          tax_total: number | null
+          total: number | null
+          updated_at: string
+          vehicle_id: string | null
+        }
+        Insert: {
+          amount_paid_cents?: number | null
+          approval_choice?: string | null
+          approved_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          customer_id: string
+          declined_at?: string | null
+          description: string
+          email_sent_at?: string | null
+          id?: string
+          notes?: string | null
+          operation_key: string
+          paid_at?: string | null
+          part_request_id?: string | null
+          priced_items?: Json
+          qty?: number
+          quoted_at?: string | null
+          send_claimed_at?: string | null
+          sent_at?: string | null
+          shop_id: string
+          status?: string
+          stripe_checkout_session_id?: string | null
+          stripe_connected_account_id?: string | null
+          stripe_payment_intent_id?: string | null
+          subtotal?: number | null
+          tax_rate?: number | null
+          tax_total?: number | null
+          total?: number | null
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Update: {
+          amount_paid_cents?: number | null
+          approval_choice?: string | null
+          approved_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          customer_id?: string
+          declined_at?: string | null
+          description?: string
+          email_sent_at?: string | null
+          id?: string
+          notes?: string | null
+          operation_key?: string
+          paid_at?: string | null
+          part_request_id?: string | null
+          priced_items?: Json
+          qty?: number
+          quoted_at?: string | null
+          send_claimed_at?: string | null
+          sent_at?: string | null
+          shop_id?: string
+          status?: string
+          stripe_checkout_session_id?: string | null
+          stripe_connected_account_id?: string | null
+          stripe_payment_intent_id?: string | null
+          subtotal?: number | null
+          tax_rate?: number | null
+          tax_total?: number | null
+          total?: number | null
+          updated_at?: string
+          vehicle_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portal_parts_quote_requests_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "customers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_parts_quote_requests_part_request_id_fkey"
+            columns: ["part_request_id"]
+            isOneToOne: true
+            referencedRelation: "part_requests"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_parts_quote_requests_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_parts_quote_requests_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pricing_resolution_snapshots: {
         Row: {
           agreement_id: string | null
