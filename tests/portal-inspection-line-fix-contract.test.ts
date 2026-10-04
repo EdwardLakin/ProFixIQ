@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(path, "utf8").replaceAll("\r", "");
 
-const fix = read("supabase/migrations/20261004200000_fix_portal_inspection_line.sql");
+const fix = read("supabase/migrations/20261004204524_fix_portal_inspection_line.sql");
 const previous = read("supabase/migrations/20261004192655_refuse_portal_info_lines.sql");
 const generatedTypes = read("features/shared/types/types/supabase.ts");
 
