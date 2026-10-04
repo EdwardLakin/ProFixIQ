@@ -15178,6 +15178,34 @@ export type Database = {
             foreignKeyName: "portal_parts_quote_requests_work_order_id_fkey"
             columns: ["work_order_id"]
             isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "portal_parts_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "portal_parts_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "portal_parts_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "portal_parts_quote_requests_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
             referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
