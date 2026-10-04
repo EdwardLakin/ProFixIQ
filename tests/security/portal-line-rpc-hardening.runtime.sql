@@ -41,6 +41,9 @@ values
 insert into public.menu_items (id, shop_id, description)
 values ('8e070000-0000-4000-8000-000000000001', '8e030000-0000-4000-8000-000000000001', 'Portal harden oil change');
 
+insert into public.work_order_lines (id, work_order_id, shop_id, vehicle_id, complaint, status, approval_state, line_type, external_id)
+values ('8e080000-0000-4000-8000-000000000001', '8e060000-0000-4000-8000-000000000001', '8e030000-0000-4000-8000-000000000001', '8e050000-0000-4000-8000-000000000001', 'Info fixture', 'awaiting_approval', 'pending', 'info', 'portal_request:harden:info-fixture');
+
 create temp table portal_harden_results (label text primary key, result jsonb, error text);
 grant all on table portal_harden_results to authenticated, service_role;
 
@@ -61,6 +64,14 @@ begin
     insert into portal_harden_results values ('cross_custom', null, 'NO_ERROR');
   exception when others then
     insert into portal_harden_results values ('cross_custom', null, sqlerrm);
+  end;
+  -- Customer B using their own actor id probes customer A's informational line
+  -- with A's ids: the answer must not reveal that the line exists.
+  begin
+    perform public.apply_portal_line_decision_atomic(v_shop, v_customer_a, v_work_order_a, '8e080000-0000-4000-8000-000000000001', '8e010000-0000-4000-8000-000000000003', 'approve', 'harden:probe', now());
+    insert into portal_harden_results values ('probe_info', null, 'NO_ERROR');
+  exception when others then
+    insert into portal_harden_results values ('probe_info', null, sqlerrm);
   end;
   begin
     perform public.add_portal_request_line_atomic(v_shop, v_customer_a, v_work_order_a, v_actor_a, 'menu', '8e070000-0000-4000-8000-000000000001', null, null, null, 'harden:cross-menu', now());
@@ -84,7 +95,6 @@ declare
   v_customer constant uuid := '8e040000-0000-4000-8000-000000000001';
   v_work_order constant uuid := '8e060000-0000-4000-8000-000000000001';
   v_actor constant uuid := '8e010000-0000-4000-8000-000000000002';
-  v_info jsonb;
   v_job jsonb;
 begin
   insert into portal_harden_results values (
@@ -97,23 +107,31 @@ begin
     public.add_portal_diagnostic_line_atomic(v_shop, v_customer, v_work_order, v_actor, 'Shakes at speed', 'Highway only', 'harden:diag', now() + interval '1 day'),
     null);
 
-  v_info := public.add_portal_request_line_atomic(v_shop, v_customer, v_work_order, v_actor, 'custom', null, 'Note only', null, 'info', 'harden:info', now());
-  v_job := public.add_portal_request_line_atomic(v_shop, v_customer, v_work_order, v_actor, 'custom', null, 'Real job', null, 'job', 'harden:job', now());
-
+  -- Informational lines cannot be requested from the portal.
   begin
-    perform public.apply_portal_line_decision_atomic(v_shop, v_customer, v_work_order, (v_info -> 'line' ->> 'id')::uuid, v_actor, 'approve', 'harden:approve-info', now());
-    insert into portal_harden_results values ('approve_info', null, 'NO_ERROR');
+    perform public.add_portal_request_line_atomic(v_shop, v_customer, v_work_order, v_actor, 'custom', null, 'Note only', null, 'info', 'harden:info', now());
+    insert into portal_harden_results values ('request_info', null, 'NO_ERROR');
   exception when others then
-    insert into portal_harden_results values ('approve_info', null, sqlerrm);
+    insert into portal_harden_results values ('request_info', null, sqlerrm);
   end;
 
+  v_job := public.add_portal_request_line_atomic(v_shop, v_customer, v_work_order, v_actor, 'custom', null, 'Real job', null, 'job', 'harden:job', now());
   insert into portal_harden_results values (
     'approve_job',
     public.apply_portal_line_decision_atomic(v_shop, v_customer, v_work_order, (v_job -> 'line' ->> 'id')::uuid, v_actor, 'approve', 'harden:approve-job', now()),
     null);
+
+  -- An informational line created by some other path (fixture): the owner
+  -- cannot approve it.
+  begin
+    perform public.apply_portal_line_decision_atomic(v_shop, v_customer, v_work_order, '8e080000-0000-4000-8000-000000000001', v_actor, 'approve', 'harden:approve-info', now());
+    insert into portal_harden_results values ('approve_info', null, 'NO_ERROR');
+  exception when others then
+    insert into portal_harden_results values ('approve_info', null, sqlerrm);
+  end;
   insert into portal_harden_results values (
     'decline_info',
-    public.apply_portal_line_decision_atomic(v_shop, v_customer, v_work_order, (v_info -> 'line' ->> 'id')::uuid, v_actor, 'decline', 'harden:decline-info', now()),
+    public.apply_portal_line_decision_atomic(v_shop, v_customer, v_work_order, '8e080000-0000-4000-8000-000000000001', v_actor, 'decline', 'harden:decline-info', now()),
     null);
 end;
 $harden_own$;
@@ -169,11 +187,23 @@ begin
     raise exception 'Diagnostic replay created another line';
   end if;
 
-  -- Informational lines cannot be approved; job lines still can.
+  -- Informational lines cannot be requested or approved; job lines still can.
+  if (select error from portal_harden_results where label = 'request_info') is distinct from 'Informational lines cannot be requested from the portal.' then
+    raise exception 'Requesting an informational line was not refused: %', (select error from portal_harden_results where label = 'request_info');
+  end if;
+  if exists (select 1 from public.work_order_lines where external_id = 'portal_request:harden:info') then
+    raise exception 'A refused informational line request still inserted a line';
+  end if;
   if (select error from portal_harden_results where label = 'approve_info') is distinct from 'Informational lines cannot be approved.' then
     raise exception 'Approving an informational line was not refused: %', (select error from portal_harden_results where label = 'approve_info');
   end if;
-  select * into v_line from public.work_order_lines where external_id = 'portal_request:harden:info';
+  -- A caller who does not own the line gets the core's generic error, not the
+  -- informational-line one (no existence oracle).
+  if (select error from portal_harden_results where label = 'probe_info') is null
+     or (select error from portal_harden_results where label = 'probe_info') in ('NO_ERROR', 'Informational lines cannot be approved.') then
+    raise exception 'Cross-customer probe was not answered generically: %', (select error from portal_harden_results where label = 'probe_info');
+  end if;
+  select * into v_line from public.work_order_lines where external_id = 'portal_request:harden:info-fixture';
   if v_line.approval_state is distinct from 'declined' or v_line.punchable is not false then
     raise exception 'Informational line ended in the wrong state: %', to_jsonb(v_line);
   end if;
