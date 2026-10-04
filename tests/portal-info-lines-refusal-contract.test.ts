@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(path, "utf8").replaceAll("\r", "");
 
-const refusal = read("supabase/migrations/20261004190000_refuse_portal_info_lines.sql");
+const refusal = read("supabase/migrations/20261004192655_refuse_portal_info_lines.sql");
 const hardening = read("supabase/migrations/20261004183440_harden_portal_line_rpcs.sql");
 
 function definition(source: string, name: string): string {
