@@ -13,6 +13,7 @@ const STANDALONE_PUBLIC_PREFIXES = [
   "/auth/set-password",
   "/auth/callback",
   "/confirm",
+  "/compare",
   "/compare-plans",
   "/subscribe",
   "/demo",
