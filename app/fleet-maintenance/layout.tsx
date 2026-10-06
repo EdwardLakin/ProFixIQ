@@ -16,6 +16,7 @@ export const metadata: Metadata = {
     url: "/fleet-maintenance",
   },
   twitter: {
+    card: "summary_large_image",
     title,
     description,
   },
