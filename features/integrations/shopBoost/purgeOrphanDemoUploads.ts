@@ -129,7 +129,10 @@ export async function purgeOrphanDemoUploads(args: {
       }
     }
 
-    if (entries.length < PAGE_SIZE) break; // reached the end of the listing
+    if (entries.length < PAGE_SIZE) {
+      nextPage = null; // reached the end of the listing
+      break;
+    }
     nextPage = page + 1;
     if (deletable.length >= MAX_FILES_PER_RUN) {
       truncated = true;

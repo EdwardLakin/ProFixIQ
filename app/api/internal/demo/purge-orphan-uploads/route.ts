@@ -29,9 +29,9 @@ async function handle(req: Request) {
   const gate = authorize(req);
   if (!gate.ok) return gate.response;
 
-  const params = new URL(req.url).searchParams;
-  const apply = params.get("apply") === "1";
-  const pageParam = Number.parseInt(params.get("page") ?? "0", 10);
+  const { searchParams } = new URL(req.url);
+  const apply = searchParams.get("apply") === "1";
+  const pageParam = Number.parseInt(searchParams.get("page") ?? "0", 10);
   const startPage = Number.isFinite(pageParam) && pageParam > 0 ? pageParam : 0;
 
   try {
