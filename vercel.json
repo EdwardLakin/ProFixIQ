@@ -45,6 +45,10 @@
       "schedule": "*/2 * * * *"
     },
     {
+      "path": "/api/internal/shop-boost/run",
+      "schedule": "*/2 * * * *"
+    },
+    {
       "path": "/api/internal/portal-parts-quotes/tick",
       "schedule": "* * * * *"
     },

@@ -19,6 +19,7 @@ import {
   assertShopBoostPreviewTokenConfigured,
   generateShopBoostPreviewToken,
 } from "@/features/integrations/shopBoost/shareAccess";
+import { enforcePublicRouteRateLimit } from "@/features/shared/lib/server/publicRouteRateLimit";
 
 type DB = Database;
 
@@ -103,6 +104,15 @@ function readUploadManifest(args: {
 export async function POST(
   req: NextRequest,
 ): Promise<NextResponse<DemoRunResponse>> {
+  // Unauthenticated and compute-heavy (downloads and analyzes staged CSVs).
+  const limited = enforcePublicRouteRateLimit({
+    request: req,
+    route: "demo-shop-boost-run",
+    max: 6,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (limited) return limited;
+
   try {
     const body = (await req.json().catch(() => null)) as DemoRunBody | null;
     const demoId = body?.demoId;

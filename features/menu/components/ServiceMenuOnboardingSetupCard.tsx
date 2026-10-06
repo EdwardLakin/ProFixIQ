@@ -1,5 +1,10 @@
 "use client";
 
+// PARKED — intentionally not wired in (decision 2026-10-06, Shop Boost + guided
+// onboarding v2 is the onboarding path). Nothing imports this component and
+// guided onboarding has no "service menu" step. Do not delete; wire it in only
+// as part of an explicit change that adds the matching guided step.
+
 import React, { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";

@@ -177,6 +177,17 @@ function domainResult(
   return emptyDomainResult();
 }
 
+// When an uploaded file cannot be downloaded or parsed, the import records
+// "<dataset>:<message>" in rowResults.integrityErrors while that dataset's row
+// counts stay at zero, so counts alone make a broken dataset look clean.
+function hasDatasetLoadFailure(
+  summary: ShopBoostImportSummary,
+  dataset: ShopBoostUploadDatasetKey,
+): boolean {
+  const errors = summary?.rowResults?.integrityErrors ?? [];
+  return errors.some((error) => typeof error === "string" && error.startsWith(`${dataset}:`));
+}
+
 function importedCount(
   summary: ShopBoostImportSummary,
   dataset: ShopBoostUploadDatasetKey,
@@ -270,10 +281,18 @@ export async function mapInstantAnalysisToGuidedOnboarding(args: {
 
   for (const { dataset, stepKey } of mappedDatasets) {
     const result = domainResult(args.importSummary, dataset);
+    const loadFailed = hasDatasetLoadFailure(args.importSummary, dataset);
+    const reviewPhasePending = result.review > 0 || result.failed > 0 || loadFailed;
+    // A step with rows still awaiting review (or failed, or whose file did not
+    // load) is not finished: keep it
+    // in progress so the guided session routes the owner back to it. A step the
+    // owner already completed stays completed when the handoff is replayed.
+    const alreadyCompleted = existingStepByKey.get(stepKey)?.status === "completed";
+    const stepComplete = !reviewPhasePending || alreadyCompleted;
     const { error: updateStepError } = await admin
       .from("guided_onboarding_steps")
       .update({
-        status: "completed",
+        status: stepComplete ? "completed" : "in_progress",
         answer: {
           source: "instant_shop_analysis",
           demoId: args.demoId,
@@ -283,10 +302,11 @@ export async function mapInstantAnalysisToGuidedOnboarding(args: {
           successCount: result.success,
           reviewCount: result.review,
           failedCount: result.failed,
-          reviewPhasePending: result.review > 0 || result.failed > 0,
+          loadFailed,
+          reviewPhasePending,
         },
         started_at: now,
-        completed_at: now,
+        completed_at: stepComplete ? now : null,
         skipped_at: null,
         updated_at: now,
       })
@@ -338,7 +358,8 @@ export async function mapInstantAnalysisToGuidedOnboarding(args: {
       completionState: args.importSummary?.completionState ?? "unknown",
       reviewPhasePending:
         (args.importSummary?.rowResults.reviewCount ?? 0) > 0 ||
-        (args.importSummary?.rowResults.failedCount ?? 0) > 0,
+        (args.importSummary?.rowResults.failedCount ?? 0) > 0 ||
+        mappedDatasets.some((item) => hasDatasetLoadFailure(args.importSummary, item.dataset)),
     },
     created_by: args.userId,
   });

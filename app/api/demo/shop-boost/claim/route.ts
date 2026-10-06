@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { verifyShopBoostPreviewToken } from "@/features/integrations/shopBoost/shareAccess";
+import { enforcePublicRouteRateLimit } from "@/features/shared/lib/server/publicRouteRateLimit";
 
 type DB = Database;
 
@@ -32,6 +33,14 @@ function asRecord(value: unknown): Record<string, unknown> {
 export async function POST(
   req: NextRequest,
 ): Promise<NextResponse<ClaimResponse>> {
+  const limited = enforcePublicRouteRateLimit({
+    request: req,
+    route: "demo-shop-boost-claim",
+    max: 10,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (limited) return limited;
+
   try {
     const body = (await req.json().catch(() => null)) as ClaimBody | null;
 

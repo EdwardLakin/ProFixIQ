@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import sgMail from "@sendgrid/mail";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
@@ -6,6 +7,14 @@ import {
   verifyShopBoostPreviewToken,
 } from "@/features/integrations/shopBoost/shareAccess";
 import { loadShadowPreviewContext } from "@/features/integrations/shopBoost/shadowShop";
+import {
+  consumeRateLimit,
+  enforcePublicRouteRateLimit,
+  tooManyRequestsResponse,
+} from "@/features/shared/lib/server/publicRouteRateLimit";
+
+const MAX_EMAILS_PER_RECIPIENT = 3;
+const MAX_SHARES_PER_DEMO_PER_HOUR = 10;
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -18,6 +27,14 @@ function isEmail(value: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  const limited = enforcePublicRouteRateLimit({
+    request: req,
+    route: "demo-shop-boost-share",
+    max: 5,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (limited) return limited;
+
   try {
     const body = (await req.json()) as {
       previewToken?: string;
@@ -60,39 +77,74 @@ export async function POST(req: NextRequest) {
       expiresInDays: 7,
     });
 
-    sgMail.setApiKey(requiredEnv("SENDGRID_API_KEY"));
-    await sgMail.send({
-      to: recipientEmail,
-      from: requiredEnv("SENDGRID_FROM_EMAIL"),
-      subject: `${senderName} shared a Shop Boost analysis for ${context.shopName}`,
-      text: [
-        `This analysis was generated for ${context.shopName}.`,
-        `ROI highlights and blockers are included in this read-only view.`,
-        `Open analysis: ${shareLink}`,
-      ].join("\n"),
+    // Caps keep this unauthenticated endpoint from being used as an email relay.
+    const demoLimit = consumeRateLimit({
+      key: `demo-shop-boost-share:${access.demoId}`,
+      max: MAX_SHARES_PER_DEMO_PER_HOUR,
+      windowMs: 60 * 60 * 1000,
     });
+    if (!demoLimit.allowed) return tooManyRequestsResponse(demoLimit.retryAfterSeconds);
 
     const supabase = createAdminSupabase();
-    const { data: existingLead } = await supabase
+    const { data: existingLead, error: leadLookupError } = await supabase
       .from("demo_shop_boost_leads")
       .select("id, share_count, emails_sent, lead_kind")
       .eq("demo_id", access.demoId)
       .eq("email", recipientEmail)
       .maybeSingle<{ id: string; share_count: number | null; emails_sent: number | null; lead_kind: string | null }>();
 
+    // Fail closed: a lookup error (including duplicate rows for one recipient)
+    // must not fall through to "new recipient" and bypass the cap.
+    if (leadLookupError) {
+      console.error("[demo/shop-boost/share] Recipient lookup failed", leadLookupError);
+      return NextResponse.json(
+        { ok: false, error: "Unable to share this analysis right now." },
+        { status: 503, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    if ((existingLead?.emails_sent ?? 0) >= MAX_EMAILS_PER_RECIPIENT) {
+      return NextResponse.json(
+        { ok: false, error: "This analysis has already been shared with that recipient." },
+        { status: 429, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    // Read configuration before reserving so a misconfiguration does not use a slot.
+    const sendgridApiKey = requiredEnv("SENDGRID_API_KEY");
+    const fromEmail = requiredEnv("SENDGRID_FROM_EMAIL");
+
+    // Reserve the send before calling SendGrid so concurrent requests cannot all
+    // pass the cap on a stale read. For an existing recipient the reservation is
+    // a conditional update (only one request can move emails_sent from N to N+1);
+    // a new recipient's row is written first, with a known id so it can be
+    // released if the send fails.
+    const sentBefore = existingLead?.emails_sent ?? 0;
+    const newLeadId = randomUUID();
     if (existingLead?.id) {
-      await supabase
+      const { data: reserved, error: reserveError } = await supabase
         .from("demo_shop_boost_leads")
         .update({
           share_count: (existingLead.share_count ?? 0) + 1,
-          emails_sent: (existingLead.emails_sent ?? 0) + 1,
+          emails_sent: sentBefore + 1,
           last_viewed_at: new Date().toISOString(),
-          engagement_score: Math.min(100, ((existingLead.emails_sent ?? 0) + 1) * 8),
+          engagement_score: Math.min(100, (sentBefore + 1) * 8),
           lead_kind: existingLead.lead_kind === "activation_claim" ? "activation_claim" : "share_recipient",
         } as Record<string, unknown>)
-        .eq("id", existingLead.id);
+        .eq("id", existingLead.id)
+        .eq("emails_sent", sentBefore)
+        .select("id");
+
+      if (reserveError) throw new Error(reserveError.message);
+      if (!reserved || reserved.length === 0) {
+        return NextResponse.json(
+          { ok: false, error: "Another share for this recipient is in progress. Please retry." },
+          { status: 429, headers: { "Cache-Control": "no-store", "Retry-After": "5" } },
+        );
+      }
     } else {
-      await supabase.from("demo_shop_boost_leads").insert({
+      const { error: insertError } = await supabase.from("demo_shop_boost_leads").insert({
+        id: newLeadId,
         demo_id: access.demoId,
         email: recipientEmail,
         summary: `Shared by ${senderName}`,
@@ -101,6 +153,45 @@ export async function POST(req: NextRequest) {
         engagement_score: 8,
         lead_kind: "share_recipient",
       } as Record<string, unknown>);
+      if (insertError) throw new Error(insertError.message);
+    }
+
+    try {
+      sgMail.setApiKey(sendgridApiKey);
+      await sgMail.send({
+        to: recipientEmail,
+        from: fromEmail,
+        // The subject is fixed apart from the shop name: the sender name is
+        // free text from an unauthenticated caller, so it only appears in the
+        // body, labelled as entered by the sender.
+        subject: `A Shop Boost analysis was shared with you for ${context.shopName}`,
+        text: [
+          `This analysis was generated for ${context.shopName}.`,
+          `Shared by (name entered by the sender): ${senderName}`,
+          `ROI highlights and blockers are included in this read-only view.`,
+          `Open analysis: ${shareLink}`,
+        ].join("\n"),
+      });
+    } catch (sendError) {
+      // Best-effort release of the reserved slot; a failed release only costs
+      // the recipient one slot, which errs on the safe side.
+      try {
+        if (existingLead?.id) {
+          await supabase
+            .from("demo_shop_boost_leads")
+            .update({
+              share_count: existingLead.share_count ?? 0,
+              emails_sent: sentBefore,
+            } as Record<string, unknown>)
+            .eq("id", existingLead.id)
+            .eq("emails_sent", sentBefore + 1);
+        } else {
+          await supabase.from("demo_shop_boost_leads").delete().eq("id", newLeadId);
+        }
+      } catch (releaseError) {
+        console.error("[demo/shop-boost/share] Unable to release reserved share slot", releaseError);
+      }
+      throw sendError;
     }
 
     return NextResponse.json(

@@ -1,11 +1,11 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-10-04T05:36:10.910Z
+Generated: 2026-10-06T18:52:21.341Z
 
 ## Summary
-- Total route count: **538**
-- Routes exporting GET: **198**
-- Routes exporting POST: **362**
+- Total route count: **539**
+- Routes exporting GET: **200**
+- Routes exporting POST: **363**
 - Routes exporting PUT: **12**
 - Routes exporting PATCH: **34**
 - Routes exporting DELETE: **15**
@@ -35,8 +35,6 @@ Generated: 2026-10-04T05:36:10.910Z
 - `app/api/copilot/technician/speech/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/dashboard/layout/route.ts` | methods: GET, PUT | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/demo/shop-boost/run/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_with_shop_identifier_input_or_reference
-- `app/api/demo/shop-boost/share/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
-- `app/api/demo/shop-boost/uploads/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/diag/log/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/fleet/clarifications/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/fleet/defects/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
@@ -178,8 +176,6 @@ Generated: 2026-10-04T05:36:10.910Z
 - `app/api/copilot/technician/session/route.ts` | methods: GET, POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/copilot/technician/speech/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/dashboard/layout/route.ts` | methods: GET, PUT | riskFlags: mutating_without_obvious_auth_marker
-- `app/api/demo/shop-boost/share/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
-- `app/api/demo/shop-boost/uploads/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/diag/log/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/fleet/calendar/route.ts` | methods: GET | riskFlags: none
 - `app/api/fleet/clarifications/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker

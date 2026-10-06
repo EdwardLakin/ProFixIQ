@@ -167,7 +167,9 @@ const DEFAULT_RULES: ResolvedActivationRules = {
   enabled: true,
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function adminAny(): SupabaseClient<any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return createAdminSupabase() as unknown as SupabaseClient<any>;
 }
 
@@ -176,6 +178,7 @@ function asNumber(value: unknown, fallback = 0): number {
 }
 
 async function setJobStatus(args: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>;
   runId: string;
   jobType: string;
@@ -242,6 +245,14 @@ export async function seedRunJobs(args: {
   runId: string;
   shopId: string;
   intakeId: string;
+  /**
+   * Default (false) keeps the original behavior: every seed job is upserted back
+   * to `queued`. When true, only jobs that do not exist yet are inserted and the
+   * state of existing jobs (succeeded, running, blocked, retry bookkeeping) is
+   * left untouched. The scheduled worker uses this so repeated passes never
+   * reopen completed work.
+   */
+  preserveExisting?: boolean;
 }): Promise<OnboardingJobRow[]> {
   const supabase = adminAny();
 
@@ -257,7 +268,9 @@ export async function seedRunJobs(args: {
     payload: { intake_id: args.intakeId },
   }));
 
-  const { error } = await supabase.from("shop_onboarding_jobs").upsert(seed, { onConflict: "idempotency_key" });
+  const { error } = await supabase
+    .from("shop_onboarding_jobs")
+    .upsert(seed, { onConflict: "idempotency_key", ignoreDuplicates: args.preserveExisting === true });
   if (error) {
     console.error("[shop-boost/orchestrator] seedRunJobs failed", {
       runId: args.runId,
@@ -520,6 +533,68 @@ export async function getJobAttemptCount(jobId: string): Promise<number> {
     return 0;
   }
   return Number(count ?? 0);
+}
+
+export const STALE_RUNNING_JOB_MS = 15 * 60 * 1000;
+
+/**
+ * A worker that dies mid-job (timeout, crash, deploy) leaves its job in
+ * `running` forever: claimNextRunnableJob only claims queued/retryable jobs and
+ * dependents wait on `running` predecessors. Return jobs whose lock is older
+ * than `staleAfterMs` to `retryable_failed` so the normal claim path retries
+ * them. The existing max-attempts check still caps retries.
+ */
+export async function recoverStaleRunningJobs(args: {
+  staleAfterMs?: number;
+  now?: Date;
+} = {}): Promise<{ recovered: number }> {
+  const supabase = adminAny();
+  const now = args.now ?? new Date();
+  const cutoffIso = new Date(now.getTime() - (args.staleAfterMs ?? STALE_RUNNING_JOB_MS)).toISOString();
+  const nowIso = now.toISOString();
+
+  const { data, error } = await supabase
+    .from("shop_onboarding_jobs")
+    .update({
+      status: "retryable_failed" satisfies OrchestratorJobStatus,
+      error_code: "STALE_LOCK_RECOVERED",
+      error_message: "Worker lock expired before the job finished; returned to the retry queue.",
+      locked_at: null,
+      locked_by: null,
+      retry_after: null,
+      updated_at: nowIso,
+    })
+    .eq("status", "running")
+    .lt("locked_at", cutoffIso)
+    .select("id");
+
+  if (error) {
+    console.error("[shop-boost/orchestrator] recoverStaleRunningJobs failed", { error: error.message });
+    return { recovered: 0 };
+  }
+
+  // The dead worker's attempt row is still `running`; close it so attempt
+  // history matches the recovered job state. The retry opens a fresh attempt.
+  const recoveredJobIds = ((data as Array<{ id: string }> | null) ?? []).map((row) => String(row.id));
+  if (recoveredJobIds.length > 0) {
+    const { error: attemptError } = await supabase
+      .from("shop_onboarding_attempts")
+      .update({
+        status: "failed" satisfies OrchestratorAttemptStatus,
+        completed_at: nowIso,
+        error_code: "STALE_LOCK_RECOVERED",
+        error_message: "Worker lock expired before the attempt finished.",
+      })
+      .in("job_id", recoveredJobIds)
+      .eq("status", "running");
+    if (attemptError) {
+      console.error("[shop-boost/orchestrator] recoverStaleRunningJobs attempt close failed", {
+        error: attemptError.message,
+      });
+    }
+  }
+
+  return { recovered: recoveredJobIds.length };
 }
 
 export function computeRetryAfter(attemptCount: number, baseSeconds = 45, maxSeconds = 1800): string {

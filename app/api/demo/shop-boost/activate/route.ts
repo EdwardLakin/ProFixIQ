@@ -16,6 +16,13 @@ import { mapInstantAnalysisToGuidedOnboarding } from "@/features/onboarding-v2/g
 
 type DB = Database;
 
+// Activation imports the full analysis inline; give it the platform ceiling
+// instead of the (much lower) default so a large export is not cut off and
+// left in "processing".
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
 type ActivationBody = {
   demoId?: string;
   intakeId?: string;
@@ -303,29 +310,59 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  await updateIntakeProgress({
-    intakeId,
-    status: "queued",
-    currentStep: "activation_started",
-    progressPercent: 8,
-    patch: { startedAt: new Date().toISOString(), lastError: null },
-  });
+  let importSummary: ShopBoostImportSummary;
+  try {
+    await updateIntakeProgress({
+      intakeId,
+      status: "queued",
+      currentStep: "activation_started",
+      progressPercent: 8,
+      patch: { startedAt: new Date().toISOString(), lastError: null },
+      strict: true,
+    });
+    await updateIntakeProgress({
+      intakeId,
+      status: "processing",
+      currentStep: "generating_suggestions",
+      progressPercent: 35,
+      strict: true,
+    });
+    await buildShopBoostProfile({ shopId, intakeId });
 
-  await updateIntakeProgress({
-    intakeId,
-    status: "processing",
-    currentStep: "generating_suggestions",
-    progressPercent: 35,
-  });
-  await buildShopBoostProfile({ shopId, intakeId });
+    await updateIntakeProgress({
+      intakeId,
+      currentStep: "materializing_operating_layer",
+      progressPercent: 62,
+      strict: true,
+    });
 
-  await updateIntakeProgress({
-    intakeId,
-    currentStep: "materializing_operating_layer",
-    progressPercent: 62,
-  });
-
-  const importSummary = await runShopBoostImport({ shopId, intakeId, options: { createStaffUsers: false } });
+    importSummary = await runShopBoostImport({ shopId, intakeId, options: { createStaffUsers: false } });
+  } catch (error) {
+    // Do not leave the intake in "processing" forever: record the failure so the
+    // owner sees it and the (retry-safe) handoff page can run activation again.
+    const message = error instanceof Error ? error.message : "Activation import failed.";
+    console.error("[demo/shop-boost/activate] Activation import failed", { demoId, intakeId, shopId, error: message });
+    try {
+      await updateIntakeProgress({
+        intakeId,
+        status: "failed",
+        currentStep: "activation_failed",
+        patch: { failedAt: new Date().toISOString(), lastError: message },
+        strict: true,
+      });
+    } catch (recordError) {
+      // The intake may still read "processing"; surface it in logs so it can be found.
+      console.error("[demo/shop-boost/activate] Unable to record activation failure", {
+        demoId,
+        intakeId,
+        error: recordError instanceof Error ? recordError.message : String(recordError),
+      });
+    }
+    return NextResponse.json(
+      { ok: false, error: "We couldn't finish importing your analysis. Please retry." },
+      { status: 500 },
+    );
+  }
 
   const completedStatus =
     importSummary.completionState === "PARTIAL_FAILURE" ||
