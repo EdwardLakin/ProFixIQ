@@ -17,25 +17,26 @@ describe("public SEO foundation", () => {
     expect(sitemap).not.toContain("lastModified: new Date");
   });
 
-  it("keeps authenticated and operational routes out of crawler scope", () => {
+  it("keeps authenticated and operational route roots and descendants out of crawler scope", () => {
     const robots = source("app/robots.ts");
 
     for (const route of [
-      "/account/",
-      "/api/",
-      "/billing/",
-      "/customers/",
-      "/dashboard/",
-      "/demo/",
-      "/inspections/",
-      "/ops/",
-      "/parts/",
-      "/portal/",
-      "/shop/",
-      "/vehicles/",
-      "/work-orders/",
+      "/account",
+      "/api",
+      "/billing",
+      "/customers",
+      "/dashboard",
+      "/demo",
+      "/inspections",
+      "/ops",
+      "/parts",
+      "/portal",
+      "/shop",
+      "/vehicles",
+      "/work-orders",
     ]) {
       expect(robots).toContain(`\"${route}\"`);
+      expect(robots).not.toContain(`\"${route}/\"`);
     }
 
     expect(robots).toContain('sitemap: "https://profixiq.com/sitemap.xml"');
@@ -53,12 +54,14 @@ describe("public SEO foundation", () => {
     expect(homePage).toContain('canonical: "/"');
   });
 
-  it("keeps route-specific search and social metadata", () => {
+  it("keeps route-specific search and large-card social metadata", () => {
     const rootLayout = source("app/layout.tsx");
     const pricing = source("app/compare-plans/layout.tsx");
     const field = source("app/field-service/layout.tsx");
     const fleet = source("app/fleet-maintenance/layout.tsx");
     const demo = source("app/request-demo/layout.tsx");
+    const fieldPage = source("app/field-service/page.tsx");
+    const fleetPage = source("app/fleet-maintenance/page.tsx");
 
     expect(rootLayout).not.toContain('openGraph: {\n    type: "website",\n    siteName: "ProFixIQ",\n    title:');
     expect(pricing).toContain("ProFixIQ Pricing");
@@ -66,6 +69,13 @@ describe("public SEO foundation", () => {
     expect(field).toContain('url: "/field-service"');
     expect(fleet).toContain('url: "/fleet-maintenance"');
     expect(demo).toContain('url: "/request-demo"');
+
+    for (const metadataSource of [pricing, field, fleet, demo]) {
+      expect(metadataSource).toContain('card: "summary_large_image"');
+    }
+
+    expect(fieldPage).not.toContain("export const metadata");
+    expect(fleetPage).not.toContain("export const metadata");
   });
 
   it("renders the social image from the canonical mark without an invalid background layer", () => {
