@@ -4,8 +4,12 @@ import Providers from "../providers";
 import { Toaster } from "sonner";
 
 export const metadata: Metadata = {
-  title: "ProFixIQ",
-  description: "AI-powered vehicle diagnostics and repair assistant",
+  title: "ProFixIQ | Heavy-Duty & Automotive Repair Shop Software",
+  description:
+    "Heavy-duty and automotive repair shop software for voice inspections, technician-built repairs, parts workflows, approvals, field service, and fleet maintenance.",
+  alternates: {
+    canonical: "/",
+  },
 };
 
 export default function RootLayout({
