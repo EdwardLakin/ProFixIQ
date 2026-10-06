@@ -56,6 +56,20 @@ export function buildSearchLandingStructuredData({
   const pageUrl = `${siteUrl}${path}`;
   const graph: Array<Record<string, unknown>> = [
     {
+      "@type": "WebSite",
+      "@id": `${siteUrl}/#website`,
+      url: `${siteUrl}/`,
+      name: "ProFixIQ",
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": `${siteUrl}/#software`,
+      name: "ProFixIQ",
+      applicationCategory: "BusinessApplication",
+      operatingSystem: "Web",
+      url: `${siteUrl}/`,
+    },
+    {
       "@type": "WebPage",
       "@id": `${pageUrl}#webpage`,
       url: pageUrl,
@@ -65,7 +79,7 @@ export function buildSearchLandingStructuredData({
         "@id": `${siteUrl}/#website`,
       },
       about: {
-        "@id": `${siteUrl}/#software",
+        "@id": `${siteUrl}/#software`,
       },
     },
   ];
