@@ -18,8 +18,9 @@ export default function OpenGraphImage() {
           display: "flex",
           flexDirection: "column",
           justifyContent: "space-between",
-          background:
-            "radial-gradient(circle at 80% 10%, rgba(11,183,255,0.25), transparent 32%), radial-gradient(circle at 10% 25%, rgba(23,71,255,0.22), transparent 34%), #07111f",
+          backgroundColor: "#07111f",
+          backgroundImage:
+            "radial-gradient(circle at 80% 10%, rgba(11,183,255,0.25), transparent 32%), radial-gradient(circle at 10% 25%, rgba(23,71,255,0.22), transparent 34%)",
           color: "white",
           padding: "72px 84px",
           fontFamily: "sans-serif",
@@ -35,21 +36,13 @@ export default function OpenGraphImage() {
             letterSpacing: "-0.04em",
           }}
         >
-          <div
-            style={{
-              width: 70,
-              height: 70,
-              borderRadius: 18,
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              background: "#1747ff",
-              fontSize: 34,
-              fontWeight: 900,
-            }}
-          >
-            P
-          </div>
+          <img
+            src="https://profixiq.com/pwa-icons/icon-512"
+            width="70"
+            height="70"
+            alt=""
+            style={{ borderRadius: 18 }}
+          />
           ProFixIQ
         </div>
 
