@@ -80,11 +80,20 @@ function normalizeIntelligenceText(input: {
     .toLowerCase();
 }
 
-async function createEmbedding(text: string): Promise<number[] | null> {
+async function createEmbedding(
+  text: string,
+  shopId: string,
+  userId: string,
+): Promise<number[] | null> {
   const cleaned = text.trim();
   if (!cleaned) return null;
 
-  const embedding = await createOpenAIEmbedding(cleaned);
+  const embedding = await createOpenAIEmbedding(cleaned, {
+    feature: "ai_suggestions_embedding",
+    endpoint: "/api/ai/suggestions",
+    shopId,
+    userId,
+  });
   return embedding?.embedding ?? null;
 }
 
@@ -243,7 +252,7 @@ export async function POST(req: Request) {
     });
 
     try {
-      const embedding = await createEmbedding(normalizedText);
+      const embedding = await createEmbedding(normalizedText, profile.shop_id, auth.user.id);
       const vectorLiteral = toPgVectorLiteral(embedding);
 
       if (vectorLiteral) {

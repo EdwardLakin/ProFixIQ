@@ -1,5 +1,6 @@
 
 
+import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
 async function getRuntimeOpenAIClient() {
   const { getOpenAIClient } = await import("@/features/shared/lib/server/openai");
   return getOpenAIClient();
@@ -1647,14 +1648,24 @@ async function generateSnapshotWithAI(
   ].join("\n");
 
   try {
-    const completion = await (await getRuntimeOpenAIClient()).chat.completions.create({
-      model: getOpenAIModelForPurpose("fast"),
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      ...openAITemperatureParam(getOpenAIModelForPurpose("fast"), 0.2),
-    });
+    const completion = await ledgerOpenAICall(
+      {
+        feature: "shop_boost_profile",
+        endpoint: "shop-boost/profile",
+        shopId,
+        userId: null,
+        model: getOpenAIModelForPurpose("fast"),
+      },
+      async () =>
+        (await getRuntimeOpenAIClient()).chat.completions.create({
+          model: getOpenAIModelForPurpose("fast"),
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: userPrompt },
+          ],
+          ...openAITemperatureParam(getOpenAIModelForPurpose("fast"), 0.2),
+        }),
+    );
 
     const raw = completion.choices[0]?.message?.content ?? "{}";
     const parsed = JSON.parse(raw) as Partial<ShopHealthSnapshot>;

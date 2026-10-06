@@ -4,6 +4,7 @@ import {
   getOpenAIClient,
   isOpenAIConfigured,
 } from "@/features/shared/lib/server/openai";
+import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
 import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
@@ -134,7 +135,20 @@ export async function POST(req: Request) {
 
     try {
       const model = getOpenAIModelForPurpose("fast");
-      const completion = await getOpenAIClient().chat.completions.create({
+      const { data: usageProfile } = await supabase
+        .from("profiles")
+        .select("shop_id")
+        .eq("id", user.id)
+        .maybeSingle<{ shop_id: string | null }>();
+      const completion = await ledgerOpenAICall(
+      {
+        feature: "tech_performance_summary",
+        endpoint: "/api/ai/summarize-tech-performance",
+        shopId: usageProfile?.shop_id ?? null,
+        userId: user.id,
+        model: model,
+      },
+      () => getOpenAIClient().chat.completions.create({
         model,
         ...openAITemperatureParam(model, 0.4),
         max_completion_tokens: 260,
@@ -146,7 +160,8 @@ export async function POST(req: Request) {
           },
           { role: "user", content: userPrompt },
         ],
-      });
+      }),
+      );
 
       const summary =
         completion.choices[0]?.message?.content?.trim() || fallbackSummary;

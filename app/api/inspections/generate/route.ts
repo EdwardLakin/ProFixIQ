@@ -1,6 +1,8 @@
 // app/api/inspections/generate/route.ts
 import "server-only";
 import { NextResponse } from "next/server";
+import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
+import type { Response as OpenAIResponse } from "openai/resources/responses/responses";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
@@ -28,12 +30,15 @@ type InspectionSection = { title: string; items: InspectionItem[] };
 
 export const runtime = "nodejs";
 
-async function hasAuthenticatedShopScope(): Promise<boolean> {
+async function resolveAuthenticatedShopScope(): Promise<{
+  shopId: string;
+  userId: string;
+} | null> {
   const supabase = createServerSupabaseRoute();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return false;
+  if (!user) return null;
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -41,7 +46,7 @@ async function hasAuthenticatedShopScope(): Promise<boolean> {
     .eq("id", user.id)
     .maybeSingle();
 
-  return Boolean(profile?.shop_id);
+  return profile?.shop_id ? { shopId: profile.shop_id, userId: user.id } : null;
 }
 
 /* ------------------------- Type helpers -------------------------- */
@@ -213,7 +218,8 @@ export async function POST(req: Request) {
 
     // 4) call OpenAI as augmentation only after auth/shop-scoped gating.
     // Deterministic master-list generation above must remain the reliable path.
-    if (!(await hasAuthenticatedShopScope())) {
+    const scope = await resolveAuthenticatedShopScope();
+    if (!scope) {
       return NextResponse.json({ sections: baseSections });
     }
 
@@ -234,8 +240,17 @@ export async function POST(req: Request) {
       "Generate inspection sections and items suitable for a professional repair shop.",
     ].join("\n");
 
-    const resp = await openai.responses.create({
-      model: getOpenAIModelForPurpose("extraction"),
+    const extractionModel = getOpenAIModelForPurpose("extraction");
+    const resp = await ledgerOpenAICall(
+      {
+        feature: "inspection_template_generate",
+        endpoint: "/api/inspections/generate",
+        shopId: scope.shopId,
+        userId: scope.userId,
+        model: extractionModel,
+      },
+      () => openai.responses.create({
+      model: extractionModel,
       input: [
         { role: "system", content: system },
         { role: "user", content: user },
@@ -275,7 +290,8 @@ export async function POST(req: Request) {
         },
       },
       max_output_tokens: 1200,
-    });
+    }) as Promise<OpenAIResponse>,
+    );
 
     // 5) extract JSON from Responses API
     let aiRaw: unknown = {};

@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import {
   AI_RATE_CARD_VERSION,
+  estimateOpenAIEmbeddingCostUsd,
   estimateOpenAISpeechCostUsd,
   estimateOpenAITextCostUsd,
 } from "@/features/shared/lib/server/ai-cost";
@@ -93,6 +94,14 @@ function normalizedCost(event: AITelemetryEvent): number | null {
     event.speech_characters != null
   ) {
     return estimateOpenAISpeechCostUsd(event.model, event.speech_characters);
+  }
+
+  if (
+    provider === "openai" &&
+    modality === "other" &&
+    event.model?.trim().toLowerCase().startsWith("text-embedding-")
+  ) {
+    return estimateOpenAIEmbeddingCostUsd(event.model, event.prompt_tokens);
   }
 
   // Image generation prices input and output dimensions separately, and there

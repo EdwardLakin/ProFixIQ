@@ -11,6 +11,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import type {
+  OpsAIAccountingCompleteness,
   OpsAIUsageBreakdownRow,
   OpsAIUsageSnapshot,
 } from "@/features/ops/server/get-ai-usage";
@@ -110,7 +111,85 @@ function BreakdownTable({
   );
 }
 
-export default function OpsAIUsage({ snapshot }: { snapshot: OpsAIUsageSnapshot }) {
+function AccountingCompletenessPanel({
+  completeness,
+}: {
+  completeness: OpsAIAccountingCompleteness | null | undefined;
+}) {
+  if (!completeness) {
+    return (
+      <section className="rounded-2xl border border-amber-500/35 bg-amber-500/5 p-4 text-sm">
+        <div className="flex items-center gap-2 font-bold text-amber-300">
+          <AlertTriangle className="h-5 w-5" />
+          Accounting completeness unavailable
+        </div>
+        <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+          Spend above is a lower bound: usage that could not be priced is not included, and the report that counts it could not be loaded.
+        </p>
+      </section>
+    );
+  }
+
+  const c = completeness.summary;
+  const incomplete = c.unpricedModelEvents + c.usageMissingEvents > 0;
+
+  return (
+    <section
+      className={`rounded-2xl border p-4 ${
+        incomplete ? "border-amber-500/35 bg-amber-500/5" : "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-card)]"
+      }`}
+    >
+      <div className="flex items-center gap-2 font-bold">
+        <ShieldAlert className={`h-5 w-5 ${incomplete ? "text-amber-300" : "text-emerald-400"}`} />
+        Accounting completeness (30 days)
+      </div>
+      <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+        Spend totals include priced calls only. Unpriced and usage-missing calls are real provider activity with no recorded cost.
+      </p>
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+        <MetricCard label="Priced" value={`${c.completenessPct}%`} detail={`${compact(c.pricedEvents)} of ${compact(c.events)} calls`} icon={Gauge} />
+        <MetricCard label="No rate card" value={compact(c.unpricedModelEvents)} detail={`${compact(c.unpricedTokens)} tokens unpriced`} icon={Coins} />
+        <MetricCard label="Usage missing" value={compact(c.usageMissingEvents)} detail="Billable usage not returned" icon={AlertTriangle} />
+        <MetricCard label="Unattributed" value={compact(c.unattributedEvents)} detail="No shop on the call" icon={Package} />
+        <MetricCard label="Priced spend" value={usd(c.pricedSpend)} detail="Lower bound" icon={TrendingUp} />
+      </div>
+      {completeness.exposure.length ? (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full text-left text-xs">
+            <thead className="text-[10px] uppercase tracking-[0.14em] text-[color:var(--theme-text-muted)]">
+              <tr>
+                <th className="py-1 pr-3">Model</th>
+                <th className="py-1 pr-3">Feature</th>
+                <th className="py-1 pr-3">Gap</th>
+                <th className="py-1 pr-3 text-right">Calls</th>
+                <th className="py-1 text-right">Tokens</th>
+              </tr>
+            </thead>
+            <tbody>
+              {completeness.exposure.slice(0, 15).map((row) => (
+                <tr key={`${row.model}-${row.feature}-${row.class}`} className="border-t border-[color:var(--theme-border-soft)]">
+                  <td className="py-1 pr-3 font-mono">{row.model}</td>
+                  <td className="py-1 pr-3">{row.feature}</td>
+                  <td className="py-1 pr-3">{row.class === "usage_missing" ? "Usage missing" : "No rate card"}</td>
+                  <td className="py-1 pr-3 text-right">{compact(row.events)}</td>
+                  <td className="py-1 text-right">{compact(row.tokens)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+export default function OpsAIUsage({
+  snapshot,
+  completeness,
+}: {
+  snapshot: OpsAIUsageSnapshot;
+  completeness?: OpsAIAccountingCompleteness | null;
+}) {
   const s = snapshot.summary;
   const maxTrendCost = Math.max(...snapshot.trend.map((row) => row.cost), 0.000001);
 
@@ -131,6 +210,8 @@ export default function OpsAIUsage({ snapshot }: { snapshot: OpsAIUsageSnapshot 
           Updated {new Date(snapshot.generatedAt).toLocaleString()}
         </div>
       </header>
+
+      <AccountingCompletenessPanel completeness={completeness} />
 
       {snapshot.warnings.length ? (
         <section className="rounded-2xl border border-red-500/35 bg-red-500/5 p-4">

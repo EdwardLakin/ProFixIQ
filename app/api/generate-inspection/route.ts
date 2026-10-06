@@ -1,5 +1,6 @@
 // app/api/generate-inspection/route.ts
 import { NextResponse } from "next/server";
+import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import {
@@ -8,12 +9,15 @@ import {
 } from "@/features/shared/lib/server/openai-models";
 import { toInspectionCategories } from "@/features/inspections/lib/inspection/normalize";
 
-async function hasAuthenticatedShopScope(): Promise<boolean> {
+async function resolveAuthenticatedShopScope(): Promise<{
+  shopId: string;
+  userId: string;
+} | null> {
   const supabase = createServerSupabaseRoute();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return false;
+  if (!user) return null;
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -21,7 +25,7 @@ async function hasAuthenticatedShopScope(): Promise<boolean> {
     .eq("id", user.id)
     .maybeSingle();
 
-  return Boolean(profile?.shop_id);
+  return profile?.shop_id ? { shopId: profile.shop_id, userId: user.id } : null;
 }
 
 type GenerateBody = {
@@ -36,7 +40,8 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Missing prompt" }, { status: 400 });
     }
 
-    if (!(await hasAuthenticatedShopScope())) {
+    const scope = await resolveAuthenticatedShopScope();
+    if (!scope) {
       return NextResponse.json({ categories: [] }, { status: 401 });
     }
 
@@ -48,15 +53,25 @@ export async function POST(req: Request) {
       '{"categories":[{"title":string,"items":[{"item":string}]}]} ' +
       "The list should be practical and shop-usable. No extra keys, no markdown.";
 
-    const completion = await openai.chat.completions.create({
-      model: getOpenAIModelForPurpose("extraction"),
+    const extractionModel = getOpenAIModelForPurpose("extraction");
+    const completion = await ledgerOpenAICall(
+      {
+        feature: "inspection_template_generate",
+        endpoint: "/api/generate-inspection",
+        shopId: scope.shopId,
+        userId: scope.userId,
+        model: extractionModel,
+      },
+      () => openai.chat.completions.create({
+      model: extractionModel,
       ...openAITemperatureParam(getOpenAIModelForPurpose("extraction"), 0.2),
       response_format: { type: "json_object" },
       messages: [
         { role: "system", content: system },
         { role: "user", content: prompt },
       ],
-    });
+    }),
+    );
 
     const raw = completion.choices?.[0]?.message?.content ?? "{}";
     let data: unknown;

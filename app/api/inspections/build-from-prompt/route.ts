@@ -1,6 +1,7 @@
 // app/api/inspections/build-from-prompt/route.ts (FULL FILE REPLACEMENT)
 import "server-only";
 import { NextResponse } from "next/server";
+import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
@@ -509,7 +510,15 @@ export async function POST(req: Request) {
       // AI must never be on the critical path long enough to threaten platform timeouts.
       // If augmentation is slow, return the deterministic master-list sections.
       const resp = await withTimeout(
-        openai.responses.create({
+        ledgerOpenAICall(
+          {
+            feature: "inspection_template_build_from_prompt",
+            endpoint: "/api/inspections/build-from-prompt",
+            shopId: access.profile.shop_id,
+            userId: access.profile.id,
+            model: getOpenAIModelForPurpose("extraction"),
+          },
+          () => openai.responses.create({
           model: getOpenAIModelForPurpose("extraction"),
           input: [
             { role: "system", content: system },
@@ -524,6 +533,7 @@ export async function POST(req: Request) {
           },
           max_output_tokens: 1200,
         }),
+        ),
         AI_AUGMENTATION_TIMEOUT_MS,
       );
 

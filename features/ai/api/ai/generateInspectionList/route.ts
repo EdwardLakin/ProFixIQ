@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import {
@@ -6,12 +7,15 @@ import {
   openAITemperatureParam,
 } from "@/features/shared/lib/server/openai-models";
 
-async function hasAuthenticatedShopScope(): Promise<boolean> {
+async function resolveAuthenticatedShopScope(): Promise<{
+  shopId: string;
+  userId: string;
+} | null> {
   const supabase = createServerSupabaseRoute();
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return false;
+  if (!user) return null;
 
   const { data: profile } = await supabase
     .from("profiles")
@@ -19,19 +23,28 @@ async function hasAuthenticatedShopScope(): Promise<boolean> {
     .eq("id", user.id)
     .maybeSingle();
 
-  return Boolean(profile?.shop_id);
+  return profile?.shop_id ? { shopId: profile.shop_id, userId: user.id } : null;
 }
 
 export async function POST(req: Request) {
   const { prompt } = await req.json();
 
-  if (!(await hasAuthenticatedShopScope())) {
+  const scope = await resolveAuthenticatedShopScope();
+  if (!scope) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const openai = getOpenAIClient();
 
-  const response = await openai.chat.completions.create({
+  const response = await ledgerOpenAICall(
+    {
+      feature: "inspection_template_generate",
+      endpoint: "/api/ai/generateInspectionList",
+      shopId: scope.shopId,
+      userId: scope.userId,
+      model: getOpenAIModelForPurpose("extraction"),
+    },
+    () => openai.chat.completions.create({
     model: getOpenAIModelForPurpose("extraction"),
     messages: [
       {
@@ -50,7 +63,8 @@ export async function POST(req: Request) {
       },
     ],
     ...openAITemperatureParam(getOpenAIModelForPurpose("extraction"), 0.4),
-  });
+  }),
+  );
 
   const json = response.choices[0].message.content;
 
