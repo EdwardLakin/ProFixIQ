@@ -823,6 +823,11 @@ export async function planShopAssistantTurn(params: {
     fallback,
     maxOutputTokens: 1400,
     temperature: 0.05,
+    telemetry: {
+      endpoint: "shop-assistant/planner",
+      shopId: params.actor.shopId,
+      userId: params.actor.userId,
+    },
   });
 
   return {
