@@ -103,17 +103,22 @@ export async function runOpenAIStructuredJson<T>(params: {
 }> {
   const started = Date.now();
   const model = getOpenAIModelForPurpose(params.purpose);
-  const telemetry = params.telemetry ?? getAITelemetryContext();
+  const ambientTelemetry = params.telemetry ?? getAITelemetryContext();
   const timeoutMs = params.timeoutMs ?? canonicalPolicyTimeoutMs(params.feature);
-  if (!telemetry) {
-    // The canonical structured-AI path can only write a durable ledger row when
-    // the caller supplies (or is wrapped in) authenticated tenant/actor context.
-    // Surface the gap instead of silently omitting the provider spend.
-    console.warn("[openai-structured] no telemetry context; usage not ledgered", {
+  // Without caller or ambient tenant context the call is still ledgered, but as
+  // unattributed spend (null shop/user). Dropping the row would hide provider
+  // cost from every total; Ops surfaces unattributed rows as exposure instead.
+  if (!ambientTelemetry) {
+    console.warn("[openai-structured] no telemetry context; ledgering unattributed", {
       feature: params.feature,
       purpose: params.purpose,
     });
   }
+  const telemetry: OpenAIStructuredTelemetryContext = ambientTelemetry ?? {
+    endpoint: `unattributed:${params.feature}`,
+    shopId: null,
+    userId: null,
+  };
   let usage: OpenAIStructuredJsonUsage | undefined;
   let providerRequestId: string | null = null;
 
@@ -176,26 +181,24 @@ export async function runOpenAIStructuredJson<T>(params: {
       durationMs: latencyMs,
     });
 
-    if (telemetry) {
-      await recordDurableAIUsage({
-        feature: params.feature as AITelemetryFeature,
-        endpoint: telemetry.endpoint,
-        shop_id: telemetry.shopId,
-        user_id: telemetry.userId,
-        provider: "openai",
-        model,
-        modality: "text",
-        latency_ms: latencyMs,
-        prompt_tokens: usage.promptTokens,
-        cached_prompt_tokens: usage.cachedPromptTokens ?? null,
-        completion_tokens: usage.completionTokens,
-        total_tokens: usage.totalTokens,
-        status: "success",
-        error_code: null,
-        error_message: null,
-        provider_request_id: providerRequestId,
-      });
-    }
+    await recordDurableAIUsage({
+      feature: params.feature as AITelemetryFeature,
+      endpoint: telemetry.endpoint,
+      shop_id: telemetry.shopId,
+      user_id: telemetry.userId,
+      provider: "openai",
+      model,
+      modality: "text",
+      latency_ms: latencyMs,
+      prompt_tokens: usage.promptTokens,
+      cached_prompt_tokens: usage.cachedPromptTokens ?? null,
+      completion_tokens: usage.completionTokens,
+      total_tokens: usage.totalTokens,
+      status: "success",
+      error_code: null,
+      error_message: null,
+      provider_request_id: providerRequestId,
+    });
 
     return { mode: "ai", model, output, usage, latencyMs };
   } catch (error) {
@@ -212,26 +215,24 @@ export async function runOpenAIStructuredJson<T>(params: {
       error: message.slice(0, 160),
     });
 
-    if (telemetry) {
-      await recordDurableAIUsage({
-        feature: params.feature as AITelemetryFeature,
-        endpoint: telemetry.endpoint,
-        shop_id: telemetry.shopId,
-        user_id: telemetry.userId,
-        provider: "openai",
-        model,
-        modality: "text",
-        latency_ms: latencyMs,
-        prompt_tokens: usage?.promptTokens ?? null,
-        cached_prompt_tokens: usage?.cachedPromptTokens ?? null,
-        completion_tokens: usage?.completionTokens ?? null,
-        total_tokens: usage?.totalTokens ?? null,
-        status: "error",
-        error_code: /timed out/i.test(message) ? "provider_timeout" : "provider_error",
-        error_message: message.slice(0, 200),
-        provider_request_id: providerRequestId,
-      });
-    }
+    await recordDurableAIUsage({
+      feature: params.feature as AITelemetryFeature,
+      endpoint: telemetry.endpoint,
+      shop_id: telemetry.shopId,
+      user_id: telemetry.userId,
+      provider: "openai",
+      model,
+      modality: "text",
+      latency_ms: latencyMs,
+      prompt_tokens: usage?.promptTokens ?? null,
+      cached_prompt_tokens: usage?.cachedPromptTokens ?? null,
+      completion_tokens: usage?.completionTokens ?? null,
+      total_tokens: usage?.totalTokens ?? null,
+      status: "error",
+      error_code: /timed out/i.test(message) ? "provider_timeout" : "provider_error",
+      error_message: message.slice(0, 200),
+      provider_request_id: providerRequestId,
+    });
 
     if (params.requireAI) throw new Error(`[${params.feature}] AI call failed: ${message}`);
     return {

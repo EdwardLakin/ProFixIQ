@@ -230,6 +230,11 @@ export async function GET(req: Request) {
     validate: (value) => validateSelections(value, allowed),
     fallback: () => ({ selections: fallbackSelections }),
     maxOutputTokens: 500,
+    telemetry: {
+      endpoint: "/api/work-orders/[id]/quote-history-insights",
+      shopId,
+      userId: access.profile.id,
+    },
   });
 
   const byPair = new Map(
