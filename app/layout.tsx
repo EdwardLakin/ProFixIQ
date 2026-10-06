@@ -36,13 +36,9 @@ export const metadata: Metadata = {
   openGraph: {
     type: "website",
     siteName: "ProFixIQ",
-    title: "ProFixIQ | Heavy-Duty & Automotive Repair Shop Software",
-    description: siteDescription,
   },
   twitter: {
     card: "summary_large_image",
-    title: "ProFixIQ | Heavy-Duty & Automotive Repair Shop Software",
-    description: siteDescription,
   },
   manifest: "/manifest.webmanifest",
   appleWebApp: {
