@@ -174,20 +174,20 @@ describe("provider call coverage", () => {
   const PROVIDER_CALL =
     /chat\.completions\.create|\.responses\.create|images\.generate|images\.edit|audio\.speech\.create|audio\.transcriptions\.create|embeddings\.create|api\.openai\.com\/v1\/(chat|responses|embeddings|images|audio)/;
   const ACCOUNTED =
-    /ledgerOpenAICall|recordDurableAIUsage|runDurableAIGuard|durableFeature|ai-route-quota/;
+    /ledgerOpenAICall|recordDurableAIUsage|record_ai_usage_ledger|runDurableAIGuard|durableFeature|ai-route-quota/;
 
   function walk(dir: string, out: string[] = []): string[] {
     for (const name of readdirSync(dir)) {
       if (name === "node_modules" || name === ".next" || name.startsWith(".")) continue;
       const full = join(dir, name);
       if (statSync(full).isDirectory()) walk(full, out);
-      else if (/\.(ts|tsx)$/.test(name) && !/\.test\./.test(name)) out.push(full);
+      else if (/\.(ts|tsx|mjs|js)$/.test(name) && !/\.test\./.test(name)) out.push(full);
     }
     return out;
   }
 
   it("ledgers every provider inference call site", () => {
-    const files = ["app", "features", "lib", "src"].flatMap((dir) => {
+    const files = ["app", "features", "lib", "src", "scripts"].flatMap((dir) => {
       try {
         return walk(dir);
       } catch {

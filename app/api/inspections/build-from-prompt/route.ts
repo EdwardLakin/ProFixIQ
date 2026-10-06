@@ -509,33 +509,39 @@ export async function POST(req: Request) {
 
       // AI must never be on the critical path long enough to threaten platform timeouts.
       // If augmentation is slow, return the deterministic master-list sections.
-      const resp = await withTimeout(
-        ledgerOpenAICall(
-          {
-            feature: "inspection_template_build_from_prompt",
-            endpoint: "/api/inspections/build-from-prompt",
-            shopId: access.profile.shop_id,
-            userId: access.profile.id,
-            model: getOpenAIModelForPurpose("extraction"),
+      // Accounting rides alongside the provider request, outside the deadline:
+      // the ledger write must never change the fallback decision below.
+      const providerCall = openai.responses.create({
+        model: getOpenAIModelForPurpose("extraction"),
+        input: [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        text: {
+          format: {
+            type: "json_schema",
+            name: SectionsSchema.name,
+            schema: SectionsSchema.schema,
           },
-          () => openai.responses.create({
+        },
+        max_output_tokens: 1200,
+      });
+      const accounted = ledgerOpenAICall(
+        {
+          feature: "inspection_template_build_from_prompt",
+          endpoint: "/api/inspections/build-from-prompt",
+          shopId: access.profile.shop_id,
+          userId: access.profile.id,
           model: getOpenAIModelForPurpose("extraction"),
-          input: [
-            { role: "system", content: system },
-            { role: "user", content: user },
-          ],
-          text: {
-            format: {
-              type: "json_schema",
-              name: SectionsSchema.name,
-              schema: SectionsSchema.schema,
-            },
-          },
-          max_output_tokens: 1200,
-        }),
-        ),
-        AI_AUGMENTATION_TIMEOUT_MS,
+        },
+        () => providerCall,
       );
+      // A late or failed provider call still reaches the ledger; swallow the
+      // re-thrown provider error here, the race below owns the outcome.
+      accounted.catch(() => undefined);
+
+      const resp = await withTimeout(providerCall, AI_AUGMENTATION_TIMEOUT_MS);
+      if (resp !== "timeout") await accounted.catch(() => undefined);
 
       if (resp === "timeout") {
         return NextResponse.json(
