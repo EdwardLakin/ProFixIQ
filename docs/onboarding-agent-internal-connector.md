@@ -1,5 +1,16 @@
 # Onboarding Agent Internal Connector (ProFixIQ)
 
+> **Status: not pursued (decision 2026-10-06).** ProFixIQ onboarding is Shop Boost
+> (`features/integrations/shopBoost`) plus guided onboarding v2
+> (`features/onboarding-v2`). The standalone `ProFixIQ-Onboarding-Agent` service
+> is not part of that path, and the routes listed below were **never implemented**
+> in this repository (there is no `app/api/internal/onboarding-agent/`). This
+> document describes the originally planned contract only. Do not enable
+> `PROFIXIQ_CONNECTOR_MODE=http` on the agent or set
+> `ONBOARDING_AGENT_INTERNAL_SECRET` expecting live writes. The `onboarding_agent`
+> database schema is left in place because production exposes that namespace
+> (see `20260806191234_restore_onboarding_agent_namespace.sql`).
+
 Route namespace: `/api/internal/onboarding-agent/*`
 
 ## Required env

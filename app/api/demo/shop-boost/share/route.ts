@@ -6,6 +6,14 @@ import {
   verifyShopBoostPreviewToken,
 } from "@/features/integrations/shopBoost/shareAccess";
 import { loadShadowPreviewContext } from "@/features/integrations/shopBoost/shadowShop";
+import {
+  consumeRateLimit,
+  enforcePublicRouteRateLimit,
+  tooManyRequestsResponse,
+} from "@/features/shared/lib/server/publicRouteRateLimit";
+
+const MAX_EMAILS_PER_RECIPIENT = 3;
+const MAX_SHARES_PER_DEMO_PER_HOUR = 10;
 
 function requiredEnv(name: string): string {
   const value = process.env[name]?.trim();
@@ -18,6 +26,14 @@ function isEmail(value: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  const limited = enforcePublicRouteRateLimit({
+    request: req,
+    route: "demo-shop-boost-share",
+    max: 5,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (limited) return limited;
+
   try {
     const body = (await req.json()) as {
       previewToken?: string;
@@ -60,17 +76,13 @@ export async function POST(req: NextRequest) {
       expiresInDays: 7,
     });
 
-    sgMail.setApiKey(requiredEnv("SENDGRID_API_KEY"));
-    await sgMail.send({
-      to: recipientEmail,
-      from: requiredEnv("SENDGRID_FROM_EMAIL"),
-      subject: `${senderName} shared a Shop Boost analysis for ${context.shopName}`,
-      text: [
-        `This analysis was generated for ${context.shopName}.`,
-        `ROI highlights and blockers are included in this read-only view.`,
-        `Open analysis: ${shareLink}`,
-      ].join("\n"),
+    // Caps keep this unauthenticated endpoint from being used as an email relay.
+    const demoLimit = consumeRateLimit({
+      key: `demo-shop-boost-share:${access.demoId}`,
+      max: MAX_SHARES_PER_DEMO_PER_HOUR,
+      windowMs: 60 * 60 * 1000,
     });
+    if (!demoLimit.allowed) return tooManyRequestsResponse(demoLimit.retryAfterSeconds);
 
     const supabase = createAdminSupabase();
     const { data: existingLead } = await supabase
@@ -79,6 +91,29 @@ export async function POST(req: NextRequest) {
       .eq("demo_id", access.demoId)
       .eq("email", recipientEmail)
       .maybeSingle<{ id: string; share_count: number | null; emails_sent: number | null; lead_kind: string | null }>();
+
+    if ((existingLead?.emails_sent ?? 0) >= MAX_EMAILS_PER_RECIPIENT) {
+      return NextResponse.json(
+        { ok: false, error: "This analysis has already been shared with that recipient." },
+        { status: 429, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+
+    sgMail.setApiKey(requiredEnv("SENDGRID_API_KEY"));
+    await sgMail.send({
+      to: recipientEmail,
+      from: requiredEnv("SENDGRID_FROM_EMAIL"),
+      // The subject is fixed apart from the shop name: the sender name is
+      // free text from an unauthenticated caller, so it only appears in the
+      // body, labelled as entered by the sender.
+      subject: `A Shop Boost analysis was shared with you for ${context.shopName}`,
+      text: [
+        `This analysis was generated for ${context.shopName}.`,
+        `Shared by (name entered by the sender): ${senderName}`,
+        `ROI highlights and blockers are included in this read-only view.`,
+        `Open analysis: ${shareLink}`,
+      ].join("\n"),
+    });
 
     if (existingLead?.id) {
       await supabase

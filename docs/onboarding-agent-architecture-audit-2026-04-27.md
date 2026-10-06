@@ -1,5 +1,9 @@
 # Onboarding Agent Architecture Audit — 2026-04-27
 
+> Historical. As of 2026-10-06 the standalone onboarding agent is not the
+> onboarding path; Shop Boost + guided onboarding v2 is. See
+> `docs/onboarding-agent-internal-connector.md`.
+
 ## Addendum: Phase 1 consolidation completed
 
 ### Files removed/quarantined

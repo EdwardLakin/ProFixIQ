@@ -6,6 +6,7 @@ import {
   type DemoSignedUploadTarget,
   validateDemoUploadFileDescriptors,
 } from "@/features/integrations/shopBoost/demoUploadContract";
+import { enforcePublicRouteRateLimit } from "@/features/shared/lib/server/publicRouteRateLimit";
 
 type UploadPlanResponse =
   | {
@@ -22,6 +23,15 @@ export const dynamic = "force-dynamic";
 export async function POST(
   req: NextRequest,
 ): Promise<NextResponse<UploadPlanResponse>> {
+  // Unauthenticated route that mints signed upload URLs into the imports bucket.
+  const limited = enforcePublicRouteRateLimit({
+    request: req,
+    route: "demo-shop-boost-uploads",
+    max: 10,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (limited) return limited;
+
   try {
     const body = (await req.json().catch(() => null)) as {
       files?: unknown;

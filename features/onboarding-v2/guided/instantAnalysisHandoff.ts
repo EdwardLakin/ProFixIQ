@@ -270,10 +270,16 @@ export async function mapInstantAnalysisToGuidedOnboarding(args: {
 
   for (const { dataset, stepKey } of mappedDatasets) {
     const result = domainResult(args.importSummary, dataset);
+    const reviewPhasePending = result.review > 0 || result.failed > 0;
+    // A step with rows still awaiting review (or failed) is not finished: keep it
+    // in progress so the guided session routes the owner back to it. A step the
+    // owner already completed stays completed when the handoff is replayed.
+    const alreadyCompleted = existingStepByKey.get(stepKey)?.status === "completed";
+    const stepComplete = !reviewPhasePending || alreadyCompleted;
     const { error: updateStepError } = await admin
       .from("guided_onboarding_steps")
       .update({
-        status: "completed",
+        status: stepComplete ? "completed" : "in_progress",
         answer: {
           source: "instant_shop_analysis",
           demoId: args.demoId,
@@ -283,10 +289,10 @@ export async function mapInstantAnalysisToGuidedOnboarding(args: {
           successCount: result.success,
           reviewCount: result.review,
           failedCount: result.failed,
-          reviewPhasePending: result.review > 0 || result.failed > 0,
+          reviewPhasePending,
         },
         started_at: now,
-        completed_at: now,
+        completed_at: stepComplete ? now : null,
         skipped_at: null,
         updated_at: now,
       })

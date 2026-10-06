@@ -16,6 +16,13 @@ import { mapInstantAnalysisToGuidedOnboarding } from "@/features/onboarding-v2/g
 
 type DB = Database;
 
+// Activation imports the full analysis inline; give it the platform ceiling
+// instead of the (much lower) default so a large export is not cut off and
+// left in "processing".
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
+
 type ActivationBody = {
   demoId?: string;
   intakeId?: string;
@@ -311,21 +318,39 @@ export async function POST(req: NextRequest) {
     patch: { startedAt: new Date().toISOString(), lastError: null },
   });
 
-  await updateIntakeProgress({
-    intakeId,
-    status: "processing",
-    currentStep: "generating_suggestions",
-    progressPercent: 35,
-  });
-  await buildShopBoostProfile({ shopId, intakeId });
+  let importSummary: ShopBoostImportSummary;
+  try {
+    await updateIntakeProgress({
+      intakeId,
+      status: "processing",
+      currentStep: "generating_suggestions",
+      progressPercent: 35,
+    });
+    await buildShopBoostProfile({ shopId, intakeId });
 
-  await updateIntakeProgress({
-    intakeId,
-    currentStep: "materializing_operating_layer",
-    progressPercent: 62,
-  });
+    await updateIntakeProgress({
+      intakeId,
+      currentStep: "materializing_operating_layer",
+      progressPercent: 62,
+    });
 
-  const importSummary = await runShopBoostImport({ shopId, intakeId, options: { createStaffUsers: false } });
+    importSummary = await runShopBoostImport({ shopId, intakeId, options: { createStaffUsers: false } });
+  } catch (error) {
+    // Do not leave the intake in "processing" forever: record the failure so the
+    // owner sees it and the (retry-safe) handoff page can run activation again.
+    const message = error instanceof Error ? error.message : "Activation import failed.";
+    console.error("[demo/shop-boost/activate] Activation import failed", { demoId, intakeId, shopId, error: message });
+    await updateIntakeProgress({
+      intakeId,
+      status: "failed",
+      currentStep: "activation_failed",
+      patch: { failedAt: new Date().toISOString(), lastError: message },
+    });
+    return NextResponse.json(
+      { ok: false, error: "We couldn't finish importing your analysis. Please retry." },
+      { status: 500 },
+    );
+  }
 
   const completedStatus =
     importSummary.completionState === "PARTIAL_FAILURE" ||

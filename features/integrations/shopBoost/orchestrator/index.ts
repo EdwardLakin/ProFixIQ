@@ -522,6 +522,46 @@ export async function getJobAttemptCount(jobId: string): Promise<number> {
   return Number(count ?? 0);
 }
 
+export const STALE_RUNNING_JOB_MS = 15 * 60 * 1000;
+
+/**
+ * A worker that dies mid-job (timeout, crash, deploy) leaves its job in
+ * `running` forever: claimNextRunnableJob only claims queued/retryable jobs and
+ * dependents wait on `running` predecessors. Return jobs whose lock is older
+ * than `staleAfterMs` to `retryable_failed` so the normal claim path retries
+ * them. The existing max-attempts check still caps retries.
+ */
+export async function recoverStaleRunningJobs(args: {
+  staleAfterMs?: number;
+  now?: Date;
+} = {}): Promise<{ recovered: number }> {
+  const supabase = adminAny();
+  const now = args.now ?? new Date();
+  const cutoffIso = new Date(now.getTime() - (args.staleAfterMs ?? STALE_RUNNING_JOB_MS)).toISOString();
+  const nowIso = now.toISOString();
+
+  const { data, error } = await supabase
+    .from("shop_onboarding_jobs")
+    .update({
+      status: "retryable_failed" satisfies OrchestratorJobStatus,
+      error_code: "STALE_LOCK_RECOVERED",
+      error_message: "Worker lock expired before the job finished; returned to the retry queue.",
+      locked_at: null,
+      locked_by: null,
+      retry_after: null,
+      updated_at: nowIso,
+    })
+    .eq("status", "running")
+    .lt("locked_at", cutoffIso)
+    .select("id");
+
+  if (error) {
+    console.error("[shop-boost/orchestrator] recoverStaleRunningJobs failed", { error: error.message });
+    return { recovered: 0 };
+  }
+  return { recovered: data?.length ?? 0 };
+}
+
 export function computeRetryAfter(attemptCount: number, baseSeconds = 45, maxSeconds = 1800): string {
   const exp = Math.max(0, attemptCount);
   const seconds = Math.min(maxSeconds, baseSeconds * Math.pow(2, Math.min(exp, 6)));

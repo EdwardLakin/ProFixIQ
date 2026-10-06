@@ -9,6 +9,7 @@ import {
   markRunRetryable,
   markRunRunning,
   markRunSucceeded,
+  recoverStaleRunningJobs,
   seedRunJobs,
   summarizeRunJobs,
   summarizeRunJobsDetailed,
@@ -16,6 +17,11 @@ import {
 } from "@/features/integrations/shopBoost/orchestrator";
 import { executeShopBoostRun } from "@/features/integrations/shopBoost/orchestrator/executeRun";
 import { type ShopBoostImportSummary } from "@/features/integrations/imports/runFullImport";
+import { requireInternalApiSecret } from "@/features/shared/lib/server/api-route-guard";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 const SHOP_BOOST_SECRET = process.env.SHOP_BOOST_SECRET ?? "";
 
@@ -281,4 +287,36 @@ export async function POST(req: NextRequest) {
     },
     { status: 200 },
   );
+}
+
+// Scheduled entry point (vercel.json cron). Vercel cron issues GET with
+// `Authorization: Bearer $CRON_SECRET`. Return jobs orphaned by a dead worker to
+// the retry queue, then drain runnable jobs through the canonical POST executor
+// so there is a single execution path.
+export async function GET(req: NextRequest) {
+  const gate = requireInternalApiSecret({
+    request: req,
+    envSecretName: "SHOP_BOOST_SECRET",
+    headerName: "x-shop-boost-secret",
+    routeLabel: "internal/shop-boost/run",
+    bearerEnvSecretName: "CRON_SECRET",
+  });
+  if (!gate.ok) return gate.response;
+
+  if (!SHOP_BOOST_SECRET) {
+    return NextResponse.json({ ok: false, error: "SHOP_BOOST_SECRET not configured" }, { status: 500 });
+  }
+
+  const { recovered } = await recoverStaleRunningJobs();
+
+  const response = await POST(
+    new NextRequest(req.url, {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-shop-boost-secret": SHOP_BOOST_SECRET },
+      body: JSON.stringify({ triggerSource: "cron" }),
+    }),
+  );
+
+  const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+  return NextResponse.json({ ...(payload ?? { ok: false }), staleJobsRecovered: recovered }, { status: response.status });
 }

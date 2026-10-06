@@ -1582,11 +1582,9 @@
     "hasServiceRolePattern": false,
     "hasShopReference": false,
     "hasRoleOrCapabilityReference": false,
-    "routeClassGuess": "staff_or_admin",
-    "riskFlags": [
-      "mutating_without_obvious_auth_marker"
-    ],
-    "riskLevel": "high"
+    "routeClassGuess": "public_or_token",
+    "riskFlags": [],
+    "riskLevel": "low"
   },
   {
     "path": "app/api/demo/shop-boost/uploads/route.ts",
@@ -1600,11 +1598,9 @@
     "hasServiceRolePattern": false,
     "hasShopReference": false,
     "hasRoleOrCapabilityReference": false,
-    "routeClassGuess": "staff_or_admin",
-    "riskFlags": [
-      "mutating_without_obvious_auth_marker"
-    ],
-    "riskLevel": "high"
+    "routeClassGuess": "public_or_token",
+    "riskFlags": [],
+    "riskLevel": "low"
   },
   {
     "path": "app/api/diag/log/route.ts",
@@ -2983,6 +2979,25 @@
     "riskLevel": "low"
   },
   {
+    "path": "app/api/internal/demo/purge-orphan-uploads/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": false,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": false,
+    "hasRoleOrCapabilityReference": false,
+    "routeClassGuess": "internal",
+    "riskFlags": [
+      "has_stronger_boundary_signal"
+    ],
+    "riskLevel": "low"
+  },
+  {
     "path": "app/api/internal/financial-outbox/tick/route.ts",
     "methods": [
       "GET"
@@ -3113,6 +3128,7 @@
   {
     "path": "app/api/internal/shop-boost/run/route.ts",
     "methods": [
+      "GET",
       "POST"
     ],
     "isMutating": true,
