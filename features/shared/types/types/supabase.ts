@@ -29408,6 +29408,18 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      commit_ai_budget: {
+        Args: {
+          p_actual_usd: number
+          p_reservation_id: string
+          p_shop_id: string
+        }
+        Returns: {
+          actual_usd: number
+          settled: boolean
+          status: string
+        }[]
+      }
       complete_ai_route_quota: {
         Args: {
           p_actor_id: string
@@ -30366,6 +30378,7 @@ export type Database = {
       }
       first_segment_uuid: { Args: { p: string }; Returns: string }
       fleet_defect_descriptor: { Args: { p_key: string }; Returns: Json }
+      get_ai_budget_status: { Args: { p_shop_id: string }; Returns: Json }
       get_customer_account_center: {
         Args: {
           p_actor_user_id?: string
@@ -30416,6 +30429,20 @@ export type Database = {
           has_active: boolean
           role: string
           technician_id: string
+        }[]
+      }
+      grant_ai_budget: {
+        Args: {
+          p_amount_usd: number
+          p_idempotency_key: string
+          p_kind: string
+          p_shop_id: string
+          p_source: string
+          p_source_ref: string
+        }
+        Returns: {
+          applied: boolean
+          entry_id: string
         }[]
       }
       has_column: { Args: { _col: string; _table: unknown }; Returns: boolean }
@@ -31532,6 +31559,13 @@ export type Database = {
           shop_id: string
         }[]
       }
+      release_ai_budget: {
+        Args: { p_reservation_id: string; p_shop_id: string }
+        Returns: {
+          settled: boolean
+          status: string
+        }[]
+      }
       release_financial_outbox_claim: {
         Args: {
           p_error: string
@@ -31544,6 +31578,13 @@ export type Database = {
       release_portal_parts_quote_request_send_claim: {
         Args: { p_request_id: string }
         Returns: Json
+      }
+      release_stale_ai_budget_holds: {
+        Args: { p_older_than_seconds: number; p_shop_id: string }
+        Returns: {
+          released_count: number
+          released_usd: number
+        }[]
       }
       remediate_quote_line_pricing_quarantine: {
         Args: {
@@ -31612,6 +31653,25 @@ export type Database = {
       report_work_order_line_assignment_ambiguities: {
         Args: { p_shop_id?: string }
         Returns: Json
+      }
+      reserve_ai_budget: {
+        Args: {
+          p_actor_id?: string
+          p_amount_usd: number
+          p_feature: string
+          p_idempotency_key: string
+          p_pool: string
+          p_shop_id: string
+          p_ttl_seconds?: number
+        }
+        Returns: {
+          available_usd: number
+          decision: string
+          denial_reason: string
+          pool_remaining_usd: number
+          replayed: boolean
+          reservation_id: string
+        }[]
       }
       reserve_estimate_send_atomic: {
         Args: {
@@ -31920,6 +31980,14 @@ export type Database = {
       send_for_approval: {
         Args: { _line_ids: string[]; _set_wo_status?: boolean; _wo: string }
         Returns: undefined
+      }
+      set_ai_budget_enforcement: {
+        Args: { p_enforcement: string; p_shop_id: string }
+        Returns: string
+      }
+      set_ai_budget_pool_cap: {
+        Args: { p_cap_usd: number; p_pool: string; p_shop_id: string }
+        Returns: number
       }
       set_authenticated: { Args: { uid: string }; Returns: undefined }
       set_current_shop_id: { Args: { p_shop_id: string }; Returns: undefined }

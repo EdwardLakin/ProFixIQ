@@ -504,6 +504,20 @@ jobs:
             -f tests/security/p0-005-ai-route-governance.runtime.sql \
             2>&1 | tee p0-005-ai-route-governance-runtime.log
 
+      - name: Execute AI shop budget reservations integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/ai-budget-reservations.runtime.sql \
+            2>&1 | tee ai-budget-reservations-runtime.log
+
       - name: Execute P0 Stripe identity integration
         shell: bash
         env:
@@ -889,6 +903,7 @@ jobs:
             demo-prospect-shop-isolation-runtime.log
             mobile-handoff-assignment-compatibility-runtime.log
             p0-005-ai-route-governance-runtime.log
+            ai-budget-reservations-runtime.log
             p0-006-stripe-identity-runtime.log
             stripe-acquisition-recovery-runtime.log
             p0-007-financial-outbox-runtime.log
