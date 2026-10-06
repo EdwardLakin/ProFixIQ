@@ -21,12 +21,19 @@ describe("public SEO foundation", () => {
     const robots = source("app/robots.ts");
 
     for (const route of [
+      "/account/",
       "/api/",
+      "/billing/",
+      "/customers/",
       "/dashboard/",
       "/demo/",
+      "/inspections/",
       "/ops/",
+      "/parts/",
       "/portal/",
       "/shop/",
+      "/vehicles/",
+      "/work-orders/",
     ]) {
       expect(robots).toContain(`\"${route}\"`);
     }
@@ -44,6 +51,30 @@ describe("public SEO foundation", () => {
     expect(homePage).toContain('"@type": "Organization"');
     expect(homePage).toContain('"@type": "SoftwareApplication"');
     expect(homePage).toContain('canonical: "/"');
+  });
+
+  it("keeps route-specific search and social metadata", () => {
+    const rootLayout = source("app/layout.tsx");
+    const pricing = source("app/compare-plans/layout.tsx");
+    const field = source("app/field-service/layout.tsx");
+    const fleet = source("app/fleet-maintenance/layout.tsx");
+    const demo = source("app/request-demo/layout.tsx");
+
+    expect(rootLayout).not.toContain('openGraph: {\n    type: "website",\n    siteName: "ProFixIQ",\n    title:');
+    expect(pricing).toContain("ProFixIQ Pricing");
+    expect(pricing).toContain('url: "/compare-plans"');
+    expect(field).toContain('url: "/field-service"');
+    expect(fleet).toContain('url: "/fleet-maintenance"');
+    expect(demo).toContain('url: "/request-demo"');
+  });
+
+  it("renders the social image from the canonical mark without an invalid background layer", () => {
+    const image = source("app/opengraph-image.tsx");
+
+    expect(image).toContain('src="https://profixiq.com/pwa-icons/icon-512"');
+    expect(image).toContain('backgroundColor: "#07111f"');
+    expect(image).toContain("backgroundImage:");
+    expect(image).not.toContain("transparent 34%), #07111f");
   });
 
   it("defines the acquisition conversion event contract", () => {
