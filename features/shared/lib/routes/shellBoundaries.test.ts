@@ -15,6 +15,10 @@ describe("shell route boundaries", () => {
     "/compare-plans",
     "/field-service",
     "/fleet-maintenance",
+    "/heavy-duty-shop-management-software",
+    "/diesel-repair-shop-software",
+    "/heavy-duty-work-order-software",
+    "/heavy-duty-inspection-software",
     "/mobile/sign-in",
     "/portal/auth/sign-in",
     "/portal/auth/sign-in?portal=fleet",
@@ -41,5 +45,6 @@ describe("shell route boundaries", () => {
   it("does not treat similarly named routes as public", () => {
     expect(isStandalonePublicRoute("/compare-plans-private")).toBe(false);
     expect(isStandalonePublicRoute("/sign-internal")).toBe(false);
+    expect(isStandalonePublicRoute("/heavy-duty-work-order-software-private")).toBe(false);
   });
 });
