@@ -30,10 +30,7 @@ const siteDescription =
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://profixiq.com"),
-  title: {
-    default: "ProFixIQ | Heavy-Duty & Automotive Repair Shop Software",
-    template: "%s | ProFixIQ",
-  },
+  title: "ProFixIQ | Heavy-Duty & Automotive Repair Shop Software",
   description: siteDescription,
   applicationName: "ProFixIQ",
   openGraph: {
@@ -41,7 +38,6 @@ export const metadata: Metadata = {
     siteName: "ProFixIQ",
     title: "ProFixIQ | Heavy-Duty & Automotive Repair Shop Software",
     description: siteDescription,
-    url: "https://profixiq.com",
   },
   twitter: {
     card: "summary_large_image",
