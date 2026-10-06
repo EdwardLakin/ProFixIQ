@@ -31579,6 +31579,13 @@ export type Database = {
         Args: { p_request_id: string }
         Returns: Json
       }
+      release_stale_ai_budget_holds: {
+        Args: { p_older_than_seconds: number; p_shop_id: string }
+        Returns: {
+          released_count: number
+          released_usd: number
+        }[]
+      }
       remediate_quote_line_pricing_quarantine: {
         Args: {
           p_actor_user_id: string

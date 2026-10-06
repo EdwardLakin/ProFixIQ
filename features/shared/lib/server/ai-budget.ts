@@ -89,6 +89,29 @@ export class AIBudgetUnavailableError extends Error {
   }
 }
 
+/**
+ * The idempotency key already has a reservation, so another caller is running
+ * (in_progress), finished (completed), or abandoned (expired/released) this call.
+ * The provider must not be called again for that key.
+ */
+export class AIBudgetReplayError extends Error {
+  constructor(
+    public readonly decision: "in_progress" | "completed" | "expired" | "released",
+    public readonly reservationId: string,
+  ) {
+    super(`AI budget key already used: ${decision}`);
+    this.name = "AIBudgetReplayError";
+  }
+}
+
+/** A caller bug (negative or non-finite amount). Never treated as "service down". */
+export class AIBudgetInvalidInputError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AIBudgetInvalidInputError";
+  }
+}
+
 /** The provider was never called, so the hold can be released in full. */
 export class AIProviderNotCalledError extends Error {
   constructor(cause?: unknown) {
@@ -131,11 +154,19 @@ export async function reserveAIBudget(input: {
   actorId?: string | null;
   ttlSeconds?: number;
 }): Promise<AIBudgetReservation> {
+  // A bad amount is a caller bug. Clamping it to zero would hand out a free
+  // reservation, so reject it before the database sees it.
+  if (!Number.isFinite(input.amountUsd) || input.amountUsd < 0) {
+    throw new AIBudgetInvalidInputError(
+      `AI budget amount must be a finite, non-negative number (got ${String(input.amountUsd)})`,
+    );
+  }
+
   const { data, error } = await input.admin.rpc("reserve_ai_budget", {
     p_shop_id: input.shopId,
     p_pool: input.pool ?? aiBudgetPoolForFeature(input.feature),
     p_feature: input.feature,
-    p_amount_usd: Math.max(0, input.amountUsd),
+    p_amount_usd: input.amountUsd,
     p_idempotency_key: input.idempotencyKey,
     p_actor_id: input.actorId ?? undefined,
     p_ttl_seconds: input.ttlSeconds ?? undefined,
@@ -153,8 +184,16 @@ export async function reserveAIBudget(input: {
   if (row.decision === "denied" && reason) {
     throw new AIBudgetDeniedError(reason, availableUsd, poolRemainingUsd);
   }
+  if (
+    row.decision === "in_progress" ||
+    row.decision === "completed" ||
+    row.decision === "expired" ||
+    row.decision === "released"
+  ) {
+    // The key was already used. Running the call again could bill twice.
+    throw new AIBudgetReplayError(row.decision, row.reservation_id);
+  }
   if (row.decision !== "allowed" && row.decision !== "shadow_allowed") {
-    // A replay of a released/denied key, or an unknown decision: do not run the call.
     throw new AIBudgetUnavailableError(`unexpected_decision_${row.decision}`);
   }
 
@@ -184,7 +223,7 @@ export async function commitAIBudget(input: {
   const { data, error } = await input.admin.rpc("commit_ai_budget", {
     p_reservation_id: input.reservationId,
     p_shop_id: input.shopId,
-    p_actual_usd: input.actualCostUsd == null ? (null as never) : Math.max(0, input.actualCostUsd),
+    p_actual_usd: input.actualCostUsd == null ? (null as never) : input.actualCostUsd,
   });
   if (error) {
     console.error("ai_budget_commit_failed", {
@@ -215,6 +254,20 @@ export async function releaseAIBudget(input: {
     return false;
   }
   return Array.isArray(data) ? Boolean((data[0] as SettleRow | undefined)?.settled) : false;
+}
+
+/**
+ * One retry for a transient settlement failure. If it still fails the hold is
+ * left in place: held funds stay charged until a later commit or an explicit
+ * reconciliation, so a lost settlement can never return billed funds.
+ */
+async function settleWithRetry(input: Parameters<typeof commitAIBudget>[0]): Promise<void> {
+  if (await commitAIBudget(input)) return;
+  if (await commitAIBudget(input)) return;
+  console.error("ai_budget_settlement_unresolved_hold_kept", {
+    shopId: input.shopId,
+    reservationId: input.reservationId,
+  });
 }
 
 export type AIBudgetOperationResult<T> = {
@@ -250,19 +303,21 @@ export async function withAIBudget<T>(
   try {
     reservation = await reserveAIBudget(config);
   } catch (error) {
-    if (error instanceof AIBudgetDeniedError) throw error;
+    // Only "the budget service is down" may fall through to an unbudgeted call.
+    // Denials, replays and invalid input always stop the call.
+    if (!(error instanceof AIBudgetUnavailableError)) throw error;
     if (config.onUnavailable === "deny") throw error;
     console.error("ai_budget_unavailable_allowing_call", {
       shopId: config.shopId,
       feature: config.feature,
-      code: error instanceof AIBudgetUnavailableError ? error.code : "unknown",
+      code: error.code,
     });
   }
 
   try {
     const result = await operation(reservation);
     if (reservation) {
-      await commitAIBudget({
+      await settleWithRetry({
         admin: config.admin,
         shopId: config.shopId,
         reservationId: reservation.reservationId,
@@ -279,7 +334,7 @@ export async function withAIBudget<T>(
           reservationId: reservation.reservationId,
         });
       } else {
-        await commitAIBudget({
+        await settleWithRetry({
           admin: config.admin,
           shopId: config.shopId,
           reservationId: reservation.reservationId,
@@ -300,4 +355,26 @@ export async function getAIBudgetStatus(input: {
   });
   if (error || !data || typeof data !== "object") return null;
   return data as Record<string, unknown>;
+}
+
+/**
+ * Reconcile holds that never settled. Holds past their TTL stay charged until
+ * this runs; only holds older than `olderThanSeconds` (minimum one hour) are
+ * released. Intended for a scheduled job or an operator, not the request path.
+ */
+export async function releaseStaleAIBudgetHolds(input: {
+  admin: AdminClient;
+  shopId: string;
+  olderThanSeconds: number;
+}): Promise<{ releasedCount: number; releasedUsd: number } | null> {
+  const { data, error } = await input.admin.rpc("release_stale_ai_budget_holds", {
+    p_shop_id: input.shopId,
+    p_older_than_seconds: input.olderThanSeconds,
+  });
+  if (error || !Array.isArray(data) || !data[0]) return null;
+  const row = data[0] as { released_count: number | string; released_usd: number | string };
+  return {
+    releasedCount: Number(row.released_count),
+    releasedUsd: Number(row.released_usd),
+  };
 }

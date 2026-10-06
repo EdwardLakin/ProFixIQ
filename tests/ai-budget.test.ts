@@ -5,6 +5,8 @@ vi.mock("server-only", () => ({}));
 import {
   AI_BUDGET_UNPRICED_RESERVATION_USD,
   AIBudgetDeniedError,
+  AIBudgetInvalidInputError,
+  AIBudgetReplayError,
   AIBudgetUnavailableError,
   AIProviderNotCalledError,
   aiBudgetPoolForFeature,
@@ -98,10 +100,27 @@ describe("reserveAIBudget", () => {
     await expect(reserveAIBudget({ admin: fakeAdmin(rpc), ...base })).rejects.toBeInstanceOf(AIBudgetUnavailableError);
   });
 
-  it("will not run a call for a replayed released or denied key", async () => {
-    rpc.mockResolvedValue(reserved({ decision: "released", replayed: true }));
-    await expect(reserveAIBudget({ admin: fakeAdmin(rpc), ...base })).rejects.toBeInstanceOf(AIBudgetUnavailableError);
-  });
+  it.each(["in_progress", "completed", "expired", "released"])(
+    "refuses a key whose reservation is already %s",
+    async (decision) => {
+      rpc.mockResolvedValue(reserved({ decision, replayed: true }));
+      await expect(reserveAIBudget({ admin: fakeAdmin(rpc), ...base })).rejects.toMatchObject({
+        name: "AIBudgetReplayError",
+        decision,
+        reservationId: "res-1",
+      });
+    },
+  );
+
+  it.each([-0.01, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects an invalid amount (%s) instead of clamping it to a free hold",
+    async (amountUsd) => {
+      await expect(
+        reserveAIBudget({ admin: fakeAdmin(rpc), ...base, amountUsd }),
+      ).rejects.toBeInstanceOf(AIBudgetInvalidInputError);
+      expect(rpc).not.toHaveBeenCalled();
+    },
+  );
 });
 
 describe("withAIBudget", () => {
@@ -164,10 +183,39 @@ describe("withAIBudget", () => {
     expect(rpc).toHaveBeenCalledTimes(2); // both reserve attempts; no commit without a hold
   });
 
-  it("does not fail a successful call because settlement failed", async () => {
-    rpc.mockResolvedValueOnce(reserved()).mockResolvedValueOnce({ data: null, error: { code: "57014" } });
+  it("retries a failed settlement once, so a transient error does not strand the hold", async () => {
+    rpc
+      .mockResolvedValueOnce(reserved())
+      .mockResolvedValueOnce({ data: null, error: { code: "57014" } })
+      .mockResolvedValueOnce(settled);
     await expect(
       withAIBudget({ admin: fakeAdmin(rpc), ...base }, async () => ({ output: "done", actualCostUsd: 0.2 })),
     ).resolves.toBe("done");
+    expect(rpc.mock.calls.filter(([name]) => name === "commit_ai_budget")).toHaveLength(2);
+  });
+
+  it("returns the provider output even when settlement keeps failing (the hold stays charged in the database)", async () => {
+    rpc.mockResolvedValueOnce(reserved()).mockResolvedValue({ data: null, error: { code: "57014" } });
+    await expect(
+      withAIBudget({ admin: fakeAdmin(rpc), ...base }, async () => ({ output: "done", actualCostUsd: 0.2 })),
+    ).resolves.toBe("done");
+    expect(rpc.mock.calls.filter(([name]) => name === "commit_ai_budget")).toHaveLength(2);
+  });
+
+  it("never runs the call for a replayed key, even when onUnavailable is allow", async () => {
+    rpc.mockResolvedValueOnce(reserved({ decision: "in_progress", replayed: true }));
+    const operation = vi.fn();
+    await expect(
+      withAIBudget({ admin: fakeAdmin(rpc), ...base, onUnavailable: "allow" }, operation),
+    ).rejects.toBeInstanceOf(AIBudgetReplayError);
+    expect(operation).not.toHaveBeenCalled();
+  });
+
+  it("never runs the call for an invalid amount, even when onUnavailable is allow", async () => {
+    const operation = vi.fn();
+    await expect(
+      withAIBudget({ admin: fakeAdmin(rpc), ...base, amountUsd: -1, onUnavailable: "allow" }, operation),
+    ).rejects.toBeInstanceOf(AIBudgetInvalidInputError);
+    expect(operation).not.toHaveBeenCalled();
   });
 });

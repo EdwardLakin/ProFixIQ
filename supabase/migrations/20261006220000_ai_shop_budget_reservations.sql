@@ -17,8 +17,14 @@
 --   * Every shop starts in 'shadow' mode: decisions are recorded with
 --     would_deny, but nothing is denied until enforcement is set to 'enforce'.
 --     Only reservations made while enforcing count against the balance.
---   * A late commit of an expired reservation is still recorded: the provider
---     call happened, so the spend is real and may overdraw the balance.
+--   * A hold whose time ran out is marked 'expired' but STAYS CHARGED until it
+--     is committed, released, or reconciled with release_stale_ai_budget_holds.
+--     The provider may have billed (a settlement can fail after a call), so a
+--     timeout must never silently return funds. A late commit records the real
+--     cost and may overdraw the balance.
+--   * The shop balance is a running aggregate on private.ai_shop_budgets
+--     (funded / held / committed), updated under the per-shop lock, so a
+--     decision never rescans the reservation history.
 begin;
 
 create schema if not exists private authorization postgres;
@@ -29,6 +35,12 @@ create table if not exists private.ai_shop_budgets (
   shop_id uuid primary key references public.shops(id) on delete cascade,
   enforcement text not null default 'shadow'
     check (enforcement in ('shadow', 'enforce')),
+  -- Running aggregates, changed only under the per-shop advisory lock.
+  -- available = funded - held - committed. Only reservations made while
+  -- enforcing move held/committed.
+  funded_usd numeric(14, 6) not null default 0,
+  held_usd numeric(14, 6) not null default 0 check (held_usd >= 0),
+  committed_usd numeric(14, 6) not null default 0 check (committed_usd >= 0),
   created_at timestamptz not null default clock_timestamp(),
   updated_at timestamptz not null default clock_timestamp()
 );
@@ -84,8 +96,8 @@ create table if not exists private.ai_budget_reservations (
 create index if not exists ai_budget_reservations_shop_pool_idx
   on private.ai_budget_reservations (shop_id, pool, created_at desc);
 create index if not exists ai_budget_reservations_open_idx
-  on private.ai_budget_reservations (shop_id, expires_at)
-  where status = 'reserved';
+  on private.ai_budget_reservations (shop_id, created_at)
+  where status in ('reserved', 'expired');
 create index if not exists ai_budget_entries_shop_idx
   on private.ai_budget_entries (shop_id, created_at desc);
 
@@ -150,6 +162,11 @@ begin
   returning id into v_id;
 
   if v_id is not null then
+    insert into private.ai_shop_budgets (shop_id, funded_usd)
+    values (p_shop_id, p_amount_usd)
+    on conflict (shop_id) do update
+      set funded_usd = private.ai_shop_budgets.funded_usd + excluded.funded_usd,
+          updated_at = pg_catalog.clock_timestamp();
     return query select v_id, true;
     return;
   end if;
@@ -265,12 +282,10 @@ declare
   v_now timestamptz := pg_catalog.clock_timestamp();
   v_month_start timestamptz := pg_catalog.date_trunc('month', v_now, 'UTC');
   v_key text := pg_catalog.btrim(p_idempotency_key);
-  v_mode text;
-  v_funded numeric(14, 6);
-  v_consumed numeric(14, 6);
+  v_budget private.ai_shop_budgets%rowtype;
   v_available numeric(14, 6);
   v_pool_cap numeric(14, 6);
-  v_pool_used numeric(14, 6);
+  v_pool_used numeric(14, 6) := 0;
   v_pool_remaining numeric(14, 6);
   v_reason text;
   v_existing private.ai_budget_reservations%rowtype;
@@ -302,72 +317,51 @@ begin
   values (p_shop_id)
   on conflict (shop_id) do nothing;
 
-  select r.* into v_existing
-  from private.ai_budget_reservations r
-  where r.shop_id = p_shop_id and r.idempotency_key = v_key;
-
-  select b.enforcement into v_mode
+  select b.* into v_budget
   from private.ai_shop_budgets b
   where b.shop_id = p_shop_id;
 
-  -- Crashed provider calls must not hold balance forever.
-  update private.ai_budget_reservations r
-  set status = 'expired'
-  where r.shop_id = p_shop_id
-    and r.status = 'reserved'
-    and r.expires_at <= v_now;
-
-  select coalesce(sum(e.amount_usd), 0)::numeric(14, 6)
-  into v_funded
-  from private.ai_budget_entries e
-  where e.shop_id = p_shop_id;
-
-  select coalesce(sum(
-    case r.status
-      when 'reserved' then r.reserved_usd
-      when 'committed' then coalesce(r.actual_usd, r.reserved_usd)
-      else 0
-    end
-  ), 0)::numeric(14, 6)
-  into v_consumed
-  from private.ai_budget_reservations r
-  where r.shop_id = p_shop_id and r.enforcement = 'enforce';
-
-  v_available := v_funded - v_consumed;
+  v_available := v_budget.funded_usd - v_budget.held_usd - v_budget.committed_usd;
 
   select c.cap_usd into v_pool_cap
   from private.ai_budget_pools c
   where c.shop_id = p_shop_id and c.pool = p_pool;
 
-  select coalesce(sum(
-    case r.status
-      when 'reserved' then r.reserved_usd
-      when 'committed' then coalesce(r.actual_usd, r.reserved_usd)
-      else 0
-    end
-  ), 0)::numeric(14, 6)
-  into v_pool_used
+  -- Only a capped pool needs its monthly spend; this is bounded by one month
+  -- of that pool's traffic, never by the shop's lifetime history.
+  if v_pool_cap is not null then
+    select coalesce(sum(
+      case r.status
+        when 'committed' then coalesce(r.actual_usd, r.reserved_usd)
+        when 'reserved' then r.reserved_usd
+        when 'expired' then r.reserved_usd
+        else 0
+      end
+    ), 0)::numeric(14, 6)
+    into v_pool_used
+    from private.ai_budget_reservations r
+    where r.shop_id = p_shop_id
+      and r.pool = p_pool
+      and r.enforcement = 'enforce'
+      and r.created_at >= v_month_start;
+    v_pool_remaining := greatest(0, v_pool_cap - v_pool_used);
+  end if;
+
+  select r.* into v_existing
   from private.ai_budget_reservations r
-  where r.shop_id = p_shop_id
-    and r.pool = p_pool
-    and r.enforcement = 'enforce'
-    and r.created_at >= v_month_start;
+  where r.shop_id = p_shop_id and r.idempotency_key = v_key;
 
-  v_pool_remaining := case
-    when v_pool_cap is null then null
-    else greatest(0, v_pool_cap - v_pool_used)
-  end;
-
+  -- A key that already exists never authorizes a second provider call: the
+  -- first caller is running it (in_progress) or has finished it (completed).
   if v_existing.id is not null then
     return query select
       case
         when v_existing.status = 'denied' then 'denied'
         when v_existing.status = 'released' then 'released'
-        -- A hold whose time ran out is no longer safe to spend against.
+        when v_existing.status = 'committed' then 'completed'
         when v_existing.status = 'expired'
           or (v_existing.status = 'reserved' and v_existing.expires_at <= v_now) then 'expired'
-        when v_existing.enforcement = 'shadow' then 'shadow_allowed'
-        else 'allowed'
+        else 'in_progress'
       end,
       v_existing.denial_reason,
       v_existing.id,
@@ -383,13 +377,13 @@ begin
     v_reason := 'pool_cap_exceeded';
   end if;
 
-  if v_reason is not null and v_mode = 'enforce' then
+  if v_reason is not null and v_budget.enforcement = 'enforce' then
     insert into private.ai_budget_reservations (
       shop_id, actor_id, pool, feature, idempotency_key, status, enforcement,
       would_deny, denial_reason, reserved_usd, expires_at, settled_at
     ) values (
       p_shop_id, p_actor_id, p_pool, pg_catalog.btrim(p_feature), v_key, 'denied',
-      v_mode, true, v_reason, p_amount_usd, v_now, v_now
+      v_budget.enforcement, true, v_reason, p_amount_usd, v_now, v_now
     )
     returning id into v_id;
 
@@ -402,27 +396,35 @@ begin
     would_deny, denial_reason, reserved_usd, expires_at
   ) values (
     p_shop_id, p_actor_id, p_pool, pg_catalog.btrim(p_feature), v_key, 'reserved',
-    v_mode, v_reason is not null, v_reason, p_amount_usd,
+    v_budget.enforcement, v_reason is not null, v_reason, p_amount_usd,
     v_now + pg_catalog.make_interval(secs => p_ttl_seconds)
   )
   returning id into v_id;
 
+  if v_budget.enforcement = 'enforce' then
+    update private.ai_shop_budgets b
+    set held_usd = b.held_usd + p_amount_usd,
+        updated_at = v_now
+    where b.shop_id = p_shop_id;
+    v_available := v_available - p_amount_usd;
+    if v_pool_remaining is not null then
+      v_pool_remaining := greatest(0, v_pool_remaining - p_amount_usd);
+    end if;
+  end if;
+
   return query select
-    case when v_mode = 'shadow' then 'shadow_allowed' else 'allowed' end,
+    case when v_budget.enforcement = 'shadow' then 'shadow_allowed' else 'allowed' end,
     v_reason,
     v_id,
-    case when v_mode = 'enforce' then v_available - p_amount_usd else v_available end,
-    case
-      when v_pool_remaining is null or v_mode = 'shadow' then v_pool_remaining
-      else greatest(0, v_pool_remaining - p_amount_usd)
-    end,
+    v_available,
+    v_pool_remaining,
     false;
 end
 $function$;
 
 -- p_actual_usd null means the provider returned no billable usage: the
 -- reservation is kept as the cost (cost_basis = 'reserved_fallback') instead of
--- being treated as $0.
+-- being treated as $0. A hold that already timed out can still be committed.
 create or replace function public.commit_ai_budget(
   p_reservation_id uuid,
   p_shop_id uuid,
@@ -435,6 +437,7 @@ set search_path = ''
 as $function$
 declare
   v_row private.ai_budget_reservations%rowtype;
+  v_actual numeric(14, 6);
 begin
   if p_reservation_id is null or p_shop_id is null
      or (p_actual_usd is not null and p_actual_usd < 0) then
@@ -460,15 +463,24 @@ begin
     return;
   end if;
 
+  v_actual := coalesce(pg_catalog.round(p_actual_usd, 6), v_row.reserved_usd);
+
   update private.ai_budget_reservations r
   set status = 'committed',
-      actual_usd = coalesce(p_actual_usd, r.reserved_usd),
+      actual_usd = v_actual,
       cost_basis = case when p_actual_usd is null then 'reserved_fallback' else 'actual' end,
       settled_at = pg_catalog.clock_timestamp()
-  where r.id = p_reservation_id
-  returning r.actual_usd into v_row.actual_usd;
+  where r.id = p_reservation_id;
 
-  return query select true, 'committed'::text, v_row.actual_usd;
+  if v_row.enforcement = 'enforce' then
+    update private.ai_shop_budgets b
+    set held_usd = greatest(0, b.held_usd - v_row.reserved_usd),
+        committed_usd = b.committed_usd + v_actual,
+        updated_at = pg_catalog.clock_timestamp()
+    where b.shop_id = p_shop_id;
+  end if;
+
+  return query select true, 'committed'::text, v_actual;
 end
 $function$;
 
@@ -515,13 +527,69 @@ begin
       settled_at = pg_catalog.clock_timestamp()
   where r.id = p_reservation_id;
 
+  if v_row.enforcement = 'enforce' then
+    update private.ai_shop_budgets b
+    set held_usd = greatest(0, b.held_usd - v_row.reserved_usd),
+        updated_at = pg_catalog.clock_timestamp()
+    where b.shop_id = p_shop_id;
+  end if;
+
   return query select true, 'released'::text;
 end
 $function$;
 
--- ---------------------------------------------------------------------------
--- Status
--- ---------------------------------------------------------------------------
+-- Explicit reconciliation of holds that never settled (a crash before the
+-- provider call, or a lost settlement). Holds past their TTL stay charged until
+-- this runs, so funds only return when an operator or scheduled job decides the
+-- call did not bill. Holds younger than p_older_than_seconds are untouched.
+create or replace function public.release_stale_ai_budget_holds(
+  p_shop_id uuid,
+  p_older_than_seconds integer
+)
+returns table (released_count integer, released_usd numeric)
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  v_now timestamptz := pg_catalog.clock_timestamp();
+  v_count integer;
+  v_usd numeric(14, 6);
+begin
+  if p_shop_id is null or p_older_than_seconds is null
+     or p_older_than_seconds < 3600 then
+    raise exception using errcode = '22023', message = 'AI_BUDGET_RECONCILE_INPUT_INVALID';
+  end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('ai-budget:' || p_shop_id::text, 0)
+  );
+
+  with stale as (
+    update private.ai_budget_reservations r
+    set status = 'released',
+        actual_usd = 0,
+        settled_at = v_now
+    where r.shop_id = p_shop_id
+      and r.status in ('reserved', 'expired')
+      and r.expires_at <= v_now - pg_catalog.make_interval(secs => p_older_than_seconds)
+    returning r.reserved_usd, r.enforcement
+  )
+  select pg_catalog.count(*)::integer,
+         coalesce(sum(stale.reserved_usd) filter (where stale.enforcement = 'enforce'), 0)::numeric(14, 6)
+  into v_count, v_usd
+  from stale;
+
+  if v_usd > 0 then
+    update private.ai_shop_budgets b
+    set held_usd = greatest(0, b.held_usd - v_usd),
+        updated_at = v_now
+    where b.shop_id = p_shop_id;
+  end if;
+
+  return query select v_count, v_usd;
+end
+$function$;
 
 create or replace function public.get_ai_budget_status(p_shop_id uuid)
 returns jsonb
@@ -532,30 +600,25 @@ as $function$
 declare
   v_now timestamptz := pg_catalog.clock_timestamp();
   v_month_start timestamptz := pg_catalog.date_trunc('month', v_now, 'UTC');
-  v_mode text;
-  v_funded numeric(14, 6);
-  v_committed numeric(14, 6);
-  v_reserved numeric(14, 6);
-  v_unsettled numeric(14, 6);
+  v_budget private.ai_shop_budgets%rowtype;
+  v_overdue numeric(14, 6);
   v_pools jsonb;
 begin
   if p_shop_id is null then
     raise exception using errcode = '22023', message = 'AI_BUDGET_STATUS_INPUT_INVALID';
   end if;
 
-  select b.enforcement into v_mode
+  select b.* into v_budget
   from private.ai_shop_budgets b where b.shop_id = p_shop_id;
 
-  select coalesce(sum(e.amount_usd), 0) into v_funded
-  from private.ai_budget_entries e where e.shop_id = p_shop_id;
-
-  select
-    coalesce(sum(coalesce(r.actual_usd, r.reserved_usd)) filter (where r.status = 'committed'), 0),
-    coalesce(sum(r.reserved_usd) filter (where r.status = 'reserved' and r.expires_at > v_now), 0),
-    coalesce(sum(r.reserved_usd) filter (where r.status in ('reserved', 'expired') and r.expires_at <= v_now), 0)
-  into v_committed, v_reserved, v_unsettled
+  -- Holds past their TTL that still have not settled (small, indexed set).
+  select coalesce(sum(r.reserved_usd), 0)::numeric(14, 6)
+  into v_overdue
   from private.ai_budget_reservations r
-  where r.shop_id = p_shop_id and r.enforcement = 'enforce';
+  where r.shop_id = p_shop_id
+    and r.enforcement = 'enforce'
+    and r.status in ('reserved', 'expired')
+    and r.expires_at <= v_now;
 
   select coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
     'pool', p.pool,
@@ -568,8 +631,9 @@ begin
     select c.pool, c.cap_usd,
       coalesce((
         select sum(case r.status
-          when 'reserved' then r.reserved_usd
           when 'committed' then coalesce(r.actual_usd, r.reserved_usd)
+          when 'reserved' then r.reserved_usd
+          when 'expired' then r.reserved_usd
           else 0 end)
         from private.ai_budget_reservations r
         where r.shop_id = c.shop_id and r.pool = c.pool
@@ -581,13 +645,13 @@ begin
 
   return pg_catalog.jsonb_build_object(
     'shopId', p_shop_id,
-    'enforcement', coalesce(v_mode, 'shadow'),
-    'fundedUsd', v_funded,
-    'committedUsd', v_committed,
-    'reservedUsd', v_reserved,
-    'unsettledExpiredUsd', v_unsettled,
-    'availableUsd', v_funded - v_committed - v_reserved,
-    'overdraftUsd', greatest(0, -(v_funded - v_committed - v_reserved)),
+    'enforcement', coalesce(v_budget.enforcement, 'shadow'),
+    'fundedUsd', coalesce(v_budget.funded_usd, 0),
+    'committedUsd', coalesce(v_budget.committed_usd, 0),
+    'reservedUsd', coalesce(v_budget.held_usd, 0),
+    'overdueUnsettledUsd', v_overdue,
+    'availableUsd', coalesce(v_budget.funded_usd, 0) - coalesce(v_budget.held_usd, 0) - coalesce(v_budget.committed_usd, 0),
+    'overdraftUsd', greatest(0, -(coalesce(v_budget.funded_usd, 0) - coalesce(v_budget.held_usd, 0) - coalesce(v_budget.committed_usd, 0))),
     'shadowWouldDeny30d', (
       select pg_catalog.count(*) from private.ai_budget_reservations r
       where r.shop_id = p_shop_id and r.enforcement = 'shadow'
@@ -614,6 +678,7 @@ alter function public.reserve_ai_budget(uuid, text, text, numeric, text, uuid, i
 alter function public.commit_ai_budget(uuid, uuid, numeric) owner to postgres;
 alter function public.release_ai_budget(uuid, uuid) owner to postgres;
 alter function public.get_ai_budget_status(uuid) owner to postgres;
+alter function public.release_stale_ai_budget_holds(uuid, integer) owner to postgres;
 
 revoke all privileges on function public.grant_ai_budget(uuid, numeric, text, text, text, text)
   from public, anon, authenticated, service_role;
@@ -629,6 +694,8 @@ revoke all privileges on function public.release_ai_budget(uuid, uuid)
   from public, anon, authenticated, service_role;
 revoke all privileges on function public.get_ai_budget_status(uuid)
   from public, anon, authenticated, service_role;
+revoke all privileges on function public.release_stale_ai_budget_holds(uuid, integer)
+  from public, anon, authenticated, service_role;
 
 grant execute on function public.grant_ai_budget(uuid, numeric, text, text, text, text) to service_role;
 grant execute on function public.set_ai_budget_enforcement(uuid, text) to service_role;
@@ -637,5 +704,6 @@ grant execute on function public.reserve_ai_budget(uuid, text, text, numeric, te
 grant execute on function public.commit_ai_budget(uuid, uuid, numeric) to service_role;
 grant execute on function public.release_ai_budget(uuid, uuid) to service_role;
 grant execute on function public.get_ai_budget_status(uuid) to service_role;
+grant execute on function public.release_stale_ai_budget_holds(uuid, integer) to service_role;
 
 commit;

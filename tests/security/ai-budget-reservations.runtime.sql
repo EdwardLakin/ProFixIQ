@@ -21,7 +21,8 @@ begin
     'public.reserve_ai_budget(uuid,text,text,numeric,text,uuid,integer)',
     'public.commit_ai_budget(uuid,uuid,numeric)',
     'public.release_ai_budget(uuid,uuid)',
-    'public.get_ai_budget_status(uuid)'
+    'public.get_ai_budget_status(uuid)',
+    'public.release_stale_ai_budget_holds(uuid,integer)'
   ] loop
     if has_function_privilege('anon', f, 'EXECUTE')
        or has_function_privilege('authenticated', f, 'EXECUTE')
@@ -121,10 +122,11 @@ begin
     raise exception 'no balance left, must deny: %', r;
   end if;
 
+  -- A key that is already running must never authorize a second provider call.
   select * into r from public.reserve_ai_budget(shop, 'copilot', 'f', 4.00, 'hold-a');
-  if not r.replayed or r.decision <> 'allowed'
+  if not r.replayed or r.decision <> 'in_progress'
      or r.reservation_id <> (select id from t_ids where name = 'hold-a') then
-    raise exception 'idempotent replay must return the original hold: %', r;
+    raise exception 'replay of a running key must report in_progress: %', r;
   end if;
 
   s := public.get_ai_budget_status(shop);
@@ -163,6 +165,11 @@ begin
   select * into c from public.commit_ai_budget(hold_a, shop, 99.00);
   if c.settled or c.actual_usd <> 3 then
     raise exception 'a committed hold must not be re-settled: %', c;
+  end if;
+
+  select * into c from public.reserve_ai_budget(shop, 'copilot', 'f', 4.00, 'hold-a');
+  if not c.replayed or c.decision <> 'completed' then
+    raise exception 'replay of a finished key must report completed: %', c;
   end if;
 
   -- Unknown cost keeps the reserved amount rather than treating it as $0.
@@ -225,7 +232,7 @@ begin
 end
 $$;
 
--- 6. Expiry: a crashed call frees its hold, a late commit still counts -------
+-- 6. Timed-out holds stay charged until settled or reconciled ----------------
 reset role;
 insert into public.shops (id, name) values ('aaaaaaaa-0000-0000-0000-000000000003', 'budget-c');
 set local role service_role;
@@ -256,26 +263,85 @@ declare
   c record;
   s jsonb;
 begin
+  -- The provider may have billed (a settlement can be lost), so a timed-out
+  -- hold must NOT return its funds on its own.
   select * into r from public.reserve_ai_budget(shop, 'copilot', 'f', 5.00, 'after-crash');
-  if r.decision <> 'allowed' then
-    raise exception 'an expired hold must free its balance: %', r;
+  if r.decision <> 'denied' or r.denial_reason <> 'insufficient_balance' then
+    raise exception 'a timed-out hold must stay charged: %', r;
+  end if;
+  s := public.get_ai_budget_status(shop);
+  if (s->>'overdueUnsettledUsd')::numeric <> 5 then
+    raise exception 'overdue hold must be visible: %', s;
   end if;
 
-  -- Retrying the expired key must not hand back a spendable hold.
+  -- Retrying the timed-out key must not hand back a spendable hold.
   select * into r from public.reserve_ai_budget(shop, 'copilot', 'f', 5.00, 'crash-1');
   if r.decision <> 'expired' or not r.replayed then
-    raise exception 'replay of an expired hold must report expired: %', r;
+    raise exception 'replay of a timed-out hold must report expired: %', r;
   end if;
 
+  -- A late settlement records the real cost, which here exceeds the balance.
   select * into c from public.commit_ai_budget(
-    (select id from t_ids where name = 'crash-1'), shop, 5.00);
-  if not c.settled or c.status <> 'committed' then
-    raise exception 'a late commit of an expired hold must still be recorded: %', c;
+    (select id from t_ids where name = 'crash-1'), shop, 8.00);
+  if not c.settled or c.status <> 'committed' or c.actual_usd <> 8 then
+    raise exception 'a late commit of a timed-out hold must be recorded: %', c;
   end if;
-
   s := public.get_ai_budget_status(shop);
-  if (s->>'overdraftUsd')::numeric <> 5 then
+  if (s->>'overdraftUsd')::numeric <> 3 or (s->>'reservedUsd')::numeric <> 0
+     or (s->>'overdueUnsettledUsd')::numeric <> 0 then
     raise exception 'real spend beyond the balance must show as overdraft: %', s;
+  end if;
+end
+$$;
+
+-- Reconciliation: an operator releases holds that never reached the provider.
+reset role;
+insert into public.shops (id, name) values ('aaaaaaaa-0000-0000-0000-000000000004', 'budget-d');
+set local role service_role;
+
+do $$
+declare
+  shop uuid := 'aaaaaaaa-0000-0000-0000-000000000004';
+  r record;
+  rel record;
+  caught boolean := false;
+begin
+  perform public.set_ai_budget_enforcement(shop, 'enforce');
+  perform public.grant_ai_budget(shop, 5.00, 'grant', 'manual', 'test', 'grant-d');
+  perform public.reserve_ai_budget(shop, 'copilot', 'f', 5.00, 'stale-1', null, 30);
+  perform public.reserve_ai_budget(shop, 'copilot', 'f', 0.00, 'fresh-1', null, 3600);
+end
+$$;
+
+reset role;
+update private.ai_budget_reservations
+set expires_at = clock_timestamp() - interval '2 hours'
+where idempotency_key = 'stale-1';
+set local role service_role;
+
+do $$
+declare
+  shop uuid := 'aaaaaaaa-0000-0000-0000-000000000004';
+  r record;
+  rel record;
+begin
+  begin
+    perform public.release_stale_ai_budget_holds(shop, 60);
+    raise exception 'reconciling holds younger than an hour must be rejected';
+  exception when sqlstate '22023' then null;
+  end;
+
+  select * into rel from public.release_stale_ai_budget_holds(shop, 3600);
+  if rel.released_count <> 1 or rel.released_usd <> 5 then
+    raise exception 'exactly the stale hold should be released: %', rel;
+  end if;
+  select * into r from public.reserve_ai_budget(shop, 'copilot', 'f', 5.00, 'after-reconcile');
+  if r.decision <> 'allowed' then
+    raise exception 'reconciled funds must be spendable again: %', r;
+  end if;
+  select * into rel from public.release_stale_ai_budget_holds(shop, 3600);
+  if rel.released_count <> 0 then
+    raise exception 'reconciliation must be idempotent: %', rel;
   end if;
 end
 $$;
@@ -309,6 +375,36 @@ begin
   begin perform public.grant_ai_budget(shop, -5, 'grant', 'm', null, 'bad-grant'); exception when sqlstate '22023' then caught := caught + 1; end;
   begin perform public.reserve_ai_budget('99999999-0000-0000-0000-000000000000', 'copilot', 'f', 1, 'k'); exception when sqlstate '42501' then caught := caught + 1; end;
   if caught <> 6 then raise exception 'expected 6 rejections, saw %', caught; end if;
+end
+$$;
+
+-- 9. The running balance always equals a full recompute ----------------------
+reset role;
+do $$
+declare
+  bad record;
+begin
+  select b.shop_id, b.funded_usd, b.held_usd, b.committed_usd,
+         coalesce((select sum(e.amount_usd) from private.ai_budget_entries e where e.shop_id = b.shop_id), 0) as funded_calc,
+         coalesce((select sum(r.reserved_usd) from private.ai_budget_reservations r
+                   where r.shop_id = b.shop_id and r.enforcement = 'enforce'
+                     and r.status in ('reserved', 'expired')), 0) as held_calc,
+         coalesce((select sum(r.actual_usd) from private.ai_budget_reservations r
+                   where r.shop_id = b.shop_id and r.enforcement = 'enforce'
+                     and r.status = 'committed'), 0) as committed_calc
+  into bad
+  from private.ai_shop_budgets b
+  where b.funded_usd <> coalesce((select sum(e.amount_usd) from private.ai_budget_entries e where e.shop_id = b.shop_id), 0)
+     or b.held_usd <> coalesce((select sum(r.reserved_usd) from private.ai_budget_reservations r
+                                where r.shop_id = b.shop_id and r.enforcement = 'enforce'
+                                  and r.status in ('reserved', 'expired')), 0)
+     or b.committed_usd <> coalesce((select sum(r.actual_usd) from private.ai_budget_reservations r
+                                     where r.shop_id = b.shop_id and r.enforcement = 'enforce'
+                                       and r.status = 'committed'), 0)
+  limit 1;
+  if found then
+    raise exception 'running balance drifted from a full recompute: %', bad;
+  end if;
 end
 $$;
 
