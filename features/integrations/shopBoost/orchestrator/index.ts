@@ -167,7 +167,9 @@ const DEFAULT_RULES: ResolvedActivationRules = {
   enabled: true,
 };
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function adminAny(): SupabaseClient<any> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return createAdminSupabase() as unknown as SupabaseClient<any>;
 }
 
@@ -176,6 +178,7 @@ function asNumber(value: unknown, fallback = 0): number {
 }
 
 async function setJobStatus(args: {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   supabase: SupabaseClient<any>;
   runId: string;
   jobType: string;
