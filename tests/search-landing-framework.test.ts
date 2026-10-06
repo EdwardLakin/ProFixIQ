@@ -40,17 +40,27 @@ describe("search landing page framework", () => {
     expect(metadata.robots).toMatchObject({ index: true, follow: true });
   });
 
-  it("builds WebPage and FAQ structured data for search pages", () => {
+  it("builds a connected WebSite, SoftwareApplication, WebPage, and FAQ graph", () => {
     const data = buildSearchLandingStructuredData(seo);
 
     expect(data["@context"]).toBe("https://schema.org");
-    expect(data["@graph"]).toHaveLength(2);
+    expect(data["@graph"]).toHaveLength(4);
     expect(data["@graph"][0]).toMatchObject({
+      "@type": "WebSite",
+      "@id": "https://profixiq.com/#website",
+    });
+    expect(data["@graph"][1]).toMatchObject({
+      "@type": "SoftwareApplication",
+      "@id": "https://profixiq.com/#software",
+    });
+    expect(data["@graph"][2]).toMatchObject({
       "@type": "WebPage",
       url: "https://profixiq.com/heavy-duty-work-order-software",
       name: seo.title,
+      isPartOf: { "@id": "https://profixiq.com/#website" },
+      about: { "@id": "https://profixiq.com/#software" },
     });
-    expect(data["@graph"][1]).toMatchObject({
+    expect(data["@graph"][3]).toMatchObject({
       "@type": "FAQPage",
     });
   });
