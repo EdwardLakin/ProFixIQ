@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
+import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 import type { Database } from "@shared/types/types/supabase";
@@ -85,13 +86,22 @@ export async function POST(req: Request) {
       'Return JSON with these exact keys: { "cause": string, "correction": string, "estimatedLaborTime": number | null }',
     ].join("\n");
 
-    const completion = await getOpenAIClient().chat.completions.create({
+    const completion = await ledgerOpenAICall(
+      {
+        feature: "assistant_export_documentation",
+        endpoint: "/api/assistant/export",
+        shopId: access.profile.shop_id,
+        userId: access.profile.id,
+        model: getOpenAIModelForPurpose("reasoning"),
+      },
+      () => getOpenAIClient().chat.completions.create({
       model: getOpenAIModelForPurpose("reasoning"),
       ...openAITemperatureParam(getOpenAIModelForPurpose("reasoning"), 0.3),
       stream: false,
       messages: [{ role: "user", content: prompt }],
       response_format: { type: "json_object" },
-    });
+    }),
+    );
 
     const raw = completion.choices?.[0]?.message?.content ?? "{}";
     const parsed = JSON.parse(raw) as {

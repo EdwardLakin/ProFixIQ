@@ -7,6 +7,7 @@ import type {
   AssistantResponse,
   PlannerPayload,
 } from "../types/assistant";
+import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
 import { getRoleDailySummary } from "@/features/agent/server/getRoleDailySummary";
 import { getOpenAIClient as getCanonicalOpenAIClient, isOpenAIConfigured } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
@@ -287,7 +288,15 @@ export async function runAssistant(
   ].join("\n");
 
   try {
-    const response = await client.chat.completions.create({
+    const response = await ledgerOpenAICall(
+      {
+        feature: "shop_assistant_daily_summary",
+        endpoint: "/api/assistant",
+        shopId: params.shopId,
+        userId: params.userId,
+        model: getOpenAIModelForPurpose("reasoning"),
+      },
+      () => client.chat.completions.create({
       model: getOpenAIModelForPurpose("reasoning"),
       ...openAITemperatureParam(getOpenAIModelForPurpose("reasoning"), 0.2),
       response_format: { type: "json_object" },
@@ -302,7 +311,8 @@ export async function runAssistant(
           content: prompt,
         },
       ],
-    });
+    }),
+    );
 
     const content = response.choices[0]?.message?.content?.trim();
     if (!content) {

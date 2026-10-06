@@ -18,6 +18,8 @@ import {
   buildMenuItemEfficiencyRecommendations,
   evaluateSmartMatchReadiness,
 } from "../../server/opsRecommendations";
+import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
+import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import { buildPartSuggestions } from "@/features/parts/server/buildPartSuggestions";
 import { listTechnicianWorkCandidates } from "@/features/copilot/technician/server/assignedWork";
 import {
@@ -520,13 +522,21 @@ async function answerDiagnosticConversation(args: {
     return fallbackDiagnosticConversationAnswer(args);
   }
 
-  const completion = await getOpenAIClient().chat.completions.create(
+  const completion = await ledgerOpenAICall(
     {
+      feature: "shop_assistant_diagnostic_answer",
+      endpoint: "/api/assistant/answer",
       model: getOpenAIModelForPurpose("reasoning"),
-      messages: buildDiagnosticMessages(args),
-      ...openAITemperatureParam(getOpenAIModelForPurpose("reasoning"), 0.2),
     },
-    { signal: args.signal },
+    () =>
+      getOpenAIClient().chat.completions.create(
+        {
+          model: getOpenAIModelForPurpose("reasoning"),
+          messages: buildDiagnosticMessages(args),
+          ...openAITemperatureParam(getOpenAIModelForPurpose("reasoning"), 0.2),
+        },
+        { signal: args.signal },
+      ),
   );
 
   const content = completion.choices[0]?.message?.content?.trim();
@@ -2136,8 +2146,16 @@ export async function answerAssistant(
   params: AskParams,
 ): Promise<AssistantAnswer> {
   const requestedAt = new Date().toISOString();
-  const answer = await withAiOperationalTimeout((signal) =>
-    answerAssistantInternal({ ...params, requestedAt, signal }),
+  const answer = await withAITelemetryContext(
+    {
+      endpoint: "/api/assistant/answer",
+      shopId: params.shopId,
+      userId: params.userId,
+    },
+    () =>
+      withAiOperationalTimeout((signal) =>
+        answerAssistantInternal({ ...params, requestedAt, signal }),
+      ),
   );
   return groundAssistantAnswer({
     answer,

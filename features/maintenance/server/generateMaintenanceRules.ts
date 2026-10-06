@@ -1,4 +1,5 @@
 import "server-only";
+import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { openai } from "@/features/shared/lib/server/openai";
@@ -252,15 +253,23 @@ export async function generateMaintenanceRulesForVehicle(opts: {
     "Return JSON only.",
   ].join("\n");
 
-  const completion = await openai.chat.completions.create({
-    model: getOpenAIModelForPurpose("fast"),
-    ...openAITemperatureParam(getOpenAIModelForPurpose("fast"), 0.4),
-    max_tokens: 900,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: userPrompt },
-    ],
-  }, timeoutMs ? { timeout: timeoutMs, maxRetries: 0 } : undefined);
+  const completion = await ledgerOpenAICall(
+    {
+      feature: "maintenance_rules_generate",
+      endpoint: "/api/maintenance/generate-rules",
+      model: getOpenAIModelForPurpose("fast"),
+    },
+    () =>
+      openai.chat.completions.create({
+        model: getOpenAIModelForPurpose("fast"),
+        ...openAITemperatureParam(getOpenAIModelForPurpose("fast"), 0.4),
+        max_tokens: 900,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+      }, timeoutMs ? { timeout: timeoutMs, maxRetries: 0 } : undefined),
+  );
 
   const rawContent = completion.choices[0]?.message?.content ?? "{}";
 

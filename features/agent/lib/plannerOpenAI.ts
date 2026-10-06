@@ -2,6 +2,7 @@
 import type { ToolContext } from "./toolTypes";
 import { getServerSupabase } from "../server/supabase";
 import { buildPartSuggestions } from "@/features/parts/server/buildPartSuggestions";
+import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
 import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/openai-models";
 import {
   buildInspectionTemplateEfficiencyRecommendations,
@@ -192,6 +193,7 @@ function extractPlateOrVinFromGoal(goal: string): string | undefined {
 async function llmParseGoal(
   goal: string,
   context: Record<string, unknown>,
+  accounting: { shopId: string; userId: string },
 ): Promise<ParsedPlan> {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return {};
@@ -220,26 +222,43 @@ async function llmParseGoal(
 
   const user = JSON.stringify({ goal, context });
 
-  const res = await fetch("https://api.openai.com/v1/chat/completions", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: getOpenAIModelForPurpose("reasoning"),
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: system },
-        { role: "user", content: user },
-      ],
-      ...openAITemperatureParam(getOpenAIModelForPurpose("reasoning"), 0.1),
-    }),
-  });
-
-  if (!res.ok) return {};
-
-  const j = (await res.json().catch(() => null)) as unknown;
+  const plannerModel = getOpenAIModelForPurpose("reasoning");
+  let j: unknown;
+  try {
+    j = await ledgerOpenAICall(
+      {
+        feature: "agent_planner_goal_parse",
+        endpoint: "agent/planner",
+        shopId: accounting.shopId,
+        userId: accounting.userId,
+        model: plannerModel,
+      },
+      async () => {
+        const res = await fetch("https://api.openai.com/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            authorization: `Bearer ${apiKey}`,
+            "content-type": "application/json",
+          },
+          body: JSON.stringify({
+            model: plannerModel,
+            response_format: { type: "json_object" },
+            messages: [
+              { role: "system", content: system },
+              { role: "user", content: user },
+            ],
+            ...openAITemperatureParam(plannerModel, 0.1),
+          }),
+        });
+        // A non-2xx is ledgered as an error row (usage unknown), then handled
+        // exactly as before by the empty-plan return below.
+        if (!res.ok) throw new Error(`OpenAI planner request failed (${res.status})`);
+        return (await res.json().catch(() => null)) as unknown;
+      },
+    );
+  } catch {
+    return {};
+  }
 
   const text =
     typeof j === "object" &&
@@ -1126,7 +1145,10 @@ export async function runOpenAIPlanner(
 
   let parsed: ParsedPlan = {};
   try {
-    parsed = await llmParseGoal(goal, context);
+    parsed = await llmParseGoal(goal, context, {
+      shopId: ctx.shopId,
+      userId: ctx.userId,
+    });
   } catch {
     // ignore parse errors
   }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { openai } from "lib/server/openai";
+import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
 import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import { buildPartSuggestions } from "@/features/parts/server/buildPartSuggestions";
@@ -23,6 +24,8 @@ type SuggestRequestBody = {
 const MODEL = getOpenAIModelForPurpose("reasoning");
 
 async function inferAiOnlySuggestions(args: {
+  shopId: string;
+  userId: string;
   description?: string | null;
   notes?: string | null;
   topK: number;
@@ -31,7 +34,15 @@ async function inferAiOnlySuggestions(args: {
   if (!query) return [];
 
   try {
-    const completion = await openai.chat.completions.create({
+    const completion = await ledgerOpenAICall(
+      {
+        feature: "parts_suggest_ai",
+        endpoint: "/api/ai/parts/suggest",
+        shopId: args.shopId,
+        userId: args.userId,
+        model: MODEL,
+      },
+      () => openai.chat.completions.create({
       model: MODEL,
       response_format: {
         type: "json_schema",
@@ -68,7 +79,8 @@ async function inferAiOnlySuggestions(args: {
         { role: "user", content: query },
       ],
       ...openAITemperatureParam(MODEL, 0.2),
-    });
+    }),
+    );
 
     const raw = completion.choices[0]?.message?.content || "{}";
     const parsed = JSON.parse(raw) as { items?: Array<{ title?: string; qty?: number | null; rationale?: string | null }> };
@@ -152,6 +164,8 @@ export async function POST(req: Request) {
     if (items.length > 0) return NextResponse.json({ items });
 
     const aiOnly = await inferAiOnlySuggestions({
+      shopId,
+      userId: user.id,
       description: body.description ?? null,
       notes: body.notes ?? null,
       topK,

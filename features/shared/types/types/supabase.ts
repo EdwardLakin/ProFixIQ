@@ -30401,6 +30401,10 @@ export type Database = {
           unresolved_failure_count: number
         }[]
       }
+      get_ops_ai_accounting_completeness: {
+        Args: { p_since?: string }
+        Returns: Json
+      }
       get_ops_ai_usage_snapshot: {
         Args: { p_event_limit?: number; p_since?: string }
         Returns: Json

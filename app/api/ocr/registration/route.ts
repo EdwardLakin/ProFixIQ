@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
+import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
 import type { ChatCompletionMessageParam } from "openai/resources/chat";
@@ -153,13 +154,22 @@ export async function POST(req: NextRequest) {
       },
     ];
 
-    const completion = await client.chat.completions.create({
+    const completion = await ledgerOpenAICall(
+      {
+        feature: "registration_ocr",
+        endpoint: "/api/ocr/registration",
+        shopId: profile.shop_id,
+        userId: userId,
+        model: getOpenAIModelForPurpose("extraction"),
+      },
+      () => client.chat.completions.create({
       model: getOpenAIModelForPurpose("extraction"),
       messages,
       ...openAITemperatureParam(getOpenAIModelForPurpose("extraction"), 0),
       // Ensures a valid JSON object string
       response_format: { type: "json_object" },
-    });
+    }),
+    );
 
     const text = toText(completion.choices[0]?.message?.content);
     let parsed: unknown = {};

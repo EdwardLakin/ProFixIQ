@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { pickBestOcrVin } from "@/features/shared/lib/vin/vinCapture";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
@@ -47,8 +48,17 @@ export async function POST(req: NextRequest) {
     const base64 = bytes.toString("base64");
     const dataUrl = `data:${file.type};base64,${base64}`;
 
-    const completion = await openai.chat.completions.create({
-      model: getOpenAIModelForPurpose("vision"),
+    const visionModel = getOpenAIModelForPurpose("vision");
+    const completion = await ledgerOpenAICall(
+      {
+        feature: "vin_extract_from_image",
+        endpoint: "/api/vin/extract-from-image",
+        shopId: access.profile.shop_id,
+        userId: access.profile.id,
+        model: visionModel,
+      },
+      () => openai.chat.completions.create({
+      model: visionModel,
       max_tokens: 80,
       messages: [
         {
@@ -72,7 +82,8 @@ export async function POST(req: NextRequest) {
           ],
         },
       ],
-    });
+    }),
+    );
 
     const raw =
       completion.choices[0]?.message?.content?.toString().trim() ?? "";

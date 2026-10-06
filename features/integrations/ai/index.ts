@@ -1,5 +1,6 @@
 
 
+import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
 async function getRuntimeOpenAIClient() {
   const { getOpenAIClient } = await import("@/features/shared/lib/server/openai");
   return getOpenAIClient();
@@ -64,7 +65,15 @@ export const ProFixAI = {
 
     let parsed: unknown;
     try {
-      const response = await (await getRuntimeOpenAIClient()).responses.create({
+      const response = await ledgerOpenAICall(
+        {
+          feature: "quote_suggestion",
+          endpoint: "ai/suggest-quote",
+          shopId,
+          userId: null,
+          model,
+        },
+        async () => (await getRuntimeOpenAIClient()).responses.create({
         model,
         ...openAITemperatureParam(model, 0.4),
         max_output_tokens: 600,
@@ -81,7 +90,8 @@ export const ProFixAI = {
             content: [{ type: "input_text", text: userContext }],
           },
         ],
-      });
+      }),
+      );
 
       const raw = response.output_text?.trim() ?? "{}";
       parsed = JSON.parse(raw);

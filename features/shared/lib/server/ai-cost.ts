@@ -1,6 +1,6 @@
 import "server-only";
 
-export const AI_RATE_CARD_VERSION = "openai-2026-10-02-v2";
+export const AI_RATE_CARD_VERSION = "openai-2026-10-06-v3";
 
 export type OpenAITextCostInput = {
   model: string | null;
@@ -164,4 +164,20 @@ export function estimateOpenAIInspectionTranscriptionCostUsd(
   return Number(
     ((Math.max(0, durationSeconds) / 60) * perMinuteUsd).toFixed(8),
   );
+}
+
+
+/**
+ * text-embedding-3-small is the only embedding model the platform defaults to.
+ * Embeddings are input-only; any other embedding model stays unpriced rather
+ * than borrowing this rate.
+ */
+export function estimateOpenAIEmbeddingCostUsd(
+  model: string | null,
+  inputTokens: number | null,
+): number | null {
+  const normalized = model?.trim().toLowerCase();
+  if (inputTokens == null) return null;
+  if (normalized !== "text-embedding-3-small") return null;
+  return Number(((Math.max(inputTokens, 0) / 1_000_000) * 0.02).toFixed(8));
 }

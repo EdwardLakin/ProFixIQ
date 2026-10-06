@@ -144,3 +144,79 @@ export async function getOpsAIUsage(): Promise<OpsAIUsageSnapshot> {
 
   return normalizeSnapshot(data);
 }
+
+export type OpsAIAccountingExposureRow = {
+  model: string;
+  feature: string;
+  class: "unpriced_model" | "usage_missing";
+  events: number;
+  tokens: number;
+  lastSeen: string | null;
+};
+
+export type OpsAIAccountingCompleteness = {
+  generatedAt: string;
+  since: string;
+  summary: {
+    events: number;
+    pricedEvents: number;
+    unpricedModelEvents: number;
+    usageMissingEvents: number;
+    unattributedEvents: number;
+    pricedSpend: number;
+    unpricedTokens: number;
+    completenessPct: number;
+  };
+  exposure: OpsAIAccountingExposureRow[];
+};
+
+function normalizeCompleteness(raw: unknown): OpsAIAccountingCompleteness {
+  const value = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+  const summary = value.summary && typeof value.summary === "object"
+    ? value.summary as Record<string, unknown>
+    : {};
+  return {
+    generatedAt: String(value.generatedAt ?? new Date().toISOString()),
+    since: String(value.since ?? new Date(Date.now() - 30 * 86400000).toISOString()),
+    summary: {
+      events: numberValue(summary.events),
+      pricedEvents: numberValue(summary.pricedEvents),
+      unpricedModelEvents: numberValue(summary.unpricedModelEvents),
+      usageMissingEvents: numberValue(summary.usageMissingEvents),
+      unattributedEvents: numberValue(summary.unattributedEvents),
+      pricedSpend: numberValue(summary.pricedSpend),
+      unpricedTokens: numberValue(summary.unpricedTokens),
+      completenessPct: summary.completenessPct == null ? 100 : numberValue(summary.completenessPct),
+    },
+    exposure: Array.isArray(value.exposure)
+      ? (value.exposure as Array<Record<string, unknown>>).map((row) => ({
+          model: String(row.model ?? "unknown"),
+          feature: String(row.feature ?? "unknown"),
+          class: row.class === "usage_missing" ? "usage_missing" : "unpriced_model",
+          events: numberValue(row.events),
+          tokens: numberValue(row.tokens),
+          lastSeen: row.lastSeen == null ? null : String(row.lastSeen),
+        }))
+      : [],
+  };
+}
+
+/**
+ * Rows the spend totals above leave out (null cost), so reported spend can be
+ * read as a lower bound with a stated completeness. Returns null rather than
+ * failing the page if the report cannot be loaded.
+ */
+export async function getOpsAIAccountingCompleteness(): Promise<OpsAIAccountingCompleteness | null> {
+  await requireOpsOperatorPageAccess();
+
+  const admin = createAdminSupabase();
+  const since = new Date(Date.now() - 30 * 86400000).toISOString();
+  const { data, error } = await admin.rpc("get_ops_ai_accounting_completeness", {
+    p_since: since,
+  });
+  if (error) {
+    console.error("[ops-ai-usage] accounting completeness unavailable", error.message);
+    return null;
+  }
+  return normalizeCompleteness(data);
+}

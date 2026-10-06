@@ -17,6 +17,7 @@ import {
   applyImportGrids,
   detectImportGridPlan,
 } from "@/features/inspections/lib/fleet/importGrids";
+import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 
@@ -82,6 +83,7 @@ function asPagePayload(value: unknown): PagePayload | null {
 async function parsePage(
   supabase: SupabaseClient<DB>,
   page: PagePayload,
+  accounting: { shopId: string },
   hints: ReturnType<typeof normalizeInspectionFormImportSummary>,
 ) {
   const { data: file, error: downloadError } = await supabase.storage
@@ -92,8 +94,18 @@ async function parsePage(
   }
 
   const bytes = Buffer.from(await file.arrayBuffer()).toString("base64");
-  const completion = await getOpenAIClient().chat.completions.create({
-    model: getOpenAIModelForPurpose("vision"),
+  const visionModel = getOpenAIModelForPurpose("vision");
+  const completion = await ledgerOpenAICall(
+    {
+      feature: "inspection_form_import_page",
+      endpoint: "/api/internal/import-jobs/tick",
+      shopId: accounting.shopId,
+      userId: null,
+      model: visionModel,
+      operation: "inspection_form_import_ocr",
+    },
+    () => getOpenAIClient().chat.completions.create({
+    model: visionModel,
     response_format: { type: "json_object" },
     messages: [
       {
@@ -135,7 +147,8 @@ async function parsePage(
         ],
       },
     ],
-  });
+  }),
+  );
 
   const content = completion.choices[0]?.message?.content;
   if (!content) throw new Error("The form reader returned no result.");
@@ -350,7 +363,7 @@ export async function processInspectionFormImportJobBatch(
     }
 
     try {
-      const parsed = await parsePage(supabase, page, hints);
+      const parsed = await parsePage(supabase, page, { shopId: job.shop_id }, hints);
       await client
         .from("import_job_rows")
         .update({
