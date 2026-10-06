@@ -33,6 +33,8 @@ type RunBody = {
   maxRuns?: number;
   maxPasses?: number;
   triggerSource?: string;
+  /** Scheduled passes set this so existing job states are never reset to queued. */
+  preserveJobStates?: boolean;
 };
 
 type WorkerRunTarget = {
@@ -143,7 +145,12 @@ export async function POST(req: NextRequest) {
   const errors: string[] = [];
 
   for (const target of selectedTargets) {
-    await seedRunJobs({ runId: target.runId, shopId: target.shopId, intakeId: target.intakeId });
+    await seedRunJobs({
+      runId: target.runId,
+      shopId: target.shopId,
+      intakeId: target.intakeId,
+      preserveExisting: body?.preserveJobStates === true,
+    });
     await markRunRunning(target.runId, "profiling");
 
     const before = await summarizeRunJobs(target.runId);
@@ -313,7 +320,7 @@ export async function GET(req: NextRequest) {
     new NextRequest(req.url, {
       method: "POST",
       headers: { "content-type": "application/json", "x-shop-boost-secret": SHOP_BOOST_SECRET },
-      body: JSON.stringify({ triggerSource: "cron" }),
+      body: JSON.stringify({ triggerSource: "cron", preserveJobStates: true }),
     }),
   );
 

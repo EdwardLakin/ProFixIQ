@@ -28,6 +28,15 @@ describe("Shop Boost worker scheduling and recovery", () => {
     expect(route).toContain('req.headers.get("x-shop-boost-secret")');
   });
 
+  it("cron runs preserve existing job states instead of re-seeding them to queued", () => {
+    const route = read("app/api/internal/shop-boost/run/route.ts");
+    const orchestrator = read("features/integrations/shopBoost/orchestrator/index.ts");
+
+    expect(route).toContain("preserveJobStates: true");
+    expect(route).toContain("preserveExisting: body?.preserveJobStates === true");
+    expect(orchestrator).toContain("ignoreDuplicates: args.preserveExisting === true");
+  });
+
   it("keeps the public-demo purge route unscheduled so deletion stays opt-in", () => {
     const vercel = JSON.parse(read("vercel.json")) as { crons: Array<{ path: string }> };
     expect(vercel.crons.some((cron) => cron.path.includes("purge-orphan-uploads"))).toBe(false);
@@ -45,6 +54,7 @@ describe("Instant analysis activation failure handling", () => {
     expect(activation).toContain("export const maxDuration = 300");
     expect(activation).toContain('status: "failed"');
     expect(activation).toContain('currentStep: "activation_failed"');
+    expect(activation).toContain("strict: true");
     expect(activation.indexOf("catch (error)")).toBeGreaterThan(activation.indexOf("runShopBoostImport({"));
     // Retry safety is unchanged: an existing non-terminal intake is re-run, not re-inserted.
     expect(activation).toContain("if (!existing.data?.id)");
@@ -69,6 +79,8 @@ describe("public demo route guards", () => {
     expect(share).toContain("MAX_EMAILS_PER_RECIPIENT");
     expect(share.indexOf("MAX_EMAILS_PER_RECIPIENT)")).toBeLessThan(share.indexOf("sgMail.send"));
     expect(share).not.toContain("${senderName} shared a Shop Boost analysis");
+    // The slot is reserved (conditional update / insert) before SendGrid is called.
+    expect(share.indexOf('.eq("emails_sent", sentBefore)')).toBeLessThan(share.indexOf("sgMail.send"));
     expect(share).toContain("subject: `A Shop Boost analysis was shared with you for ${context.shopName}`");
   });
 });

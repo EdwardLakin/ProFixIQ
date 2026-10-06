@@ -310,21 +310,22 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  await updateIntakeProgress({
-    intakeId,
-    status: "queued",
-    currentStep: "activation_started",
-    progressPercent: 8,
-    patch: { startedAt: new Date().toISOString(), lastError: null },
-  });
-
   let importSummary: ShopBoostImportSummary;
   try {
+    await updateIntakeProgress({
+      intakeId,
+      status: "queued",
+      currentStep: "activation_started",
+      progressPercent: 8,
+      patch: { startedAt: new Date().toISOString(), lastError: null },
+      strict: true,
+    });
     await updateIntakeProgress({
       intakeId,
       status: "processing",
       currentStep: "generating_suggestions",
       progressPercent: 35,
+      strict: true,
     });
     await buildShopBoostProfile({ shopId, intakeId });
 
@@ -332,6 +333,7 @@ export async function POST(req: NextRequest) {
       intakeId,
       currentStep: "materializing_operating_layer",
       progressPercent: 62,
+      strict: true,
     });
 
     importSummary = await runShopBoostImport({ shopId, intakeId, options: { createStaffUsers: false } });
@@ -340,12 +342,22 @@ export async function POST(req: NextRequest) {
     // owner sees it and the (retry-safe) handoff page can run activation again.
     const message = error instanceof Error ? error.message : "Activation import failed.";
     console.error("[demo/shop-boost/activate] Activation import failed", { demoId, intakeId, shopId, error: message });
-    await updateIntakeProgress({
-      intakeId,
-      status: "failed",
-      currentStep: "activation_failed",
-      patch: { failedAt: new Date().toISOString(), lastError: message },
-    });
+    try {
+      await updateIntakeProgress({
+        intakeId,
+        status: "failed",
+        currentStep: "activation_failed",
+        patch: { failedAt: new Date().toISOString(), lastError: message },
+        strict: true,
+      });
+    } catch (recordError) {
+      // The intake may still read "processing"; surface it in logs so it can be found.
+      console.error("[demo/shop-boost/activate] Unable to record activation failure", {
+        demoId,
+        intakeId,
+        error: recordError instanceof Error ? recordError.message : String(recordError),
+      });
+    }
     return NextResponse.json(
       { ok: false, error: "We couldn't finish importing your analysis. Please retry." },
       { status: 500 },

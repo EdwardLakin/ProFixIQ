@@ -158,13 +158,16 @@ export async function updateIntakeProgress(args: {
   currentStep?: string;
   progressPercent?: number;
   patch?: Record<string, unknown>;
+  /** Throw on read/write errors instead of swallowing them (default: swallow). */
+  strict?: boolean;
 }): Promise<void> {
   const supabase = createAdminSupabase();
-  const { data } = await supabase
+  const { data, error: readError } = await supabase
     .from("shop_boost_intakes")
     .select("intake_basics")
     .eq("id", args.intakeId)
     .maybeSingle<{ intake_basics: unknown }>();
+  if (args.strict && readError) throw new Error(readError.message);
 
   const basics = isRecord(data?.intake_basics) ? data.intake_basics : {};
   const existingProgress = isRecord(basics.migrationProgress) ? basics.migrationProgress : {};
@@ -187,5 +190,9 @@ export async function updateIntakeProgress(args: {
 
   if (args.status) updatePayload.status = args.status;
 
-  await supabase.from("shop_boost_intakes").update(updatePayload).eq("id", args.intakeId);
+  const { error: writeError } = await supabase
+    .from("shop_boost_intakes")
+    .update(updatePayload)
+    .eq("id", args.intakeId);
+  if (args.strict && writeError) throw new Error(writeError.message);
 }

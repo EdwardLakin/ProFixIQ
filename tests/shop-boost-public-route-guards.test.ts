@@ -15,12 +15,29 @@ const updateChain = vi.hoisted(() => ({
   eq: vi.fn(),
   lt: vi.fn(),
   select: vi.fn(),
+  attemptsUpdate: vi.fn(),
+  attemptsIn: vi.fn(),
+  attemptsEq: vi.fn(),
 }));
 
 vi.mock("@/features/shared/lib/supabase/server", () => ({
   createAdminSupabase: () => ({
-    from: () => ({
+    from: (table: string) => ({
       update: (values: unknown) => {
+        if (table === "shop_onboarding_attempts") {
+          updateChain.attemptsUpdate(values);
+          return {
+            in: (column: string, ids: string[]) => {
+              updateChain.attemptsIn(column, ids);
+              return {
+                eq: async (eqColumn: string, value: unknown) => {
+                  updateChain.attemptsEq(eqColumn, value);
+                  return { error: null };
+                },
+              };
+            },
+          };
+        }
         updateChain.update(values);
         return {
           eq: (column: string, value: unknown) => {
@@ -64,6 +81,18 @@ describe("public route rate limiter", () => {
     consumeRateLimit({ key, max: 1, windowMs: 10_000, now });
     expect(consumeRateLimit({ key, max: 1, windowMs: 10_000, now: now + 5_000 }).allowed).toBe(false);
     expect(consumeRateLimit({ key, max: 1, windowMs: 10_000, now: now + 10_001 }).allowed).toBe(true);
+  });
+
+  it("evicts least-recently-used keys once the tracked-key cap is exceeded", () => {
+    const now = 9_000_000;
+    consumeRateLimit({ key: "cap-first", max: 1, windowMs: 3_600_000, now });
+    for (let i = 0; i < 5001; i += 1) {
+      consumeRateLimit({ key: `cap-flood-${i}`, max: 1, windowMs: 3_600_000, now: now + 1 });
+    }
+    // The oldest key was evicted despite being inside its window, so it is allowed again.
+    expect(consumeRateLimit({ key: "cap-first", max: 1, windowMs: 3_600_000, now: now + 2 }).allowed).toBe(true);
+    // A recent key is still tracked and still limited.
+    expect(consumeRateLimit({ key: "cap-flood-5000", max: 1, windowMs: 3_600_000, now: now + 2 }).allowed).toBe(false);
   });
 
   it("keys clients by the first forwarded address and ignores requests without one", () => {
@@ -150,12 +179,58 @@ describe("orphaned demo upload purge", () => {
   });
 });
 
+describe("orphaned demo upload purge paging", () => {
+  const NOW = Date.parse("2026-10-06T12:00:00.000Z");
+  const OLD = "2026-09-01T00:00:00.000Z";
+  const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
+  const INTAKE = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+
+  it("checks activation per page so activated demos cannot starve later pages", async () => {
+    // Page 0: 100 activated demos. Page 1: one orphaned demo.
+    const page0 = Array.from({ length: 100 }, (_, i) => ({ name: uuid(i + 1), id: null }));
+    const orphan = uuid(500);
+    const page1 = [{ name: orphan, id: null }];
+    const activated = new Set(page0.map((entry) => entry.name));
+    const list = vi.fn(async (path: string, options?: { offset?: number }) => {
+      if (path === "demos") return { data: (options?.offset ?? 0) === 0 ? page0 : page1, error: null };
+      const parts = path.split("/");
+      if (parts.length === 2) return { data: [{ name: INTAKE, id: null }], error: null };
+      return {
+        data: Array.from({ length: 3 }, (_, i) => ({ name: `f${i}.csv`, id: `id${i}`, created_at: OLD })),
+        error: null,
+      };
+    });
+    const remove = vi.fn(async (_paths: string[]) => ({ error: null }));
+    const admin = {
+      storage: { from: () => ({ list, remove }) },
+      from: () => ({
+        select: () => ({
+          in: async (_column: string, ids: string[]) => ({
+            data: ids.map((id) => ({ id, shop_id: activated.has(id) ? "shop-1" : null })),
+            error: null,
+          }),
+        }),
+      }),
+    } as unknown as PurgeClient;
+
+    const result = await purgeOrphanDemoUploads({ admin, apply: true, now: NOW });
+
+    expect(result.skippedActivatedDemos).toBe(100);
+    expect(result.deletedFiles).toBe(3);
+    expect(remove).toHaveBeenCalledWith(expect.arrayContaining([expect.stringContaining(orphan)]));
+    expect(result.nextPage).toBeNull();
+  });
+});
+
 describe("stale shop boost job recovery", () => {
   beforeEach(() => {
     updateChain.update.mockClear();
     updateChain.eq.mockClear();
     updateChain.lt.mockClear();
     updateChain.select.mockReset();
+    updateChain.attemptsUpdate.mockClear();
+    updateChain.attemptsIn.mockClear();
+    updateChain.attemptsEq.mockClear();
   });
 
   it("returns only long-locked running jobs to the retry queue", async () => {
@@ -165,6 +240,11 @@ describe("stale shop boost job recovery", () => {
     const result = await recoverStaleRunningJobs({ now, staleAfterMs: 15 * 60 * 1000 });
 
     expect(result).toEqual({ recovered: 2 });
+    expect(updateChain.attemptsIn).toHaveBeenCalledWith("job_id", ["job-1", "job-2"]);
+    expect(updateChain.attemptsEq).toHaveBeenCalledWith("status", "running");
+    expect(updateChain.attemptsUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "failed", error_code: "STALE_LOCK_RECOVERED" }),
+    );
     expect(updateChain.eq).toHaveBeenCalledWith("status", "running");
     expect(updateChain.lt).toHaveBeenCalledWith("locked_at", "2026-10-06T11:45:00.000Z");
     expect(updateChain.update).toHaveBeenCalledWith(

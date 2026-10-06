@@ -242,6 +242,14 @@ export async function seedRunJobs(args: {
   runId: string;
   shopId: string;
   intakeId: string;
+  /**
+   * Default (false) keeps the original behavior: every seed job is upserted back
+   * to `queued`. When true, only jobs that do not exist yet are inserted and the
+   * state of existing jobs (succeeded, running, blocked, retry bookkeeping) is
+   * left untouched. The scheduled worker uses this so repeated passes never
+   * reopen completed work.
+   */
+  preserveExisting?: boolean;
 }): Promise<OnboardingJobRow[]> {
   const supabase = adminAny();
 
@@ -257,7 +265,9 @@ export async function seedRunJobs(args: {
     payload: { intake_id: args.intakeId },
   }));
 
-  const { error } = await supabase.from("shop_onboarding_jobs").upsert(seed, { onConflict: "idempotency_key" });
+  const { error } = await supabase
+    .from("shop_onboarding_jobs")
+    .upsert(seed, { onConflict: "idempotency_key", ignoreDuplicates: args.preserveExisting === true });
   if (error) {
     console.error("[shop-boost/orchestrator] seedRunJobs failed", {
       runId: args.runId,
@@ -559,7 +569,29 @@ export async function recoverStaleRunningJobs(args: {
     console.error("[shop-boost/orchestrator] recoverStaleRunningJobs failed", { error: error.message });
     return { recovered: 0 };
   }
-  return { recovered: data?.length ?? 0 };
+
+  // The dead worker's attempt row is still `running`; close it so attempt
+  // history matches the recovered job state. The retry opens a fresh attempt.
+  const recoveredJobIds = ((data as Array<{ id: string }> | null) ?? []).map((row) => String(row.id));
+  if (recoveredJobIds.length > 0) {
+    const { error: attemptError } = await supabase
+      .from("shop_onboarding_attempts")
+      .update({
+        status: "failed" satisfies OrchestratorAttemptStatus,
+        completed_at: nowIso,
+        error_code: "STALE_LOCK_RECOVERED",
+        error_message: "Worker lock expired before the attempt finished.",
+      })
+      .in("job_id", recoveredJobIds)
+      .eq("status", "running");
+    if (attemptError) {
+      console.error("[shop-boost/orchestrator] recoverStaleRunningJobs attempt close failed", {
+        error: attemptError.message,
+      });
+    }
+  }
+
+  return { recovered: recoveredJobIds.length };
 }
 
 export function computeRetryAfter(attemptCount: number, baseSeconds = 45, maxSeconds = 1800): string {

@@ -23,6 +23,8 @@ export function consumeRateLimit(args: {
   const now = args.now ?? Date.now();
   const windowStart = now - args.windowMs;
   const recent = (buckets.get(args.key) ?? []).filter((at) => at > windowStart);
+  // Re-insert so Map iteration order tracks recency (oldest key first).
+  buckets.delete(args.key);
 
   if (recent.length >= args.max) {
     buckets.set(args.key, recent);
@@ -37,9 +39,11 @@ export function consumeRateLimit(args: {
   buckets.set(args.key, recent);
 
   if (buckets.size > MAX_TRACKED_KEYS) {
-    for (const [key, hits] of buckets) {
-      if (!hits.some((at) => at > windowStart)) buckets.delete(key);
+    // Hard cap: drop least-recently-used keys even if still inside their
+    // window, so a flood of distinct client keys cannot grow memory unbounded.
+    for (const key of buckets.keys()) {
       if (buckets.size <= MAX_TRACKED_KEYS) break;
+      buckets.delete(key);
     }
   }
 

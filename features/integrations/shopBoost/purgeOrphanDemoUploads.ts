@@ -49,6 +49,8 @@ export type PurgeOrphanDemoUploadsResult = {
   deletedFiles: number;
   skippedActivatedDemos: number;
   truncated: boolean;
+  /** Page to pass as startPage to continue; null when the scan reached the end. */
+  nextPage: number | null;
 };
 
 async function listAll(
@@ -65,21 +67,28 @@ export async function purgeOrphanDemoUploads(args: {
   apply: boolean;
   now?: number;
   retentionMs?: number;
+  startPage?: number;
 }): Promise<PurgeOrphanDemoUploadsResult> {
   const bucket = args.admin.storage.from(DEMO_UPLOAD_BUCKET);
   const cutoff = (args.now ?? Date.now()) - (args.retentionMs ?? DEMO_UPLOAD_RETENTION_MS);
+  const startPage = Math.max(0, Math.floor(args.startPage ?? 0));
 
-  const candidatesByDemo = new Map<string, string[]>();
+  const deletable: string[] = [];
   let scannedDemos = 0;
-  let candidateFiles = 0;
+  let skippedActivatedDemos = 0;
   let truncated = false;
+  let nextPage: number | null = null;
 
-  paging: for (let page = 0; page < MAX_DEMO_PAGES; page += 1) {
+  // Whole pages of demo folders are processed at a time: activation is checked
+  // for each page *before* its files count toward the per-run cap, so a long
+  // run of activated demos cannot use up the cap and starve later pages.
+  for (let page = startPage; page < startPage + MAX_DEMO_PAGES; page += 1) {
     const { data, error } = await bucket.list(DEMO_ROOT, { limit: PAGE_SIZE, offset: page * PAGE_SIZE });
     if (error) throw new Error(error.message);
-    const demoFolders = (data ?? []).filter((entry) => UUID_PATTERN.test(entry.name));
-    if (!demoFolders.length) break;
+    const entries = data ?? [];
+    const demoFolders = entries.filter((entry) => UUID_PATTERN.test(entry.name));
 
+    const candidatesByDemo = new Map<string, string[]>();
     for (const demo of demoFolders) {
       scannedDemos += 1;
       for (const intake of await listAll(bucket, `${DEMO_ROOT}/${demo.name}`)) {
@@ -91,33 +100,46 @@ export async function purgeOrphanDemoUploads(args: {
           }
           const path = `${DEMO_ROOT}/${demo.name}/${intake.name}/${file.name}`;
           candidatesByDemo.set(demo.name, [...(candidatesByDemo.get(demo.name) ?? []), path]);
-          candidateFiles += 1;
-          if (candidateFiles >= MAX_FILES_PER_RUN) {
-            truncated = true;
-            break paging;
-          }
         }
       }
     }
-    if (demoFolders.length < PAGE_SIZE) break;
-  }
 
-  // A demo that was activated by a shop keeps its source files: activation
-  // copies them, but a retry may still read the originals.
-  const activatedDemoIds = new Set<string>();
-  const demoIds = [...candidatesByDemo.keys()];
-  if (demoIds.length) {
-    const { data, error } = await args.admin.from("demo_shop_boosts").select("id,shop_id").in("id", demoIds);
-    if (error) throw new Error(error.message);
-    for (const row of data ?? []) {
-      if (row.shop_id) activatedDemoIds.add(row.id);
+    // A demo that was activated by a shop keeps its source files: activation
+    // copies them, but a retry may still read the originals.
+    const activatedDemoIds = new Set<string>();
+    const demoIds = [...candidatesByDemo.keys()];
+    if (demoIds.length) {
+      const { data: rows, error: activationError } = await args.admin
+        .from("demo_shop_boosts")
+        .select("id,shop_id")
+        .in("id", demoIds);
+      if (activationError) throw new Error(activationError.message);
+      for (const row of rows ?? []) {
+        if (row.shop_id) activatedDemoIds.add(row.id);
+      }
+    }
+    skippedActivatedDemos += activatedDemoIds.size;
+
+    for (const [demoId, paths] of candidatesByDemo) {
+      if (activatedDemoIds.has(demoId)) continue;
+      for (const path of paths) {
+        if (path.startsWith(`${DEMO_ROOT}/`) && path.endsWith(".csv") && !path.includes("..")) {
+          deletable.push(path);
+        }
+      }
+    }
+
+    if (entries.length < PAGE_SIZE) break; // reached the end of the listing
+    nextPage = page + 1;
+    if (deletable.length >= MAX_FILES_PER_RUN) {
+      truncated = true;
+      break;
     }
   }
 
-  const deletable = [...candidatesByDemo.entries()]
-    .filter(([demoId]) => !activatedDemoIds.has(demoId))
-    .flatMap(([, paths]) => paths)
-    .filter((path) => path.startsWith(`${DEMO_ROOT}/`) && path.endsWith(".csv") && !path.includes(".."));
+  // Ran out of page budget with more listing left.
+  if (nextPage !== null && !truncated) truncated = true;
+  if (!truncated) nextPage = null;
 
   let deletedFiles = 0;
   if (args.apply) {
@@ -134,7 +156,8 @@ export async function purgeOrphanDemoUploads(args: {
     scannedDemos,
     candidateFiles: deletable.length,
     deletedFiles,
-    skippedActivatedDemos: activatedDemoIds.size,
+    skippedActivatedDemos,
     truncated,
+    nextPage,
   };
 }
