@@ -5,9 +5,34 @@
 -- roles. Runs in one transaction and rolls back.
 begin;
 
-insert into public.shops (id, name)
-values ('aaaaaaaa-0000-0000-0000-000000000001', 'budget-a'),
-       ('aaaaaaaa-0000-0000-0000-000000000002', 'budget-b');
+-- Four shops, each with a real owner: public.shops.owner_id is NOT NULL and
+-- references both auth.users and public.profiles.
+insert into auth.users (id, email, raw_user_meta_data)
+values
+  ('ab000000-0000-4000-8000-000000000001', 'ai-budget-owner-a@example.com', '{"full_name":"AI Budget Owner A"}'::jsonb),
+  ('ab000000-0000-4000-8000-000000000002', 'ai-budget-owner-b@example.com', '{"full_name":"AI Budget Owner B"}'::jsonb),
+  ('ab000000-0000-4000-8000-000000000003', 'ai-budget-owner-c@example.com', '{"full_name":"AI Budget Owner C"}'::jsonb),
+  ('ab000000-0000-4000-8000-000000000004', 'ai-budget-owner-d@example.com', '{"full_name":"AI Budget Owner D"}'::jsonb)
+on conflict (id) do nothing;
+
+insert into public.profiles (id, user_id, role, full_name)
+values
+  ('ab000000-0000-4000-8000-000000000001', 'ab000000-0000-4000-8000-000000000001', 'owner', 'AI Budget Owner A'),
+  ('ab000000-0000-4000-8000-000000000002', 'ab000000-0000-4000-8000-000000000002', 'owner', 'AI Budget Owner B'),
+  ('ab000000-0000-4000-8000-000000000003', 'ab000000-0000-4000-8000-000000000003', 'owner', 'AI Budget Owner C'),
+  ('ab000000-0000-4000-8000-000000000004', 'ab000000-0000-4000-8000-000000000004', 'owner', 'AI Budget Owner D')
+on conflict (id) do update
+set user_id = excluded.user_id,
+    role = excluded.role,
+    full_name = excluded.full_name;
+
+insert into public.shops (id, owner_id, business_name, name, user_limit)
+values
+  ('aaaaaaaa-0000-0000-0000-000000000001', 'ab000000-0000-4000-8000-000000000001', 'AI Budget Shop A', 'AI Budget Shop A', 3),
+  ('aaaaaaaa-0000-0000-0000-000000000002', 'ab000000-0000-4000-8000-000000000002', 'AI Budget Shop B', 'AI Budget Shop B', 3),
+  ('aaaaaaaa-0000-0000-0000-000000000003', 'ab000000-0000-4000-8000-000000000003', 'AI Budget Shop C', 'AI Budget Shop C', 3),
+  ('aaaaaaaa-0000-0000-0000-000000000004', 'ab000000-0000-4000-8000-000000000004', 'AI Budget Shop D', 'AI Budget Shop D', 3)
+on conflict (id) do nothing;
 
 -- 1. Access control ---------------------------------------------------------
 do $$
@@ -233,10 +258,6 @@ end
 $$;
 
 -- 6. Timed-out holds stay charged until settled or reconciled ----------------
-reset role;
-insert into public.shops (id, name) values ('aaaaaaaa-0000-0000-0000-000000000003', 'budget-c');
-set local role service_role;
-
 do $$
 declare
   shop uuid := 'aaaaaaaa-0000-0000-0000-000000000003';
@@ -295,10 +316,6 @@ end
 $$;
 
 -- Reconciliation: an operator releases holds that never reached the provider.
-reset role;
-insert into public.shops (id, name) values ('aaaaaaaa-0000-0000-0000-000000000004', 'budget-d');
-set local role service_role;
-
 do $$
 declare
   shop uuid := 'aaaaaaaa-0000-0000-0000-000000000004';
