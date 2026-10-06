@@ -30378,10 +30378,7 @@ export type Database = {
       }
       first_segment_uuid: { Args: { p: string }; Returns: string }
       fleet_defect_descriptor: { Args: { p_key: string }; Returns: Json }
-      get_ai_budget_status: {
-        Args: { p_shop_id: string }
-        Returns: Json
-      }
+      get_ai_budget_status: { Args: { p_shop_id: string }; Returns: Json }
       get_customer_account_center: {
         Args: {
           p_actor_user_id?: string
