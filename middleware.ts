@@ -380,6 +380,8 @@ export async function middleware(req: NextRequest) {
   const isPublic =
     pathname === "/" ||
     pathname.startsWith("/compare-plans") ||
+    pathname === "/compare/fullbay-alternative" ||
+    pathname === "/compare/profixiq-vs-fullbay" ||
     pathname.startsWith("/subscribe") ||
     pathname.startsWith("/confirm") ||
     pathname.startsWith("/signup") ||
@@ -857,6 +859,8 @@ export const config = {
     "/field/sign-in",
     "/customer/sign-in",
     "/compare-plans",
+    "/compare/fullbay-alternative",
+    "/compare/profixiq-vs-fullbay",
     "/subscribe",
     "/confirm",
     "/signup",
