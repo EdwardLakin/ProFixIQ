@@ -19,6 +19,29 @@ describe("Fullbay comparison acquisition pages", () => {
     }
   });
 
+  it("registers only the two comparison pages as standalone public routes", () => {
+    const shellBoundaries = source(
+      "features/shared/lib/routes/shellBoundaries.ts",
+    );
+
+    for (const route of routes) {
+      expect(shellBoundaries).toContain(`\"${route}\"`);
+    }
+
+    expect(shellBoundaries).not.toContain('\n  "/compare",');
+  });
+
+  it("registers both comparison pages with public middleware handling", () => {
+    const middleware = source("middleware.ts");
+
+    for (const route of routes) {
+      expect(middleware).toContain(`pathname === \"${route}\"`);
+      expect(middleware).toContain(`\"${route}\",`);
+    }
+
+    expect(middleware).not.toContain('\"/compare/:path*\"');
+  });
+
   it("uses the canonical search landing page framework", () => {
     for (const pagePath of [
       "app/compare/fullbay-alternative/page.tsx",
