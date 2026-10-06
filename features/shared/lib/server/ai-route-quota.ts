@@ -12,6 +12,8 @@ import {
   estimateAICostUsd,
   registerAIUsageEvent,
 } from "@/features/shared/lib/server/ai-ops-guard";
+import { estimateOpenAITextCostUsd } from "@/features/shared/lib/server/ai-cost";
+import { governAICall, isAIBudgetDenied } from "@/features/shared/lib/server/ai-governance";
 import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import type { AIFeature } from "@/features/shared/lib/server/ai-policy";
 import type { createAdminSupabase } from "@/features/shared/lib/supabase/server";
@@ -82,7 +84,27 @@ export async function withDurableAIQuota<T>(
   }
 
   try {
-    const result = await operation();
+    const result = await governAICall(
+      {
+        feature: config.telemetryFeature,
+        endpoint: config.endpoint,
+        shopId: config.shopId,
+        userId: config.actorId,
+        model: null,
+      },
+      operation,
+      {
+        actualCostUsd: (r) =>
+          r.usage
+            ? estimateOpenAITextCostUsd({
+                model: r.model,
+                promptTokens: r.usage.promptTokens,
+                cachedPromptTokens: r.usage.cachedPromptTokens,
+                completionTokens: r.usage.completionTokens,
+              })
+            : null,
+      },
+    );
     const totalTokens = result.usage?.totalTokens ?? null;
     const estimatedCostUsd = estimateAICostUsd(config.telemetryFeature, totalTokens);
 
@@ -126,6 +148,20 @@ export async function withDurableAIQuota<T>(
 
     return result.output;
   } catch (error) {
+    if (isAIBudgetDenied(error)) {
+      // Never reached the provider: give the route quota slot back and let the
+      // route answer. No usage row, because no provider call happened.
+      await completeDurableAIRouteQuota({
+        admin: config.admin,
+        feature: config.durableFeature,
+        shopId: config.shopId,
+        actorId: config.actorId,
+        receiptId: claim.receiptId,
+        actualCostUsd: 0,
+        succeeded: false,
+      });
+      throw error;
+    }
     const message = error instanceof Error ? error.message : "unknown_error";
     const errorCode = /timed out/i.test(message)
       ? "provider_timeout"

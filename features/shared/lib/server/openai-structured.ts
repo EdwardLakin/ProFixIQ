@@ -1,5 +1,10 @@
 import "server-only";
 
+import {
+  AIBudgetDeniedError,
+  AIBudgetReplayError,
+} from "@/features/shared/lib/server/ai-budget";
+import { governAICall } from "@/features/shared/lib/server/ai-governance";
 import { getAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import {
   recordDurableAIUsage,
@@ -158,11 +163,24 @@ export async function runOpenAIStructuredJson<T>(params: {
     // Explicit caller deadlines still win. Otherwise every feature registered in
     // the canonical AI policy automatically receives its declared provider
     // timeout, so a new call site cannot accidentally leave the policy inert.
-    const response = timeoutMs
-      ? await runWithProviderTimeout(timeoutMs, (signal) =>
-          client.responses.create(requestBody, { signal }),
-        )
-      : await client.responses.create(requestBody);
+    // Budget governance wraps the provider request only: a denial stops the
+    // call before it is sent, and settlement uses the response's own usage.
+    const response = await governAICall(
+      {
+        feature: params.feature,
+        endpoint: telemetry.endpoint,
+        shopId: telemetry.shopId,
+        userId: telemetry.userId,
+        model,
+        maxCompletionTokens: params.maxOutputTokens,
+      },
+      () =>
+        timeoutMs
+          ? runWithProviderTimeout(timeoutMs, (signal) =>
+              client.responses.create(requestBody, { signal }),
+            )
+          : client.responses.create(requestBody),
+    );
 
     usage = readUsage(response);
     providerRequestId = responseId(response);
@@ -202,6 +220,24 @@ export async function runOpenAIStructuredJson<T>(params: {
 
     return { mode: "ai", model, output, usage, latencyMs };
   } catch (error) {
+    // A budget denial never reached the provider. It is recorded as a
+    // reservation, not as provider activity, so no usage-ledger error row.
+    if (error instanceof AIBudgetDeniedError || error instanceof AIBudgetReplayError) {
+      console.warn("[openai-structured] budget governance stopped the call", {
+        feature: params.feature,
+        purpose: params.purpose,
+        reason: error instanceof AIBudgetDeniedError ? error.reason : error.decision,
+      });
+      if (params.requireAI) throw error;
+      return {
+        mode: "fallback",
+        model,
+        output: params.fallback(model),
+        warning: "AI budget limit reached; deterministic fallback was used.",
+        latencyMs: Date.now() - started,
+      };
+    }
+
     const message = error instanceof Error ? error.message : "unknown_error";
     const latencyMs = Date.now() - started;
 

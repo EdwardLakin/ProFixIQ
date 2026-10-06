@@ -2,6 +2,7 @@
 import "server-only";
 import { NextResponse } from "next/server";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
+import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import { generateMaintenanceRulesForVehicle } from "@/features/maintenance/server/generateMaintenanceRules";
 
 
@@ -75,15 +76,29 @@ export async function POST(req: Request) {
       );
     }
 
-    const { servicesInserted, rulesInserted } =
-      await generateMaintenanceRulesForVehicle({
-        supabase,
-        year: body.year,
-        make: body.make,
-        model: body.model,
-        engineFamily: body.engineFamily ?? null,
-        forceRefresh: body.forceRefresh ?? false,
-      });
+    // Charge the generation to the signed-in user's shop AI budget.
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("id", user.id)
+      .maybeSingle<{ shop_id: string | null }>();
+
+    const { servicesInserted, rulesInserted } = await withAITelemetryContext(
+      {
+        endpoint: "/api/maintenance/generate-rules",
+        shopId: profile?.shop_id ?? null,
+        userId: user.id,
+      },
+      () =>
+        generateMaintenanceRulesForVehicle({
+          supabase,
+          year: body.year as number,
+          make: body.make as string,
+          model: body.model as string,
+          engineFamily: body.engineFamily ?? null,
+          forceRefresh: body.forceRefresh ?? false,
+        }),
+    );
 
     return NextResponse.json({
       ok: true,

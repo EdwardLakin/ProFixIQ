@@ -1,3 +1,4 @@
+import { governAICall, isAIBudgetDenied } from "@/features/shared/lib/server/ai-governance";
 import { NextResponse } from "next/server";
 import {
   createAdminSupabase,
@@ -285,7 +286,16 @@ export async function POST(request: Request) {
       const model = getOpenAIModelForPurpose(policy.modelPurpose);
       try {
         const completion = await Promise.race([
-          getOpenAIClient().chat.completions.create({
+          governAICall(
+{
+        feature: feature,
+        endpoint: endpoint,
+        shopId: scope.shopId,
+        userId: actor.userId,
+        model: model,
+        maxCompletionTokens: policy.maxTokens,
+      },
+() => getOpenAIClient().chat.completions.create({
             model,
             max_tokens: policy.maxTokens,
             messages: [
@@ -297,6 +307,7 @@ export async function POST(request: Request) {
               { role: "user", content: JSON.stringify(snapshot) },
             ],
           }),
+),
           new Promise<never>((_, reject) =>
             setTimeout(
               () => reject(new Error("AI request timed out")),
@@ -340,9 +351,11 @@ export async function POST(request: Request) {
           errorCode: null,
         });
       } catch (error) {
+        // A budget denial never reached the provider: skip the provider-error rows.
+        const budgetDenied = isAIBudgetDenied(error);
         const message =
           error instanceof Error ? error.message : "AI summary failed";
-        await recordDurableAIUsage({
+        if (!budgetDenied) await recordDurableAIUsage({
           feature,
           endpoint,
           shop_id: scope.shopId,
@@ -357,7 +370,7 @@ export async function POST(request: Request) {
           error_code: "fleet_summary_error",
           error_message: message,
         });
-        registerAIUsageEvent({
+        if (!budgetDenied) registerAIUsageEvent({
           feature,
           endpoint,
           shopId: scope.shopId,

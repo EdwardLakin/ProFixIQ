@@ -1,3 +1,4 @@
+import { aiBudgetDeniedBody, governAICall, isAIBudgetDenied } from "@/features/shared/lib/server/ai-governance";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
@@ -107,7 +108,16 @@ export async function POST(req: Request): Promise<NextResponse> {
   try {
     const openai = getOpenAIClient();
     const completion = await Promise.race([
-      openai.chat.completions.create({
+      governAICall(
+{
+        feature: FEATURE,
+        endpoint: ENDPOINT,
+        shopId: access.profile.shop_id,
+        userId: access.profile.id,
+        model: model,
+        maxCompletionTokens: policy.maxTokens,
+      },
+() => openai.chat.completions.create({
         model,
         ...openAITemperatureParam(model, 0.1),
         response_format: { type: "json_object" },
@@ -140,6 +150,7 @@ export async function POST(req: Request): Promise<NextResponse> {
           },
         ],
       }),
+),
       new Promise<never>((_, reject) =>
         setTimeout(
           () => reject(new Error("AI documentation rewrite timed out")),
@@ -195,6 +206,10 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     return NextResponse.json(parsed.data);
   } catch (error) {
+    if (isAIBudgetDenied(error)) {
+      // Never reached the provider; not a provider error.
+      return errorResponse(aiBudgetDeniedBody(error).error, 402);
+    }
     const message =
       error instanceof Error ? error.message : "Documentation rewrite failed";
 

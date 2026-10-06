@@ -10,6 +10,7 @@ import {
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { estimateAICostUsd, registerAIUsageEvent } from "@/features/shared/lib/server/ai-ops-guard";
 import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
+import { aiBudgetDeniedBody, governAICall, isAIBudgetDenied } from "@/features/shared/lib/server/ai-governance";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import { runWithProviderTimeout } from "@/features/shared/lib/server/provider-timeout";
@@ -366,7 +367,16 @@ async function generateDtcResponse(args: {
   const policy = getAIPolicy(FEATURE);
   const model = getOpenAIModelForPurpose(policy.modelPurpose);
   const openai = getOpenAIClient();
-  const completion = await runWithProviderTimeout(policy.timeoutMs, (signal) =>
+  const completion = await governAICall(
+    {
+      feature: FEATURE,
+      endpoint: ENDPOINT,
+      shopId: args.context.shopId,
+      userId: args.context.userId,
+      model,
+      maxCompletionTokens: policy.maxTokens,
+    },
+    () => runWithProviderTimeout(policy.timeoutMs, (signal) =>
     openai.chat.completions.create(
       {
         model,
@@ -384,6 +394,7 @@ async function generateDtcResponse(args: {
         ],
       },
       { signal },
+    ),
     ),
   );
 
@@ -628,6 +639,13 @@ export async function POST(req: Request) {
         shopId: access.profile.shop_id,
         succeeded: false,
       });
+      if (isAIBudgetDenied(error)) {
+        // Never reached the provider; nothing was billed or recorded as usage.
+        return NextResponse.json(aiBudgetDeniedBody(error), {
+          status: 402,
+          headers: { "Cache-Control": "no-store" },
+        });
+      }
       const billed =
         error instanceof DtcProviderResponseError ? error : null;
       const model =

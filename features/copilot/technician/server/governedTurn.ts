@@ -10,6 +10,10 @@ import {
   completeDurableAIRouteQuota,
   DurableAIQuotaUnavailableError,
 } from "@/features/shared/lib/server/durable-ai-guard";
+import {
+  isAIBudgetDenied,
+  isAIGovernanceFailClosed,
+} from "@/features/shared/lib/server/ai-governance";
 import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import { runTechnicianCopilotTurn } from "./chat";
 import { sendCopilotServerCommand } from "./transport";
@@ -25,6 +29,9 @@ export type TechnicianCopilotQuotaCode = keyof typeof QUOTA_ERROR_MESSAGES;
 
 /** Seconds to advertise when spend governance itself is the blocker. */
 export const GOVERNANCE_UNAVAILABLE_RETRY_SECONDS = 60;
+
+/** Advertised retry window when the shop's funded AI budget is the blocker. */
+export const BUDGET_EXHAUSTED_RETRY_SECONDS = 3600;
 
 export class TechnicianCopilotQuotaError extends Error {
   readonly status: 402 | 429;
@@ -115,6 +122,43 @@ function recordDurableDenial(input: {
         retryAfterSeconds: input.retryAfterSeconds,
       },
     }),
+  );
+}
+
+/**
+ * The funded budget stopped a provider call before it was sent, so the turn did
+ * no billable work. Give its quota slot back and answer with the quota error the
+ * client already understands (402: terminal for this turn).
+ */
+async function budgetDeniedTurnError(args: {
+  admin: ReturnType<typeof createAdminSupabase>;
+  receiptId: string | null;
+  endpoint: string;
+  turn: TurnInput;
+}): Promise<TechnicianCopilotQuotaError> {
+  const { turn } = args;
+  if (args.receiptId) {
+    await completeDurableAIRouteQuota({
+      admin: args.admin,
+      feature: "technician_copilot_text",
+      shopId: turn.identity.shopId,
+      actorId: turn.identity.profileId,
+      receiptId: args.receiptId,
+      actualCostUsd: 0,
+      succeeded: false,
+    });
+  }
+  recordDurableDenial({
+    endpoint: args.endpoint,
+    shopId: turn.identity.shopId,
+    actorId: turn.identity.profileId,
+    turnId: turn.turnId,
+    reason: "hard_budget_exceeded",
+    retryAfterSeconds: BUDGET_EXHAUSTED_RETRY_SECONDS,
+  });
+  return new TechnicianCopilotQuotaError(
+    "hard_budget_exceeded",
+    BUDGET_EXHAUSTED_RETRY_SECONDS,
   );
 }
 
@@ -242,7 +286,24 @@ export async function runGovernedTechnicianCopilotTurn(input: {
     }
 
     // Anything else is a transient fault — a timeout, a dropped connection, a
-    // momentary outage. Accounting must not take the CoPilot down for those.
+    // momentary outage. By default accounting does not take the CoPilot down
+    // for those. With AI_GOVERNANCE_FAIL_CLOSED the turn is refused instead
+    // (retryable, so the technician's intent is kept): the spend ceiling is not
+    // silently skipped while governance is unavailable.
+    if (isAIGovernanceFailClosed()) {
+      recordDurableDenial({
+        endpoint: input.endpoint,
+        shopId: turn.identity.shopId,
+        actorId: turn.identity.profileId,
+        turnId: turn.turnId,
+        reason: "governance_unavailable",
+        retryAfterSeconds: GOVERNANCE_UNAVAILABLE_RETRY_SECONDS,
+      });
+      throw new TechnicianCopilotQuotaError(
+        "governance_unavailable",
+        GOVERNANCE_UNAVAILABLE_RETRY_SECONDS,
+      );
+    }
     console.error("technician_copilot_quota_unavailable", {
       shopId: turn.identity.shopId,
       turnId: turn.turnId,
@@ -293,6 +354,14 @@ export async function runGovernedTechnicianCopilotTurn(input: {
 
     return result;
   } catch (error) {
+    if (isAIBudgetDenied(error)) {
+      throw await budgetDeniedTurnError({
+        admin,
+        receiptId,
+        endpoint: input.endpoint,
+        turn,
+      });
+    }
     if (receiptId) {
       // Keep the reservation's conservative per-turn proxy in the monthly
       // budget on failure. OpenAI may already have returned billable tokens

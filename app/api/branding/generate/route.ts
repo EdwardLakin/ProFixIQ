@@ -1,3 +1,4 @@
+import { aiBudgetDeniedBody, governAICall, isAIBudgetDenied } from "@/features/shared/lib/server/ai-governance";
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import {
@@ -126,7 +127,16 @@ export async function POST(req: Request) {
     const model = "gpt-image-1.5";
 
     const result = await Promise.race([
-      openai.images.generate({
+      governAICall(
+{
+        feature: "branding_generate_logo",
+        endpoint: "/api/branding/generate",
+        shopId: auth.shopId,
+        userId: auth.userId,
+        model: model,
+        modality: "image",
+      },
+() => openai.images.generate({
         model,
         prompt: finalPrompt,
         n: count,
@@ -136,6 +146,7 @@ export async function POST(req: Request) {
         background: transparentBackground ? "transparent" : "auto",
         user: auth.userId,
       }),
+),
       new Promise<never>((_, reject) =>
         setTimeout(
           () => reject(new Error("AI request timed out")),
@@ -271,6 +282,9 @@ export async function POST(req: Request) {
       usage: result.usage ?? null,
     });
   } catch (error) {
+    if (isAIBudgetDenied(error)) {
+      return NextResponse.json(aiBudgetDeniedBody(error), { status: 402 });
+    }
     const message =
       error instanceof Error ? error.message : "Logo generation failed";
     await recordDurableAIUsage({

@@ -9,6 +9,7 @@ import type {
 } from "./types";
 import { getVehicleMaintenanceHistory } from "./getVehicleMaintenanceHistory";
 import { resolveMaintenanceMenuMap } from "./resolveMaintenanceMenuMap";
+import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import { generateMaintenanceRulesForVehicle } from "./generateMaintenanceRules";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
@@ -258,15 +259,25 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
       // RLS-scoped client, which authorizes this request. The generated rows
       // are shared catalog data that `authenticated` can only read, so they
       // are written with the service role.
-      await generateMaintenanceRulesForVehicle({
-        supabase,
-        writeClient: createAdminSupabase(),
-        year: vehicle.year,
-        make: trimmedVehicleMake,
-        model: trimmedVehicleModel,
-        engineFamily: vehicle.engine_family ?? null,
-        timeoutMs: SCHEDULE_GENERATION_TIMEOUT_MS,
-      });
+      // Charge the generation to the requesting shop's AI budget, even though
+      // the generated rules are shared catalog data.
+      await withAITelemetryContext(
+        {
+          endpoint: "maintenance/compute-suggestions",
+          shopId: workOrder.shop_id,
+          userId: null,
+        },
+        () =>
+          generateMaintenanceRulesForVehicle({
+            supabase,
+            writeClient: createAdminSupabase(),
+            year: vehicle.year as number,
+            make: trimmedVehicleMake,
+            model: trimmedVehicleModel,
+            engineFamily: vehicle.engine_family ?? null,
+            timeoutMs: SCHEDULE_GENERATION_TIMEOUT_MS,
+          }),
+      );
     } catch {
       // Best-effort: if AI schedule generation fails, fall back to whatever
       // rules already exist rather than blocking suggestions entirely.
