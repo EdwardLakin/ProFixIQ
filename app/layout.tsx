@@ -25,11 +25,21 @@ const blackOps = Black_Ops_One({
   display: "swap",
 });
 
+const siteDescription =
+  "Heavy-duty and automotive repair shop software for voice inspections, technician-built repairs, parts workflows, approvals, field service, and fleet maintenance.";
+
 export const metadata: Metadata = {
-  title: "ProFixIQ | The operating system for modern repair shops",
-  description:
-    "Voice inspections, technician-built repairs, approvals, parts workflows, workforce operations, and fleet transparency—connected in one repair shop operating system.",
+  metadataBase: new URL("https://profixiq.com"),
+  title: "ProFixIQ | Heavy-Duty & Automotive Repair Shop Software",
+  description: siteDescription,
   applicationName: "ProFixIQ",
+  openGraph: {
+    type: "website",
+    siteName: "ProFixIQ",
+  },
+  twitter: {
+    card: "summary_large_image",
+  },
   manifest: "/manifest.webmanifest",
   appleWebApp: {
     capable: true,

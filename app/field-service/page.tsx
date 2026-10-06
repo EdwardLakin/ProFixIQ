@@ -1,13 +1,6 @@
-import type { Metadata } from "next";
 import { Boxes, MapPinned, RadioTower, Truck } from "lucide-react";
 
 import ProductMarketingPage from "@shared/components/ProductMarketingPage";
-
-export const metadata: Metadata = {
-  title: "Field Service | ProFixIQ",
-  description:
-    "Service-truck dispatch, off-site repair execution, inventory, evidence, and operator controls in one focused workspace.",
-};
 
 export default function FieldServiceMarketingPage() {
   return (

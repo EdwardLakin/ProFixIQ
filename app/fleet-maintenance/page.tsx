@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import {
   CalendarClock,
   ClipboardCheck,
@@ -7,12 +6,6 @@ import {
 } from "lucide-react";
 
 import ProductMarketingPage from "@shared/components/ProductMarketingPage";
-
-export const metadata: Metadata = {
-  title: "Fleet Maintenance | ProFixIQ",
-  description:
-    "A fleet-owned maintenance workspace for assets, PM programs, inspections, defects, approvals, and repair history.",
-};
 
 export default function FleetMaintenanceMarketingPage() {
   return (
