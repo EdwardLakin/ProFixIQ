@@ -23,6 +23,7 @@ type MarketingEventRow = {
   source_path: string | null;
   package_key: string | null;
   checkout_mode: string | null;
+  checkout_attempt_id: string | null;
   created_at: string;
 };
 
@@ -32,6 +33,8 @@ export type OpsMarketingSourceRow = {
   trialClicks: number;
   subscribeClicks: number;
   demoClicks: number;
+  checkoutStarted: number;
+  intentToCheckoutStartPct: number;
 };
 
 export type OpsMarketingPackageRow = {
@@ -41,6 +44,7 @@ export type OpsMarketingPackageRow = {
   checkoutStarted: number;
   trialCheckouts: number;
   paidCheckouts: number;
+  intentToCheckoutStartPct: number;
 };
 
 export type OpsMarketingFunnelSnapshot = {
@@ -96,7 +100,9 @@ async function readBreakdownRows(
   for (let offset = 0; offset < MAX_BREAKDOWN_ROWS; offset += PAGE_SIZE) {
     const { data, error } = await admin
       .from("marketing_events")
-      .select("event_name,source_path,package_key,checkout_mode,created_at")
+      .select(
+        "event_name,source_path,package_key,checkout_mode,checkout_attempt_id,created_at",
+      )
       .gte("created_at", since)
       .order("created_at", { ascending: false })
       .range(offset, offset + PAGE_SIZE - 1);
@@ -111,30 +117,64 @@ async function readBreakdownRows(
 }
 
 function buildSourceRows(rows: MarketingEventRow[]): OpsMarketingSourceRow[] {
+  const sourceByAttempt = new Map<string, string>();
   const grouped = new Map<string, OpsMarketingSourceRow>();
 
   for (const row of rows) {
-    if (!row.source_path) continue;
-    const current = grouped.get(row.source_path) ?? {
-      sourcePath: row.source_path,
+    if (
+      row.checkout_attempt_id &&
+      row.source_path &&
+      (row.event_name === "marketing_trial_click" ||
+        row.event_name === "marketing_subscribe_click")
+    ) {
+      sourceByAttempt.set(row.checkout_attempt_id, row.source_path);
+    }
+  }
+
+  for (const row of rows) {
+    const sourcePath =
+      row.event_name === "checkout_started"
+        ? row.checkout_attempt_id
+          ? sourceByAttempt.get(row.checkout_attempt_id) ?? null
+          : null
+        : row.source_path;
+    if (!sourcePath) continue;
+
+    const current = grouped.get(sourcePath) ?? {
+      sourcePath,
       pricingViews: 0,
       trialClicks: 0,
       subscribeClicks: 0,
       demoClicks: 0,
+      checkoutStarted: 0,
+      intentToCheckoutStartPct: 0,
     };
 
     if (row.event_name === "pricing_view") current.pricingViews += 1;
     if (row.event_name === "marketing_trial_click") current.trialClicks += 1;
     if (row.event_name === "marketing_subscribe_click") current.subscribeClicks += 1;
     if (row.event_name === "marketing_demo_click") current.demoClicks += 1;
-    grouped.set(row.source_path, current);
+    if (row.event_name === "checkout_started") current.checkoutStarted += 1;
+    grouped.set(sourcePath, current);
   }
 
-  return [...grouped.values()].sort((a, b) => {
-    const aTotal = a.pricingViews + a.trialClicks + a.subscribeClicks + a.demoClicks;
-    const bTotal = b.pricingViews + b.trialClicks + b.subscribeClicks + b.demoClicks;
-    return bTotal - aTotal || a.sourcePath.localeCompare(b.sourcePath);
-  });
+  return [...grouped.values()]
+    .map((row) => ({
+      ...row,
+      intentToCheckoutStartPct: pct(
+        row.checkoutStarted,
+        row.trialClicks + row.subscribeClicks,
+      ),
+    }))
+    .sort((a, b) => {
+      const aTotal = a.trialClicks + a.subscribeClicks;
+      const bTotal = b.trialClicks + b.subscribeClicks;
+      return (
+        b.checkoutStarted - a.checkoutStarted ||
+        bTotal - aTotal ||
+        a.sourcePath.localeCompare(b.sourcePath)
+      );
+    });
 }
 
 function buildPackageRows(rows: MarketingEventRow[]): OpsMarketingPackageRow[] {
@@ -149,6 +189,7 @@ function buildPackageRows(rows: MarketingEventRow[]): OpsMarketingPackageRow[] {
       checkoutStarted: 0,
       trialCheckouts: 0,
       paidCheckouts: 0,
+      intentToCheckoutStartPct: 0,
     };
 
     if (row.event_name === "marketing_trial_click") current.trialClicks += 1;
@@ -161,9 +202,19 @@ function buildPackageRows(rows: MarketingEventRow[]): OpsMarketingPackageRow[] {
     grouped.set(row.package_key, current);
   }
 
-  return [...grouped.values()].sort(
-    (a, b) => b.checkoutStarted - a.checkoutStarted || a.packageKey.localeCompare(b.packageKey),
-  );
+  return [...grouped.values()]
+    .map((row) => ({
+      ...row,
+      intentToCheckoutStartPct: pct(
+        row.checkoutStarted,
+        row.trialClicks + row.subscribeClicks,
+      ),
+    }))
+    .sort(
+      (a, b) =>
+        b.checkoutStarted - a.checkoutStarted ||
+        a.packageKey.localeCompare(b.packageKey),
+    );
 }
 
 export async function getOpsMarketingFunnel(): Promise<OpsMarketingFunnelSnapshot> {
