@@ -49,6 +49,7 @@ describe("Early Access discounted checkout", () => {
     expect(checkout).toContain("input.checkoutAttemptNamespace");
     expect(checkout).toContain("requestKeyPrefix");
     expect(ops).toContain("Reissue private signup link");
+    expect(ops).toContain("invalidates the one already sent");
   });
 
   it("does not attach task-specific behavior to the shared shops table", () => {
@@ -162,8 +163,9 @@ describe("Early Access discounted checkout", () => {
 
     expect(route).toContain("enforcePublicRouteRateLimit");
     expect(route.indexOf("enforcePublicRouteRateLimit")).toBeLessThan(
-      route.indexOf("request.json"),
+      route.indexOf("readBoundedJson(request"),
     );
+    expect(route).not.toContain("request.json(");
   });
 
   it("does not leave task-specific validation or shared-table trigger workarounds", () => {

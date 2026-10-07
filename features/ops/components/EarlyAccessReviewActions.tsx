@@ -41,6 +41,14 @@ export default function EarlyAccessReviewActions({
   const [copied, setCopied] = useState(false);
 
   async function approve() {
+    if (
+      mode === "reissue" &&
+      !window.confirm(
+        "Reissuing creates a new private link and immediately invalidates the one already sent. Continue?",
+      )
+    ) {
+      return;
+    }
     setSubmitting("approve");
     setError(null);
     const result = await post(`/api/ops/early-access/${applicationId}/approve`);

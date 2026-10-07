@@ -3,21 +3,32 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 
+import { readBoundedJson } from "@/features/shared/lib/server/bounded-json";
 import { enforcePublicRouteRateLimit } from "@/features/shared/lib/server/publicRouteRateLimit";
 import { createEarlyAccessCheckout } from "@/features/stripe/lib/server/early-access-checkout";
 
+const REQUEST_MAX_BYTES = 2 * 1024;
+
 type Body = { token?: unknown };
 
+// Only messages the checkout service can actually throw for an applicant are
+// shown. Anything else stays generic so internal detail never reaches a
+// public caller.
+const APPLICANT_SAFE_ERRORS = new Set([
+  "Early Access approval link is invalid.",
+  "Early Access approval link is invalid or has already been used.",
+  "Early Access approval has expired.",
+  "Early Access approval is invalid.",
+  "Early Access approval is no longer valid.",
+]);
+
+const RENEW_LINK_MESSAGE =
+  "This Early Access link needs to be renewed. Please contact ProFixIQ for a new private signup link.";
+
 function publicCheckoutError(message: string): string {
-  if (
-    message === "Early Access approval link is invalid." ||
-    message === "Early Access approval link is invalid or has already been used." ||
-    message === "Early Access approval has expired." ||
-    message === "Early Access approval is no longer valid." ||
-    message === "Early Access checkout attempt has expired." ||
-    message === "Early Access checkout is no longer active."
-  ) {
-    return message;
+  if (APPLICANT_SAFE_ERRORS.has(message)) return message;
+  if (message.startsWith("Early Access checkout has too many abandoned attempts")) {
+    return RENEW_LINK_MESSAGE;
   }
   return "Early Access checkout is temporarily unavailable.";
 }
@@ -31,7 +42,19 @@ export async function POST(request: Request) {
   });
   if (limited) return limited;
 
-  const body = (await request.json().catch(() => null)) as Body | null;
+  const bounded = await readBoundedJson(request, REQUEST_MAX_BYTES);
+  if (!bounded.ok) {
+    return NextResponse.json(
+      {
+        error:
+          bounded.reason === "too_large" ? "Request too large." : "Invalid request.",
+      },
+      { status: bounded.reason === "too_large" ? 413 : 400 },
+    );
+  }
+  const body = (bounded.value && typeof bounded.value === "object"
+    ? bounded.value
+    : null) as Body | null;
   const token = typeof body?.token === "string" ? body.token.trim() : "";
   if (!token) {
     return NextResponse.json({ error: "Early Access approval token is required." }, { status: 400 });
