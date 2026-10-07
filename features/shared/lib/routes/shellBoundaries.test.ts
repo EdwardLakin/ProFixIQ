@@ -17,6 +17,9 @@ describe("shell route boundaries", () => {
     "/compare/profixiq-vs-fullbay",
     "/field-service",
     "/fleet-maintenance",
+    "/fleet-repair-management-software",
+    "/dvir-defect-tracking-software",
+    "/fleet-preventive-maintenance-software",
     "/heavy-duty-shop-management-software",
     "/diesel-repair-shop-software",
     "/heavy-duty-work-order-software",
@@ -47,6 +50,8 @@ describe("shell route boundaries", () => {
   it("does not treat similarly named routes as public", () => {
     expect(isStandalonePublicRoute("/compare-plans-private")).toBe(false);
     expect(isStandalonePublicRoute("/compare-private/fullbay")).toBe(false);
+    expect(isStandalonePublicRoute("/fleet-repair-management-software-private")).toBe(false);
+    expect(isStandalonePublicRoute("/dvir-defect-tracking-software-private")).toBe(false);
     expect(isStandalonePublicRoute("/sign-internal")).toBe(false);
     expect(isStandalonePublicRoute("/heavy-duty-work-order-software-private")).toBe(false);
   });
