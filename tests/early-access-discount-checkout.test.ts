@@ -37,7 +37,10 @@ describe("Early Access discounted checkout", () => {
     expect(grants).toContain("product_package");
     expect(grants).toContain("expectedEmail !== normalizeEmail(input.checkoutEmail)");
     expect(grants).toContain("expectedPackage !== input.packageKey");
-    expect(checkout).toContain("customer_email: grant.email");
+    expect(checkout).toContain("ensureCustomer");
+    expect(checkout).toContain("email: grant.email");
+    expect(checkout).toContain("customer: customerId");
+    expect(checkout).not.toContain("customer_email: grant.email");
     expect(checkout).toContain("grant.productPackage");
   });
 
@@ -65,9 +68,12 @@ describe("Early Access discounted checkout", () => {
     const checkout = source("features/stripe/lib/server/early-access-checkout.ts");
 
     expect(checkout).toContain("requestKey: `early-access:${grant.grantId}`");
+    expect(checkout).toContain("profixiq:early-access-customer:${input.grantId}");
     expect(checkout).toContain("profixiq:early-access-coupon:${input.grantId}");
     expect(checkout).toContain("profixiq:early-access-checkout:${grant.grantId}");
+    expect(checkout).toContain("integrationIdentifier(grant.grantId)");
     expect(checkout).toContain("intent.checkoutSessionId");
+    expect(checkout).toContain("checkoutSessionId: existing.id");
   });
 
   it("redeems the grant only after the Stripe acquisition is claimed to a shop", () => {
