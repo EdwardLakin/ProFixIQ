@@ -29,10 +29,11 @@ export function trackMarketingEvent(
 
   window.dispatchEvent(new CustomEvent("profixiq-marketing-event", { detail }));
 
-  const analyticsLayer = (
-    window as Window & { dataLayer?: Array<Record<string, unknown>> }
-  ).dataLayer;
-  analyticsLayer?.push(detail);
+  const analyticsWindow = window as Window & {
+    dataLayer?: Array<Record<string, unknown>>;
+  };
+  const analyticsLayer = (analyticsWindow.dataLayer ??= []);
+  analyticsLayer.push(detail);
 
   if (process.env.NODE_ENV !== "production") {
     // eslint-disable-next-line no-console
