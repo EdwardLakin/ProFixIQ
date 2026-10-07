@@ -37,6 +37,13 @@ const ACQUISITION_SOURCE_PATHS = new Set([
   "/fleet-maintenance",
 ]);
 
+const PUBLIC_PERSISTED_EVENT_NAMES = new Set<MarketingEventName>([
+  "marketing_trial_click",
+  "marketing_demo_click",
+  "marketing_subscribe_click",
+  "pricing_view",
+]);
+
 export function isAcquisitionMarketingPath(pathname: string): boolean {
   return ACQUISITION_SOURCE_PATHS.has(pathname);
 }
@@ -105,7 +112,10 @@ export function trackMarketingEvent(
   };
   const analyticsLayer = (analyticsWindow.dataLayer ??= []);
   analyticsLayer.push(detail);
-  persistMarketingEvent(detail);
+
+  if (PUBLIC_PERSISTED_EVENT_NAMES.has(event)) {
+    persistMarketingEvent(detail);
+  }
 
   if (process.env.NODE_ENV !== "production") {
     // eslint-disable-next-line no-console
