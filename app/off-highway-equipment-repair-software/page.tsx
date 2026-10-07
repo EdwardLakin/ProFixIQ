@@ -12,7 +12,10 @@ export const metadata = buildSearchLandingMetadata(definition.seo);
 export default function OffHighwayEquipmentRepairSoftwarePage() {
   return (
     <SearchLandingPage
-      config={definition.config}
+      config={{
+        ...definition.config,
+        faqs: definition.seo.faqs ?? [],
+      }}
       structuredData={buildSearchLandingStructuredData(definition.seo)}
     />
   );
