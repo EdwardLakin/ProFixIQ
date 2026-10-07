@@ -13,6 +13,8 @@ describe("shell route boundaries", () => {
     "/customer/sign-in",
     "/signup",
     "/compare-plans",
+    "/compare/fullbay-alternative",
+    "/compare/profixiq-vs-fullbay",
     "/field-service",
     "/fleet-maintenance",
     "/heavy-duty-shop-management-software",
@@ -44,6 +46,7 @@ describe("shell route boundaries", () => {
 
   it("does not treat similarly named routes as public", () => {
     expect(isStandalonePublicRoute("/compare-plans-private")).toBe(false);
+    expect(isStandalonePublicRoute("/compare-private/fullbay")).toBe(false);
     expect(isStandalonePublicRoute("/sign-internal")).toBe(false);
     expect(isStandalonePublicRoute("/heavy-duty-work-order-software-private")).toBe(false);
   });

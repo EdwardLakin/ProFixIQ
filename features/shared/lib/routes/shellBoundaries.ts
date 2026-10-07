@@ -13,6 +13,8 @@ const STANDALONE_PUBLIC_PREFIXES = [
   "/auth/set-password",
   "/auth/callback",
   "/confirm",
+  "/compare/fullbay-alternative",
+  "/compare/profixiq-vs-fullbay",
   "/compare-plans",
   "/subscribe",
   "/demo",
