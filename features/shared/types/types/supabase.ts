@@ -30607,6 +30607,10 @@ export type Database = {
         Args: { p_event_limit?: number; p_since?: string }
         Returns: Json
       }
+      get_ops_marketing_funnel_snapshot: {
+        Args: { p_breakdown_limit: number; p_since: string }
+        Returns: Json
+      }
       get_work_order_assignments: {
         Args: { p_work_order_id: string }
         Returns: {

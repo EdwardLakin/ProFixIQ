@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Activity, ArrowLeft, BadgePercent, Bot, BrainCircuit, Gauge, GitBranch, KeyRound, LogOut, Menu, ShieldCheck, X } from "lucide-react";
+import { Activity, ArrowLeft, BadgePercent, BarChart3, Bot, BrainCircuit, Gauge, GitBranch, KeyRound, LogOut, Menu, ShieldCheck, X } from "lucide-react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { cn } from "@shared/lib/utils";
 
@@ -11,6 +11,7 @@ const NAVIGATION = [
   { href: "/ops", label: "Overview", icon: Gauge },
   { href: "/ops/demo-access", label: "Demo Access", icon: KeyRound },
   { href: "/ops/early-access", label: "Early Access", icon: BadgePercent },
+  { href: "/ops/marketing-funnel", label: "Acquisition Funnel", icon: BarChart3 },
   { href: "/ops/system-health", label: "System Health", icon: Activity },
   { href: "/ops/deployments", label: "Deployments", icon: GitBranch },
   { href: "/ops/agent-control", label: "Agent Control", icon: Bot },
