@@ -1,0 +1,55 @@
+name: Early Access Contract Refresh
+
+on:
+  push:
+    branches:
+      - feat/early-access-intake
+    paths:
+      - .github/workflows/early-access-contract-refresh.yml
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/early-access-intake
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.1
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - uses: supabase/setup-cli@v2
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Refresh generated Supabase types
+        run: pnpm db:schema:refresh
+
+      - name: Refresh API route boundary inventory
+        run: pnpm audit:api-routes
+
+      - name: Remove temporary refresh workflow
+        run: rm .github/workflows/early-access-contract-refresh.yml
+
+      - name: Commit refreshed contracts and self-remove
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add features/shared/types/types/supabase.ts docs/audits/api-route-boundary-inventory.json docs/audits/api-route-boundary-inventory.md .github/workflows/early-access-contract-refresh.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Refresh Early Access generated contracts"
+          git push origin HEAD:feat/early-access-intake
