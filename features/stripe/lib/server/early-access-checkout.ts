@@ -65,22 +65,18 @@ async function ensureCoupon(input: {
         : null;
   if (!productId) throw new Error("Early Access product could not be verified.");
 
-  // Stripe's repeating-coupon duration starts when the subscription is created,
-  // which would let the free-trial days consume part of a six-month discount.
-  // Use a product-restricted forever coupon and remove it only after six distinct
-  // paid subscription-cycle invoices have succeeded.
   const coupon = await input.stripe.coupons.create(
     {
       percent_off: EARLY_ACCESS_PERCENT_OFF,
-      duration: "forever",
-      name: "ProFixIQ Early Access — 30% for 6 paid months",
+      duration: "repeating",
+      duration_in_months: EARLY_ACCESS_DURATION_MONTHS,
+      name: "ProFixIQ Early Access — 30% for 6 months",
       applies_to: { products: [productId] },
       metadata: {
         purpose: "early_access",
         early_access_grant_id: input.grantId,
         early_access_application_id: input.applicationId,
         offer_terms_version: input.termsVersion,
-        discounted_paid_months: String(EARLY_ACCESS_DURATION_MONTHS),
       },
     },
     { idempotencyKey: `profixiq:early-access-coupon:${input.grantId}` },
@@ -154,7 +150,6 @@ export async function createEarlyAccessCheckout(token: string): Promise<{
     early_access_grant_id: grant.grantId,
     early_access_application_id: grant.applicationId,
     early_access_offer_terms_version: grant.offerTermsVersion,
-    early_access_discounted_paid_months: String(EARLY_ACCESS_DURATION_MONTHS),
   };
 
   const params: CheckoutCreateParams = {
