@@ -46,6 +46,10 @@ function automaticTaxEnabled(): boolean {
   return String(process.env.STRIPE_AUTOMATIC_TAX_ENABLED ?? "").trim().toLowerCase() === "true";
 }
 
+function integrationIdentifier(grantId: string): string {
+  return `profixiq_early_access_${grantId.replaceAll("-", "").slice(0, 12)}`;
+}
+
 async function ensureCoupon(input: {
   stripe: Stripe;
   grantId: string;
@@ -123,9 +127,21 @@ export async function createEarlyAccessCheckout(token: string): Promise<{
   if (intent.checkoutSessionId) {
     const existing = await stripe.checkout.sessions.retrieve(intent.checkoutSessionId);
     if (existing.status === "open" && existing.url) {
+      await attachEarlyAccessCheckout({
+        grantId: grant.grantId,
+        stripeCouponId: couponId,
+        checkoutSessionId: existing.id,
+        acquisitionIntentId: intent.id,
+      });
       return { sessionId: existing.id, url: existing.url };
     }
     if (existing.status === "complete") {
+      await attachEarlyAccessCheckout({
+        grantId: grant.grantId,
+        stripeCouponId: couponId,
+        checkoutSessionId: existing.id,
+        acquisitionIntentId: intent.id,
+      });
       return {
         sessionId: existing.id,
         url: successUrl.replace("{CHECKOUT_SESSION_ID}", existing.id),
@@ -171,7 +187,7 @@ export async function createEarlyAccessCheckout(token: string): Promise<{
       metadata,
     },
     metadata,
-    integration_identifier: `profixiq_early_access_${randomBytes(4).toString("hex")}`,
+    integration_identifier: integrationIdentifier(grant.grantId),
   };
 
   const session = await stripe.checkout.sessions.create(params, {
