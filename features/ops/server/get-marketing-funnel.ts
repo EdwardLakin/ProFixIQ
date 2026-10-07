@@ -7,15 +7,12 @@ const LOOKBACK_DAYS = 30;
 const PAGE_SIZE = 1000;
 const MAX_BREAKDOWN_ROWS = 20000;
 
-const EVENT_NAMES = [
-  "pricing_view",
-  "marketing_trial_click",
-  "marketing_subscribe_click",
-  "marketing_demo_click",
-  "checkout_started",
-] as const;
-
-type FunnelEventName = (typeof EVENT_NAMES)[number];
+type FunnelEventName =
+  | "pricing_view"
+  | "marketing_trial_click"
+  | "marketing_subscribe_click"
+  | "marketing_demo_click"
+  | "checkout_started";
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
 type MarketingEventRow = {
