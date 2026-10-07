@@ -1,11 +1,13 @@
 import "server-only";
 
+import { isAcquisitionMarketingPath } from "@/features/analytics/marketingEvents";
 import { requireOpsOperatorPageAccess } from "@/features/ops/server/operator-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 const LOOKBACK_DAYS = 30;
 const PAGE_SIZE = 1000;
 const MAX_BREAKDOWN_ROWS = 20000;
+const UNATTRIBUTED_SOURCE = "Unattributed checkout";
 
 type FunnelEventName =
   | "pricing_view"
@@ -16,12 +18,19 @@ type FunnelEventName =
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
 type MarketingEventRow = {
+  id: string;
   event_name: string;
   source_path: string | null;
   package_key: string | null;
   checkout_mode: string | null;
   checkout_attempt_id: string | null;
   created_at: string;
+};
+
+type CountOptions = {
+  eventName?: FunnelEventName;
+  checkoutMode?: "trial" | "paid";
+  requireCheckoutAttempt?: boolean;
 };
 
 export type OpsMarketingSourceRow = {
@@ -69,19 +78,27 @@ function pct(numerator: number, denominator: number): number {
   return Math.round((numerator / denominator) * 1000) / 10;
 }
 
+function canonicalSourcePath(value: string | null): string | null {
+  return value && isAcquisitionMarketingPath(value) ? value : null;
+}
+
 async function countRows(
   admin: AdminClient,
   since: string,
-  eventName?: FunnelEventName,
-  checkoutMode?: "trial" | "paid",
+  through: string,
+  options: CountOptions = {},
 ): Promise<number> {
   let query = admin
     .from("marketing_events")
     .select("id", { count: "exact", head: true })
-    .gte("created_at", since);
+    .gte("created_at", since)
+    .lte("created_at", through);
 
-  if (eventName) query = query.eq("event_name", eventName);
-  if (checkoutMode) query = query.eq("checkout_mode", checkoutMode);
+  if (options.eventName) query = query.eq("event_name", options.eventName);
+  if (options.checkoutMode) query = query.eq("checkout_mode", options.checkoutMode);
+  if (options.requireCheckoutAttempt) {
+    query = query.not("checkout_attempt_id", "is", null);
+  }
 
   const { count, error } = await query;
   if (error) throw new Error(`Unable to count marketing events: ${error.message}`);
@@ -91,17 +108,23 @@ async function countRows(
 async function readBreakdownRows(
   admin: AdminClient,
   since: string,
+  through: string,
 ): Promise<MarketingEventRow[]> {
   const rows: MarketingEventRow[] = [];
 
+  // Fix the upper timestamp for the entire read. marketing_events is append-only
+  // through the application contract, so later inserts cannot shift an offset
+  // page and duplicate or omit rows from this reporting snapshot.
   for (let offset = 0; offset < MAX_BREAKDOWN_ROWS; offset += PAGE_SIZE) {
     const { data, error } = await admin
       .from("marketing_events")
       .select(
-        "event_name,source_path,package_key,checkout_mode,checkout_attempt_id,created_at",
+        "id,event_name,source_path,package_key,checkout_mode,checkout_attempt_id,created_at",
       )
       .gte("created_at", since)
+      .lte("created_at", through)
       .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
       .range(offset, offset + PAGE_SIZE - 1);
 
     if (error) throw new Error(`Unable to load marketing funnel: ${error.message}`);
@@ -113,28 +136,41 @@ async function readBreakdownRows(
   return rows;
 }
 
+function isCheckoutIntent(row: MarketingEventRow): boolean {
+  return Boolean(
+    row.checkout_attempt_id &&
+      (row.event_name === "marketing_trial_click" ||
+        row.event_name === "marketing_subscribe_click"),
+  );
+}
+
 function buildSourceRows(rows: MarketingEventRow[]): OpsMarketingSourceRow[] {
   const sourceByAttempt = new Map<string, string>();
   const grouped = new Map<string, OpsMarketingSourceRow>();
 
   for (const row of rows) {
-    if (
-      row.checkout_attempt_id &&
-      row.source_path &&
-      (row.event_name === "marketing_trial_click" ||
-        row.event_name === "marketing_subscribe_click")
-    ) {
-      sourceByAttempt.set(row.checkout_attempt_id, row.source_path);
+    const sourcePath = canonicalSourcePath(row.source_path);
+    if (isCheckoutIntent(row) && row.checkout_attempt_id && sourcePath) {
+      sourceByAttempt.set(row.checkout_attempt_id, sourcePath);
     }
   }
 
   for (const row of rows) {
+    const checkoutIntent = isCheckoutIntent(row);
+    if (
+      (row.event_name === "marketing_trial_click" ||
+        row.event_name === "marketing_subscribe_click") &&
+      !checkoutIntent
+    ) {
+      continue;
+    }
+
     const sourcePath =
       row.event_name === "checkout_started"
         ? row.checkout_attempt_id
-          ? sourceByAttempt.get(row.checkout_attempt_id) ?? null
-          : null
-        : row.source_path;
+          ? sourceByAttempt.get(row.checkout_attempt_id) ?? UNATTRIBUTED_SOURCE
+          : UNATTRIBUTED_SOURCE
+        : canonicalSourcePath(row.source_path);
     if (!sourcePath) continue;
 
     const current = grouped.get(sourcePath) ?? {
@@ -179,6 +215,14 @@ function buildPackageRows(rows: MarketingEventRow[]): OpsMarketingPackageRow[] {
 
   for (const row of rows) {
     if (!row.package_key) continue;
+    if (
+      (row.event_name === "marketing_trial_click" ||
+        row.event_name === "marketing_subscribe_click") &&
+      !isCheckoutIntent(row)
+    ) {
+      continue;
+    }
+
     const current = grouped.get(row.package_key) ?? {
       packageKey: row.package_key,
       trialClicks: 0,
@@ -218,6 +262,7 @@ export async function getOpsMarketingFunnel(): Promise<OpsMarketingFunnelSnapsho
   await requireOpsOperatorPageAccess();
 
   const admin = createAdminSupabase();
+  const generatedAt = new Date().toISOString();
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString();
   const [
     totalEvents,
@@ -230,21 +275,33 @@ export async function getOpsMarketingFunnel(): Promise<OpsMarketingFunnelSnapsho
     paidCheckouts,
     rows,
   ] = await Promise.all([
-    countRows(admin, since),
-    countRows(admin, since, "pricing_view"),
-    countRows(admin, since, "marketing_trial_click"),
-    countRows(admin, since, "marketing_subscribe_click"),
-    countRows(admin, since, "marketing_demo_click"),
-    countRows(admin, since, "checkout_started"),
-    countRows(admin, since, "checkout_started", "trial"),
-    countRows(admin, since, "checkout_started", "paid"),
-    readBreakdownRows(admin, since),
+    countRows(admin, since, generatedAt),
+    countRows(admin, since, generatedAt, { eventName: "pricing_view" }),
+    countRows(admin, since, generatedAt, {
+      eventName: "marketing_trial_click",
+      requireCheckoutAttempt: true,
+    }),
+    countRows(admin, since, generatedAt, {
+      eventName: "marketing_subscribe_click",
+      requireCheckoutAttempt: true,
+    }),
+    countRows(admin, since, generatedAt, { eventName: "marketing_demo_click" }),
+    countRows(admin, since, generatedAt, { eventName: "checkout_started" }),
+    countRows(admin, since, generatedAt, {
+      eventName: "checkout_started",
+      checkoutMode: "trial",
+    }),
+    countRows(admin, since, generatedAt, {
+      eventName: "checkout_started",
+      checkoutMode: "paid",
+    }),
+    readBreakdownRows(admin, since, generatedAt),
   ]);
 
   const checkoutIntentClicks = trialClicks + subscribeClicks;
 
   return {
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     since,
     breakdownTruncated: totalEvents > rows.length,
     summary: {
