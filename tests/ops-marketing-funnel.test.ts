@@ -92,13 +92,13 @@ describe("Ops marketing funnel", () => {
     expect(reader).toContain(": UNATTRIBUTED_SOURCE");
   });
 
-  it("surfaces source, package, trial, paid, checkout-start, and progression views", () => {
+  it("surfaces source, package, checkout-intent, checkout-start, and progression views", () => {
     const component = source("features/ops/components/OpsMarketingFunnel.tsx");
 
     expect(component).toContain("By source page");
     expect(component).toContain("By product package");
-    expect(component).toContain("Trial intent");
-    expect(component).toContain("Paid intent");
+    expect(component).toContain("Trial checkout intent");
+    expect(component).toContain("Paid checkout intent");
     expect(component).toContain("Checkout starts");
     expect(component).toContain("Progression");
     expect(component).toContain("event volume");
