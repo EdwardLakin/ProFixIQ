@@ -10,40 +10,68 @@ describe("marketing funnel measurement", () => {
     expect(layout).toContain("<MarketingEventBridge />");
   });
 
-  it("tracks public CTA clicks and pricing views without broad page-view aliases", () => {
+  it("scopes CTA classification to known public acquisition source paths", () => {
     const bridge = source("features/analytics/MarketingEventBridge.tsx");
-    expect(bridge).toContain('normalized === "/request-demo"');
-    expect(bridge).toContain('normalized === "/compare-plans"');
-    expect(bridge).toContain('normalized === "/subscribe"');
+    const events = source("features/analytics/marketingEvents.ts");
+
+    expect(bridge).toContain("isAcquisitionMarketingPath(window.location.pathname)");
+    expect(bridge).toContain('pathname === "/request-demo"');
+    expect(bridge).toContain('pathname === "/compare-plans"');
+    expect(bridge).toContain('pathname === "/subscribe"');
     expect(bridge).toContain('trackMarketingEvent("pricing_view"');
+    expect(events).toContain('"/compare/fullbay-alternative"');
+    expect(events).toContain('"/mobile-truck-repair-software"');
+    expect(bridge).not.toContain("anchor.textContent");
     expect(bridge).not.toContain('trackMarketingEvent("signup_completed"');
     expect(bridge).not.toContain('trackMarketingEvent("onboarding_completed"');
   });
 
-  it("tracks trial and paid CTA intent with checkout attribution", () => {
+  it("strips query strings and live Stripe checkout URLs from analytics", () => {
+    const bridge = source("features/analytics/MarketingEventBridge.tsx");
+    const events = source("features/analytics/marketingEvents.ts");
+    const pricingPage = source("app/compare-plans/page.tsx");
+
+    expect(bridge).toContain("new URL(href, window.location.origin).pathname");
+    expect(events).toContain('if (value === "stripe_checkout") return value;');
+    expect(pricingPage).not.toContain("destination: data.url");
+  });
+
+  it("keeps authenticated billing recovery out of acquisition pricing metrics", () => {
     const pricing = source("features/shared/components/ui/PricingSection.tsx");
+    expect(pricing).toContain(
+      "isAcquisitionMarketingPath(window.location.pathname)",
+    );
+    expect(pricing).toContain("if (isAcquisition)");
     expect(pricing).toContain('"marketing_trial_click"');
     expect(pricing).toContain('"marketing_subscribe_click"');
-    expect(pricing).toContain("packageKey");
-    expect(pricing).toContain("checkoutAttemptId");
   });
 
-  it("counts checkout_started only after Stripe returns a checkout URL", () => {
+  it("emits checkout_started from the shared pricing success path", () => {
+    const pricing = source("features/shared/components/ui/PricingSection.tsx");
     const pricingPage = source("app/compare-plans/page.tsx");
-    const successBlock = pricingPage.indexOf("if (data?.url)");
-    const checkoutEvent = pricingPage.indexOf(
-      'trackMarketingEvent("checkout_started"',
-    );
-    const redirect = pricingPage.indexOf("window.location.href = data.url");
 
-    expect(successBlock).toBeGreaterThan(-1);
-    expect(checkoutEvent).toBeGreaterThan(successBlock);
-    expect(redirect).toBeGreaterThan(checkoutEvent);
+    const onCheckout = pricing.indexOf("await onCheckout({");
+    const checkoutEvent = pricing.indexOf('trackMarketingEvent("checkout_started"');
+    expect(onCheckout).toBeGreaterThan(-1);
+    expect(checkoutEvent).toBeGreaterThan(onCheckout);
+    expect(pricing).toContain('destination: "stripe_checkout"');
+    expect(pricingPage).toContain('throw new Error(message)');
+    expect(pricingPage).not.toContain('trackMarketingEvent("checkout_started"');
   });
 
-  it("buffers events even when an analytics provider has not loaded yet", () => {
+  it("persists events through the first-party collector", () => {
     const events = source("features/analytics/marketingEvents.ts");
-    expect(events).toContain("analyticsWindow.dataLayer ??= []");
-    expect(events).toContain("analyticsLayer.push(detail)");
+    const route = source("app/api/analytics/marketing-events/route.ts");
+    const migration = source(
+      "supabase/migrations/20261007021000_create_marketing_events.sql",
+    );
+
+    expect(events).toContain('navigator.sendBeacon("/api/analytics/marketing-events"');
+    expect(events).toContain('fetch("/api/analytics/marketing-events"');
+    expect(route).toContain('.from("marketing_events").insert({');
+    expect(route).toContain("SUPABASE_SERVICE_ROLE_KEY");
+    expect(migration).toContain("create table if not exists public.marketing_events");
+    expect(migration).toContain("enable row level security");
+    expect(migration).toContain("revoke all on table public.marketing_events from anon, authenticated");
   });
 });
