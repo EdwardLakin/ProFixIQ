@@ -55,6 +55,7 @@ jobs:
           features/stripe/api/stripe/checkout/link-user/route.ts
           features/stripe/lib/server/early-access-checkout.ts
           features/stripe/lib/server/early-access-discount.ts
+          tests/early-access-intake.test.ts
           tests/early-access-discount-checkout.test.ts
 
       - name: Remove temporary workflow
