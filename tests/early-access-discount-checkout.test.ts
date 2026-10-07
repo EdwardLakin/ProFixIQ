@@ -95,6 +95,16 @@ describe("Early Access discounted checkout", () => {
     expect(checkout).toContain("after-intent:${intent.id}");
     expect(checkout).toContain("checkoutSessionId: existingSession.id");
     expect(checkout).toContain("stripeCustomerId: customerId");
+    expect(checkout).toContain('cancel_url: `${origin}/early-access/approved/cancelled`');
+    expect(checkout).not.toContain("cancel_url: `${origin}/early-access/approved?token=");
+  });
+
+  it("allows an already-attached checkout to finish after the private-link approval window", () => {
+    const grants = source("features/stripe/lib/server/early-access-discount.ts");
+
+    expect(grants).toContain("requireApprovalWindow: false");
+    expect(grants).toContain("const checkoutStarted = Boolean(metadataString(metadata, \"checkout_session_id\"))");
+    expect(grants).toContain("if (!checkoutStarted)");
   });
 
   it("validates Early Access identity before the canonical claim and defers shop binding", () => {
@@ -119,6 +129,7 @@ describe("Early Access discounted checkout", () => {
   it("keeps the applicant on a product-bound offer page without leaking the bearer token", () => {
     const page = source("app/early-access/approved/page.tsx");
     const button = source("features/shared/components/EarlyAccessCheckoutButton.tsx");
+    const cancelled = source("app/early-access/approved/cancelled/page.tsx");
 
     expect(page).toContain("findEarlyAccessGrantByToken");
     expect(page).toContain("Your ProFixIQ Early Access offer is ready.");
@@ -130,6 +141,8 @@ describe("Early Access discounted checkout", () => {
     expect(button).toContain('url.searchParams.delete("token")');
     expect(button).toContain("/api/public/early-access/checkout");
     expect(button).not.toContain("packageKey");
+    expect(cancelled).toContain('referrer: "no-referrer"');
+    expect(cancelled).toContain("private approval token is never placed in the Stripe cancellation URL");
   });
 
   it("rate limits the public Stripe-creating endpoint before checkout work", () => {
