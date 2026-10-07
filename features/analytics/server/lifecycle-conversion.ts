@@ -6,11 +6,13 @@ const LIFECYCLE_ANALYTICS_TIMEOUT_MS = 250;
 
 type AdminSupabase = ReturnType<typeof createAdminSupabase>;
 
-async function withLifecycleTimeout<T>(operation: Promise<T>): Promise<T> {
+async function withLifecycleTimeout<T>(
+  operation: PromiseLike<T>,
+): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
     return await Promise.race([
-      operation,
+      Promise.resolve(operation),
       new Promise<T>((_, reject) => {
         timer = setTimeout(
           () => reject(new Error("marketing lifecycle analytics timeout")),
