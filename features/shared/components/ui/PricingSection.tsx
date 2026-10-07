@@ -133,14 +133,6 @@ export default function PricingSection({
         checkoutAttemptId,
         checkoutMode,
       });
-      trackMarketingEvent("checkout_started", {
-        source: window.location.pathname,
-        destination: "/api/stripe/checkout",
-        packageKey,
-        interval,
-        checkoutMode,
-        checkoutAttemptId,
-      });
     } catch (error) {
       console.error("[PricingSection] checkout failed", error);
       window.alert("Checkout could not be started. Please try again.");
