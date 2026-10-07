@@ -93,7 +93,11 @@ function createApprovalToken() {
   return { token, approvalTokenHash: tokenHash(token), expiresAt };
 }
 
-function assertGrantContract(row: GrantRow, application: ApplicationRow): EarlyAccessGrant {
+function assertGrantContract(
+  row: GrantRow,
+  application: ApplicationRow,
+  options: { requireApprovalWindow?: boolean } = {},
+): EarlyAccessGrant {
   const metadata = metadataObject(row.metadata);
   const applicationId = metadataString(metadata, "application_id");
   const email = normalizeEmail(metadataString(metadata, "application_email"));
@@ -118,7 +122,10 @@ function assertGrantContract(row: GrantRow, application: ApplicationRow): EarlyA
   }
 
   const expires = new Date(expiresAt);
-  if (!expiresAt || Number.isNaN(expires.getTime()) || expires.getTime() <= Date.now()) {
+  if (!expiresAt || Number.isNaN(expires.getTime())) {
+    throw new Error("Early Access approval is invalid.");
+  }
+  if (options.requireApprovalWindow !== false && expires.getTime() <= Date.now()) {
     throw new Error("Early Access approval has expired.");
   }
 
@@ -164,7 +171,7 @@ async function loadVerifiedActiveGrantById(grantId: string): Promise<{
   const applicationId = metadataString(metadata, "application_id");
   if (!applicationId) throw new Error("Early Access discount grant is invalid.");
   const application = await loadApplication(applicationId);
-  const contract = assertGrantContract(grant, application);
+  const contract = assertGrantContract(grant, application, { requireApprovalWindow: false });
   return { row: grant, metadata, contract };
 }
 
@@ -311,7 +318,10 @@ export async function findEarlyAccessGrantByToken(token: string): Promise<EarlyA
   const expiresAt = metadataString(metadata, "approval_expires_at");
   const expires = new Date(expiresAt);
   if (!expiresAt || Number.isNaN(expires.getTime()) || expires.getTime() <= Date.now()) {
-    await admin.from("billing_discount_grants").update({ status: "expired" }).eq("id", grant.id).eq("status", "active");
+    const checkoutStarted = Boolean(metadataString(metadata, "checkout_session_id"));
+    if (!checkoutStarted) {
+      await admin.from("billing_discount_grants").update({ status: "expired" }).eq("id", grant.id).eq("status", "active");
+    }
     throw new Error("Early Access approval has expired.");
   }
 
