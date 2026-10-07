@@ -28,6 +28,12 @@ function money(cents: number): string {
   }).format(cents / 100);
 }
 
+function publicApprovalError(message: string): string {
+  if (message === "Early Access approval has expired.") return message;
+  if (message === "Early Access approval is no longer valid.") return message;
+  return "This Early Access approval link is invalid, unavailable, or has already been used.";
+}
+
 export default async function ApprovedEarlyAccessPage({
   searchParams,
 }: {
@@ -37,12 +43,13 @@ export default async function ApprovedEarlyAccessPage({
   const token = first(params.token).trim();
 
   let grant: Awaited<ReturnType<typeof findEarlyAccessGrantByToken>> | null = null;
-  let invalidReason = "This Early Access approval link is invalid or has expired.";
+  let invalidReason = "This Early Access approval link is invalid, unavailable, or has already been used.";
   if (token) {
     try {
       grant = await findEarlyAccessGrantByToken(token);
     } catch (error) {
-      if (error instanceof Error && error.message) invalidReason = error.message;
+      const message = error instanceof Error ? error.message : "";
+      invalidReason = publicApprovalError(message);
     }
   }
 
