@@ -12,6 +12,7 @@ import { reconcileShopBillingFromUser } from "@/features/stripe/lib/server/canon
 import {
   deferEarlyAccessGrantShopBinding,
   earlyAccessGrantIdFromStripeMetadata,
+  rearmExpiredEarlyAccessAcquisitionIntent,
   redeemEarlyAccessGrantAfterClaim,
   validateEarlyAccessCheckoutBeforeClaim,
 } from "@/features/stripe/lib/server/early-access-discount";
@@ -38,8 +39,9 @@ function noStoreJson(body: unknown, status = 200) {
 }
 
 function claimFailureStatus(reason: string): number {
-  if (reason === "email_mismatch" || reason === "billing_role_required")
+  if (reason === "email_mismatch" || reason === "billing_role_required") {
     return 403;
+  }
   if (
     reason.includes("conflict") ||
     reason.includes("linked") ||
@@ -74,15 +76,14 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
       );
     }
     const parsed = requestSchema.safeParse(bounded.value);
-    if (!parsed.success)
+    if (!parsed.success) {
       return noStoreJson({ error: "Invalid checkout session" }, 400);
+    }
 
     const stripe = createStripeClient(secretKey);
     const session = await stripe.checkout.sessions.retrieve(
       parsed.data.sessionId,
-      {
-        expand: ["subscription", "customer"],
-      },
+      { expand: ["subscription", "customer"] },
     );
     const metadata = readStripeAcquisitionMetadata(session.metadata);
     if (!metadata || !isCompletedStripeAcquisitionSession(session)) {
@@ -114,10 +115,15 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
       );
     }
 
-    const earlyAccessGrantId = earlyAccessGrantIdFromStripeMetadata(session.metadata);
+    const earlyAccessGrantId = earlyAccessGrantIdFromStripeMetadata(
+      session.metadata,
+    );
     if (earlyAccessGrantId) {
       if (!metadata.packageKey) {
-        return noStoreJson({ error: "Early Access checkout identity could not be verified" }, 400);
+        return noStoreJson(
+          { error: "Early Access checkout identity could not be verified" },
+          400,
+        );
       }
       try {
         await validateEarlyAccessCheckoutBeforeClaim({
@@ -133,12 +139,15 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
           intentId: metadata.intentId,
           message: error instanceof Error ? error.message : "unknown",
         });
-        return noStoreJson({ error: "Early Access checkout identity could not be verified" }, 400);
+        return noStoreJson(
+          { error: "Early Access checkout identity could not be verified" },
+          400,
+        );
       }
     }
 
     const admin = createAdminSupabase();
-    const claim = await claimStripeAcquisitionIntent({
+    let claim = await claimStripeAcquisitionIntent({
       admin,
       metadata,
       checkoutSessionId: session.id,
@@ -147,6 +156,38 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
       checkoutEmail,
       userId: user.id,
     });
+
+    if (
+      !claim.claimed &&
+      claim.reason === "intent_expired" &&
+      earlyAccessGrantId &&
+      metadata.packageKey
+    ) {
+      const rearmed = await rearmExpiredEarlyAccessAcquisitionIntent({
+        grantId: earlyAccessGrantId,
+        userId: user.id,
+        intentId: metadata.intentId,
+        nonce: metadata.nonce,
+        checkoutSessionId: session.id,
+        customerId,
+        subscriptionId,
+        priceId: metadata.priceId,
+        checkoutEmail,
+      });
+
+      if (rearmed) {
+        claim = await claimStripeAcquisitionIntent({
+          admin,
+          metadata,
+          checkoutSessionId: session.id,
+          customerId,
+          subscriptionId,
+          checkoutEmail,
+          userId: user.id,
+        });
+      }
+    }
+
     if (!claim.claimed) {
       console.warn("stripe_acquisition_claim_rejected", {
         reason: claim.reason,
@@ -193,8 +234,7 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
     const shouldPersistAcquisitionSurface =
       user.app_metadata?.profixiq_acquisition_surface !== metadata.surface ||
       (metadata.packageKey &&
-        user.app_metadata?.profixiq_acquisition_package !==
-          metadata.packageKey);
+        user.app_metadata?.profixiq_acquisition_package !== metadata.packageKey);
     if (shouldUpgradePortalIdentity || shouldPersistAcquisitionSurface) {
       const { error: identityUpgradeError } =
         await admin.auth.admin.updateUserById(user.id, {
