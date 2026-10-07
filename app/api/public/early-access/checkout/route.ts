@@ -8,6 +8,20 @@ import { createEarlyAccessCheckout } from "@/features/stripe/lib/server/early-ac
 
 type Body = { token?: unknown };
 
+function publicCheckoutError(message: string): string {
+  if (
+    message === "Early Access approval link is invalid." ||
+    message === "Early Access approval link is invalid or has already been used." ||
+    message === "Early Access approval has expired." ||
+    message === "Early Access approval is no longer valid." ||
+    message === "Early Access checkout attempt has expired." ||
+    message === "Early Access checkout is no longer active."
+  ) {
+    return message;
+  }
+  return "Early Access checkout is temporarily unavailable.";
+}
+
 export async function POST(request: Request) {
   const limited = enforcePublicRouteRateLimit({
     request,
@@ -29,6 +43,6 @@ export async function POST(request: Request) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "Early Access checkout unavailable.";
     console.error("[public/early-access/checkout]", message);
-    return NextResponse.json({ error: message }, { status: 400 });
+    return NextResponse.json({ error: publicCheckoutError(message) }, { status: 400 });
   }
 }
