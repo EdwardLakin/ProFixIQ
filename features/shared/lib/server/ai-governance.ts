@@ -8,6 +8,7 @@ import {
 } from "@/features/shared/lib/server/ai-cost";
 import {
   AIBudgetDeniedError,
+  AIBudgetReplayError,
   AIBudgetUnavailableError,
   AIProviderNotCalledError,
   aiBudgetPoolForFeature,
@@ -250,5 +251,51 @@ export function aiBudgetDeniedBody(error: AIBudgetDeniedError): {
         : "This shop's AI budget is used up.",
     code: "ai_budget_exceeded",
     reason: error.reason,
+  };
+}
+
+/**
+ * Every error that means "governance stopped this call before the provider was
+ * contacted": out of budget, a reused key, or (when AI_GOVERNANCE_FAIL_CLOSED is
+ * set) the budget service being unavailable. None of them is provider activity,
+ * so none may be recorded as a provider error or charged as spend.
+ */
+export type AIBudgetStopError =
+  | AIBudgetDeniedError
+  | AIBudgetReplayError
+  | AIBudgetUnavailableError;
+
+export function isAIBudgetStop(error: unknown): error is AIBudgetStopError {
+  return (
+    error instanceof AIBudgetDeniedError ||
+    error instanceof AIBudgetReplayError ||
+    error instanceof AIBudgetUnavailableError
+  );
+}
+
+/** Stable HTTP answer for a governance stop. */
+export function aiBudgetStopResponse(error: AIBudgetStopError): {
+  status: 402 | 409 | 503;
+  body: { error: string; code: string; reason?: string };
+} {
+  if (error instanceof AIBudgetDeniedError) {
+    return { status: 402, body: aiBudgetDeniedBody(error) };
+  }
+  if (error instanceof AIBudgetReplayError) {
+    return {
+      status: 409,
+      body: {
+        error: "This AI request was already submitted.",
+        code: "ai_budget_replay",
+        reason: error.decision,
+      },
+    };
+  }
+  return {
+    status: 503,
+    body: {
+      error: "AI spend controls are temporarily unavailable. Retry shortly.",
+      code: "ai_budget_unavailable",
+    },
   };
 }

@@ -1,4 +1,4 @@
-import { aiBudgetDeniedBody, governAICall, isAIBudgetDenied } from "@/features/shared/lib/server/ai-governance";
+import { aiBudgetStopResponse, governAICall, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import {
@@ -282,8 +282,9 @@ export async function POST(req: Request) {
       usage: result.usage ?? null,
     });
   } catch (error) {
-    if (isAIBudgetDenied(error)) {
-      return NextResponse.json(aiBudgetDeniedBody(error), { status: 402 });
+    if (isAIBudgetStop(error)) {
+      const stop = aiBudgetStopResponse(error);
+      return NextResponse.json(stop.body, { status: stop.status });
     }
     const message =
       error instanceof Error ? error.message : "Logo generation failed";

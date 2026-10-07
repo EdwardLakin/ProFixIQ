@@ -14,7 +14,7 @@ import {
   claimDurableAIRouteQuota,
   completeDurableAIRouteQuota,
 } from "@/features/shared/lib/server/durable-ai-guard";
-import { aiBudgetDeniedBody, governAICall, isAIBudgetDenied } from "@/features/shared/lib/server/ai-governance";
+import { aiBudgetStopResponse, governAICall, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import { runWithProviderTimeout } from "@/features/shared/lib/server/provider-timeout";
@@ -258,7 +258,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 
     return json({ suggestion: { ...suggestion, laborTime: suggestion.laborTime ?? null } });
   } catch (error) {
-    if (isAIBudgetDenied(error)) {
+    if (isAIBudgetStop(error)) {
       // Never reached the provider: free the route quota slot and say why.
       await completeDurableAIRouteQuota({
         admin,
@@ -269,7 +269,8 @@ export async function POST(request: Request): Promise<NextResponse> {
         shopId: access.profile.shop_id,
         succeeded: false,
       });
-      return json(aiBudgetDeniedBody(error), 402);
+      const stop = aiBudgetStopResponse(error);
+      return json(stop.body, stop.status);
     }
     await completeDurableAIRouteQuota({
       admin,

@@ -1,5 +1,5 @@
 // app/api/work-orders/suggest-lines/route.ts
-import { aiBudgetDeniedBody, governAICall, isAIBudgetDenied } from "@/features/shared/lib/server/ai-governance";
+import { aiBudgetStopResponse, governAICall, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import "server-only";
 import { NextResponse } from "next/server";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
@@ -323,12 +323,13 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ suggestions });
   } catch (error) {
-    if (isAIBudgetDenied(error)) {
+    if (isAIBudgetStop(error)) {
       // Never reached the provider; not a provider error.
       if (policy.fallbackMode === "graceful_empty") {
         return NextResponse.json({ suggestions: [] });
       }
-      return NextResponse.json(aiBudgetDeniedBody(error), { status: 402 });
+      const stop = aiBudgetStopResponse(error);
+      return NextResponse.json(stop.body, { status: stop.status });
     }
     const message = error instanceof Error ? error.message : "Failed to generate suggestions";
     await recordDurableAIUsage({

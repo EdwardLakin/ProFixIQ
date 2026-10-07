@@ -1,10 +1,6 @@
 import "server-only";
 
-import {
-  AIBudgetDeniedError,
-  AIBudgetReplayError,
-} from "@/features/shared/lib/server/ai-budget";
-import { governAICall } from "@/features/shared/lib/server/ai-governance";
+import { governAICall, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import { getAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import {
   recordDurableAIUsage,
@@ -108,9 +104,10 @@ export async function ledgerOpenAICall<R>(
           call,
         );
   } catch (error) {
-    // A denied or replayed call never reached the provider: it is already
-    // recorded as a reservation, and is not provider activity for the ledger.
-    if (error instanceof AIBudgetDeniedError || error instanceof AIBudgetReplayError) throw error;
+    // A call governance stopped (denied, replayed, or fail-closed because the
+    // budget service was unavailable) never reached the provider, so it is not
+    // provider activity for the usage ledger.
+    if (isAIBudgetStop(error)) throw error;
     await recordSafely(context, startedAt, EMPTY_USAGE, "error", error);
     throw error;
   }

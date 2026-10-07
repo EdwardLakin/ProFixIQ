@@ -1,10 +1,6 @@
 import "server-only";
 
-import {
-  AIBudgetDeniedError,
-  AIBudgetReplayError,
-} from "@/features/shared/lib/server/ai-budget";
-import { governAICall } from "@/features/shared/lib/server/ai-governance";
+import { governAICall, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import { getAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import {
   recordDurableAIUsage,
@@ -222,11 +218,11 @@ export async function runOpenAIStructuredJson<T>(params: {
   } catch (error) {
     // A budget denial never reached the provider. It is recorded as a
     // reservation, not as provider activity, so no usage-ledger error row.
-    if (error instanceof AIBudgetDeniedError || error instanceof AIBudgetReplayError) {
+    if (isAIBudgetStop(error)) {
       console.warn("[openai-structured] budget governance stopped the call", {
         feature: params.feature,
         purpose: params.purpose,
-        reason: error instanceof AIBudgetDeniedError ? error.reason : error.decision,
+        stop: error.name,
       });
       if (params.requireAI) throw error;
       return {

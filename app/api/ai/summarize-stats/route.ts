@@ -1,4 +1,4 @@
-import { governAICall, isAIBudgetDenied } from "@/features/shared/lib/server/ai-governance";
+import { governAICall, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import { NextResponse } from "next/server";
 
 import {
@@ -296,7 +296,7 @@ export async function POST(request: Request) {
       } satisfies OwnerReportSummaryResponse);
     } catch (error: unknown) {
       // A budget denial never reached the provider: skip the provider-error rows.
-      const budgetDenied = isAIBudgetDenied(error);
+      const budgetDenied = isAIBudgetStop(error);
       const message = error instanceof Error ? error.message : "AI summary failed";
       if (!budgetDenied) await recordDurableAIUsage({
         feature: "ai_summarize_stats",

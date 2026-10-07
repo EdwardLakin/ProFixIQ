@@ -2,6 +2,7 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+import { aiBudgetStopResponse, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import { NextResponse } from "next/server";
 import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
@@ -160,6 +161,10 @@ export async function POST(req: Request) {
           : estimatedLaborTime,
     });
   } catch (err) {
+    if (isAIBudgetStop(err)) {
+      const stop = aiBudgetStopResponse(err);
+      return NextResponse.json(stop.body, { status: stop.status });
+    }
     const msg = err instanceof Error ? err.message : "Unexpected error.";
     return NextResponse.json({ error: msg }, { status: 500 });
   }

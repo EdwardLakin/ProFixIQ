@@ -13,7 +13,7 @@ import {
   registerAIUsageEvent,
 } from "@/features/shared/lib/server/ai-ops-guard";
 import { estimateOpenAITextCostUsd } from "@/features/shared/lib/server/ai-cost";
-import { governAICall, isAIBudgetDenied } from "@/features/shared/lib/server/ai-governance";
+import { governAICall, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
 import type { AIFeature } from "@/features/shared/lib/server/ai-policy";
 import type { createAdminSupabase } from "@/features/shared/lib/supabase/server";
@@ -148,7 +148,7 @@ export async function withDurableAIQuota<T>(
 
     return result.output;
   } catch (error) {
-    if (isAIBudgetDenied(error)) {
+    if (isAIBudgetStop(error)) {
       // Never reached the provider: give the route quota slot back and let the
       // route answer. No usage row, because no provider call happened.
       await completeDurableAIRouteQuota({

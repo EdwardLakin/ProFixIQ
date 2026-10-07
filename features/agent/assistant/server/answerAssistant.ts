@@ -522,17 +522,27 @@ async function answerDiagnosticConversation(args: {
     return fallbackDiagnosticConversationAnswer(args);
   }
 
+  const messages = buildDiagnosticMessages(args);
+  // This call sets no output limit and carries conversation history, so size
+  // the budget hold from the real prompt (conservatively ~3 chars per token)
+  // and a generous completion allowance instead of the generic defaults.
+  const promptChars = messages.reduce(
+    (sum, m) => sum + JSON.stringify(m.content ?? "").length,
+    0,
+  );
   const completion = await ledgerOpenAICall(
     {
       feature: "shop_assistant_diagnostic_answer",
       endpoint: "/api/assistant/answer",
       model: getOpenAIModelForPurpose("reasoning"),
+      maxPromptTokens: Math.max(8_000, Math.ceil(promptChars / 3)),
+      maxCompletionTokens: 4_000,
     },
     () =>
       getOpenAIClient().chat.completions.create(
         {
           model: getOpenAIModelForPurpose("reasoning"),
-          messages: buildDiagnosticMessages(args),
+          messages,
           ...openAITemperatureParam(getOpenAIModelForPurpose("reasoning"), 0.2),
         },
         { signal: args.signal },

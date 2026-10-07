@@ -11,9 +11,10 @@ import {
   DurableAIQuotaUnavailableError,
 } from "@/features/shared/lib/server/durable-ai-guard";
 import {
-  isAIBudgetDenied,
+  isAIBudgetStop,
   isAIGovernanceFailClosed,
 } from "@/features/shared/lib/server/ai-governance";
+import { AIBudgetUnavailableError } from "@/features/shared/lib/server/ai-budget";
 import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import { runTechnicianCopilotTurn } from "./chat";
 import { sendCopilotServerCommand } from "./transport";
@@ -130,11 +131,12 @@ function recordDurableDenial(input: {
  * no billable work. Give its quota slot back and answer with the quota error the
  * client already understands (402: terminal for this turn).
  */
-async function budgetDeniedTurnError(args: {
+async function budgetStoppedTurnError(args: {
   admin: ReturnType<typeof createAdminSupabase>;
   receiptId: string | null;
   endpoint: string;
   turn: TurnInput;
+  reason: "hard_budget_exceeded" | "governance_unavailable";
 }): Promise<TechnicianCopilotQuotaError> {
   const { turn } = args;
   if (args.receiptId) {
@@ -153,12 +155,17 @@ async function budgetDeniedTurnError(args: {
     shopId: turn.identity.shopId,
     actorId: turn.identity.profileId,
     turnId: turn.turnId,
-    reason: "hard_budget_exceeded",
-    retryAfterSeconds: BUDGET_EXHAUSTED_RETRY_SECONDS,
+    reason: args.reason,
+    retryAfterSeconds:
+      args.reason === "hard_budget_exceeded"
+        ? BUDGET_EXHAUSTED_RETRY_SECONDS
+        : GOVERNANCE_UNAVAILABLE_RETRY_SECONDS,
   });
   return new TechnicianCopilotQuotaError(
-    "hard_budget_exceeded",
-    BUDGET_EXHAUSTED_RETRY_SECONDS,
+    args.reason,
+    args.reason === "hard_budget_exceeded"
+      ? BUDGET_EXHAUSTED_RETRY_SECONDS
+      : GOVERNANCE_UNAVAILABLE_RETRY_SECONDS,
   );
 }
 
@@ -354,12 +361,18 @@ export async function runGovernedTechnicianCopilotTurn(input: {
 
     return result;
   } catch (error) {
-    if (isAIBudgetDenied(error)) {
-      throw await budgetDeniedTurnError({
+    if (isAIBudgetStop(error)) {
+      throw await budgetStoppedTurnError({
         admin,
         receiptId,
         endpoint: input.endpoint,
         turn,
+        // Out of budget is terminal for the turn (402); an unavailable budget
+        // service under fail-closed is retryable (429), like the route quota.
+        reason:
+          error instanceof AIBudgetUnavailableError
+            ? "governance_unavailable"
+            : "hard_budget_exceeded",
       });
     }
     if (receiptId) {

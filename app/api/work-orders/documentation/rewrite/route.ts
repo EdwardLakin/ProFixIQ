@@ -1,4 +1,4 @@
-import { aiBudgetDeniedBody, governAICall, isAIBudgetDenied } from "@/features/shared/lib/server/ai-governance";
+import { aiBudgetStopResponse, governAICall, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
@@ -206,9 +206,10 @@ export async function POST(req: Request): Promise<NextResponse> {
 
     return NextResponse.json(parsed.data);
   } catch (error) {
-    if (isAIBudgetDenied(error)) {
+    if (isAIBudgetStop(error)) {
       // Never reached the provider; not a provider error.
-      return errorResponse(aiBudgetDeniedBody(error).error, 402);
+      const stop = aiBudgetStopResponse(error);
+      return errorResponse(stop.body.error, stop.status);
     }
     const message =
       error instanceof Error ? error.message : "Documentation rewrite failed";

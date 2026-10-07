@@ -61,6 +61,15 @@ Per shop, in SQL (service role): `set_ai_budget_enforcement(shop, 'shadow' | 'en
 5. **Voice is not covered.** Do not describe a shop as fully budget-protected
    until PR 4 lands.
 
+## Soft ceiling
+
+Holds are estimates, not provider-enforced bounds. A call whose real cost
+exceeds its hold is committed at the real cost, which can overdraw the budget
+by that difference; the next reservation then denies. Overshoot per call is
+bounded by the call's own input size and output limit. Calls with no output
+limit (e.g. the shop assistant answer) size their hold from the real prompt.
+A hard provider-side ceiling exists only once PR 4 proves one for voice.
+
 ## Known gaps
 
 - **SDK retries.** The OpenAI SDK retries 429/5xx and timeouts internally (default

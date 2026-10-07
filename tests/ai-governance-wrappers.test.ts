@@ -6,6 +6,10 @@ const governAICall = vi.fn();
 vi.mock("@/features/shared/lib/server/ai-governance", () => ({
   governAICall: (ctx: unknown, call: () => unknown) => governAICall(ctx, call),
   isAIBudgetDenied: (e: unknown) => (e as { name?: string })?.name === "AIBudgetDeniedError",
+  isAIBudgetStop: (e: unknown) =>
+    ["AIBudgetDeniedError", "AIBudgetReplayError", "AIBudgetUnavailableError"].includes(
+      (e as { name?: string })?.name ?? "",
+    ),
 }));
 const recordDurableAIUsage = vi.fn();
 vi.mock("@/features/shared/lib/server/ai-telemetry", () => ({

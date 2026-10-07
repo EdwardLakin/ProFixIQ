@@ -10,7 +10,7 @@ import {
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { estimateAICostUsd, registerAIUsageEvent } from "@/features/shared/lib/server/ai-ops-guard";
 import { recordDurableAIUsage } from "@/features/shared/lib/server/ai-telemetry";
-import { aiBudgetDeniedBody, governAICall, isAIBudgetDenied } from "@/features/shared/lib/server/ai-governance";
+import { aiBudgetStopResponse, governAICall, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose } from "@/features/shared/lib/server/openai-models";
 import { runWithProviderTimeout } from "@/features/shared/lib/server/provider-timeout";
@@ -639,10 +639,11 @@ export async function POST(req: Request) {
         shopId: access.profile.shop_id,
         succeeded: false,
       });
-      if (isAIBudgetDenied(error)) {
+      if (isAIBudgetStop(error)) {
         // Never reached the provider; nothing was billed or recorded as usage.
-        return NextResponse.json(aiBudgetDeniedBody(error), {
-          status: 402,
+        const stop = aiBudgetStopResponse(error);
+        return NextResponse.json(stop.body, {
+          status: stop.status,
           headers: { "Cache-Control": "no-store" },
         });
       }

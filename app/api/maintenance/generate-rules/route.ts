@@ -1,4 +1,5 @@
 // app/api/maintenance/generate-rules/route.ts
+import { aiBudgetStopResponse, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import "server-only";
 import { NextResponse } from "next/server";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
@@ -76,12 +77,21 @@ export async function POST(req: Request) {
       );
     }
 
-    // Charge the generation to the signed-in user's shop AI budget.
-    const { data: profile } = await supabase
+    // Charge the generation to the signed-in user's shop AI budget. A failed
+    // lookup is not "no shop": without a known shop the spend could not be
+    // governed, so refuse (retryable) instead of running the call ungoverned.
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("shop_id")
       .eq("id", user.id)
       .maybeSingle<{ shop_id: string | null }>();
+
+    if (profileError) {
+      return NextResponse.json(
+        { error: "Could not verify your shop. Try again." },
+        { status: 503 },
+      );
+    }
 
     const { servicesInserted, rulesInserted } = await withAITelemetryContext(
       {
@@ -110,6 +120,10 @@ export async function POST(req: Request) {
       rulesInserted,
     });
   } catch (e: unknown) {
+    if (isAIBudgetStop(e)) {
+      const stop = aiBudgetStopResponse(e);
+      return NextResponse.json(stop.body, { status: stop.status });
+    }
     const message =
       e instanceof Error ? e.message : "Failed to generate maintenance rules";
     return NextResponse.json({ error: message }, { status: 500 });

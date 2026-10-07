@@ -1,4 +1,5 @@
 // app/api/ocr/registration/route.ts
+import { aiBudgetStopResponse, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { normalizeVinInput } from "@/features/shared/lib/vin/normalizeVin";
@@ -183,6 +184,10 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json({ fields });
   } catch (err) {
+    if (isAIBudgetStop(err)) {
+      const stop = aiBudgetStopResponse(err);
+      return NextResponse.json(stop.body, { status: stop.status });
+    }
     const msg = err instanceof Error ? err.message : "OCR error";
     return NextResponse.json({ error: msg }, { status: 500 });
   }

@@ -1,3 +1,4 @@
+import { aiBudgetStopResponse, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import { NextRequest, NextResponse } from "next/server";
 
 import { pickBestOcrVin } from "@/features/shared/lib/vin/vinCapture";
@@ -105,6 +106,10 @@ export async function POST(req: NextRequest) {
         : "exact_text",
     });
   } catch (err) {
+    if (isAIBudgetStop(err)) {
+      const stop = aiBudgetStopResponse(err);
+      return NextResponse.json(stop.body, { status: stop.status });
+    }
     console.error("VIN extract error", err);
     return NextResponse.json(
       { error: "Failed to extract VIN from image" },
