@@ -26,14 +26,17 @@ describe("Ops marketing funnel", () => {
     );
   });
 
-  it("reads only non-PII funnel dimensions for breakdowns", () => {
+  it("uses only the checkout attempt key needed for server-side source attribution", () => {
     const reader = source("features/ops/server/get-marketing-funnel.ts");
+    const component = source("features/ops/components/OpsMarketingFunnel.tsx");
 
     expect(reader).toContain(
-      '.select("event_name,source_path,package_key,checkout_mode,created_at")',
+      '"event_name,source_path,package_key,checkout_mode,checkout_attempt_id,created_at"',
     );
+    expect(reader).toContain("sourceByAttempt.set(row.checkout_attempt_id, row.source_path)");
     expect(reader).not.toContain("anonymous_session_id");
-    expect(reader).not.toContain("checkout_attempt_id");
+    expect(component).not.toContain("checkout_attempt_id");
+    expect(component).not.toContain("anonymous_session_id");
   });
 
   it("uses exact stage counts and a bounded 30-day breakdown window", () => {
@@ -51,7 +54,7 @@ describe("Ops marketing funnel", () => {
     expect(reader).toContain("breakdownTruncated: totalEvents > rows.length");
   });
 
-  it("surfaces source, package, trial, paid, and checkout-start funnel views", () => {
+  it("surfaces source, package, trial, paid, checkout-start, and progression views", () => {
     const component = source("features/ops/components/OpsMarketingFunnel.tsx");
 
     expect(component).toContain("By source page");
@@ -59,6 +62,7 @@ describe("Ops marketing funnel", () => {
     expect(component).toContain("Trial intent");
     expect(component).toContain("Paid intent");
     expect(component).toContain("Checkout starts");
+    expect(component).toContain("Progression");
     expect(component).toContain("event volume");
     expect(component).toContain("not unique visitors");
   });
