@@ -62,7 +62,7 @@ export default function OpsMarketingFunnel({
         <MetricCard
           label="Checkout intent"
           value={number(summary.checkoutIntentClicks)}
-          detail={`${number(summary.trialClicks)} trial · ${number(summary.subscribeClicks)} paid`}
+          detail={`${number(summary.trialClicks)} trial checkout · ${number(summary.subscribeClicks)} paid checkout`}
         />
         <MetricCard
           label="Checkout started"
@@ -72,7 +72,7 @@ export default function OpsMarketingFunnel({
         <MetricCard
           label="Intent → checkout"
           value={percent(summary.intentToCheckoutStartPct)}
-          detail="Event progression, not visitor conversion"
+          detail="Checkout-button progression, not visitor conversion"
         />
         <MetricCard label="Demo clicks" value={number(summary.demoClicks)} detail="Public demo acquisition intent" />
       </section>
@@ -81,7 +81,7 @@ export default function OpsMarketingFunnel({
         <div>
           <h2 className="font-bold">By source page</h2>
           <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-            Public acquisition intent with authoritative checkout starts attributed back to the originating source page.
+            Checkout-button intent with authoritative checkout starts attributed back to canonical public acquisition pages.
           </p>
         </div>
 
@@ -96,10 +96,10 @@ export default function OpsMarketingFunnel({
                 <tr className="border-b border-[color:var(--theme-border-soft)]">
                   <th className="px-3 py-2 font-bold">Source</th>
                   <th className="px-3 py-2 text-right font-bold">Pricing</th>
-                  <th className="px-3 py-2 text-right font-bold">Trial</th>
-                  <th className="px-3 py-2 text-right font-bold">Paid</th>
+                  <th className="px-3 py-2 text-right font-bold">Trial checkout</th>
+                  <th className="px-3 py-2 text-right font-bold">Paid checkout</th>
                   <th className="px-3 py-2 text-right font-bold">Demo</th>
-                  <th className="px-3 py-2 text-right font-bold">Checkout</th>
+                  <th className="px-3 py-2 text-right font-bold">Checkout start</th>
                   <th className="px-3 py-2 text-right font-bold">Progression</th>
                 </tr>
               </thead>
@@ -125,7 +125,7 @@ export default function OpsMarketingFunnel({
         <div>
           <h2 className="font-bold">By product package</h2>
           <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-            Trial and paid acquisition intent compared with authoritative Stripe checkout starts.
+            Attempt-bearing trial and paid checkout intent compared with authoritative Stripe checkout starts.
           </p>
         </div>
 
@@ -139,8 +139,8 @@ export default function OpsMarketingFunnel({
               <thead className="text-xs uppercase tracking-[0.1em] text-[color:var(--theme-text-muted)]">
                 <tr className="border-b border-[color:var(--theme-border-soft)]">
                   <th className="px-3 py-2 font-bold">Package</th>
-                  <th className="px-3 py-2 text-right font-bold">Trial intent</th>
-                  <th className="px-3 py-2 text-right font-bold">Paid intent</th>
+                  <th className="px-3 py-2 text-right font-bold">Trial checkout intent</th>
+                  <th className="px-3 py-2 text-right font-bold">Paid checkout intent</th>
                   <th className="px-3 py-2 text-right font-bold">Checkout starts</th>
                   <th className="px-3 py-2 text-right font-bold">Trial starts</th>
                   <th className="px-3 py-2 text-right font-bold">Paid starts</th>
