@@ -8,8 +8,22 @@ describe("Ops marketing funnel", () => {
     const reader = source("features/ops/server/get-marketing-funnel.ts");
 
     expect(reader).toContain("await requireOpsOperatorPageAccess()");
-    expect(reader).toContain("createAdminSupabase()");
+    expect(reader).toContain("const admin = createAdminSupabase()");
     expect(reader).toContain('.from("marketing_events")');
+  });
+
+  it("grants only the server service role the read privilege needed by Ops", () => {
+    const migration = source(
+      "supabase/migrations/20261007183500_grant_marketing_events_ops_read.sql",
+    );
+
+    expect(migration).toContain(
+      "grant select on table public.marketing_events to service_role",
+    );
+    expect(migration).not.toContain("grant select on table public.marketing_events to anon");
+    expect(migration).not.toContain(
+      "grant select on table public.marketing_events to authenticated",
+    );
   });
 
   it("reads only non-PII funnel dimensions for breakdowns", () => {
@@ -27,13 +41,13 @@ describe("Ops marketing funnel", () => {
 
     expect(reader).toContain("const LOOKBACK_DAYS = 30");
     expect(reader).toContain("const MAX_BREAKDOWN_ROWS = 20000");
-    expect(reader).toContain('countRows("pricing_view")');
-    expect(reader).toContain('countRows("marketing_trial_click")');
-    expect(reader).toContain('countRows("marketing_subscribe_click")');
-    expect(reader).toContain('countRows("marketing_demo_click")');
-    expect(reader).toContain('countRows("checkout_started")');
-    expect(reader).toContain('countRows("checkout_started", "trial")');
-    expect(reader).toContain('countRows("checkout_started", "paid")');
+    expect(reader).toContain('countRows(admin, since, "pricing_view")');
+    expect(reader).toContain('countRows(admin, since, "marketing_trial_click")');
+    expect(reader).toContain('countRows(admin, since, "marketing_subscribe_click")');
+    expect(reader).toContain('countRows(admin, since, "marketing_demo_click")');
+    expect(reader).toContain('countRows(admin, since, "checkout_started")');
+    expect(reader).toContain('countRows(admin, since, "checkout_started", "trial")');
+    expect(reader).toContain('countRows(admin, since, "checkout_started", "paid")');
     expect(reader).toContain("breakdownTruncated: totalEvents > rows.length");
   });
 
