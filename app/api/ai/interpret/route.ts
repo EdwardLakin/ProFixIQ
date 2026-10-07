@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { readBoundedJson } from "@/features/shared/lib/server/bounded-json";
+import { aiBudgetStopResponse, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import { getAIPolicy } from "@/features/shared/lib/server/ai-policy";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
 import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
@@ -348,6 +349,16 @@ Optional section hint (may be empty): ${norm(ctx?.sectionTitle ?? "")}
             "Cache-Control": "no-store",
             "Retry-After": String(error.retryAfterSeconds),
             "X-Profixiq-AI-Limit": error.reason,
+          },
+        });
+      }
+      if (isAIBudgetStop(error)) {
+        const stop = aiBudgetStopResponse(error);
+        return NextResponse.json([], {
+          status: stop.status,
+          headers: {
+            "Cache-Control": "no-store",
+            "X-Profixiq-AI-Limit": stop.body.reason ?? stop.body.code,
           },
         });
       }

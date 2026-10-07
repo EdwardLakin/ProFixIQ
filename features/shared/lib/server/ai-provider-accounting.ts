@@ -1,5 +1,6 @@
 import "server-only";
 
+import { governAICall, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import { getAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import {
   recordDurableAIUsage,
@@ -37,15 +38,20 @@ export type OpenAICallAccountingContext = {
   /** Characters sent to a speech model; used for character-priced TTS. */
   speechCharacters?: number | null;
   sourceProduct?: AITelemetryEvent["source_product"];
+  /** Token ceilings that size the budget hold. Defaults come from the AI policy. */
+  maxPromptTokens?: number;
+  maxCompletionTokens?: number;
+  /** Override the budget hold in USD. */
+  budgetAmountUsd?: number;
+  /** Skip budget governance for this call (the usage ledger row is still written). */
+  skipGovernance?: boolean;
 };
 
-export type OpenAIUsageSnapshot = {
-  promptTokens: number | null;
-  cachedPromptTokens: number | null;
-  completionTokens: number | null;
-  totalTokens: number | null;
-  providerRequestId: string | null;
-};
+export { readOpenAIUsage, type OpenAIUsageSnapshot } from "@/features/shared/lib/server/ai-usage-reader";
+import {
+  readOpenAIUsage,
+  type OpenAIUsageSnapshot,
+} from "@/features/shared/lib/server/ai-usage-reader";
 
 const EMPTY_USAGE: OpenAIUsageSnapshot = {
   promptTokens: null,
@@ -54,53 +60,6 @@ const EMPTY_USAGE: OpenAIUsageSnapshot = {
   totalTokens: null,
   providerRequestId: null,
 };
-
-function finiteNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? value
-    : null;
-}
-
-/**
- * Reads usage from chat completions, the responses API, embeddings and image
- * responses. Missing fields stay null; nothing is inferred.
- */
-export function readOpenAIUsage(response: unknown): OpenAIUsageSnapshot {
-  if (!response || typeof response !== "object") return EMPTY_USAGE;
-  const record = response as Record<string, unknown>;
-  const usage =
-    record.usage && typeof record.usage === "object"
-      ? (record.usage as Record<string, unknown>)
-      : null;
-  const id =
-    typeof record.id === "string" && record.id.trim() ? record.id.trim() : null;
-  if (!usage) return { ...EMPTY_USAGE, providerRequestId: id };
-
-  const details = (key: string): Record<string, unknown> | null => {
-    const value = usage[key];
-    return value && typeof value === "object"
-      ? (value as Record<string, unknown>)
-      : null;
-  };
-  const promptTokens =
-    finiteNumber(usage.prompt_tokens) ?? finiteNumber(usage.input_tokens);
-  const completionTokens =
-    finiteNumber(usage.completion_tokens) ?? finiteNumber(usage.output_tokens);
-
-  return {
-    promptTokens,
-    cachedPromptTokens:
-      finiteNumber(details("prompt_tokens_details")?.cached_tokens) ??
-      finiteNumber(details("input_tokens_details")?.cached_tokens),
-    completionTokens,
-    totalTokens:
-      finiteNumber(usage.total_tokens) ??
-      (promptTokens != null && completionTokens != null
-        ? promptTokens + completionTokens
-        : promptTokens),
-    providerRequestId: id,
-  };
-}
 
 function errorCode(error: unknown): string {
   const message = error instanceof Error ? error.message : "";
@@ -120,8 +79,35 @@ export async function ledgerOpenAICall<R>(
   const startedAt = Date.now();
   let response: R;
   try {
-    response = await call();
+    response = context.skipGovernance
+      ? await call()
+      : await governAICall(
+          {
+            feature: context.feature,
+            endpoint: context.endpoint,
+            shopId: context.shopId,
+            userId: context.userId,
+            model: context.model,
+            // The ledger records embeddings as modality "other".
+            modality:
+              context.modality === "image"
+                ? "image"
+                : context.modality === "speech"
+                  ? "speech"
+                  : context.modality === "other"
+                    ? "embedding"
+                    : "text",
+            amountUsd: context.budgetAmountUsd,
+            maxPromptTokens: context.maxPromptTokens,
+            maxCompletionTokens: context.maxCompletionTokens,
+          },
+          call,
+        );
   } catch (error) {
+    // A call governance stopped (denied, replayed, or fail-closed because the
+    // budget service was unavailable) never reached the provider, so it is not
+    // provider activity for the usage ledger.
+    if (isAIBudgetStop(error)) throw error;
     await recordSafely(context, startedAt, EMPTY_USAGE, "error", error);
     throw error;
   }

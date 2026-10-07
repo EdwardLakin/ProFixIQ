@@ -252,7 +252,15 @@ async function llmParseGoal(
         });
         // A non-2xx is ledgered as an error row (usage unknown), then handled
         // exactly as before by the empty-plan return below.
-        if (!res.ok) throw new Error(`OpenAI planner request failed (${res.status})`);
+        // Keep the HTTP status on the error so governance can tell a rejected
+        // request (nothing billed: 400/401/403/404/409/422/429) from a failure
+        // that may have billed (5xx), and release the hold in the first case.
+        if (!res.ok) {
+          throw Object.assign(
+            new Error(`OpenAI planner request failed (${res.status})`),
+            { status: res.status },
+          );
+        }
         return (await res.json().catch(() => null)) as unknown;
       },
     );

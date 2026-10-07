@@ -1,4 +1,5 @@
 // app/api/work-orders/suggest-lines/route.ts
+import { aiBudgetStopResponse, governAICall, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import "server-only";
 import { NextResponse } from "next/server";
 import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
@@ -247,7 +248,16 @@ export async function POST(req: Request) {
     }
 
     const completion = await Promise.race([
-      openai.chat.completions.create({
+      governAICall(
+{
+        feature: "work_orders_suggest_lines",
+        endpoint: "/api/work-orders/suggest-lines",
+        shopId: shopIdForContext,
+        userId: userId,
+        model: model,
+        maxCompletionTokens: policy.maxTokens,
+      },
+() => openai.chat.completions.create({
         model,
         ...openAITemperatureParam(model, 0.4),
         messages: [
@@ -256,6 +266,7 @@ export async function POST(req: Request) {
         ],
         max_completion_tokens: policy.maxTokens,
       }),
+),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("AI request timed out")), policy.timeoutMs),
       ),
@@ -312,6 +323,14 @@ export async function POST(req: Request) {
 
     return NextResponse.json({ suggestions });
   } catch (error) {
+    if (isAIBudgetStop(error)) {
+      // Never reached the provider; not a provider error.
+      if (policy.fallbackMode === "graceful_empty") {
+        return NextResponse.json({ suggestions: [] });
+      }
+      const stop = aiBudgetStopResponse(error);
+      return NextResponse.json(stop.body, { status: stop.status });
+    }
     const message = error instanceof Error ? error.message : "Failed to generate suggestions";
     await recordDurableAIUsage({
       feature: "work_orders_suggest_lines",

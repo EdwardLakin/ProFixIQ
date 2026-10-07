@@ -219,3 +219,31 @@ describe("withAIBudget", () => {
     expect(operation).not.toHaveBeenCalled();
   });
 });
+
+describe("a budget client that throws instead of returning an error", () => {
+  it("is reported as unavailable on reserve, so the AI call is never failed by it", async () => {
+    rpc.mockImplementation(() => {
+      throw new TypeError("rpc is not a function");
+    });
+    await expect(reserveAIBudget({ admin: fakeAdmin(rpc), ...base })).rejects.toBeInstanceOf(AIBudgetUnavailableError);
+  });
+
+  it("lets the call run when onUnavailable is allow, and survives a throwing commit", async () => {
+    rpc.mockImplementation(() => {
+      throw new Error("network down");
+    });
+    const operation = vi.fn(async () => ({ output: "ran", actualCostUsd: 0.1 }));
+    await expect(
+      withAIBudget({ admin: fakeAdmin(rpc), ...base, onUnavailable: "allow" }, operation),
+    ).resolves.toBe("ran");
+  });
+
+  it("does not fail a successful call when settlement throws", async () => {
+    rpc.mockResolvedValueOnce(reserved()).mockImplementation(() => {
+      throw new Error("network down");
+    });
+    await expect(
+      withAIBudget({ admin: fakeAdmin(rpc), ...base }, async () => ({ output: "done", actualCostUsd: 0.2 })),
+    ).resolves.toBe("done");
+  });
+});

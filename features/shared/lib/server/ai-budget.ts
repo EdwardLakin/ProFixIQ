@@ -162,15 +162,23 @@ export async function reserveAIBudget(input: {
     );
   }
 
-  const { data, error } = await input.admin.rpc("reserve_ai_budget", {
-    p_shop_id: input.shopId,
-    p_pool: input.pool ?? aiBudgetPoolForFeature(input.feature),
-    p_feature: input.feature,
-    p_amount_usd: input.amountUsd,
-    p_idempotency_key: input.idempotencyKey,
-    p_actor_id: input.actorId ?? undefined,
-    p_ttl_seconds: input.ttlSeconds ?? undefined,
-  });
+  let data: unknown;
+  let error: { code?: string | null } | null;
+  try {
+    ({ data, error } = await input.admin.rpc("reserve_ai_budget", {
+      p_shop_id: input.shopId,
+      p_pool: input.pool ?? aiBudgetPoolForFeature(input.feature),
+      p_feature: input.feature,
+      p_amount_usd: input.amountUsd,
+      p_idempotency_key: input.idempotencyKey,
+      p_actor_id: input.actorId ?? undefined,
+      p_ttl_seconds: input.ttlSeconds ?? undefined,
+    }));
+  } catch {
+    // A thrown client or network exception is "the budget service is down",
+    // never a reason to fail the AI call itself.
+    throw new AIBudgetUnavailableError("exception");
+  }
 
   if (error) throw new AIBudgetUnavailableError(error.code ?? "unknown");
 
@@ -220,11 +228,18 @@ export async function commitAIBudget(input: {
   reservationId: string;
   actualCostUsd: number | null;
 }): Promise<boolean> {
-  const { data, error } = await input.admin.rpc("commit_ai_budget", {
-    p_reservation_id: input.reservationId,
-    p_shop_id: input.shopId,
-    p_actual_usd: input.actualCostUsd == null ? (null as never) : input.actualCostUsd,
-  });
+  let data: unknown;
+  let error: { code?: string | null } | null;
+  try {
+    ({ data, error } = await input.admin.rpc("commit_ai_budget", {
+      p_reservation_id: input.reservationId,
+      p_shop_id: input.shopId,
+      p_actual_usd: input.actualCostUsd == null ? (null as never) : input.actualCostUsd,
+    }));
+  } catch {
+    error = { code: "exception" };
+    data = null;
+  }
   if (error) {
     console.error("ai_budget_commit_failed", {
       shopId: input.shopId,
@@ -241,10 +256,17 @@ export async function releaseAIBudget(input: {
   shopId: string;
   reservationId: string;
 }): Promise<boolean> {
-  const { data, error } = await input.admin.rpc("release_ai_budget", {
-    p_reservation_id: input.reservationId,
-    p_shop_id: input.shopId,
-  });
+  let data: unknown;
+  let error: { code?: string | null } | null;
+  try {
+    ({ data, error } = await input.admin.rpc("release_ai_budget", {
+      p_reservation_id: input.reservationId,
+      p_shop_id: input.shopId,
+    }));
+  } catch {
+    error = { code: "exception" };
+    data = null;
+  }
   if (error) {
     console.error("ai_budget_release_failed", {
       shopId: input.shopId,

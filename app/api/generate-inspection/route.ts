@@ -1,4 +1,5 @@
 // app/api/generate-inspection/route.ts
+import { aiBudgetStopResponse, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import { NextResponse } from "next/server";
 import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accounting";
 import { getOpenAIClient } from "@/features/shared/lib/server/openai";
@@ -84,6 +85,10 @@ export async function POST(req: Request) {
     const categories = toInspectionCategories(data);
     return NextResponse.json({ categories });
   } catch (err) {
+    if (isAIBudgetStop(err)) {
+      const stop = aiBudgetStopResponse(err);
+      return NextResponse.json({ categories: [], ...stop.body }, { status: stop.status });
+    }
     console.error("generate-inspection error:", err);
     return NextResponse.json({ categories: [] }, { status: 500 });
   }

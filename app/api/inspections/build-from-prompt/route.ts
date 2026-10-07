@@ -511,21 +511,19 @@ export async function POST(req: Request) {
       // If augmentation is slow, return the deterministic master-list sections.
       // Accounting rides alongside the provider request, outside the deadline:
       // the ledger write must never change the fallback decision below.
-      const providerCall = openai.responses.create({
-        model: getOpenAIModelForPurpose("extraction"),
-        input: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        text: {
-          format: {
-            type: "json_schema",
-            name: SectionsSchema.name,
-            schema: SectionsSchema.schema,
-          },
-        },
-        max_output_tokens: 1200,
+      // The provider request must start inside the governed call, after the
+      // budget hold is reserved, so a denied call never reaches the provider.
+      // The raw response is handed to the deadline race through a deferred
+      // promise; settlement (ledger + budget commit) stays outside the deadline.
+      type ProviderResponse = Awaited<ReturnType<typeof openai.responses.create>>;
+      let resolveRaw!: (value: ProviderResponse) => void;
+      let rejectRaw!: (reason: unknown) => void;
+      const raw = new Promise<ProviderResponse>((resolve, reject) => {
+        resolveRaw = resolve;
+        rejectRaw = reject;
       });
+      raw.catch(() => undefined);
+
       const accounted = ledgerOpenAICall(
         {
           feature: "inspection_template_build_from_prompt",
@@ -534,13 +532,33 @@ export async function POST(req: Request) {
           userId: access.profile.id,
           model: getOpenAIModelForPurpose("extraction"),
         },
-        () => providerCall,
+        () => {
+          const providerCall = openai.responses.create({
+            model: getOpenAIModelForPurpose("extraction"),
+            input: [
+              { role: "system", content: system },
+              { role: "user", content: user },
+            ],
+            text: {
+              format: {
+                type: "json_schema",
+                name: SectionsSchema.name,
+                schema: SectionsSchema.schema,
+              },
+            },
+            max_output_tokens: 1200,
+          }) as Promise<ProviderResponse>;
+          providerCall.then(resolveRaw, rejectRaw);
+          return providerCall;
+        },
       );
-      // A late or failed provider call still reaches the ledger; swallow the
-      // re-thrown provider error here, the race below owns the outcome.
-      accounted.catch(() => undefined);
+      // A denial or provider failure rejects `accounted` before/after the raw
+      // response; route it to the race and swallow the duplicate rejection.
+      accounted.catch((err: unknown) => {
+        rejectRaw(err);
+      });
 
-      const resp = await withTimeout(providerCall, AI_AUGMENTATION_TIMEOUT_MS);
+      const resp = await withTimeout(raw, AI_AUGMENTATION_TIMEOUT_MS);
       if (resp !== "timeout") await accounted.catch(() => undefined);
 
       if (resp === "timeout") {
