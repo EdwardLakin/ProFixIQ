@@ -1,0 +1,645 @@
+name: Temporary Lifecycle Conversion Build
+
+on:
+  push:
+    branches:
+      - analytics/lifecycle-conversion-funnel
+    paths:
+      - .github/workflows/temporary-lifecycle-conversion-build.yml
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out lifecycle branch
+        uses: actions/checkout@v4
+        with:
+          ref: analytics/lifecycle-conversion-funnel
+          fetch-depth: 0
+
+      - name: Apply lifecycle conversion implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          migration = r'''begin;
+
+-- Lifecycle conversion measurement is observational only. These triggers attach
+-- server-authoritative acquisition and guided-onboarding transitions to the
+-- existing anonymous checkout attempt key without storing user or shop ids in
+-- public.marketing_events.
+create unique index if not exists marketing_events_lifecycle_attempt_uidx
+  on public.marketing_events (event_name, checkout_attempt_id)
+  where event_name in ('signup_completed', 'onboarding_completed')
+    and checkout_attempt_id is not null;
+
+create or replace function private.capture_marketing_signup_completed()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public, private, auth
+as $function$
+declare
+  v_attempt_id uuid;
+  v_user_created_at timestamptz;
+  v_checkout record;
+begin
+  if new.status <> 'claimed' or new.claimed_user_id is null then
+    return new;
+  end if;
+
+  if old.status = 'claimed'
+     and old.claimed_user_id is not distinct from new.claimed_user_id then
+    return new;
+  end if;
+
+  select u.created_at
+    into v_user_created_at
+  from auth.users as u
+  where u.id = new.claimed_user_id;
+
+  -- Existing accounts can claim a completed acquisition. Count signup only
+  -- when this auth identity was actually created after the acquisition began.
+  if v_user_created_at is null or v_user_created_at < new.created_at then
+    return new;
+  end if;
+
+  if new.request_key !~* '^acq:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then
+    return new;
+  end if;
+  v_attempt_id := substring(new.request_key from 5)::uuid;
+
+  select me.package_key, me.interval, me.checkout_mode
+    into v_checkout
+  from public.marketing_events as me
+  where me.event_name = 'checkout_started'
+    and me.checkout_attempt_id = v_attempt_id
+  order by me.created_at asc
+  limit 1;
+
+  if not found then
+    return new;
+  end if;
+
+  insert into public.marketing_events (
+    event_name,
+    package_key,
+    interval,
+    checkout_mode,
+    checkout_attempt_id
+  ) values (
+    'signup_completed',
+    v_checkout.package_key,
+    v_checkout.interval,
+    v_checkout.checkout_mode,
+    v_attempt_id
+  )
+  on conflict do nothing;
+
+  return new;
+exception
+  when others then
+    raise warning 'marketing signup lifecycle capture failed [%]', sqlstate;
+    return new;
+end;
+$function$;
+
+alter function private.capture_marketing_signup_completed() owner to postgres;
+revoke all on function private.capture_marketing_signup_completed()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists capture_marketing_signup_completed
+  on private.stripe_acquisition_intents;
+create trigger capture_marketing_signup_completed
+after update of status, claimed_user_id
+on private.stripe_acquisition_intents
+for each row execute function private.capture_marketing_signup_completed();
+
+create or replace function private.capture_marketing_onboarding_completed()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public, private
+as $function$
+declare
+  v_request_key text;
+  v_attempt_id uuid;
+  v_checkout record;
+begin
+  if new.status <> 'completed' or old.status = 'completed' then
+    return new;
+  end if;
+
+  select i.request_key
+    into v_request_key
+  from private.stripe_acquisition_intents as i
+  join public.shops as s
+    on s.id = new.shop_id
+   and s.stripe_checkout_session_id = i.stripe_checkout_session_id
+  where i.status = 'claimed'
+    and (i.claimed_shop_id = new.shop_id or i.claimed_shop_id is null)
+  order by i.claimed_at asc nulls last, i.created_at asc
+  limit 1;
+
+  if v_request_key is null
+     or v_request_key !~* '^acq:[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$' then
+    return new;
+  end if;
+  v_attempt_id := substring(v_request_key from 5)::uuid;
+
+  select me.package_key, me.interval, me.checkout_mode
+    into v_checkout
+  from public.marketing_events as me
+  where me.event_name = 'checkout_started'
+    and me.checkout_attempt_id = v_attempt_id
+  order by me.created_at asc
+  limit 1;
+
+  if not found then
+    return new;
+  end if;
+
+  insert into public.marketing_events (
+    event_name,
+    package_key,
+    interval,
+    checkout_mode,
+    checkout_attempt_id
+  ) values (
+    'onboarding_completed',
+    v_checkout.package_key,
+    v_checkout.interval,
+    v_checkout.checkout_mode,
+    v_attempt_id
+  )
+  on conflict do nothing;
+
+  return new;
+exception
+  when others then
+    raise warning 'marketing onboarding lifecycle capture failed [%]', sqlstate;
+    return new;
+end;
+$function$;
+
+alter function private.capture_marketing_onboarding_completed() owner to postgres;
+revoke all on function private.capture_marketing_onboarding_completed()
+  from public, anon, authenticated, service_role;
+
+drop trigger if exists capture_marketing_onboarding_completed
+  on public.guided_onboarding_sessions;
+create trigger capture_marketing_onboarding_completed
+after update of status
+on public.guided_onboarding_sessions
+for each row execute function private.capture_marketing_onboarding_completed();
+
+-- Extend the prior acquisition snapshot without changing its contract. The
+-- wrapper and lifecycle counts execute in one statement/MVCC snapshot.
+create or replace function public.get_ops_marketing_lifecycle_funnel_snapshot(
+  p_since timestamptz,
+  p_breakdown_limit integer
+)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = pg_catalog, public
+as $function$
+  with acquisition as (
+    select public.get_ops_marketing_funnel_snapshot(
+      p_since,
+      p_breakdown_limit
+    ) as snapshot
+  ),
+  lifecycle as (
+    select
+      count(*) filter (where event_name = 'signup_completed')::bigint as signup_completed,
+      count(*) filter (where event_name = 'onboarding_completed')::bigint as onboarding_completed
+    from public.marketing_events
+    where created_at >= p_since
+  )
+  select a.snapshot || jsonb_build_object(
+    'lifecycleSummary', jsonb_build_object(
+      'signupCompleted', l.signup_completed,
+      'onboardingCompleted', l.onboarding_completed
+    )
+  )
+  from acquisition as a
+  cross join lifecycle as l;
+$function$;
+
+alter function public.get_ops_marketing_lifecycle_funnel_snapshot(timestamptz, integer)
+  owner to postgres;
+revoke all on function public.get_ops_marketing_lifecycle_funnel_snapshot(timestamptz, integer)
+  from public, anon, authenticated, service_role;
+grant execute on function public.get_ops_marketing_lifecycle_funnel_snapshot(timestamptz, integer)
+  to service_role;
+
+commit;
+'''
+          Path('supabase/migrations/20261007204500_marketing_lifecycle_conversion.sql').write_text(migration)
+
+          reader_path = Path('features/ops/server/get-marketing-funnel.ts')
+          reader = reader_path.read_text()
+          reader = reader.replace(
+'''type FunnelRpcSnapshot = {
+  generatedAt: string;
+  since: string;
+  breakdownTruncated: boolean;
+  summary: FunnelRpcSummary;
+  rows: MarketingEventRow[];
+};''',
+'''type FunnelLifecycleRpcSummary = {
+  signupCompleted: number;
+  onboardingCompleted: number;
+};
+
+type FunnelRpcSnapshot = {
+  generatedAt: string;
+  since: string;
+  breakdownTruncated: boolean;
+  summary: FunnelRpcSummary;
+  lifecycleSummary: FunnelLifecycleRpcSummary;
+  rows: MarketingEventRow[];
+};''')
+          reader = reader.replace(
+'''  checkoutStarted: number;
+  intentToCheckoutStartPct: number;
+};''',
+'''  checkoutStarted: number;
+  signupCompleted: number;
+  onboardingCompleted: number;
+  intentToCheckoutStartPct: number;
+  checkoutToSignupPct: number;
+  signupToOnboardingPct: number;
+};''', 1)
+          reader = reader.replace(
+'''  paidCheckouts: number;
+  intentToCheckoutStartPct: number;
+};''',
+'''  paidCheckouts: number;
+  signupCompleted: number;
+  onboardingCompleted: number;
+  intentToCheckoutStartPct: number;
+  checkoutToSignupPct: number;
+  signupToOnboardingPct: number;
+};''', 1)
+          reader = reader.replace(
+'''  summary: FunnelRpcSummary & {
+    checkoutIntentClicks: number;
+    intentToCheckoutStartPct: number;
+  };''',
+'''  summary: FunnelRpcSummary & FunnelLifecycleRpcSummary & {
+    checkoutIntentClicks: number;
+    intentToCheckoutStartPct: number;
+    checkoutToSignupPct: number;
+    signupToOnboardingPct: number;
+  };''')
+          reader = reader.replace(
+'''    const sourcePath =
+      row.event_name === "checkout_started"
+        ? row.checkout_attempt_id
+          ? sourceByAttempt.get(row.checkout_attempt_id) ?? UNATTRIBUTED_SOURCE
+          : UNATTRIBUTED_SOURCE
+        : checkoutIntent
+          ? canonicalSourcePath(row.source_path) ?? UNATTRIBUTED_SOURCE
+          : canonicalSourcePath(row.source_path);''',
+'''    const attemptAttributedEvent =
+      row.event_name === "checkout_started" ||
+      row.event_name === "signup_completed" ||
+      row.event_name === "onboarding_completed";
+    const sourcePath = attemptAttributedEvent
+      ? row.checkout_attempt_id
+        ? sourceByAttempt.get(row.checkout_attempt_id) ?? UNATTRIBUTED_SOURCE
+        : UNATTRIBUTED_SOURCE
+      : checkoutIntent
+        ? canonicalSourcePath(row.source_path) ?? UNATTRIBUTED_SOURCE
+        : canonicalSourcePath(row.source_path);''')
+          reader = reader.replace(
+'''      checkoutStarted: 0,
+      intentToCheckoutStartPct: 0,
+    };''',
+'''      checkoutStarted: 0,
+      signupCompleted: 0,
+      onboardingCompleted: 0,
+      intentToCheckoutStartPct: 0,
+      checkoutToSignupPct: 0,
+      signupToOnboardingPct: 0,
+    };''', 1)
+          reader = reader.replace(
+'''    if (row.event_name === "checkout_started") current.checkoutStarted += 1;
+    grouped.set(sourcePath, current);''',
+'''    if (row.event_name === "checkout_started") current.checkoutStarted += 1;
+    if (row.event_name === "signup_completed") current.signupCompleted += 1;
+    if (row.event_name === "onboarding_completed") current.onboardingCompleted += 1;
+    grouped.set(sourcePath, current);''')
+          reader = reader.replace(
+'''      intentToCheckoutStartPct: pct(
+        row.checkoutStarted,
+        row.trialClicks + row.subscribeClicks,
+      ),
+    }))''',
+'''      intentToCheckoutStartPct: pct(
+        row.checkoutStarted,
+        row.trialClicks + row.subscribeClicks,
+      ),
+      checkoutToSignupPct: pct(row.signupCompleted, row.checkoutStarted),
+      signupToOnboardingPct: pct(row.onboardingCompleted, row.signupCompleted),
+    }))''', 1)
+          reader = reader.replace(
+'''  if (row.event_name === "checkout_started" || isCheckoutIntent(row)) {
+    return UNATTRIBUTED_PACKAGE;
+  }''',
+'''  if (
+    row.event_name === "checkout_started" ||
+    row.event_name === "signup_completed" ||
+    row.event_name === "onboarding_completed" ||
+    isCheckoutIntent(row)
+  ) {
+    return UNATTRIBUTED_PACKAGE;
+  }''')
+          reader = reader.replace(
+'''      paidCheckouts: 0,
+      intentToCheckoutStartPct: 0,
+    };''',
+'''      paidCheckouts: 0,
+      signupCompleted: 0,
+      onboardingCompleted: 0,
+      intentToCheckoutStartPct: 0,
+      checkoutToSignupPct: 0,
+      signupToOnboardingPct: 0,
+    };''', 1)
+          reader = reader.replace(
+'''    if (row.event_name === "checkout_started") {
+      current.checkoutStarted += 1;
+      if (row.checkout_mode === "trial") current.trialCheckouts += 1;
+      if (row.checkout_mode === "paid") current.paidCheckouts += 1;
+    }
+    grouped.set(packageKey, current);''',
+'''    if (row.event_name === "checkout_started") {
+      current.checkoutStarted += 1;
+      if (row.checkout_mode === "trial") current.trialCheckouts += 1;
+      if (row.checkout_mode === "paid") current.paidCheckouts += 1;
+    }
+    if (row.event_name === "signup_completed") current.signupCompleted += 1;
+    if (row.event_name === "onboarding_completed") current.onboardingCompleted += 1;
+    grouped.set(packageKey, current);''')
+          reader = reader.replace(
+'''      intentToCheckoutStartPct: pct(
+        row.checkoutStarted,
+        row.trialClicks + row.subscribeClicks,
+      ),
+    }))''',
+'''      intentToCheckoutStartPct: pct(
+        row.checkoutStarted,
+        row.trialClicks + row.subscribeClicks,
+      ),
+      checkoutToSignupPct: pct(row.signupCompleted, row.checkoutStarted),
+      signupToOnboardingPct: pct(row.onboardingCompleted, row.signupCompleted),
+    }))''', 1)
+          reader = reader.replace(
+'''    !snapshot.summary ||
+    !Array.isArray(snapshot.rows)''',
+'''    !snapshot.summary ||
+    !snapshot.lifecycleSummary ||
+    !Array.isArray(snapshot.rows)''')
+          reader = reader.replace(
+'''  const { data, error } = await admin.rpc("get_ops_marketing_funnel_snapshot", {''',
+'''  const { data, error } = await admin.rpc("get_ops_marketing_lifecycle_funnel_snapshot", {''')
+          reader = reader.replace(
+'''      intentToCheckoutStartPct: pct(
+        snapshot.summary.checkoutStarted,
+        checkoutIntentClicks,
+      ),
+    },''',
+'''      ...snapshot.lifecycleSummary,
+      intentToCheckoutStartPct: pct(
+        snapshot.summary.checkoutStarted,
+        checkoutIntentClicks,
+      ),
+      checkoutToSignupPct: pct(
+        snapshot.lifecycleSummary.signupCompleted,
+        snapshot.summary.checkoutStarted,
+      ),
+      signupToOnboardingPct: pct(
+        snapshot.lifecycleSummary.onboardingCompleted,
+        snapshot.lifecycleSummary.signupCompleted,
+      ),
+    },''')
+          reader_path.write_text(reader)
+
+          component_path = Path('features/ops/components/OpsMarketingFunnel.tsx')
+          component = component_path.read_text()
+          component = component.replace(
+'''          Read-only 30-day acquisition telemetry from the first-party marketing event ledger. Counts are event volume,
+          not unique visitors. The measured funnel currently ends at authoritative Stripe checkout start; signup and
+          onboarding completion remain intentionally deferred until their server-side success boundaries are wired.''',
+'''          Read-only 30-day acquisition telemetry from the first-party marketing event ledger. Counts are event volume,
+          not unique visitors. The measured funnel follows authoritative checkout start through newly created acquisition
+          accounts and completed guided onboarding without storing user or shop identifiers in the marketing ledger.''')
+          component = component.replace(
+'''        <MetricCard
+          label="Intent → checkout"
+          value={percent(summary.intentToCheckoutStartPct)}
+          detail="Checkout-button progression, not visitor conversion"
+        />
+        <MetricCard label="Demo clicks" value={number(summary.demoClicks)} detail="Public demo acquisition intent" />''',
+'''        <MetricCard label="Signup completed" value={number(summary.signupCompleted)} detail="New acquisition accounts only" />
+        <MetricCard label="Onboarding completed" value={number(summary.onboardingCompleted)} detail="Guided setup completed" />
+        <MetricCard
+          label="Intent → checkout"
+          value={percent(summary.intentToCheckoutStartPct)}
+          detail="Checkout-button progression"
+        />
+        <MetricCard
+          label="Checkout → signup"
+          value={percent(summary.checkoutToSignupPct)}
+          detail="New-account progression"
+        />
+        <MetricCard
+          label="Signup → onboarding"
+          value={percent(summary.signupToOnboardingPct)}
+          detail="Guided-setup progression"
+        />
+        <MetricCard label="Demo clicks" value={number(summary.demoClicks)} detail="Public demo acquisition intent" />''')
+          component = component.replace(
+'''                  <th className="px-3 py-2 text-right font-bold">Checkout start</th>
+                  <th className="px-3 py-2 text-right font-bold">Progression</th>''',
+'''                  <th className="px-3 py-2 text-right font-bold">Checkout start</th>
+                  <th className="px-3 py-2 text-right font-bold">Signup</th>
+                  <th className="px-3 py-2 text-right font-bold">Onboarding</th>
+                  <th className="px-3 py-2 text-right font-bold">Intent → checkout</th>
+                  <th className="px-3 py-2 text-right font-bold">Checkout → signup</th>
+                  <th className="px-3 py-2 text-right font-bold">Signup → onboard</th>''', 1)
+          component = component.replace(
+'''                    <td className="px-3 py-3 text-right font-bold">{number(row.checkoutStarted)}</td>
+                    <td className="px-3 py-3 text-right">{percent(row.intentToCheckoutStartPct)}</td>''',
+'''                    <td className="px-3 py-3 text-right font-bold">{number(row.checkoutStarted)}</td>
+                    <td className="px-3 py-3 text-right">{number(row.signupCompleted)}</td>
+                    <td className="px-3 py-3 text-right">{number(row.onboardingCompleted)}</td>
+                    <td className="px-3 py-3 text-right">{percent(row.intentToCheckoutStartPct)}</td>
+                    <td className="px-3 py-3 text-right">{percent(row.checkoutToSignupPct)}</td>
+                    <td className="px-3 py-3 text-right">{percent(row.signupToOnboardingPct)}</td>''', 1)
+          component = component.replace(
+'''                  <th className="px-3 py-2 text-right font-bold">Paid starts</th>
+                  <th className="px-3 py-2 text-right font-bold">Progression</th>''',
+'''                  <th className="px-3 py-2 text-right font-bold">Paid starts</th>
+                  <th className="px-3 py-2 text-right font-bold">Signup</th>
+                  <th className="px-3 py-2 text-right font-bold">Onboarding</th>
+                  <th className="px-3 py-2 text-right font-bold">Intent → checkout</th>
+                  <th className="px-3 py-2 text-right font-bold">Checkout → signup</th>
+                  <th className="px-3 py-2 text-right font-bold">Signup → onboard</th>''', 1)
+          component = component.replace(
+'''                    <td className="px-3 py-3 text-right">{number(row.paidCheckouts)}</td>
+                    <td className="px-3 py-3 text-right">{percent(row.intentToCheckoutStartPct)}</td>''',
+'''                    <td className="px-3 py-3 text-right">{number(row.paidCheckouts)}</td>
+                    <td className="px-3 py-3 text-right">{number(row.signupCompleted)}</td>
+                    <td className="px-3 py-3 text-right">{number(row.onboardingCompleted)}</td>
+                    <td className="px-3 py-3 text-right">{percent(row.intentToCheckoutStartPct)}</td>
+                    <td className="px-3 py-3 text-right">{percent(row.checkoutToSignupPct)}</td>
+                    <td className="px-3 py-3 text-right">{percent(row.signupToOnboardingPct)}</td>''', 1)
+          component_path.write_text(component)
+
+          existing_test_path = Path('tests/ops-marketing-funnel.test.ts')
+          existing_test = existing_test_path.read_text()
+          existing_test = existing_test.replace(
+'''const migrationPath =
+  "supabase/migrations/20261007183500_ops_marketing_funnel_snapshot.sql";''',
+'''const migrationPath =
+  "supabase/migrations/20261007183500_ops_marketing_funnel_snapshot.sql";
+const lifecycleMigrationPath =
+  "supabase/migrations/20261007204500_marketing_lifecycle_conversion.sql";''')
+          existing_test = existing_test.replace(
+'''    const migration = source(migrationPath);
+
+    expect(reader).toContain('.rpc("get_ops_marketing_funnel_snapshot", {');''',
+'''    const migration = source(migrationPath);
+    const lifecycleMigration = source(lifecycleMigrationPath);
+
+    expect(reader).toContain('.rpc("get_ops_marketing_lifecycle_funnel_snapshot", {');
+    expect(lifecycleMigration).toContain("select public.get_ops_marketing_funnel_snapshot(");''', 1)
+          existing_test_path.write_text(existing_test)
+
+          lifecycle_test = r'''import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+const source = (path: string) => readFileSync(path, "utf8");
+const migrationPath =
+  "supabase/migrations/20261007204500_marketing_lifecycle_conversion.sql";
+
+describe("marketing lifecycle conversion", () => {
+  it("captures signup only for auth users created after the acquisition began", () => {
+    const migration = source(migrationPath);
+
+    expect(migration).toContain("private.capture_marketing_signup_completed()");
+    expect(migration).toContain("from auth.users as u");
+    expect(migration).toContain("v_user_created_at < new.created_at");
+    expect(migration).toContain("'signup_completed'");
+    expect(migration).toContain("after update of status, claimed_user_id");
+  });
+
+  it("uses guided session completion as the onboarding success boundary", () => {
+    const migration = source(migrationPath);
+
+    expect(migration).toContain("private.capture_marketing_onboarding_completed()");
+    expect(migration).toContain("new.status <> 'completed'");
+    expect(migration).toContain("old.status = 'completed'");
+    expect(migration).toContain("on public.guided_onboarding_sessions");
+    expect(migration).toContain("'onboarding_completed'");
+  });
+
+  it("correlates lifecycle rows through the anonymous checkout attempt only", () => {
+    const migration = source(migrationPath);
+
+    expect(migration).toContain("v_attempt_id := substring(new.request_key from 5)::uuid");
+    expect(migration).toContain("v_attempt_id := substring(v_request_key from 5)::uuid");
+    expect(migration).toContain("me.event_name = 'checkout_started'");
+    expect(migration).toContain("me.checkout_attempt_id = v_attempt_id");
+    expect(migration).not.toContain("user_id,");
+    expect(migration).not.toContain("shop_id,");
+  });
+
+  it("is idempotent and cannot break signup or onboarding on analytics failure", () => {
+    const migration = source(migrationPath);
+
+    expect(migration).toContain("marketing_events_lifecycle_attempt_uidx");
+    expect(migration.match(/on conflict do nothing/g)).toHaveLength(2);
+    expect(migration.match(/exception\n  when others then/g)).toHaveLength(2);
+    expect(migration).toContain("return new;");
+  });
+
+  it("extends Ops reporting through a new service-role-only single-snapshot wrapper", () => {
+    const migration = source(migrationPath);
+    const reader = source("features/ops/server/get-marketing-funnel.ts");
+
+    expect(migration).toContain(
+      "create or replace function public.get_ops_marketing_lifecycle_funnel_snapshot(",
+    );
+    expect(migration).toContain("select public.get_ops_marketing_funnel_snapshot(");
+    expect(migration).toContain("'signupCompleted', l.signup_completed");
+    expect(migration).toContain("'onboardingCompleted', l.onboarding_completed");
+    expect(migration).toContain(
+      "grant execute on function public.get_ops_marketing_lifecycle_funnel_snapshot(timestamptz, integer)",
+    );
+    expect(reader).toContain('admin.rpc("get_ops_marketing_lifecycle_funnel_snapshot"');
+  });
+
+  it("shows checkout to signup and signup to onboarding progression in Ops", () => {
+    const reader = source("features/ops/server/get-marketing-funnel.ts");
+    const component = source("features/ops/components/OpsMarketingFunnel.tsx");
+
+    expect(reader).toContain("checkoutToSignupPct");
+    expect(reader).toContain("signupToOnboardingPct");
+    expect(reader).toContain('row.event_name === "signup_completed"');
+    expect(reader).toContain('row.event_name === "onboarding_completed"');
+    expect(component).toContain("Checkout → signup");
+    expect(component).toContain("Signup → onboarding");
+    expect(component).toContain("Onboarding completed");
+  });
+
+  it("keeps the generated Supabase lifecycle snapshot contract in sync", () => {
+    const generated = source("features/shared/types/types/supabase.ts");
+
+    expect(generated).toContain("get_ops_marketing_lifecycle_funnel_snapshot: {");
+    expect(generated).toContain("p_breakdown_limit: number");
+    expect(generated).toContain("p_since: string");
+  });
+});
+'''
+          Path('tests/marketing-lifecycle-conversion.test.ts').write_text(lifecycle_test)
+          PY
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: 2.114.0
+
+      - name: Refresh generated public schema contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase db start
+          trap 'supabase stop --no-backup || true' EXIT
+          supabase db reset --local --no-seed
+          supabase gen types typescript --local --schema public > features/shared/types/types/supabase.ts
+
+      - name: Commit lifecycle implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            features/ops/server/get-marketing-funnel.ts \
+            features/ops/components/OpsMarketingFunnel.tsx \
+            features/shared/types/types/supabase.ts \
+            supabase/migrations/20261007204500_marketing_lifecycle_conversion.sql \
+            tests/ops-marketing-funnel.test.ts \
+            tests/marketing-lifecycle-conversion.test.ts
+          git commit -m "Measure acquisition lifecycle conversion"
+          git push origin HEAD:analytics/lifecycle-conversion-funnel
