@@ -4,6 +4,10 @@ import { useState } from "react";
 import { Check } from "lucide-react";
 
 import {
+  isAcquisitionMarketingPath,
+  trackMarketingEvent,
+} from "@/features/analytics/marketingEvents";
+import {
   PRODUCT_PACKAGE_PRICING,
   type ProductPackageKey,
 } from "@/features/stripe/lib/stripe/product-packages";
@@ -108,11 +112,30 @@ export default function PricingSection({
   ) => {
     if (busyKey) return;
     setBusyKey(packageKey);
+    const checkoutAttemptId = crypto.randomUUID();
+    const interval: BillingInterval = "monthly";
+    const isAcquisition = isAcquisitionMarketingPath(window.location.pathname);
+
+    if (isAcquisition) {
+      trackMarketingEvent(
+        checkoutMode === "trial"
+          ? "marketing_trial_click"
+          : "marketing_subscribe_click",
+        {
+          source: window.location.pathname,
+          destination: "/api/stripe/checkout",
+          packageKey,
+          interval,
+          checkoutMode,
+          checkoutAttemptId,
+        },
+      );
+    }
+
     try {
-      const checkoutAttemptId = crypto.randomUUID();
       await onCheckout({
         packageKey,
-        interval: "monthly",
+        interval,
         checkoutAttemptId,
         checkoutMode,
       });

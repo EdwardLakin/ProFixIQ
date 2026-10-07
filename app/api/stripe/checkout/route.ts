@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { z } from "zod";
 
+import { recordMarketingCheckoutStarted } from "@/features/analytics/server/checkout-started";
 import { readBoundedJson } from "@/features/shared/lib/server/bounded-json";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { OWNER_PIN_PURPOSES } from "@/features/shared/lib/server/owner-pin";
@@ -334,6 +335,14 @@ export async function POST(req: Request) {
       const trialDays =
         parsed.data.checkoutMode === "paid" ? 0 : configuredDays;
       const admin = createAdminSupabase();
+      const recordCheckoutStarted = () =>
+        recordMarketingCheckoutStarted({
+          admin,
+          checkoutAttemptId: attemptId,
+          packageKey: selection.packageKey,
+          interval: parsed.data.interval ?? null,
+          checkoutMode: trialDays > 0 ? "trial" : "paid",
+        });
       const intent = await beginStripeAcquisitionIntent({
         admin,
         requestKey: `acq:${attemptId}`,
@@ -345,10 +354,15 @@ export async function POST(req: Request) {
       });
 
       const successUrl = `${baseUrl}/auth/callback?flow=acquisition&session_id={CHECKOUT_SESSION_ID}&surface=${selection.acquisitionSurface}`;
-      if (intent.status === "expired" || intent.status === "failed") {
-        return noStoreJson({ error: "Checkout attempt expired" }, 409);
-      }
       if (intent.checkoutSessionId) {
+        // The canonical acquisition ledger proves a real Checkout Session was
+        // attached even if the intent has since expired. Reconcile analytics
+        // before preserving the existing expired/inactive response behavior.
+        await recordCheckoutStarted();
+        if (intent.status === "expired" || intent.status === "failed") {
+          return noStoreJson({ error: "Checkout attempt expired" }, 409);
+        }
+
         const existing = await stripe.checkout.sessions.retrieve(
           intent.checkoutSessionId,
         );
@@ -370,6 +384,9 @@ export async function POST(req: Request) {
           { error: "Checkout attempt is no longer active" },
           409,
         );
+      }
+      if (intent.status === "expired" || intent.status === "failed") {
+        return noStoreJson({ error: "Checkout attempt expired" }, 409);
       }
 
       const metadata = acquisitionMetadata({
@@ -398,6 +415,7 @@ export async function POST(req: Request) {
         nonce: intent.nonce,
         checkoutSessionId: session.id,
       });
+      await recordCheckoutStarted();
       return noStoreJson({ ok: true, sessionId: session.id, url: session.url });
     }
 

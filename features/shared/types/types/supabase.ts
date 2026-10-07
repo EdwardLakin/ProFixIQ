@@ -10066,6 +10066,45 @@ export type Database = {
         }
         Relationships: []
       }
+      marketing_events: {
+        Row: {
+          anonymous_session_id: string | null
+          checkout_attempt_id: string | null
+          checkout_mode: string | null
+          created_at: string
+          destination: string | null
+          event_name: string
+          id: string
+          interval: string | null
+          package_key: string | null
+          source_path: string | null
+        }
+        Insert: {
+          anonymous_session_id?: string | null
+          checkout_attempt_id?: string | null
+          checkout_mode?: string | null
+          created_at?: string
+          destination?: string | null
+          event_name: string
+          id?: string
+          interval?: string | null
+          package_key?: string | null
+          source_path?: string | null
+        }
+        Update: {
+          anonymous_session_id?: string | null
+          checkout_attempt_id?: string | null
+          checkout_mode?: string | null
+          created_at?: string
+          destination?: string | null
+          event_name?: string
+          id?: string
+          interval?: string | null
+          package_key?: string | null
+          source_path?: string | null
+        }
+        Relationships: []
+      }
       media_uploads: {
         Row: {
           analysis_summary: string | null

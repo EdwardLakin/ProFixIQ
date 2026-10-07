@@ -36,39 +36,30 @@ export default function ComparePlansPage() {
     checkoutAttemptId: string;
     checkoutMode: "trial" | "paid";
   }) => {
-    try {
-      const res = await fetch("/api/stripe/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          flow: "acquisition",
-          packageKey,
-          interval,
-          checkoutAttemptId,
-          checkoutMode,
-        }),
-      });
+    const res = await fetch("/api/stripe/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        flow: "acquisition",
+        packageKey,
+        interval,
+        checkoutAttemptId,
+        checkoutMode,
+      }),
+    });
 
-      const data = await res.json().catch(() => ({}));
+    const data = await res.json().catch(() => ({}));
 
-      if (!res.ok) {
-        toast.error(data?.details || data?.error || "Checkout failed");
-        return;
-      }
-
-      if (data?.url) {
-        window.location.href = data.url;
-        return;
-      }
-
-      toast.error("No checkout URL returned");
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Unexpected error starting checkout.";
-      toast.error(message);
+    if (!res.ok) {
+      const message = data?.details || data?.error || "Checkout failed";
+      throw new Error(message);
     }
+
+    if (!data?.url) {
+      throw new Error("No checkout URL returned");
+    }
+
+    window.location.href = data.url;
   };
 
   return (
