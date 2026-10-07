@@ -382,6 +382,10 @@ export async function middleware(req: NextRequest) {
     pathname.startsWith("/compare-plans") ||
     pathname === "/compare/fullbay-alternative" ||
     pathname === "/compare/profixiq-vs-fullbay" ||
+    pathname === "/mobile-truck-repair-software" ||
+    pathname === "/service-truck-work-order-software" ||
+    pathname === "/heavy-equipment-repair-software" ||
+    pathname === "/off-highway-equipment-repair-software" ||
     pathname.startsWith("/subscribe") ||
     pathname.startsWith("/confirm") ||
     pathname.startsWith("/signup") ||
@@ -861,6 +865,10 @@ export const config = {
     "/compare-plans",
     "/compare/fullbay-alternative",
     "/compare/profixiq-vs-fullbay",
+    "/mobile-truck-repair-software",
+    "/service-truck-work-order-software",
+    "/heavy-equipment-repair-software",
+    "/off-highway-equipment-repair-software",
     "/subscribe",
     "/confirm",
     "/signup",
