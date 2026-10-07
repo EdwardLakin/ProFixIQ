@@ -4,22 +4,15 @@ import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 
 import {
+  isAcquisitionMarketingPath,
   trackMarketingEvent,
   type MarketingEventName,
 } from "@/features/analytics/marketingEvents";
 
-function eventForHref(href: string, text: string): MarketingEventName | null {
-  const normalized = href.split("?")[0]?.split("#")[0] ?? href;
-  const label = text.trim().toLowerCase();
-
-  if (normalized === "/request-demo") return "marketing_demo_click";
-  if (normalized === "/compare-plans") {
-    return label.includes("subscribe")
-      ? "marketing_subscribe_click"
-      : "marketing_trial_click";
-  }
-  if (normalized === "/subscribe") return "marketing_subscribe_click";
-
+function eventForPath(pathname: string): MarketingEventName | null {
+  if (pathname === "/request-demo") return "marketing_demo_click";
+  if (pathname === "/compare-plans") return "marketing_trial_click";
+  if (pathname === "/subscribe") return "marketing_subscribe_click";
   return null;
 }
 
@@ -40,6 +33,8 @@ export default function MarketingEventBridge() {
 
   useEffect(() => {
     const handleClick = (event: MouseEvent) => {
+      if (!isAcquisitionMarketingPath(window.location.pathname)) return;
+
       const target = event.target;
       if (!(target instanceof Element)) return;
 
@@ -49,12 +44,19 @@ export default function MarketingEventBridge() {
       const href = anchor.getAttribute("href");
       if (!href?.startsWith("/")) return;
 
-      const marketingEvent = eventForHref(href, anchor.textContent ?? "");
+      let destinationPath: string;
+      try {
+        destinationPath = new URL(href, window.location.origin).pathname;
+      } catch {
+        return;
+      }
+
+      const marketingEvent = eventForPath(destinationPath);
       if (!marketingEvent) return;
 
       trackMarketingEvent(marketingEvent, {
         source: window.location.pathname,
-        destination: href,
+        destination: destinationPath,
       });
     };
 
