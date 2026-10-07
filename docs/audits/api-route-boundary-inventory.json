@@ -626,7 +626,7 @@
     "hasRouteHandlerSupabaseAuthClient": false,
     "hasAuthGetUser": true,
     "hasServiceRolePattern": false,
-    "hasShopReference": false,
+    "hasShopReference": true,
     "hasRoleOrCapabilityReference": true,
     "routeClassGuess": "staff_or_admin",
     "riskFlags": [],
@@ -2488,7 +2488,7 @@
     "hasRouteHandlerSupabaseAuthClient": false,
     "hasAuthGetUser": false,
     "hasServiceRolePattern": false,
-    "hasShopReference": false,
+    "hasShopReference": true,
     "hasRoleOrCapabilityReference": true,
     "routeClassGuess": "staff_or_admin",
     "riskFlags": [
@@ -3351,7 +3351,7 @@
     "hasRouteHandlerSupabaseAuthClient": false,
     "hasAuthGetUser": true,
     "hasServiceRolePattern": false,
-    "hasShopReference": false,
+    "hasShopReference": true,
     "hasRoleOrCapabilityReference": false,
     "routeClassGuess": "staff_or_admin",
     "riskFlags": [],
@@ -6258,6 +6258,22 @@
     "riskLevel": "low"
   },
   {
+    "path": "app/api/public/early-access/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": false,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": false,
+    "hasRoleOrCapabilityReference": false,
+    "routeClassGuess": "public_or_token",
+    "riskFlags": [],
+    "riskLevel": "low"
+  },
+  {
     "path": "app/api/qb-route-test/route.ts",
     "methods": [
       "GET"
@@ -7837,7 +7853,7 @@
     "hasRouteHandlerSupabaseAuthClient": false,
     "hasAuthGetUser": false,
     "hasServiceRolePattern": false,
-    "hasShopReference": false,
+    "hasShopReference": true,
     "hasRoleOrCapabilityReference": true,
     "routeClassGuess": "staff_or_admin",
     "riskFlags": [

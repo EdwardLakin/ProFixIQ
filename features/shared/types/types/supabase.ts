@@ -4189,6 +4189,104 @@ export type Database = {
           },
         ]
       }
+      early_access_applications: {
+        Row: {
+          company_name: string
+          created_at: string
+          current_software: string | null
+          email: string
+          feedback_commitment: boolean
+          fleet_asset_count: number | null
+          full_name: string
+          id: string
+          interested_surfaces: string[]
+          location: string | null
+          location_count: number
+          offer_terms_accepted: boolean
+          offer_terms_version: string
+          operation_type: string
+          phone: string | null
+          primary_challenge: string
+          product_package: string
+          purchase_timeline: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          source: string | null
+          status: string
+          team_size: number | null
+          technician_count: number | null
+          utm_campaign: string | null
+          utm_medium: string | null
+          utm_source: string | null
+        }
+        Insert: {
+          company_name: string
+          created_at?: string
+          current_software?: string | null
+          email: string
+          feedback_commitment?: boolean
+          fleet_asset_count?: number | null
+          full_name: string
+          id?: string
+          interested_surfaces?: string[]
+          location?: string | null
+          location_count?: number
+          offer_terms_accepted?: boolean
+          offer_terms_version: string
+          operation_type: string
+          phone?: string | null
+          primary_challenge: string
+          product_package: string
+          purchase_timeline?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source?: string | null
+          status?: string
+          team_size?: number | null
+          technician_count?: number | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Update: {
+          company_name?: string
+          created_at?: string
+          current_software?: string | null
+          email?: string
+          feedback_commitment?: boolean
+          fleet_asset_count?: number | null
+          full_name?: string
+          id?: string
+          interested_surfaces?: string[]
+          location?: string | null
+          location_count?: number
+          offer_terms_accepted?: boolean
+          offer_terms_version?: string
+          operation_type?: string
+          phone?: string | null
+          primary_challenge?: string
+          product_package?: string
+          purchase_timeline?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          source?: string | null
+          status?: string
+          team_size?: number | null
+          technician_count?: number | null
+          utm_campaign?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "early_access_applications_reviewed_by_fkey"
+            columns: ["reviewed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_delivery_events: {
         Row: {
           created_at: string
