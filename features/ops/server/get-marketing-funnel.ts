@@ -16,6 +16,7 @@ const EVENT_NAMES = [
 ] as const;
 
 type FunnelEventName = (typeof EVENT_NAMES)[number];
+type AdminClient = ReturnType<typeof createAdminSupabase>;
 
 type MarketingEventRow = {
   event_name: string;
@@ -68,11 +69,11 @@ function pct(numerator: number, denominator: number): number {
 }
 
 async function countRows(
+  admin: AdminClient,
+  since: string,
   eventName?: FunnelEventName,
   checkoutMode?: "trial" | "paid",
 ): Promise<number> {
-  const admin = createAdminSupabase();
-  const since = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString();
   let query = admin
     .from("marketing_events")
     .select("id", { count: "exact", head: true })
@@ -86,8 +87,10 @@ async function countRows(
   return count ?? 0;
 }
 
-async function readBreakdownRows(since: string): Promise<MarketingEventRow[]> {
-  const admin = createAdminSupabase();
+async function readBreakdownRows(
+  admin: AdminClient,
+  since: string,
+): Promise<MarketingEventRow[]> {
   const rows: MarketingEventRow[] = [];
 
   for (let offset = 0; offset < MAX_BREAKDOWN_ROWS; offset += PAGE_SIZE) {
@@ -166,6 +169,7 @@ function buildPackageRows(rows: MarketingEventRow[]): OpsMarketingPackageRow[] {
 export async function getOpsMarketingFunnel(): Promise<OpsMarketingFunnelSnapshot> {
   await requireOpsOperatorPageAccess();
 
+  const admin = createAdminSupabase();
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString();
   const [
     totalEvents,
@@ -178,15 +182,15 @@ export async function getOpsMarketingFunnel(): Promise<OpsMarketingFunnelSnapsho
     paidCheckouts,
     rows,
   ] = await Promise.all([
-    countRows(),
-    countRows("pricing_view"),
-    countRows("marketing_trial_click"),
-    countRows("marketing_subscribe_click"),
-    countRows("marketing_demo_click"),
-    countRows("checkout_started"),
-    countRows("checkout_started", "trial"),
-    countRows("checkout_started", "paid"),
-    readBreakdownRows(since),
+    countRows(admin, since),
+    countRows(admin, since, "pricing_view"),
+    countRows(admin, since, "marketing_trial_click"),
+    countRows(admin, since, "marketing_subscribe_click"),
+    countRows(admin, since, "marketing_demo_click"),
+    countRows(admin, since, "checkout_started"),
+    countRows(admin, since, "checkout_started", "trial"),
+    countRows(admin, since, "checkout_started", "paid"),
+    readBreakdownRows(admin, since),
   ]);
 
   const checkoutIntentClicks = trialClicks + subscribeClicks;
