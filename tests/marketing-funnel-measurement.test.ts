@@ -87,30 +87,46 @@ describe("marketing funnel measurement", () => {
     expect(helper).toContain("checkout_attempt_id: input.checkoutAttemptId");
   });
 
-  it("backfills checkout_started for every verified attached acquisition session before status branching", () => {
+  it("reconciles attached checkout_started before intent expiry can short-circuit", () => {
     const checkout = source("app/api/stripe/checkout/route.ts");
     const retryStart = checkout.indexOf("if (intent.checkoutSessionId) {");
     const retryEnd = checkout.indexOf("const metadata = acquisitionMetadata", retryStart);
     const retryBlock = checkout.slice(retryStart, retryEnd);
+    const recordIndex = retryBlock.indexOf("await recordCheckoutStarted();");
+    const firstStatusIndex = retryBlock.indexOf('intent.status === "expired"');
     const retrieveIndex = retryBlock.indexOf(
       "await stripe.checkout.sessions.retrieve(",
     );
-    const recordIndex = retryBlock.indexOf("await recordCheckoutStarted();");
     const openIndex = retryBlock.indexOf('existing.status === "open"');
     const completeIndex = retryBlock.indexOf('existing.status === "complete"');
     const inactiveIndex = retryBlock.indexOf(
       "Checkout attempt is no longer active",
     );
+    const secondStatusIndex = retryBlock.indexOf(
+      'intent.status === "expired"',
+      firstStatusIndex + 1,
+    );
     const retryRecords = retryBlock.match(/await recordCheckoutStarted\(\);/g) ?? [];
 
     expect(retryStart).toBeGreaterThan(-1);
     expect(retryEnd).toBeGreaterThan(retryStart);
-    expect(retrieveIndex).toBeGreaterThan(-1);
-    expect(recordIndex).toBeGreaterThan(retrieveIndex);
-    expect(openIndex).toBeGreaterThan(recordIndex);
-    expect(completeIndex).toBeGreaterThan(recordIndex);
-    expect(inactiveIndex).toBeGreaterThan(recordIndex);
+    expect(recordIndex).toBeGreaterThan(-1);
+    expect(firstStatusIndex).toBeGreaterThan(recordIndex);
+    expect(retrieveIndex).toBeGreaterThan(firstStatusIndex);
+    expect(openIndex).toBeGreaterThan(retrieveIndex);
+    expect(completeIndex).toBeGreaterThan(retrieveIndex);
+    expect(inactiveIndex).toBeGreaterThan(retrieveIndex);
+    expect(secondStatusIndex).toBeGreaterThan(inactiveIndex);
     expect(retryRecords).toHaveLength(1);
+  });
+
+  it("strictly bounds checkout analytics persistence latency", () => {
+    const helper = source("features/analytics/server/checkout-started.ts");
+
+    expect(helper).toContain("MARKETING_PERSISTENCE_TIMEOUT_MS = 250");
+    expect(helper).toContain("Promise.race([");
+    expect(helper).toContain("setTimeout(");
+    expect(helper).toContain("marketing_checkout_started_persistence_timed_out");
   });
 
   it("makes duplicate checkout_started attempts idempotent", () => {

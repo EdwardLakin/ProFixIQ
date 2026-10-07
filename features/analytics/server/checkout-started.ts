@@ -7,6 +7,8 @@ type AdminClient = ReturnType<typeof createAdminSupabase>;
 type MarketingCheckoutMode = "trial" | "paid";
 type MarketingCheckoutInterval = "monthly" | null;
 
+const MARKETING_PERSISTENCE_TIMEOUT_MS = 250;
+
 export async function recordMarketingCheckoutStarted(input: {
   admin: AdminClient;
   checkoutAttemptId: string;
@@ -14,16 +16,32 @@ export async function recordMarketingCheckoutStarted(input: {
   interval: MarketingCheckoutInterval;
   checkoutMode: MarketingCheckoutMode;
 }): Promise<void> {
-  try {
-    const { error } = await input.admin.from("marketing_events").insert({
-      event_name: "checkout_started",
-      destination: "stripe_checkout",
-      package_key: input.packageKey,
-      interval: input.interval,
-      checkout_mode: input.checkoutMode,
-      checkout_attempt_id: input.checkoutAttemptId,
-    });
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
 
+  try {
+    const result = await Promise.race([
+      input.admin.from("marketing_events").insert({
+        event_name: "checkout_started",
+        destination: "stripe_checkout",
+        package_key: input.packageKey,
+        interval: input.interval,
+        checkout_mode: input.checkoutMode,
+        checkout_attempt_id: input.checkoutAttemptId,
+      }),
+      new Promise<null>((resolve) => {
+        timeoutId = setTimeout(
+          () => resolve(null),
+          MARKETING_PERSISTENCE_TIMEOUT_MS,
+        );
+      }),
+    ]);
+
+    if (result === null) {
+      console.error("marketing_checkout_started_persistence_timed_out");
+      return;
+    }
+
+    const { error } = result;
     if (!error || error.code === "23505") return;
 
     console.error("marketing_checkout_started_persistence_failed", {
@@ -33,5 +51,7 @@ export async function recordMarketingCheckoutStarted(input: {
     console.error("marketing_checkout_started_persistence_failed", {
       message: error instanceof Error ? error.message : "unknown",
     });
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
   }
 }

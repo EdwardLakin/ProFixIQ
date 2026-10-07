@@ -354,14 +354,18 @@ export async function POST(req: Request) {
       });
 
       const successUrl = `${baseUrl}/auth/callback?flow=acquisition&session_id={CHECKOUT_SESSION_ID}&surface=${selection.acquisitionSurface}`;
-      if (intent.status === "expired" || intent.status === "failed") {
-        return noStoreJson({ error: "Checkout attempt expired" }, 409);
-      }
       if (intent.checkoutSessionId) {
+        // The canonical acquisition ledger proves a real Checkout Session was
+        // attached even if the intent has since expired. Reconcile analytics
+        // before preserving the existing expired/inactive response behavior.
+        await recordCheckoutStarted();
+        if (intent.status === "expired" || intent.status === "failed") {
+          return noStoreJson({ error: "Checkout attempt expired" }, 409);
+        }
+
         const existing = await stripe.checkout.sessions.retrieve(
           intent.checkoutSessionId,
         );
-        await recordCheckoutStarted();
         if (existing.status === "open" && existing.url) {
           return noStoreJson({
             ok: true,
@@ -380,6 +384,9 @@ export async function POST(req: Request) {
           { error: "Checkout attempt is no longer active" },
           409,
         );
+      }
+      if (intent.status === "expired" || intent.status === "failed") {
+        return noStoreJson({ error: "Checkout attempt expired" }, 409);
       }
 
       const metadata = acquisitionMetadata({
