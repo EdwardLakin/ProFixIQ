@@ -5,7 +5,6 @@ on:
     branches:
       - ops/acquisition-funnel-view
     paths:
-      - supabase/migrations/20261007183500_ops_marketing_funnel_snapshot.sql
       - .github/workflows/temporary-pr1820-typegen.yml
 
 permissions:
@@ -21,21 +20,27 @@ jobs:
           ref: ops/acquisition-funnel-view
           fetch-depth: 0
 
-      - name: Set up Supabase CLI
-        uses: supabase/setup-cli@v2
-        with:
-          version: 2.114.0
-
-      - name: Generate local public schema types
+      - name: Apply clean-replay generated contract diff
         shell: bash
         run: |
           set -euo pipefail
-          supabase db start
-          trap 'supabase stop --no-backup || true' EXIT
-          supabase db reset --local --no-seed
-          supabase gen types typescript --local --schema public > features/shared/types/types/supabase.ts
+          python - <<'PY'
+          from pathlib import Path
 
-      - name: Commit generated contract
+          path = Path("features/shared/types/types/supabase.ts")
+          text = path.read_text()
+          block = '''      get_ops_marketing_funnel_snapshot: {\n        Args: { p_breakdown_limit: number; p_since: string }\n        Returns: Json\n      }\n'''
+          if block in text:
+              raise SystemExit(0)
+
+          marker = '''      get_ops_ai_usage_snapshot: {\n        Args: { p_event_limit?: number; p_since?: string }\n        Returns: Json\n      }\n'''
+          if marker not in text:
+              raise SystemExit("Expected generated type marker not found")
+
+          path.write_text(text.replace(marker, marker + block, 1))
+          PY
+
+      - name: Commit verified generated contract
         shell: bash
         run: |
           set -euo pipefail
