@@ -1,0 +1,71 @@
+name: Early Access PR2 Preflight
+
+on:
+  push:
+    branches:
+      - feat/early-access-discount-checkout-pr2
+    paths:
+      - .github/workflows/early-access-pr2-preflight.yml
+
+permissions:
+  contents: write
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/early-access-discount-checkout-pr2
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.8.1
+          run_install: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Refresh API route boundary inventory
+        run: pnpm audit:api-routes
+
+      - name: Run Early Access PR2 regression
+        run: pnpm vitest run tests/early-access-intake.test.ts tests/early-access-discount-checkout.test.ts
+
+      - name: Type-check
+        run: pnpm typecheck
+
+      - name: Lint changed implementation files
+        run: >-
+          pnpm eslint
+          app/api/ops/early-access/[id]/approve/route.ts
+          app/api/ops/early-access/[id]/decline/route.ts
+          app/api/public/early-access/checkout/route.ts
+          app/early-access/approved/page.tsx
+          app/ops/early-access/page.tsx
+          features/ops/components/EarlyAccessReviewActions.tsx
+          features/shared/components/EarlyAccessCheckoutButton.tsx
+          features/stripe/api/stripe/checkout/link-user/route.ts
+          features/stripe/lib/server/early-access-checkout.ts
+          features/stripe/lib/server/early-access-discount.ts
+          tests/early-access-discount-checkout.test.ts
+
+      - name: Remove temporary workflow
+        run: rm .github/workflows/early-access-pr2-preflight.yml
+
+      - name: Commit refreshed inventory and self-remove
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/audits/api-route-boundary-inventory.json docs/audits/api-route-boundary-inventory.md .github/workflows/early-access-pr2-preflight.yml
+          git diff --cached --quiet && exit 0
+          git commit -m "Refresh Early Access PR2 route contracts"
+          git push origin HEAD:feat/early-access-discount-checkout-pr2
