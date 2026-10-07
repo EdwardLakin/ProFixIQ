@@ -361,8 +361,8 @@ export async function POST(req: Request) {
         const existing = await stripe.checkout.sessions.retrieve(
           intent.checkoutSessionId,
         );
+        await recordCheckoutStarted();
         if (existing.status === "open" && existing.url) {
-          await recordCheckoutStarted();
           return noStoreJson({
             ok: true,
             sessionId: existing.id,
@@ -370,7 +370,6 @@ export async function POST(req: Request) {
           });
         }
         if (existing.status === "complete") {
-          await recordCheckoutStarted();
           return noStoreJson({
             ok: true,
             sessionId: existing.id,
