@@ -34,6 +34,14 @@ type ResolvedIntent = {
   existingSession: Stripe.Checkout.Session | null;
 };
 
+type RpcError = { message?: string; code?: string | null };
+type EarlyAccessRpcClient = {
+  rpc(
+    name: string,
+    args: Record<string, unknown>,
+  ): PromiseLike<{ data: unknown; error: RpcError | null }>;
+};
+
 function mustEnv(name: string): string {
   const value = String(process.env[name] ?? "").trim();
   if (!value) throw new Error(`missing ${name}`);
@@ -58,6 +66,30 @@ function automaticTaxEnabled(): boolean {
 
 function integrationIdentifier(intentId: string): string {
   return `profixiq_early_access_${intentId.replaceAll("-", "").slice(0, 12)}`;
+}
+
+async function retireExpiredEarlyAccessIntent(input: {
+  admin: ReturnType<typeof createAdminSupabase>;
+  grantId: string;
+  checkoutAttemptNamespace: string;
+  intentId: string;
+  checkoutSessionId: string;
+}): Promise<void> {
+  const client = input.admin as unknown as EarlyAccessRpcClient;
+  const { data, error } = await client.rpc(
+    "retire_early_access_acquisition_intent",
+    {
+      p_grant_id: input.grantId,
+      p_checkout_attempt_namespace: input.checkoutAttemptNamespace,
+      p_intent_id: input.intentId,
+      p_checkout_session_id: input.checkoutSessionId,
+    },
+  );
+  if (error || data !== true) {
+    throw new Error(
+      `Early Access expired checkout could not be retired (${error?.code ?? "rejected"}).`,
+    );
+  }
 }
 
 async function ensureCustomer(input: {
@@ -186,6 +218,16 @@ async function resolveUsableIntent(input: {
         existingSession.status === "complete"
       ) {
         return { intent, existingSession };
+      }
+
+      if (existingSession.status === "expired") {
+        await retireExpiredEarlyAccessIntent({
+          admin: input.admin,
+          grantId: input.grantId,
+          checkoutAttemptNamespace: input.checkoutAttemptNamespace,
+          intentId: intent.id,
+          checkoutSessionId: existingSession.id,
+        });
       }
 
       requestKey = `${requestKeyPrefix}:after-session:${existingSession.id}`;
