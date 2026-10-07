@@ -1,4 +1,5 @@
 import { Inbox } from "lucide-react";
+import EarlyAccessReviewActions from "@/features/ops/components/EarlyAccessReviewActions";
 import { listEarlyAccessApplications } from "@/features/ops/server/earlyAccessApplications";
 
 export const dynamic = "force-dynamic";
@@ -32,8 +33,8 @@ export default async function OpsEarlyAccessPage() {
         <div className="text-xs font-black uppercase tracking-[0.18em] text-sky-300">Acquisition</div>
         <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">Early Access</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-[color:var(--theme-text-secondary)]">
-          Applications from the public /early-access campaign. Each application is bound to a specific product so a
-          later approval flow can issue the correct product-specific discounted signup without exposing a reusable coupon.
+          Review campaign applications and issue a private, product-bound signup link. Approved shops receive a 7-day
+          free trial followed by 30% off the approved base subscription for the next 6 paid months.
         </p>
       </div>
 
@@ -102,6 +103,8 @@ export default async function OpsEarlyAccessPage() {
                   <div className="text-xs text-[color:var(--theme-text-muted)]">Primary workflow problem</div>
                   <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-[color:var(--theme-text-primary)]">{application.primaryChallenge}</p>
                 </div>
+
+                <EarlyAccessReviewActions applicationId={application.id} />
               </article>
             ))}
           </div>
@@ -113,12 +116,17 @@ export default async function OpsEarlyAccessPage() {
           <h2 className="font-bold">Reviewed history</h2>
           <div className="mt-3 divide-y divide-[color:var(--theme-border-soft)]">
             {reviewed.slice(0, 20).map((application) => (
-              <div key={application.id} className="flex flex-col gap-1 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <span className="font-semibold">{application.companyName}</span>{" "}
-                  <span className="text-[color:var(--theme-text-muted)]">· {pretty(application.productPackage)} · {application.email}</span>
+              <div key={application.id} className="py-3 text-sm">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <span className="font-semibold">{application.companyName}</span>{" "}
+                    <span className="text-[color:var(--theme-text-muted)]">· {pretty(application.productPackage)} · {application.email}</span>
+                  </div>
+                  <span className={application.status === "approved" ? "text-emerald-300" : "text-[color:var(--theme-text-muted)]"}>{pretty(application.status)}</span>
                 </div>
-                <span className={application.status === "approved" ? "text-emerald-300" : "text-[color:var(--theme-text-muted)]"}>{pretty(application.status)}</span>
+                {application.status === "approved" ? (
+                  <EarlyAccessReviewActions applicationId={application.id} mode="reissue" />
+                ) : null}
               </div>
             ))}
           </div>

@@ -546,6 +546,20 @@ jobs:
             -f tests/security/stripe-acquisition-recovery.runtime.sql \
             2>&1 | tee stripe-acquisition-recovery-runtime.log
 
+      - name: Execute Early Access discount grant integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/early-access-discount.runtime.sql \
+            2>&1 | tee early-access-discount-runtime.log
+
       - name: Execute P0 financial outbox idempotency integration
         shell: bash
         env:
@@ -906,6 +920,7 @@ jobs:
             ai-budget-reservations-runtime.log
             p0-006-stripe-identity-runtime.log
             stripe-acquisition-recovery-runtime.log
+            early-access-discount-runtime.log
             p0-007-financial-outbox-runtime.log
             p0-007-financial-outbox-concurrency.log
             p1-012-stripe-webhook-receipts-runtime.log
