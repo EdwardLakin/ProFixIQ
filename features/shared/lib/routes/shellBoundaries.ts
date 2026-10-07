@@ -18,6 +18,7 @@ const STANDALONE_PUBLIC_PREFIXES = [
   "/compare-plans",
   "/subscribe",
   "/demo",
+  "/early-access",
   "/field-service",
   "/fleet-maintenance",
   "/fleet-repair-management-software",
