@@ -11,6 +11,10 @@ export default function robots(): MetadataRoute.Robots {
         "/fleet-maintenance",
         "/fleet-repair-management-software",
         "/fleet-preventive-maintenance-software",
+        "/mobile-truck-repair-software",
+        "/service-truck-work-order-software",
+        "/heavy-equipment-repair-software",
+        "/off-highway-equipment-repair-software",
         "/request-demo",
       ],
       disallow: [
