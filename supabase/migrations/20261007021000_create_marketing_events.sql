@@ -22,6 +22,7 @@ create table if not exists public.marketing_events (
 alter table public.marketing_events enable row level security;
 
 revoke all on table public.marketing_events from anon, authenticated;
+grant insert on table public.marketing_events to service_role;
 
 create index if not exists marketing_events_created_at_idx
   on public.marketing_events (created_at desc);
