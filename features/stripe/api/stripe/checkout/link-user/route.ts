@@ -10,6 +10,10 @@ import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import { isStripeSubscriptionAccessBearing } from "@/features/stripe/lib/stripe/subscriptionStatus";
 import { reconcileShopBillingFromUser } from "@/features/stripe/lib/server/canonical-shop-billing";
 import {
+  earlyAccessGrantIdFromStripeMetadata,
+  redeemEarlyAccessGrantAfterClaim,
+} from "@/features/stripe/lib/server/early-access-discount";
+import {
   claimStripeAcquisitionIntent,
   getStripeCheckoutEmail,
   getStripeCheckoutPriceId,
@@ -134,6 +138,28 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
         },
         claimFailureStatus(claim.reason),
       );
+    }
+
+    const earlyAccessGrantId = earlyAccessGrantIdFromStripeMetadata(session.metadata);
+    if (earlyAccessGrantId) {
+      if (!claim.shopId || !metadata.packageKey) {
+        console.error("early_access_grant_claim_missing_identity", {
+          grantId: earlyAccessGrantId,
+          intentId: metadata.intentId,
+          shopId: claim.shopId,
+          packageKey: metadata.packageKey,
+        });
+        return noStoreJson({ error: "Early Access account linking is incomplete" }, 409);
+      }
+
+      await redeemEarlyAccessGrantAfterClaim({
+        grantId: earlyAccessGrantId,
+        shopId: claim.shopId,
+        checkoutEmail,
+        packageKey: metadata.packageKey,
+        checkoutSessionId: session.id,
+        subscriptionId,
+      });
     }
 
     const shouldUpgradePortalIdentity =
