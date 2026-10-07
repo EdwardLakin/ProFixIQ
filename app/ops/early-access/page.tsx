@@ -116,12 +116,17 @@ export default async function OpsEarlyAccessPage() {
           <h2 className="font-bold">Reviewed history</h2>
           <div className="mt-3 divide-y divide-[color:var(--theme-border-soft)]">
             {reviewed.slice(0, 20).map((application) => (
-              <div key={application.id} className="flex flex-col gap-1 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <span className="font-semibold">{application.companyName}</span>{" "}
-                  <span className="text-[color:var(--theme-text-muted)]">· {pretty(application.productPackage)} · {application.email}</span>
+              <div key={application.id} className="py-3 text-sm">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <span className="font-semibold">{application.companyName}</span>{" "}
+                    <span className="text-[color:var(--theme-text-muted)]">· {pretty(application.productPackage)} · {application.email}</span>
+                  </div>
+                  <span className={application.status === "approved" ? "text-emerald-300" : "text-[color:var(--theme-text-muted)]"}>{pretty(application.status)}</span>
                 </div>
-                <span className={application.status === "approved" ? "text-emerald-300" : "text-[color:var(--theme-text-muted)]"}>{pretty(application.status)}</span>
+                {application.status === "approved" ? (
+                  <EarlyAccessReviewActions applicationId={application.id} mode="reissue" />
+                ) : null}
               </div>
             ))}
           </div>
