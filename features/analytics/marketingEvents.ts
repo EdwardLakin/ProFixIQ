@@ -12,8 +12,73 @@ export type MarketingEventPayload = {
   destination?: string;
   packageKey?: string;
   interval?: "monthly" | "yearly";
-  [key: string]: unknown;
+  checkoutMode?: "trial" | "paid";
+  checkoutAttemptId?: string;
 };
+
+const ACQUISITION_SOURCE_PATHS = new Set([
+  "/",
+  "/compare-plans",
+  "/request-demo",
+  "/heavy-duty-shop-management-software",
+  "/diesel-repair-shop-software",
+  "/heavy-duty-work-order-software",
+  "/heavy-duty-inspection-software",
+  "/compare/fullbay-alternative",
+  "/compare/profixiq-vs-fullbay",
+  "/fleet-repair-management-software",
+  "/dvir-defect-tracking-software",
+  "/fleet-preventive-maintenance-software",
+  "/mobile-truck-repair-software",
+  "/service-truck-work-order-software",
+  "/heavy-equipment-repair-software",
+  "/off-highway-equipment-repair-software",
+  "/field-service",
+  "/fleet-maintenance",
+]);
+
+export function isAcquisitionMarketingPath(pathname: string): boolean {
+  return ACQUISITION_SOURCE_PATHS.has(pathname);
+}
+
+function normalizePath(value: string | undefined): string | undefined {
+  if (!value) return undefined;
+  if (value === "stripe_checkout") return value;
+  try {
+    return new URL(value, "https://profixiq.com").pathname;
+  } catch {
+    return undefined;
+  }
+}
+
+function anonymousSessionId(): string | undefined {
+  try {
+    const key = "pfq-marketing-session-id";
+    const existing = window.sessionStorage.getItem(key);
+    if (existing) return existing;
+    const created = crypto.randomUUID();
+    window.sessionStorage.setItem(key, created);
+    return created;
+  } catch {
+    return undefined;
+  }
+}
+
+function persistMarketingEvent(detail: Record<string, unknown>) {
+  const body = JSON.stringify(detail);
+  if (typeof navigator.sendBeacon === "function") {
+    const payload = new Blob([body], { type: "application/json" });
+    if (navigator.sendBeacon("/api/analytics/marketing-events", payload)) return;
+  }
+
+  void fetch("/api/analytics/marketing-events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+    keepalive: true,
+    credentials: "same-origin",
+  }).catch(() => undefined);
+}
 
 export function trackMarketingEvent(
   event: MarketingEventName,
@@ -23,7 +88,13 @@ export function trackMarketingEvent(
 
   const detail = {
     event,
-    ...payload,
+    source: normalizePath(payload.source),
+    destination: normalizePath(payload.destination),
+    packageKey: payload.packageKey,
+    interval: payload.interval,
+    checkoutMode: payload.checkoutMode,
+    checkoutAttemptId: payload.checkoutAttemptId,
+    anonymousSessionId: anonymousSessionId(),
     timestamp: new Date().toISOString(),
   };
 
@@ -34,6 +105,7 @@ export function trackMarketingEvent(
   };
   const analyticsLayer = (analyticsWindow.dataLayer ??= []);
   analyticsLayer.push(detail);
+  persistMarketingEvent(detail);
 
   if (process.env.NODE_ENV !== "production") {
     // eslint-disable-next-line no-console
