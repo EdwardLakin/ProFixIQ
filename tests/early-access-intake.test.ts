@@ -89,14 +89,17 @@ describe("Early Access public intake", () => {
     expect(server).toContain(".limit(100)");
   });
 
-  it("exposes product and terms details in Ops without wiring discounted checkout yet", () => {
+  it("exposes product and terms details in Ops with gated review actions", () => {
     const opsPage = source("app/ops/early-access/page.tsx");
     const opsShell = source("features/ops/components/OpsShell.tsx");
+    const reviewActions = source("features/ops/components/EarlyAccessReviewActions.tsx");
 
     expect(opsPage).toContain("listEarlyAccessApplications");
     expect(opsPage).toContain("productPackage");
     expect(opsPage).toContain("offerTermsVersion");
-    expect(opsPage).toContain("product-specific discounted signup");
+    expect(opsPage).toContain("EarlyAccessReviewActions");
+    expect(reviewActions).toContain("/approve");
+    expect(reviewActions).toContain("/decline");
     expect(opsShell).toContain('/ops/early-access');
   });
 });
