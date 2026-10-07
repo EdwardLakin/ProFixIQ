@@ -1,0 +1,48 @@
+name: Temporary Lifecycle Typegen
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  typegen:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'analytics/lifecycle-conversion-funnel'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out branch
+        uses: actions/checkout@v4
+        with:
+          ref: analytics/lifecycle-conversion-funnel
+          fetch-depth: 0
+
+      - name: Set up Supabase CLI
+        uses: supabase/setup-cli@v2
+        with:
+          version: latest
+
+      - name: Start local Supabase and generate public schema types
+        shell: bash
+        run: |
+          set -euo pipefail
+          supabase start
+          supabase gen types typescript --local --schema public > features/shared/types/types/supabase.ts
+
+      - name: Commit generated contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add features/shared/types/types/supabase.ts
+          if git diff --cached --quiet; then
+            exit 0
+          fi
+          git commit -m "chore: refresh lifecycle Supabase types"
+          git push origin HEAD:analytics/lifecycle-conversion-funnel
+
+      - name: Stop local Supabase
+        if: always()
+        run: supabase stop --no-backup || true
