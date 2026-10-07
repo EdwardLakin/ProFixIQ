@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { Toaster, toast } from "sonner";
-import { trackMarketingEvent } from "@/features/analytics/marketingEvents";
 import {
   parseActivationContextFromSearchParams,
   persistActivationContext,
@@ -37,47 +36,33 @@ export default function ComparePlansPage() {
     checkoutAttemptId: string;
     checkoutMode: "trial" | "paid";
   }) => {
-    try {
-      const res = await fetch("/api/stripe/checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          flow: "acquisition",
-          packageKey,
-          interval,
-          checkoutAttemptId,
-          checkoutMode,
-        }),
-      });
+    const res = await fetch("/api/stripe/checkout", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        flow: "acquisition",
+        packageKey,
+        interval,
+        checkoutAttemptId,
+        checkoutMode,
+      }),
+    });
 
-      const data = await res.json().catch(() => ({}));
+    const data = await res.json().catch(() => ({}));
 
-      if (!res.ok) {
-        toast.error(data?.details || data?.error || "Checkout failed");
-        return;
-      }
-
-      if (data?.url) {
-        trackMarketingEvent("checkout_started", {
-          source: window.location.pathname,
-          destination: data.url,
-          packageKey,
-          interval,
-          checkoutMode,
-          checkoutAttemptId,
-        });
-        window.location.href = data.url;
-        return;
-      }
-
-      toast.error("No checkout URL returned");
-    } catch (err) {
-      const message =
-        err instanceof Error
-          ? err.message
-          : "Unexpected error starting checkout.";
+    if (!res.ok) {
+      const message = data?.details || data?.error || "Checkout failed";
       toast.error(message);
+      throw new Error(message);
     }
+
+    if (!data?.url) {
+      const message = "No checkout URL returned";
+      toast.error(message);
+      throw new Error(message);
+    }
+
+    window.location.href = data.url;
   };
 
   return (
