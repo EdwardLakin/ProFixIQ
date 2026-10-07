@@ -63,6 +63,7 @@ export type EarlyAccessGrant = {
   offerTermsVersion: string;
   expiresAt: string;
   stripeCouponId: string | null;
+  stripeCustomerId: string | null;
   checkoutAttemptNamespace: string;
 };
 
@@ -167,6 +168,7 @@ function assertGrantContract(
     offerTermsVersion: application.offer_terms_version,
     expiresAt,
     stripeCouponId: row.stripe_coupon_id,
+    stripeCustomerId: metadataString(metadata, "stripe_customer_id") || null,
     checkoutAttemptNamespace,
   };
 }
@@ -203,11 +205,7 @@ async function loadActiveGrantForApplication(applicationId: string): Promise<Gra
   return data[0];
 }
 
-async function loadVerifiedActiveGrantById(grantId: string): Promise<{
-  row: GrantRow;
-  metadata: JsonObject;
-  contract: EarlyAccessGrant;
-}> {
+async function loadGrantRow(grantId: string): Promise<GrantRow> {
   const admin = createAdminSupabase();
   const { data: grant, error: grantError } = await admin
     .from("billing_discount_grants")
@@ -219,6 +217,14 @@ async function loadVerifiedActiveGrantById(grantId: string): Promise<{
   if (grantError || !grant) {
     throw new Error("Early Access discount grant could not be verified.");
   }
+  return grant;
+}
+
+async function verifyActiveGrantRow(grant: GrantRow): Promise<{
+  row: GrantRow;
+  metadata: JsonObject;
+  contract: EarlyAccessGrant;
+}> {
   if (grant.status !== "active") {
     throw new Error("Early Access discount grant is no longer active.");
   }
@@ -335,16 +341,8 @@ export async function findEarlyAccessGrantByToken(
   const expiresAt = metadataString(metadata, "approval_expires_at");
   const expires = new Date(expiresAt);
   if (!expiresAt || Number.isNaN(expires.getTime()) || expires.getTime() <= Date.now()) {
-    const checkoutStarted = Boolean(
-      metadataString(metadata, "checkout_session_id"),
-    );
-    if (!checkoutStarted) {
-      await admin
-        .from("billing_discount_grants")
-        .update({ status: "expired" })
-        .eq("id", grant.id)
-        .eq("status", "active");
-    }
+    // Expiry is enforced by timestamp only. The grant stays active so Ops can
+    // reissue a fresh private link for the same application.
     throw new Error("Early Access approval has expired.");
   }
 
@@ -386,7 +384,18 @@ export async function validateEarlyAccessCheckoutBeforeClaim(input: {
   checkoutSessionId: string;
   stripeCustomerId: string;
 }): Promise<void> {
-  const { metadata } = await loadVerifiedActiveGrantById(input.grantId);
+  const grant = await loadGrantRow(input.grantId);
+  // A repeated link request (refresh, or a retry after a later step failed)
+  // arrives after the grant was redeemed. It must still be recognised as the
+  // same verified checkout, so a redeemed grant is accepted for the identity
+  // comparison below as long as it is bound to a shop.
+  if (grant.status === "redeemed" && !grant.shop_id) {
+    throw new Error("Early Access discount grant is no longer active.");
+  }
+  const metadata =
+    grant.status === "redeemed"
+      ? metadataObject(grant.metadata)
+      : (await verifyActiveGrantRow(grant)).metadata;
   const expectedEmail = normalizeEmail(
     metadataString(metadata, "application_email"),
   );
@@ -422,7 +431,9 @@ export async function deferEarlyAccessGrantShopBinding(input: {
   subscriptionId: string;
 }): Promise<void> {
   await validateEarlyAccessCheckoutBeforeClaim(input);
-  const { metadata, contract } = await loadVerifiedActiveGrantById(input.grantId);
+  const current = await loadGrantRow(input.grantId);
+  if (current.status === "redeemed") return;
+  const { metadata, contract } = await verifyActiveGrantRow(current);
   const admin = createAdminSupabase();
   const { data: updated, error } = await admin
     .from("billing_discount_grants")

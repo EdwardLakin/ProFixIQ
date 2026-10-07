@@ -287,6 +287,12 @@ begin
     end if;
   end if;
 
+  -- One Stripe customer per grant: never swap it under an attached session.
+  if nullif(v_grant.metadata->>'stripe_customer_id', '') is not null
+     and v_grant.metadata->>'stripe_customer_id' <> p_stripe_customer_id then
+    return false;
+  end if;
+
   update public.billing_discount_grants g
      set stripe_coupon_id = coalesce(p_stripe_coupon_id, g.stripe_coupon_id),
          metadata = coalesce(g.metadata, '{}'::jsonb) || jsonb_build_object(
@@ -323,6 +329,19 @@ declare
   v_match_count integer;
 begin
   if p_user_id is null or p_shop_id is null then
+    return false;
+  end if;
+
+  -- Owners without a pending Early Access grant are the common case; leave
+  -- before taking any lock on the shared shops row.
+  perform 1
+    from public.early_access_discount_grant_bindings b
+    join public.billing_discount_grants g on g.id = b.grant_id
+   where g.status = 'active'
+     and g.shop_id is null
+     and g.metadata->>'purpose' = 'early_access'
+     and g.metadata->>'pending_user_id' = p_user_id::text;
+  if not found then
     return false;
   end if;
 

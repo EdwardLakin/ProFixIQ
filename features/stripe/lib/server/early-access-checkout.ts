@@ -99,7 +99,13 @@ async function ensureCustomer(input: {
   email: string;
   companyName: string;
   termsVersion: string;
+  existingCustomerId: string | null;
 }): Promise<string> {
+  // Stripe idempotency keys only last about a day, so the customer created for
+  // a grant is persisted on it and reused; a later call must not mint a second
+  // customer that no longer matches an already-attached Checkout Session.
+  if (input.existingCustomerId) return input.existingCustomerId;
+
   const customer = await input.stripe.customers.create(
     {
       email: input.email,
@@ -274,6 +280,7 @@ export async function createEarlyAccessCheckout(token: string): Promise<{
       email: grant.email,
       companyName: grant.companyName,
       termsVersion: grant.offerTermsVersion,
+      existingCustomerId: grant.stripeCustomerId,
     }),
   ]);
 
