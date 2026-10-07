@@ -241,7 +241,9 @@ export async function createEarlyAccessCheckout(token: string): Promise<{
     discounts: [{ coupon: couponId }],
     payment_method_collection: "always",
     success_url: successUrl,
-    cancel_url: `${origin}/early-access/approved?token=${encodeURIComponent(token)}`,
+    // Keep bearer approval tokens out of Stripe URLs and keep retries stable
+    // even if an Ops operator rotates the private approval link.
+    cancel_url: `${origin}/early-access/approved/cancelled`,
     client_reference_id: intent.id,
     adaptive_pricing: { enabled: true },
     ...(automaticTaxEnabled() ? { automatic_tax: { enabled: true } } : {}),
