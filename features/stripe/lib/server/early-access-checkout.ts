@@ -14,6 +14,7 @@ import {
   attachStripeAcquisitionCheckout,
   beginStripeAcquisitionIntent,
   STRIPE_ACQUISITION_PURPOSE,
+  type BegunStripeAcquisitionIntent,
 } from "@/features/stripe/lib/server/stripe-acquisition-intent";
 import {
   attachEarlyAccessCheckout,
@@ -26,6 +27,11 @@ import {
 type CheckoutCreateParams = Stripe.Checkout.SessionCreateParams & {
   integration_identifier?: string;
   adaptive_pricing?: { enabled: boolean };
+};
+
+type ResolvedIntent = {
+  intent: BegunStripeAcquisitionIntent;
+  existingSession: Stripe.Checkout.Session | null;
 };
 
 function mustEnv(name: string): string {
@@ -46,8 +52,8 @@ function automaticTaxEnabled(): boolean {
   return String(process.env.STRIPE_AUTOMATIC_TAX_ENABLED ?? "").trim().toLowerCase() === "true";
 }
 
-function integrationIdentifier(grantId: string): string {
-  return `profixiq_early_access_${grantId.replaceAll("-", "").slice(0, 12)}`;
+function integrationIdentifier(intentId: string): string {
+  return `profixiq_early_access_${intentId.replaceAll("-", "").slice(0, 12)}`;
 }
 
 async function ensureCustomer(input: {
@@ -114,6 +120,45 @@ async function ensureCoupon(input: {
   return coupon.id;
 }
 
+async function resolveUsableIntent(input: {
+  stripe: Stripe;
+  admin: ReturnType<typeof createAdminSupabase>;
+  grantId: string;
+  priceId: string;
+}): Promise<ResolvedIntent> {
+  let requestKey = `early-access:${input.grantId}`;
+
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const intent = await beginStripeAcquisitionIntent({
+      admin: input.admin,
+      requestKey,
+      nonce: randomBytes(32).toString("hex"),
+      planKey: "starter",
+      priceId: input.priceId,
+      trialDays: EARLY_ACCESS_TRIAL_DAYS,
+      foundingDiscountApplied: false,
+    });
+
+    if (intent.checkoutSessionId) {
+      const existingSession = await input.stripe.checkout.sessions.retrieve(intent.checkoutSessionId);
+      if (existingSession.status === "open" || existingSession.status === "complete") {
+        return { intent, existingSession };
+      }
+      requestKey = `early-access:${input.grantId}:after-session:${existingSession.id}`;
+      continue;
+    }
+
+    if (intent.status === "expired" || intent.status === "failed") {
+      requestKey = `early-access:${input.grantId}:after-intent:${intent.id}`;
+      continue;
+    }
+
+    return { intent, existingSession: null };
+  }
+
+  throw new Error("Early Access checkout has too many abandoned attempts. Reissue the approval link and try again.");
+}
+
 export async function createEarlyAccessCheckout(token: string): Promise<{
   sessionId: string;
   url: string;
@@ -141,48 +186,34 @@ export async function createEarlyAccessCheckout(token: string): Promise<{
     }),
   ]);
 
-  const intent = await beginStripeAcquisitionIntent({
+  const { intent, existingSession } = await resolveUsableIntent({
+    stripe,
     admin,
-    requestKey: `early-access:${grant.grantId}`,
-    nonce: randomBytes(32).toString("hex"),
-    planKey: "starter",
+    grantId: grant.grantId,
     priceId,
-    trialDays: EARLY_ACCESS_TRIAL_DAYS,
-    foundingDiscountApplied: false,
   });
 
   const origin = baseUrl();
   const surface = productAcquisitionSurface(grant.productPackage);
   const successUrl = `${origin}/auth/callback?flow=acquisition&session_id={CHECKOUT_SESSION_ID}&surface=${surface}`;
 
-  if (intent.status === "expired" || intent.status === "failed") {
-    throw new Error("Early Access checkout attempt has expired.");
-  }
-
-  if (intent.checkoutSessionId) {
-    const existing = await stripe.checkout.sessions.retrieve(intent.checkoutSessionId);
-    if (existing.status === "open" && existing.url) {
-      await attachEarlyAccessCheckout({
-        grantId: grant.grantId,
-        stripeCouponId: couponId,
-        checkoutSessionId: existing.id,
-        acquisitionIntentId: intent.id,
-      });
-      return { sessionId: existing.id, url: existing.url };
+  if (existingSession) {
+    await attachEarlyAccessCheckout({
+      grantId: grant.grantId,
+      stripeCouponId: couponId,
+      stripeCustomerId: customerId,
+      checkoutSessionId: existingSession.id,
+      acquisitionIntentId: intent.id,
+    });
+    if (existingSession.status === "open" && existingSession.url) {
+      return { sessionId: existingSession.id, url: existingSession.url };
     }
-    if (existing.status === "complete") {
-      await attachEarlyAccessCheckout({
-        grantId: grant.grantId,
-        stripeCouponId: couponId,
-        checkoutSessionId: existing.id,
-        acquisitionIntentId: intent.id,
-      });
+    if (existingSession.status === "complete") {
       return {
-        sessionId: existing.id,
-        url: successUrl.replace("{CHECKOUT_SESSION_ID}", existing.id),
+        sessionId: existingSession.id,
+        url: successUrl.replace("{CHECKOUT_SESSION_ID}", existingSession.id),
       };
     }
-    throw new Error("Early Access checkout is no longer active.");
   }
 
   const metadata: Stripe.MetadataParam = {
@@ -222,11 +253,11 @@ export async function createEarlyAccessCheckout(token: string): Promise<{
       metadata,
     },
     metadata,
-    integration_identifier: integrationIdentifier(grant.grantId),
+    integration_identifier: integrationIdentifier(intent.id),
   };
 
   const session = await stripe.checkout.sessions.create(params, {
-    idempotencyKey: `profixiq:early-access-checkout:${grant.grantId}`,
+    idempotencyKey: `profixiq:early-access-checkout:${intent.id}`,
   });
   if (!session.url) throw new Error("Stripe did not return an Early Access checkout URL.");
 
@@ -239,6 +270,7 @@ export async function createEarlyAccessCheckout(token: string): Promise<{
   await attachEarlyAccessCheckout({
     grantId: grant.grantId,
     stripeCouponId: couponId,
+    stripeCustomerId: customerId,
     checkoutSessionId: session.id,
     acquisitionIntentId: intent.id,
   });
