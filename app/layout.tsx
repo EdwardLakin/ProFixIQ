@@ -3,6 +3,7 @@ import "./light-mode-contrast.css";
 import { Inter, Black_Ops_One } from "next/font/google";
 import Script from "next/script";
 import { headers } from "next/headers";
+import MarketingEventBridge from "@/features/analytics/MarketingEventBridge";
 import { resolveRootShellContext } from "@/features/dashboard/server/root-shell-context";
 import PwaRuntime from "@/features/shared/components/pwa/PwaRuntime";
 import RootShellBoundary from "./RootShellBoundary";
@@ -110,6 +111,7 @@ export default async function RootLayout({
           backgroundImage: "var(--theme-gradient-panel)",
         }}
       >
+        <MarketingEventBridge />
         <RootShellBoundary
           initialIdentity={dashboardIdentity}
           initialSession={session}
