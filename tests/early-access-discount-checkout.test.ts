@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 function source(path: string): string {
@@ -6,14 +6,17 @@ function source(path: string): string {
 }
 
 describe("Early Access discounted checkout", () => {
-  it("keeps approval behind the Ops operator boundary", () => {
+  it("keeps approval behind an auditable Ops operator identity", () => {
     const approve = source("app/api/ops/early-access/[id]/approve/route.ts");
     const decline = source("app/api/ops/early-access/[id]/decline/route.ts");
 
     expect(approve).toContain("requireOpsOperatorApiAccess");
-    expect(approve).toContain("approveEarlyAccessDiscount");
+    expect(approve).toContain("if (!access.profile?.id)");
+    expect(approve).toContain("actorAuthUserId: access.user.id");
+    expect(approve).toContain("actorProfileId: access.profile.id");
     expect(decline).toContain("requireOpsOperatorApiAccess");
-    expect(decline).toContain('"declined"');
+    expect(decline).toContain("if (!access.profile?.id)");
+    expect(decline).toContain('"declined", access.profile.id');
   });
 
   it("creates a server-owned 30 percent repeating six-month grant with a hashed private token", () => {
@@ -29,14 +32,30 @@ describe("Early Access discounted checkout", () => {
     expect(grants).not.toContain("approval_token:");
   });
 
-  it("binds the private offer to the approved email and product package", () => {
+  it("can rotate and reissue a lost private approval link without storing plaintext", () => {
+    const grants = source("features/stripe/lib/server/early-access-discount.ts");
+    const ops = source("features/ops/components/EarlyAccessReviewActions.tsx");
+    const page = source("app/ops/early-access/page.tsx");
+
+    expect(grants).toContain('application.status === "approved"');
+    expect(grants).toContain("token_reissue_count");
+    expect(grants).toContain("token_reissued_by_auth_user_id");
+    expect(grants).toContain("approval_token_hash: issued.approvalTokenHash");
+    expect(ops).toContain('mode?: "review" | "reissue"');
+    expect(ops).toContain("Reissue private signup link");
+    expect(page).toContain('mode="reissue"');
+  });
+
+  it("binds the private offer to the approved email, customer, and product package", () => {
     const grants = source("features/stripe/lib/server/early-access-discount.ts");
     const checkout = source("features/stripe/lib/server/early-access-checkout.ts");
 
     expect(grants).toContain("application_email");
     expect(grants).toContain("product_package");
+    expect(grants).toContain("stripe_customer_id");
     expect(grants).toContain("expectedEmail !== normalizeEmail(input.checkoutEmail)");
     expect(grants).toContain("expectedPackage !== input.packageKey");
+    expect(grants).toContain("expectedCustomer !== input.stripeCustomerId");
     expect(checkout).toContain("ensureCustomer");
     expect(checkout).toContain("email: grant.email");
     expect(checkout).toContain("customer: customerId");
@@ -64,36 +83,51 @@ describe("Early Access discounted checkout", () => {
     expect(checkout).toContain('end_behavior: { missing_payment_method: "cancel" }');
   });
 
-  it("uses one grant-owned acquisition intent and idempotent Stripe objects to prevent replay", () => {
+  it("uses retry-stable Stripe parameters and rotates away from expired checkout sessions", () => {
     const checkout = source("features/stripe/lib/server/early-access-checkout.ts");
 
-    expect(checkout).toContain("requestKey: `early-access:${grant.grantId}`");
+    expect(checkout).toContain("requestKey = `early-access:${input.grantId}`");
     expect(checkout).toContain("profixiq:early-access-customer:${input.grantId}");
     expect(checkout).toContain("profixiq:early-access-coupon:${input.grantId}");
-    expect(checkout).toContain("profixiq:early-access-checkout:${grant.grantId}");
-    expect(checkout).toContain("integrationIdentifier(grant.grantId)");
-    expect(checkout).toContain("intent.checkoutSessionId");
-    expect(checkout).toContain("checkoutSessionId: existing.id");
+    expect(checkout).toContain("profixiq:early-access-checkout:${intent.id}");
+    expect(checkout).toContain("integrationIdentifier(intent.id)");
+    expect(checkout).toContain("after-session:${existingSession.id}");
+    expect(checkout).toContain("after-intent:${intent.id}");
+    expect(checkout).toContain("checkoutSessionId: existingSession.id");
+    expect(checkout).toContain("stripeCustomerId: customerId");
   });
 
-  it("redeems the grant only after the Stripe acquisition is claimed to a shop", () => {
+  it("validates Early Access identity before the canonical claim and defers shop binding", () => {
     const linking = source("features/stripe/api/stripe/checkout/link-user/route.ts");
     const grants = source("features/stripe/lib/server/early-access-discount.ts");
+    const migration = source("supabase/migrations/20261007152500_bind_pending_early_access_discount_grants.sql");
 
     expect(linking).toContain("earlyAccessGrantIdFromStripeMetadata(session.metadata)");
+    expect(linking).toContain("validateEarlyAccessCheckoutBeforeClaim");
+    expect(linking.indexOf("validateEarlyAccessCheckoutBeforeClaim")).toBeLessThan(
+      linking.indexOf("claimStripeAcquisitionIntent({"),
+    );
+    expect(linking).toContain("deferEarlyAccessGrantShopBinding");
     expect(linking).toContain("redeemEarlyAccessGrantAfterClaim");
-    expect(linking).toContain("claim.shopId");
     expect(grants).toContain('status: "redeemed"');
     expect(grants).toContain("shop_id: input.shopId");
+    expect(migration).toContain("bind_pending_early_access_discount_grant");
+    expect(migration).toContain("metadata->>'pending_user_id' = new.owner_id::text");
+    expect(migration).toContain("metadata->>'subscription_id' = new.stripe_subscription_id");
   });
 
-  it("keeps the applicant on a product-bound offer page with no package switcher", () => {
+  it("keeps the applicant on a product-bound offer page without leaking the bearer token", () => {
     const page = source("app/early-access/approved/page.tsx");
     const button = source("features/shared/components/EarlyAccessCheckoutButton.tsx");
 
     expect(page).toContain("findEarlyAccessGrantByToken");
     expect(page).toContain("Your ProFixIQ Early Access offer is ready.");
     expect(page).toContain("Additional users, service trucks, fleet assets");
+    expect(page).toContain('referrer: "no-referrer"');
+    expect(page).toContain("USD/mo");
+    expect(page).toContain("converted local-currency amount");
+    expect(button).toContain("window.history.replaceState");
+    expect(button).toContain('url.searchParams.delete("token")');
     expect(button).toContain("/api/public/early-access/checkout");
     expect(button).not.toContain("packageKey");
   });
@@ -104,5 +138,9 @@ describe("Early Access discounted checkout", () => {
     expect(route).toContain("enforcePublicRouteRateLimit");
     expect(route.indexOf("enforcePublicRouteRateLimit")).toBeLessThan(route.indexOf("request.json"));
     expect(route).toContain('route: "public-early-access-checkout"');
+  });
+
+  it("does not leave a task-specific self-mutating validation workflow in the PR", () => {
+    expect(existsSync(".github/workflows/early-access-pr2-preflight.yml")).toBe(false);
   });
 });
