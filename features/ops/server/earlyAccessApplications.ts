@@ -3,6 +3,13 @@ import "server-only";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 export type EarlyAccessStatus = "pending" | "approved" | "declined";
+export type EarlyAccessProductPackage =
+  | "shop_operations"
+  | "complete_operations"
+  | "field_service"
+  | "fleet_maintenance";
+
+export const EARLY_ACCESS_OFFER_TERMS_VERSION = "early-access-2026-10-v1";
 
 export type EarlyAccessApplication = {
   id: string;
@@ -11,6 +18,7 @@ export type EarlyAccessApplication = {
   phone: string | null;
   companyName: string;
   location: string | null;
+  productPackage: EarlyAccessProductPackage;
   operationType: string;
   locationCount: number;
   technicianCount: number | null;
@@ -22,6 +30,7 @@ export type EarlyAccessApplication = {
   purchaseTimeline: string | null;
   feedbackCommitment: boolean;
   offerTermsAccepted: boolean;
+  offerTermsVersion: string;
   source: string | null;
   utmSource: string | null;
   utmMedium: string | null;
@@ -36,6 +45,12 @@ const RESUBMIT_COOLDOWN_MINUTES = 10;
 const ALLOWED_OPERATION_TYPES = new Set(["automotive", "heavy_duty", "fleet", "field_service", "mixed", "other"]);
 const ALLOWED_SURFACES = new Set(["shop", "fleet", "field_service", "shop_mobile", "customer_portal"]);
 const ALLOWED_TIMELINES = new Set(["now", "30_days", "90_days", "6_months", "researching"]);
+const ALLOWED_PRODUCT_PACKAGES = new Set<EarlyAccessProductPackage>([
+  "shop_operations",
+  "complete_operations",
+  "field_service",
+  "fleet_maintenance",
+]);
 
 export type SubmitEarlyAccessApplicationInput = {
   fullName: string;
@@ -43,6 +58,7 @@ export type SubmitEarlyAccessApplicationInput = {
   phone?: string;
   companyName: string;
   location?: string;
+  productPackage: string;
   operationType: string;
   locationCount: number;
   technicianCount?: number | null;
@@ -80,6 +96,7 @@ export async function submitEarlyAccessApplication(input: SubmitEarlyAccessAppli
   const email = input.email.trim().toLowerCase();
   const companyName = input.companyName.trim();
   const primaryChallenge = input.primaryChallenge.trim();
+  const productPackage = input.productPackage.trim() as EarlyAccessProductPackage;
   const operationType = input.operationType.trim();
   const purchaseTimeline = input.purchaseTimeline?.trim() || null;
   const interestedSurfaces = [...new Set(input.interestedSurfaces.map((surface) => surface.trim()))];
@@ -87,6 +104,7 @@ export async function submitEarlyAccessApplication(input: SubmitEarlyAccessAppli
   if (!fullName) throw new Error("Name is required.");
   if (!EMAIL_PATTERN.test(email)) throw new Error("Enter a valid email address.");
   if (!companyName) throw new Error("Company name is required.");
+  if (!ALLOWED_PRODUCT_PACKAGES.has(productPackage)) throw new Error("Choose a ProFixIQ product for Early Access.");
   if (!primaryChallenge) throw new Error("Tell us the main workflow problem you want to solve.");
   if (!ALLOWED_OPERATION_TYPES.has(operationType)) throw new Error("Choose a valid operation type.");
   if (purchaseTimeline && !ALLOWED_TIMELINES.has(purchaseTimeline)) throw new Error("Choose a valid timeline.");
@@ -123,6 +141,7 @@ export async function submitEarlyAccessApplication(input: SubmitEarlyAccessAppli
     phone: optionalText(input.phone, 100),
     company_name: companyName,
     location: optionalText(input.location, 200),
+    product_package: productPackage,
     operation_type: operationType,
     location_count: locationCount,
     technician_count: technicianCount,
@@ -134,6 +153,7 @@ export async function submitEarlyAccessApplication(input: SubmitEarlyAccessAppli
     purchase_timeline: purchaseTimeline,
     feedback_commitment: true,
     offer_terms_accepted: true,
+    offer_terms_version: EARLY_ACCESS_OFFER_TERMS_VERSION,
     source: optionalText(input.source, 500),
     utm_source: optionalText(input.utmSource, 200),
     utm_medium: optionalText(input.utmMedium, 200),
@@ -153,6 +173,7 @@ type EarlyAccessRow = {
   phone: string | null;
   company_name: string;
   location: string | null;
+  product_package: EarlyAccessProductPackage;
   operation_type: string;
   location_count: number;
   technician_count: number | null;
@@ -164,6 +185,7 @@ type EarlyAccessRow = {
   purchase_timeline: string | null;
   feedback_commitment: boolean;
   offer_terms_accepted: boolean;
+  offer_terms_version: string;
   source: string | null;
   utm_source: string | null;
   utm_medium: string | null;
@@ -181,6 +203,7 @@ function mapRow(row: EarlyAccessRow): EarlyAccessApplication {
     phone: row.phone,
     companyName: row.company_name,
     location: row.location,
+    productPackage: row.product_package,
     operationType: row.operation_type,
     locationCount: row.location_count,
     technicianCount: row.technician_count,
@@ -192,6 +215,7 @@ function mapRow(row: EarlyAccessRow): EarlyAccessApplication {
     purchaseTimeline: row.purchase_timeline,
     feedbackCommitment: row.feedback_commitment,
     offerTermsAccepted: row.offer_terms_accepted,
+    offerTermsVersion: row.offer_terms_version,
     source: row.source,
     utmSource: row.utm_source,
     utmMedium: row.utm_medium,
@@ -202,19 +226,30 @@ function mapRow(row: EarlyAccessRow): EarlyAccessApplication {
   };
 }
 
-const COLUMNS = "id, full_name, email, phone, company_name, location, operation_type, location_count, technician_count, team_size, fleet_asset_count, current_software, primary_challenge, interested_surfaces, purchase_timeline, feedback_commitment, offer_terms_accepted, source, utm_source, utm_medium, utm_campaign, status, reviewed_at, created_at";
+const COLUMNS = "id, full_name, email, phone, company_name, location, product_package, operation_type, location_count, technician_count, team_size, fleet_asset_count, current_software, primary_challenge, interested_surfaces, purchase_timeline, feedback_commitment, offer_terms_accepted, offer_terms_version, source, utm_source, utm_medium, utm_campaign, status, reviewed_at, created_at";
 
 export async function listEarlyAccessApplications(): Promise<EarlyAccessApplication[]> {
   const admin = createAdminSupabase();
-  const { data, error } = await admin
-    .from("early_access_applications")
-    .select(COLUMNS)
-    .order("created_at", { ascending: false })
-    .limit(100)
-    .returns<EarlyAccessRow[]>();
+  const [pendingResult, reviewedResult] = await Promise.all([
+    admin
+      .from("early_access_applications")
+      .select(COLUMNS)
+      .eq("status", "pending")
+      .order("created_at", { ascending: false })
+      .returns<EarlyAccessRow[]>(),
+    admin
+      .from("early_access_applications")
+      .select(COLUMNS)
+      .in("status", ["approved", "declined"])
+      .order("reviewed_at", { ascending: false })
+      .limit(100)
+      .returns<EarlyAccessRow[]>(),
+  ]);
 
-  if (error) throw new Error(`Failed to list early access applications: ${error.message}`);
-  return (data ?? []).map(mapRow);
+  if (pendingResult.error) throw new Error(`Failed to list pending early access applications: ${pendingResult.error.message}`);
+  if (reviewedResult.error) throw new Error(`Failed to list reviewed early access applications: ${reviewedResult.error.message}`);
+
+  return [...(pendingResult.data ?? []), ...(reviewedResult.data ?? [])].map(mapRow);
 }
 
 export async function reviewEarlyAccessApplication(
