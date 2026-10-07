@@ -1,17 +1,22 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+import { readBoundedJson } from "@/features/shared/lib/server/bounded-json";
+import { enforcePublicRouteRateLimit } from "@/features/shared/lib/server/publicRouteRateLimit";
+
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const REQUEST_MAX_BYTES = 4 * 1024;
+
+// Only client-observable intent events are accepted by this anonymous route.
+// Outcome events such as checkout/signup/onboarding must be written by their
+// authoritative server-side success boundaries instead.
 const EVENT_NAMES = new Set([
   "marketing_trial_click",
   "marketing_demo_click",
   "marketing_subscribe_click",
   "pricing_view",
-  "checkout_started",
-  "signup_completed",
-  "onboarding_completed",
 ]);
 
 const PACKAGE_KEYS = new Set([
@@ -42,12 +47,28 @@ function cleanPath(value: unknown): string | null {
 }
 
 export async function POST(request: Request) {
-  const contentLength = Number(request.headers.get("content-length") ?? "0");
-  if (contentLength > 4096) {
-    return NextResponse.json({ error: "payload_too_large" }, { status: 413 });
+  const rateLimitResponse = enforcePublicRouteRateLimit({
+    request,
+    route: "marketing-events",
+    max: 60,
+    windowMs: 60_000,
+  });
+  if (rateLimitResponse) return rateLimitResponse;
+
+  const bodyResult = await readBoundedJson(request, REQUEST_MAX_BYTES);
+  if (!bodyResult.ok) {
+    return NextResponse.json(
+      {
+        error:
+          bodyResult.reason === "too_large"
+            ? "payload_too_large"
+            : "invalid_json",
+      },
+      { status: bodyResult.reason === "too_large" ? 413 : 400 },
+    );
   }
 
-  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
+  const body = bodyResult.value as Record<string, unknown> | null;
   const event = cleanString(body?.event, 64);
   if (!event || !EVENT_NAMES.has(event)) {
     return NextResponse.json({ error: "invalid_event" }, { status: 400 });
