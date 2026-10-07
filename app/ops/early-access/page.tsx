@@ -32,8 +32,8 @@ export default async function OpsEarlyAccessPage() {
         <div className="text-xs font-black uppercase tracking-[0.18em] text-sky-300">Acquisition</div>
         <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">Early Access</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-[color:var(--theme-text-secondary)]">
-          Applications from the public /early-access campaign. This queue is intake-only in this PR; approval-linked
-          discounted checkout is intentionally separate so normal trial and subscription checkout remain untouched.
+          Applications from the public /early-access campaign. Each application is bound to a specific product so a
+          later approval flow can issue the correct product-specific discounted signup without exposing a reusable coupon.
         </p>
       </div>
 
@@ -64,12 +64,18 @@ export default async function OpsEarlyAccessPage() {
                       {application.location || "Location not provided"} · Applied {formatDate(application.createdAt)}
                     </div>
                   </div>
-                  <span className="w-fit rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-300">
-                    Pending
-                  </span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="rounded-full border border-sky-500/40 bg-sky-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-sky-200">
+                      {pretty(application.productPackage)}
+                    </span>
+                    <span className="rounded-full border border-amber-500/40 bg-amber-500/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-amber-300">
+                      Pending
+                    </span>
+                  </div>
                 </div>
 
                 <div className="mt-4 grid gap-3 text-xs sm:grid-cols-2 lg:grid-cols-4">
+                  <div><span className="text-[color:var(--theme-text-muted)]">Product</span><div className="mt-1 font-semibold">{pretty(application.productPackage)}</div></div>
                   <div><span className="text-[color:var(--theme-text-muted)]">Operation</span><div className="mt-1 font-semibold">{pretty(application.operationType)}</div></div>
                   <div><span className="text-[color:var(--theme-text-muted)]">Locations</span><div className="mt-1 font-semibold">{application.locationCount}</div></div>
                   <div><span className="text-[color:var(--theme-text-muted)]">Technicians</span><div className="mt-1 font-semibold">{application.technicianCount ?? "—"}</div></div>
@@ -78,6 +84,7 @@ export default async function OpsEarlyAccessPage() {
                   <div><span className="text-[color:var(--theme-text-muted)]">Current software</span><div className="mt-1 font-semibold">{application.currentSoftware || "—"}</div></div>
                   <div><span className="text-[color:var(--theme-text-muted)]">Timeline</span><div className="mt-1 font-semibold">{pretty(application.purchaseTimeline)}</div></div>
                   <div><span className="text-[color:var(--theme-text-muted)]">Campaign</span><div className="mt-1 font-semibold">{application.utmCampaign || application.utmSource || "Direct"}</div></div>
+                  <div className="sm:col-span-2"><span className="text-[color:var(--theme-text-muted)]">Offer terms</span><div className="mt-1 font-mono text-[11px] font-semibold">{application.offerTermsVersion}</div></div>
                 </div>
 
                 <div className="mt-4">
@@ -107,7 +114,10 @@ export default async function OpsEarlyAccessPage() {
           <div className="mt-3 divide-y divide-[color:var(--theme-border-soft)]">
             {reviewed.slice(0, 20).map((application) => (
               <div key={application.id} className="flex flex-col gap-1 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-                <div><span className="font-semibold">{application.companyName}</span> <span className="text-[color:var(--theme-text-muted)]">· {application.email}</span></div>
+                <div>
+                  <span className="font-semibold">{application.companyName}</span>{" "}
+                  <span className="text-[color:var(--theme-text-muted)]">· {pretty(application.productPackage)} · {application.email}</span>
+                </div>
                 <span className={application.status === "approved" ? "text-emerald-300" : "text-[color:var(--theme-text-muted)]"}>{pretty(application.status)}</span>
               </div>
             ))}
