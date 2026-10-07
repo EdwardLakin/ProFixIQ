@@ -4287,6 +4287,39 @@ export type Database = {
           },
         ]
       }
+      early_access_discount_grant_bindings: {
+        Row: {
+          application_id: string
+          created_at: string
+          grant_id: string
+        }
+        Insert: {
+          application_id: string
+          created_at?: string
+          grant_id: string
+        }
+        Update: {
+          application_id?: string
+          created_at?: string
+          grant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "early_access_discount_grant_bindings_application_id_fkey"
+            columns: ["application_id"]
+            isOneToOne: true
+            referencedRelation: "early_access_applications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "early_access_discount_grant_bindings_grant_id_fkey"
+            columns: ["grant_id"]
+            isOneToOne: true
+            referencedRelation: "billing_discount_grants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_delivery_events: {
         Row: {
           created_at: string
@@ -29245,6 +29278,17 @@ export type Database = {
         Args: never
         Returns: boolean
       }
+      attach_early_access_checkout_grant: {
+        Args: {
+          p_acquisition_intent_id: string
+          p_checkout_attempt_namespace: string
+          p_checkout_session_id: string
+          p_grant_id: string
+          p_stripe_coupon_id: string
+          p_stripe_customer_id: string
+        }
+        Returns: boolean
+      }
       attach_signed_inspection_pdf_atomic: {
         Args: {
           p_actor_user_id: string
@@ -29288,6 +29332,10 @@ export type Database = {
           intent_nonce: string
           intent_status: string
         }[]
+      }
+      bind_pending_early_access_discount_grant: {
+        Args: { p_shop_id: string; p_user_id: string }
+        Returns: boolean
       }
       book_portal_repair_quote_atomic: {
         Args: {
@@ -30582,6 +30630,22 @@ export type Database = {
       is_shop_member: { Args: { p_shop: string }; Returns: boolean }
       is_shop_member_v2: { Args: { shop_id: string }; Returns: boolean }
       is_staff_for_shop: { Args: { _shop: string }; Returns: boolean }
+      issue_early_access_discount_grant_atomic: {
+        Args: {
+          p_actor_auth_user_id: string
+          p_actor_profile_id: string
+          p_application_id: string
+          p_approval_expires_at: string
+          p_approval_token_hash: string
+          p_checkout_attempt_namespace: string
+          p_expected_reissue_count: number
+          p_reissue: boolean
+        }
+        Returns: {
+          grant_id: string
+          reissued: boolean
+        }[]
+      }
       issue_fleet_portal_invitation_atomic: {
         Args: {
           p_created_by: string
@@ -31505,6 +31569,20 @@ export type Database = {
         Returns: boolean
       }
       realtime_conversation_id: { Args: { topic: string }; Returns: string }
+      rearm_expired_early_access_acquisition_intent: {
+        Args: {
+          p_checkout_email: string
+          p_checkout_session_id: string
+          p_customer_id: string
+          p_grant_id: string
+          p_intent_id: string
+          p_nonce: string
+          p_stripe_price_id: string
+          p_subscription_id: string
+          p_user_id: string
+        }
+        Returns: boolean
+      }
       recalculate_estimate_work_order_totals: {
         Args: { p_shop_id: string; p_work_order_id: string }
         Returns: undefined
@@ -31837,6 +31915,15 @@ export type Database = {
           p_shop_id: string
         }
         Returns: Json
+      }
+      retire_early_access_acquisition_intent: {
+        Args: {
+          p_checkout_attempt_namespace: string
+          p_checkout_session_id: string
+          p_grant_id: string
+          p_intent_id: string
+        }
+        Returns: boolean
       }
       return_estimate_to_parts_atomic: {
         Args: {

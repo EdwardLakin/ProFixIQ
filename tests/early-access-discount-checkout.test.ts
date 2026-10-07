@@ -132,7 +132,7 @@ describe("Early Access discounted checkout", () => {
   it("validates Early Access identity before the canonical claim", () => {
     const linking = source("features/stripe/api/stripe/checkout/link-user/route.ts");
 
-    expect(linking).toContain("earlyAccessGrantIdFromStripeMetadata(session.metadata)");
+    expect(linking).toMatch(/earlyAccessGrantIdFromStripeMetadata\(\s*session\.metadata,?\s*\)/);
     expect(linking).toContain("validateEarlyAccessCheckoutBeforeClaim");
     expect(linking.indexOf("validateEarlyAccessCheckoutBeforeClaim")).toBeLessThan(
       linking.indexOf("claimStripeAcquisitionIntent({"),
