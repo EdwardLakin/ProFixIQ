@@ -4,8 +4,6 @@ on:
   pull_request:
     branches: [main]
 
-authorization-placeholder: &noop true
-
 permissions:
   contents: write
 
@@ -173,8 +171,7 @@ jobs:
               raise SystemExit('expected checkout backfill regression exactly once')
           test_path.write_text(tests.replace(old_test, new_test))
 
-          workflow = Path('.github/workflows/temporary-pr1817-review-repair.yml')
-          workflow.unlink()
+          Path('.github/workflows/temporary-pr1817-review-repair.yml').unlink()
           PY
 
           git diff --check
