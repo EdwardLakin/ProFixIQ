@@ -11,6 +11,12 @@ type RouteContext = { params: { id: string } };
 export async function POST(_request: Request, context: unknown) {
   const access = await requireOpsOperatorApiAccess();
   if (!access.ok) return access.response;
+  if (!access.profile?.id) {
+    return NextResponse.json(
+      { error: "Your Ops operator profile is not ready for auditable review actions." },
+      { status: 409 },
+    );
+  }
 
   const { params } = context as RouteContext;
   const applicationId = params?.id ?? "";
@@ -19,7 +25,7 @@ export async function POST(_request: Request, context: unknown) {
   }
 
   try {
-    await reviewEarlyAccessApplication(applicationId, "declined", access.profile?.id ?? null);
+    await reviewEarlyAccessApplication(applicationId, "declined", access.profile.id);
     return NextResponse.json({ ok: true });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to decline Early Access application.";
