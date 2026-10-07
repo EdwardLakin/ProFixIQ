@@ -2,13 +2,14 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Check, Copy, ShieldAlert, X } from "lucide-react";
+import { Check, Copy, RefreshCw, ShieldAlert, X } from "lucide-react";
 
 type ApprovalResponse = {
   ok?: boolean;
   error?: string;
   token?: string;
   expiresAt?: string;
+  reissued?: boolean;
 };
 
 async function post(url: string): Promise<ApprovalResponse> {
@@ -25,7 +26,13 @@ async function post(url: string): Promise<ApprovalResponse> {
   }
 }
 
-export default function EarlyAccessReviewActions({ applicationId }: { applicationId: string }) {
+export default function EarlyAccessReviewActions({
+  applicationId,
+  mode = "review",
+}: {
+  applicationId: string;
+  mode?: "review" | "reissue";
+}) {
   const router = useRouter();
   const [submitting, setSubmitting] = useState<"approve" | "decline" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -39,7 +46,7 @@ export default function EarlyAccessReviewActions({ applicationId }: { applicatio
     const result = await post(`/api/ops/early-access/${applicationId}/approve`);
     setSubmitting(null);
     if (!result.ok || !result.token) {
-      setError(result.error ?? "Failed to approve application.");
+      setError(result.error ?? "Failed to issue approval link.");
       return;
     }
 
@@ -74,10 +81,10 @@ export default function EarlyAccessReviewActions({ applicationId }: { applicatio
     return (
       <div className="mt-4 rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3">
         <div className="flex items-center gap-2 text-sm font-bold text-emerald-300">
-          <Check className="h-4 w-4" /> Approved
+          <Check className="h-4 w-4" /> {mode === "reissue" ? "Private link reissued" : "Approved"}
         </div>
         <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-          Send this private signup link to the applicant. It is single-grant, product-bound, and expires
+          Send this private signup link to the applicant. Any previously issued link for this grant is now invalid. This link expires
           {expiresAt ? ` ${new Date(expiresAt).toLocaleDateString("en-CA")}` : " after the approval window"}.
         </p>
         <div className="mt-3 flex flex-col gap-2 sm:flex-row">
@@ -115,18 +122,26 @@ export default function EarlyAccessReviewActions({ applicationId }: { applicatio
           onClick={approve}
           className="inline-flex items-center gap-2 rounded-lg bg-emerald-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-400 disabled:opacity-60"
         >
-          <Check className="h-3.5 w-3.5" />
-          {submitting === "approve" ? "Approving…" : "Approve — 30% × 6 months"}
+          {mode === "reissue" ? <RefreshCw className="h-3.5 w-3.5" /> : <Check className="h-3.5 w-3.5" />}
+          {submitting === "approve"
+            ? mode === "reissue"
+              ? "Reissuing…"
+              : "Approving…"
+            : mode === "reissue"
+              ? "Reissue private signup link"
+              : "Approve — 30% × 6 months"}
         </button>
-        <button
-          type="button"
-          disabled={submitting !== null}
-          onClick={decline}
-          className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-bold text-[color:var(--theme-text-secondary)] transition hover:border-red-500/40 hover:text-red-300 disabled:opacity-60"
-        >
-          <X className="h-3.5 w-3.5" />
-          {submitting === "decline" ? "Declining…" : "Decline"}
-        </button>
+        {mode === "review" ? (
+          <button
+            type="button"
+            disabled={submitting !== null}
+            onClick={decline}
+            className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs font-bold text-[color:var(--theme-text-secondary)] transition hover:border-red-500/40 hover:text-red-300 disabled:opacity-60"
+          >
+            <X className="h-3.5 w-3.5" />
+            {submitting === "decline" ? "Declining…" : "Decline"}
+          </button>
+        ) : null}
       </div>
       {error ? (
         <p className="mt-2 flex items-center gap-2 text-xs font-semibold text-red-300">
