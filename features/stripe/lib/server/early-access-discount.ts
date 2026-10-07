@@ -6,6 +6,7 @@ import type Stripe from "stripe";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import {
   PRODUCT_PACKAGE_BILLING_MODEL,
+  normalizeProductPackageKey,
   productAcquisitionSurface,
   type ProductPackageKey,
 } from "@/features/stripe/lib/stripe/product-packages";
@@ -54,6 +55,7 @@ export type EarlyAccessGrant = {
 
 export type ApprovedEarlyAccessGrant = EarlyAccessGrant & {
   token: string;
+  reissued: boolean;
 };
 
 function metadataObject(value: unknown): JsonObject {
@@ -64,6 +66,11 @@ function metadataObject(value: unknown): JsonObject {
 function metadataString(metadata: JsonObject, key: string): string {
   const value = metadata[key];
   return typeof value === "string" ? value : "";
+}
+
+function metadataNumber(metadata: JsonObject, key: string): number {
+  const value = metadata[key];
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function normalizeEmail(value: string): string {
@@ -78,11 +85,19 @@ function validToken(token: string): boolean {
   return TOKEN_PATTERN.test(token);
 }
 
+function createApprovalToken() {
+  const token = randomBytes(TOKEN_BYTES).toString("base64url");
+  const expiresAt = new Date(
+    Date.now() + EARLY_ACCESS_APPROVAL_TTL_DAYS * 24 * 60 * 60 * 1000,
+  ).toISOString();
+  return { token, approvalTokenHash: tokenHash(token), expiresAt };
+}
+
 function assertGrantContract(row: GrantRow, application: ApplicationRow): EarlyAccessGrant {
   const metadata = metadataObject(row.metadata);
   const applicationId = metadataString(metadata, "application_id");
   const email = normalizeEmail(metadataString(metadata, "application_email"));
-  const productPackage = metadataString(metadata, "product_package") as ProductPackageKey;
+  const productPackage = normalizeProductPackageKey(metadataString(metadata, "product_package"));
   const expiresAt = metadataString(metadata, "approval_expires_at");
   const termsVersion = metadataString(metadata, "offer_terms_version");
 
@@ -91,6 +106,7 @@ function assertGrantContract(row: GrantRow, application: ApplicationRow): EarlyA
     application.status !== "approved" ||
     applicationId !== application.id ||
     email !== normalizeEmail(application.email) ||
+    !productPackage ||
     productPackage !== application.product_package ||
     termsVersion !== application.offer_terms_version ||
     row.terms_version !== application.offer_terms_version ||
@@ -118,41 +134,112 @@ function assertGrantContract(row: GrantRow, application: ApplicationRow): EarlyA
   };
 }
 
-export async function approveEarlyAccessDiscount(input: {
-  applicationId: string;
-  actorUserId: string | null;
-}): Promise<ApprovedEarlyAccessGrant> {
+async function loadApplication(applicationId: string): Promise<ApplicationRow> {
   const admin = createAdminSupabase();
-  const { data: application, error: applicationError } = await admin
+  const { data, error } = await admin
     .from("early_access_applications")
     .select("id, email, company_name, product_package, offer_terms_version, status")
-    .eq("id", input.applicationId)
+    .eq("id", applicationId)
     .maybeSingle<ApplicationRow>();
+  if (error) throw new Error(`Failed to load Early Access application: ${error.message}`);
+  if (!data) throw new Error("This Early Access application no longer exists.");
+  return data;
+}
 
-  if (applicationError) {
-    throw new Error(`Failed to load Early Access application: ${applicationError.message}`);
-  }
-  if (!application || application.status !== "pending") {
-    throw new Error("This Early Access application has already been reviewed or no longer exists.");
+async function loadVerifiedActiveGrantById(grantId: string): Promise<{
+  row: GrantRow;
+  metadata: JsonObject;
+  contract: EarlyAccessGrant;
+}> {
+  const admin = createAdminSupabase();
+  const { data: grant, error: grantError } = await admin
+    .from("billing_discount_grants")
+    .select("id, shop_id, stripe_coupon_id, percent_off, duration, duration_in_months, status, terms_version, metadata")
+    .eq("id", grantId)
+    .maybeSingle<GrantRow>();
+  if (grantError || !grant) throw new Error("Early Access discount grant could not be verified.");
+  if (grant.status !== "active") throw new Error("Early Access discount grant is no longer active.");
+
+  const metadata = metadataObject(grant.metadata);
+  const applicationId = metadataString(metadata, "application_id");
+  if (!applicationId) throw new Error("Early Access discount grant is invalid.");
+  const application = await loadApplication(applicationId);
+  const contract = assertGrantContract(grant, application);
+  return { row: grant, metadata, contract };
+}
+
+export async function approveEarlyAccessDiscount(input: {
+  applicationId: string;
+  actorAuthUserId: string;
+  actorProfileId: string;
+}): Promise<ApprovedEarlyAccessGrant> {
+  const admin = createAdminSupabase();
+  const application = await loadApplication(input.applicationId);
+  const issued = createApprovalToken();
+
+  if (application.status === "approved") {
+    const { data: grants, error: grantError } = await admin
+      .from("billing_discount_grants")
+      .select("id, shop_id, stripe_coupon_id, percent_off, duration, duration_in_months, status, terms_version, metadata")
+      .eq("status", "active")
+      .eq("metadata->>purpose", "early_access")
+      .eq("metadata->>application_id", application.id)
+      .order("created_at", { ascending: false })
+      .limit(2)
+      .returns<GrantRow[]>();
+    if (grantError) throw new Error(`Failed to load Early Access discount grant: ${grantError.message}`);
+    if ((grants?.length ?? 0) !== 1 || !grants?.[0]) {
+      throw new Error("This approved application does not have exactly one active Early Access grant to reissue.");
+    }
+
+    const existing = grants[0];
+    const existingMetadata = metadataObject(existing.metadata);
+    const { data: rotated, error: rotateError } = await admin
+      .from("billing_discount_grants")
+      .update({
+        metadata: {
+          ...existingMetadata,
+          approval_token_hash: issued.approvalTokenHash,
+          approval_expires_at: issued.expiresAt,
+          token_reissue_count: metadataNumber(existingMetadata, "token_reissue_count") + 1,
+          token_reissued_at: new Date().toISOString(),
+          token_reissued_by_auth_user_id: input.actorAuthUserId,
+          token_reissued_by_profile_id: input.actorProfileId,
+        },
+      })
+      .eq("id", existing.id)
+      .eq("status", "active")
+      .select("id, shop_id, stripe_coupon_id, percent_off, duration, duration_in_months, status, terms_version, metadata")
+      .maybeSingle<GrantRow>();
+    if (rotateError || !rotated) {
+      throw new Error(`Failed to reissue Early Access approval link: ${rotateError?.message ?? "grant unavailable"}`);
+    }
+
+    return {
+      ...assertGrantContract(rotated, application),
+      token: issued.token,
+      reissued: true,
+    };
   }
 
-  const token = randomBytes(TOKEN_BYTES).toString("base64url");
-  const approvalTokenHash = tokenHash(token);
-  const expiresAt = new Date(
-    Date.now() + EARLY_ACCESS_APPROVAL_TTL_DAYS * 24 * 60 * 60 * 1000,
-  ).toISOString();
+  if (application.status !== "pending") {
+    throw new Error("This Early Access application has already been reviewed or is no longer eligible for approval.");
+  }
+
   const email = normalizeEmail(application.email);
-
   const metadata = {
     purpose: "early_access",
     application_id: application.id,
     application_email: email,
     product_package: application.product_package,
-    approval_token_hash: approvalTokenHash,
-    approval_expires_at: expiresAt,
+    approval_token_hash: issued.approvalTokenHash,
+    approval_expires_at: issued.expiresAt,
     offer_terms_version: application.offer_terms_version,
     pricing_model: PRODUCT_PACKAGE_BILLING_MODEL,
     trial_days: EARLY_ACCESS_TRIAL_DAYS,
+    approved_auth_user_id: input.actorAuthUserId,
+    approved_profile_id: input.actorProfileId,
+    token_reissue_count: 0,
   };
 
   const { data: grant, error: grantError } = await admin
@@ -164,13 +251,12 @@ export async function approveEarlyAccessDiscount(input: {
       duration: "repeating",
       duration_in_months: EARLY_ACCESS_DURATION_MONTHS,
       status: "active",
-      approved_by: input.actorUserId,
+      approved_by: input.actorAuthUserId,
       terms_version: application.offer_terms_version,
       metadata,
     })
     .select("id, shop_id, stripe_coupon_id, percent_off, duration, duration_in_months, status, terms_version, metadata")
     .single<GrantRow>();
-
   if (grantError || !grant) {
     throw new Error(`Failed to create Early Access discount grant: ${grantError?.message ?? "empty result"}`);
   }
@@ -181,7 +267,7 @@ export async function approveEarlyAccessDiscount(input: {
     .update({
       status: "approved",
       reviewed_at: reviewedAt,
-      reviewed_by: input.actorUserId,
+      reviewed_by: input.actorProfileId,
     })
     .eq("id", application.id)
     .eq("status", "pending")
@@ -197,7 +283,8 @@ export async function approveEarlyAccessDiscount(input: {
 
   return {
     ...assertGrantContract(grant, { ...application, status: "approved" }),
-    token,
+    token: issued.token,
+    reissued: false,
   };
 }
 
@@ -228,23 +315,14 @@ export async function findEarlyAccessGrantByToken(token: string): Promise<EarlyA
     throw new Error("Early Access approval has expired.");
   }
 
-  const { data: application, error: applicationError } = await admin
-    .from("early_access_applications")
-    .select("id, email, company_name, product_package, offer_terms_version, status")
-    .eq("id", applicationId)
-    .maybeSingle<ApplicationRow>();
-
-  if (applicationError) {
-    throw new Error(`Failed to verify Early Access application: ${applicationError.message}`);
-  }
-  if (!application) throw new Error("Early Access approval link is invalid.");
-
+  const application = await loadApplication(applicationId);
   return assertGrantContract(grant, application);
 }
 
 export async function attachEarlyAccessCheckout(input: {
   grantId: string;
   stripeCouponId: string;
+  stripeCustomerId: string;
   checkoutSessionId: string;
   acquisitionIntentId: string;
 }): Promise<void> {
@@ -258,20 +336,87 @@ export async function attachEarlyAccessCheckout(input: {
   if (loadError || !row) throw new Error("Early Access discount grant is no longer active.");
 
   const metadata = metadataObject(row.metadata);
-  const { error } = await admin
+  const { data: updated, error } = await admin
     .from("billing_discount_grants")
     .update({
       stripe_coupon_id: input.stripeCouponId,
       metadata: {
         ...metadata,
+        stripe_customer_id: input.stripeCustomerId,
         checkout_session_id: input.checkoutSessionId,
         acquisition_intent_id: input.acquisitionIntentId,
         checkout_started_at: new Date().toISOString(),
       },
     })
     .eq("id", input.grantId)
-    .eq("status", "active");
-  if (error) throw new Error(`Failed to attach Early Access checkout: ${error.message}`);
+    .eq("status", "active")
+    .select("id")
+    .maybeSingle();
+  if (error || !updated) {
+    throw new Error(`Failed to attach Early Access checkout: ${error?.message ?? "grant unavailable"}`);
+  }
+}
+
+export async function validateEarlyAccessCheckoutBeforeClaim(input: {
+  grantId: string;
+  checkoutEmail: string;
+  packageKey: ProductPackageKey;
+  checkoutSessionId: string;
+  stripeCustomerId: string;
+}): Promise<void> {
+  const { metadata } = await loadVerifiedActiveGrantById(input.grantId);
+  const expectedEmail = normalizeEmail(metadataString(metadata, "application_email"));
+  const expectedPackage = normalizeProductPackageKey(metadataString(metadata, "product_package"));
+  const expectedSession = metadataString(metadata, "checkout_session_id");
+  const expectedCustomer = metadataString(metadata, "stripe_customer_id");
+
+  if (
+    !expectedEmail ||
+    expectedEmail !== normalizeEmail(input.checkoutEmail) ||
+    !expectedPackage ||
+    expectedPackage !== input.packageKey ||
+    !expectedSession ||
+    expectedSession !== input.checkoutSessionId ||
+    !expectedCustomer ||
+    expectedCustomer !== input.stripeCustomerId
+  ) {
+    throw new Error("Early Access checkout identity does not match the approved grant.");
+  }
+}
+
+export async function deferEarlyAccessGrantShopBinding(input: {
+  grantId: string;
+  userId: string;
+  checkoutEmail: string;
+  packageKey: ProductPackageKey;
+  checkoutSessionId: string;
+  stripeCustomerId: string;
+  subscriptionId: string;
+}): Promise<void> {
+  await validateEarlyAccessCheckoutBeforeClaim(input);
+  const { metadata } = await loadVerifiedActiveGrantById(input.grantId);
+  const admin = createAdminSupabase();
+  const { data: updated, error } = await admin
+    .from("billing_discount_grants")
+    .update({
+      metadata: {
+        ...metadata,
+        pending_user_id: input.userId,
+        pending_checkout_email: normalizeEmail(input.checkoutEmail),
+        pending_product_package: input.packageKey,
+        checkout_session_id: input.checkoutSessionId,
+        stripe_customer_id: input.stripeCustomerId,
+        subscription_id: input.subscriptionId,
+        pending_shop_binding_at: new Date().toISOString(),
+      },
+    })
+    .eq("id", input.grantId)
+    .eq("status", "active")
+    .select("id")
+    .maybeSingle();
+  if (error || !updated) {
+    throw new Error(`Failed to defer Early Access shop binding: ${error?.message ?? "grant unavailable"}`);
+  }
 }
 
 export async function redeemEarlyAccessGrantAfterClaim(input: {
@@ -295,14 +440,16 @@ export async function redeemEarlyAccessGrantAfterClaim(input: {
 
   const metadata = metadataObject(grant.metadata);
   const expectedEmail = normalizeEmail(metadataString(metadata, "application_email"));
-  const expectedPackage = metadataString(metadata, "product_package");
+  const expectedPackage = normalizeProductPackageKey(metadataString(metadata, "product_package"));
   const expectedSession = metadataString(metadata, "checkout_session_id");
 
   if (
     !expectedEmail ||
     expectedEmail !== normalizeEmail(input.checkoutEmail) ||
+    !expectedPackage ||
     expectedPackage !== input.packageKey ||
-    (expectedSession && expectedSession !== input.checkoutSessionId)
+    !expectedSession ||
+    expectedSession !== input.checkoutSessionId
   ) {
     throw new Error("Early Access checkout identity does not match the approved grant.");
   }
@@ -316,6 +463,8 @@ export async function redeemEarlyAccessGrantAfterClaim(input: {
         ...metadata,
         checkout_session_id: input.checkoutSessionId,
         subscription_id: input.subscriptionId,
+        pending_user_id: null,
+        pending_shop_binding_completed_at: new Date().toISOString(),
         redeemed_at: new Date().toISOString(),
       },
     })
@@ -327,6 +476,54 @@ export async function redeemEarlyAccessGrantAfterClaim(input: {
   if (error || !redeemed) {
     throw new Error(`Failed to redeem Early Access discount grant: ${error?.message ?? "grant already consumed"}`);
   }
+}
+
+export async function bindPendingEarlyAccessGrantToShop(input: {
+  userId: string;
+  shopId: string;
+}): Promise<boolean> {
+  const admin = createAdminSupabase();
+  const { data: grants, error: grantsError } = await admin
+    .from("billing_discount_grants")
+    .select("id, shop_id, stripe_coupon_id, percent_off, duration, duration_in_months, status, terms_version, metadata")
+    .eq("status", "active")
+    .eq("metadata->>purpose", "early_access")
+    .eq("metadata->>pending_user_id", input.userId)
+    .order("created_at", { ascending: false })
+    .limit(2)
+    .returns<GrantRow[]>();
+  if (grantsError) throw new Error(`Failed to load pending Early Access grant: ${grantsError.message}`);
+  if (!grants?.length) return false;
+  if (grants.length !== 1) throw new Error("More than one active Early Access grant is awaiting this owner shop binding.");
+
+  const grant = grants[0];
+  const metadata = metadataObject(grant.metadata);
+  const checkoutEmail = metadataString(metadata, "pending_checkout_email");
+  const packageKey = normalizeProductPackageKey(metadataString(metadata, "pending_product_package"));
+  const checkoutSessionId = metadataString(metadata, "checkout_session_id");
+  const subscriptionId = metadataString(metadata, "subscription_id");
+  if (!checkoutEmail || !packageKey || !checkoutSessionId || !subscriptionId) {
+    throw new Error("Pending Early Access grant is missing checkout identity.");
+  }
+
+  const { data: shop, error: shopError } = await admin
+    .from("shops")
+    .select("owner_id, stripe_subscription_id")
+    .eq("id", input.shopId)
+    .maybeSingle<{ owner_id: string | null; stripe_subscription_id: string | null }>();
+  if (shopError || !shop || shop.owner_id !== input.userId || shop.stripe_subscription_id !== subscriptionId) {
+    throw new Error("Pending Early Access grant does not match the canonical owner shop billing identity.");
+  }
+
+  await redeemEarlyAccessGrantAfterClaim({
+    grantId: grant.id,
+    shopId: input.shopId,
+    checkoutEmail,
+    packageKey,
+    checkoutSessionId,
+    subscriptionId,
+  });
+  return true;
 }
 
 export function earlyAccessGrantIdFromStripeMetadata(
