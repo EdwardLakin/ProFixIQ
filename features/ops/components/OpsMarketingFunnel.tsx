@@ -81,7 +81,7 @@ export default function OpsMarketingFunnel({
         <div>
           <h2 className="font-bold">By source page</h2>
           <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-            Which public acquisition pages are generating pricing, trial, paid, and demo intent.
+            Public acquisition intent with authoritative checkout starts attributed back to the originating source page.
           </p>
         </div>
 
@@ -99,6 +99,8 @@ export default function OpsMarketingFunnel({
                   <th className="px-3 py-2 text-right font-bold">Trial</th>
                   <th className="px-3 py-2 text-right font-bold">Paid</th>
                   <th className="px-3 py-2 text-right font-bold">Demo</th>
+                  <th className="px-3 py-2 text-right font-bold">Checkout</th>
+                  <th className="px-3 py-2 text-right font-bold">Progression</th>
                 </tr>
               </thead>
               <tbody>
@@ -109,6 +111,8 @@ export default function OpsMarketingFunnel({
                     <td className="px-3 py-3 text-right">{number(row.trialClicks)}</td>
                     <td className="px-3 py-3 text-right">{number(row.subscribeClicks)}</td>
                     <td className="px-3 py-3 text-right">{number(row.demoClicks)}</td>
+                    <td className="px-3 py-3 text-right font-bold">{number(row.checkoutStarted)}</td>
+                    <td className="px-3 py-3 text-right">{percent(row.intentToCheckoutStartPct)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -140,6 +144,7 @@ export default function OpsMarketingFunnel({
                   <th className="px-3 py-2 text-right font-bold">Checkout starts</th>
                   <th className="px-3 py-2 text-right font-bold">Trial starts</th>
                   <th className="px-3 py-2 text-right font-bold">Paid starts</th>
+                  <th className="px-3 py-2 text-right font-bold">Progression</th>
                 </tr>
               </thead>
               <tbody>
@@ -151,6 +156,7 @@ export default function OpsMarketingFunnel({
                     <td className="px-3 py-3 text-right font-bold">{number(row.checkoutStarted)}</td>
                     <td className="px-3 py-3 text-right">{number(row.trialCheckouts)}</td>
                     <td className="px-3 py-3 text-right">{number(row.paidCheckouts)}</td>
+                    <td className="px-3 py-3 text-right">{percent(row.intentToCheckoutStartPct)}</td>
                   </tr>
                 ))}
               </tbody>
