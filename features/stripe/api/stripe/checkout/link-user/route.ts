@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 
+import { recordMarketingSignupCompleted } from "@/features/analytics/server/lifecycle-conversion";
 import { readBoundedJson } from "@/features/shared/lib/server/bounded-json";
 import {
   createAdminSupabase,
@@ -205,6 +206,12 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
         claimFailureStatus(claim.reason),
       );
     }
+
+    await recordMarketingSignupCompleted({
+      admin,
+      intentId: metadata.intentId,
+      userId: user.id,
+    });
 
     if (earlyAccessGrantId && metadata.packageKey) {
       if (claim.shopId) {

@@ -1,6 +1,7 @@
 import "server-only";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { recordMarketingOnboardingCompleted } from "@/features/analytics/server/lifecycle-conversion";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { ShopBoostImportSummary } from "@/features/integrations/imports/runFullImport";
 import type { ShopBoostUploadDatasetKey } from "@/features/integrations/shopBoost/uploadDatasets";
@@ -345,6 +346,13 @@ export async function mapInstantAnalysisToGuidedOnboarding(args: {
     .eq("shop_id", args.shopId);
 
   if (updateSessionError) throw new Error(updateSessionError.message);
+
+  if (!nextStep) {
+    await recordMarketingOnboardingCompleted({
+      sessionId,
+      shopId: args.shopId,
+    });
+  }
 
   const { error: eventError } = await admin.from("guided_onboarding_events").insert({
     session_id: sessionId,

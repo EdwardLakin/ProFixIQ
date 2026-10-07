@@ -1,6 +1,7 @@
 import "server-only";
 
 import { NextResponse } from "next/server";
+import { recordMarketingOnboardingCompleted } from "@/features/analytics/server/lifecycle-conversion";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { GUIDED_ONBOARDING_STEPS, getGuidedOnboardingStep, isGuidedOnboardingStepKey } from "./steps";
 import { buildGuidedSessionDetail, findNextGuidedStepKey, orderGuidedSteps } from "./query";
@@ -111,7 +112,14 @@ async function updateSessionCurrentStep(access: Access, sessionId: string, steps
     .maybeSingle();
 
   if (error) throw new Error(error.message);
-  return data as GuidedOnboardingSessionRow;
+  const updatedSession = data as GuidedOnboardingSessionRow;
+  if (updatedSession?.status === "completed" && access.profile.shop_id) {
+    await recordMarketingOnboardingCompleted({
+      sessionId,
+      shopId: access.profile.shop_id,
+    });
+  }
+  return updatedSession;
 }
 
 async function ensureGuidedSteps(access: Access, sessionId: string) {
