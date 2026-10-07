@@ -87,19 +87,30 @@ describe("marketing funnel measurement", () => {
     expect(helper).toContain("checkout_attempt_id: input.checkoutAttemptId");
   });
 
-  it("backfills checkout_started for verified existing acquisition sessions", () => {
+  it("backfills checkout_started for every verified attached acquisition session before status branching", () => {
     const checkout = source("app/api/stripe/checkout/route.ts");
     const retryStart = checkout.indexOf("if (intent.checkoutSessionId) {");
     const retryEnd = checkout.indexOf("const metadata = acquisitionMetadata", retryStart);
     const retryBlock = checkout.slice(retryStart, retryEnd);
+    const retrieveIndex = retryBlock.indexOf(
+      "await stripe.checkout.sessions.retrieve(",
+    );
+    const recordIndex = retryBlock.indexOf("await recordCheckoutStarted();");
+    const openIndex = retryBlock.indexOf('existing.status === "open"');
+    const completeIndex = retryBlock.indexOf('existing.status === "complete"');
+    const inactiveIndex = retryBlock.indexOf(
+      "Checkout attempt is no longer active",
+    );
     const retryRecords = retryBlock.match(/await recordCheckoutStarted\(\);/g) ?? [];
 
     expect(retryStart).toBeGreaterThan(-1);
     expect(retryEnd).toBeGreaterThan(retryStart);
-    expect(retryBlock).toContain('existing.status === "open"');
-    expect(retryBlock).toContain('existing.status === "complete"');
-    expect(retryRecords).toHaveLength(2);
-    expect(retryBlock).toContain("Checkout attempt is no longer active");
+    expect(retrieveIndex).toBeGreaterThan(-1);
+    expect(recordIndex).toBeGreaterThan(retrieveIndex);
+    expect(openIndex).toBeGreaterThan(recordIndex);
+    expect(completeIndex).toBeGreaterThan(recordIndex);
+    expect(inactiveIndex).toBeGreaterThan(recordIndex);
+    expect(retryRecords).toHaveLength(1);
   });
 
   it("makes duplicate checkout_started attempts idempotent", () => {
@@ -189,6 +200,9 @@ describe("marketing funnel measurement", () => {
     expect(migration).toContain("enable row level security");
     expect(migration).toContain(
       "revoke all on table public.marketing_events from anon, authenticated",
+    );
+    expect(migration).toContain(
+      "grant insert on table public.marketing_events to service_role",
     );
   });
 });
