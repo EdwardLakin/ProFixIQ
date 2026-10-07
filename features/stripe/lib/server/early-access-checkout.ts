@@ -50,6 +50,31 @@ function integrationIdentifier(grantId: string): string {
   return `profixiq_early_access_${grantId.replaceAll("-", "").slice(0, 12)}`;
 }
 
+async function ensureCustomer(input: {
+  stripe: Stripe;
+  grantId: string;
+  applicationId: string;
+  email: string;
+  companyName: string;
+  termsVersion: string;
+}): Promise<string> {
+  const customer = await input.stripe.customers.create(
+    {
+      email: input.email,
+      name: input.companyName,
+      metadata: {
+        app: "profixiq",
+        purpose: "early_access",
+        early_access_grant_id: input.grantId,
+        early_access_application_id: input.applicationId,
+        offer_terms_version: input.termsVersion,
+      },
+    },
+    { idempotencyKey: `profixiq:early-access-customer:${input.grantId}` },
+  );
+  return customer.id;
+}
+
 async function ensureCoupon(input: {
   stripe: Stripe;
   grantId: string;
@@ -97,14 +122,24 @@ export async function createEarlyAccessCheckout(token: string): Promise<{
   const stripe = createStripeClient(mustEnv("STRIPE_SECRET_KEY"));
   const admin = createAdminSupabase();
   const priceId = await resolveProductPackagePriceId(stripe, grant.productPackage);
-  const couponId = await ensureCoupon({
-    stripe,
-    grantId: grant.grantId,
-    applicationId: grant.applicationId,
-    termsVersion: grant.offerTermsVersion,
-    existingCouponId: grant.stripeCouponId,
-    priceId,
-  });
+  const [couponId, customerId] = await Promise.all([
+    ensureCoupon({
+      stripe,
+      grantId: grant.grantId,
+      applicationId: grant.applicationId,
+      termsVersion: grant.offerTermsVersion,
+      existingCouponId: grant.stripeCouponId,
+      priceId,
+    }),
+    ensureCustomer({
+      stripe,
+      grantId: grant.grantId,
+      applicationId: grant.applicationId,
+      email: grant.email,
+      companyName: grant.companyName,
+      termsVersion: grant.offerTermsVersion,
+    }),
+  ]);
 
   const intent = await beginStripeAcquisitionIntent({
     admin,
@@ -170,7 +205,7 @@ export async function createEarlyAccessCheckout(token: string): Promise<{
 
   const params: CheckoutCreateParams = {
     mode: "subscription",
-    customer_email: grant.email,
+    customer: customerId,
     line_items: [{ price: priceId, quantity: 1 }],
     discounts: [{ coupon: couponId }],
     payment_method_collection: "always",
