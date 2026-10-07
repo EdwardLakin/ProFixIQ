@@ -3,7 +3,10 @@
 import { useState } from "react";
 import { Check } from "lucide-react";
 
-import { trackMarketingEvent } from "@/features/analytics/marketingEvents";
+import {
+  isAcquisitionMarketingPath,
+  trackMarketingEvent,
+} from "@/features/analytics/marketingEvents";
 import {
   PRODUCT_PACKAGE_PRICING,
   type ProductPackageKey,
@@ -111,20 +114,23 @@ export default function PricingSection({
     setBusyKey(packageKey);
     const checkoutAttemptId = crypto.randomUUID();
     const interval: BillingInterval = "monthly";
+    const isAcquisition = isAcquisitionMarketingPath(window.location.pathname);
 
-    trackMarketingEvent(
-      checkoutMode === "trial"
-        ? "marketing_trial_click"
-        : "marketing_subscribe_click",
-      {
-        source: window.location.pathname,
-        destination: "/api/stripe/checkout",
-        packageKey,
-        interval,
-        checkoutMode,
-        checkoutAttemptId,
-      },
-    );
+    if (isAcquisition) {
+      trackMarketingEvent(
+        checkoutMode === "trial"
+          ? "marketing_trial_click"
+          : "marketing_subscribe_click",
+        {
+          source: window.location.pathname,
+          destination: "/api/stripe/checkout",
+          packageKey,
+          interval,
+          checkoutMode,
+          checkoutAttemptId,
+        },
+      );
+    }
 
     try {
       await onCheckout({
@@ -133,6 +139,17 @@ export default function PricingSection({
         checkoutAttemptId,
         checkoutMode,
       });
+
+      if (isAcquisition) {
+        trackMarketingEvent("checkout_started", {
+          source: window.location.pathname,
+          destination: "stripe_checkout",
+          packageKey,
+          interval,
+          checkoutMode,
+          checkoutAttemptId,
+        });
+      }
     } catch (error) {
       console.error("[PricingSection] checkout failed", error);
       window.alert("Checkout could not be started. Please try again.");
