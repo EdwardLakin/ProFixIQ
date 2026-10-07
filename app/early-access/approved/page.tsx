@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { CheckCircle2, LockKeyhole } from "lucide-react";
 
@@ -15,6 +16,9 @@ import {
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
+export const metadata: Metadata = {
+  referrer: "no-referrer",
+};
 
 function first(value: string | string[] | undefined): string {
   return Array.isArray(value) ? value[0] ?? "" : value ?? "";
@@ -28,12 +32,6 @@ function money(cents: number): string {
   }).format(cents / 100);
 }
 
-function publicApprovalError(message: string): string {
-  if (message === "Early Access approval has expired.") return message;
-  if (message === "Early Access approval is no longer valid.") return message;
-  return "This Early Access approval link is invalid, unavailable, or has already been used.";
-}
-
 export default async function ApprovedEarlyAccessPage({
   searchParams,
 }: {
@@ -43,13 +41,12 @@ export default async function ApprovedEarlyAccessPage({
   const token = first(params.token).trim();
 
   let grant: Awaited<ReturnType<typeof findEarlyAccessGrantByToken>> | null = null;
-  let invalidReason = "This Early Access approval link is invalid, unavailable, or has already been used.";
+  let invalidReason = "This Early Access approval link is invalid or has expired.";
   if (token) {
     try {
       grant = await findEarlyAccessGrantByToken(token);
     } catch (error) {
-      const message = error instanceof Error ? error.message : "";
-      invalidReason = publicApprovalError(message);
+      if (error instanceof Error && error.message) invalidReason = error.message;
     }
   }
 
@@ -105,8 +102,8 @@ export default async function ApprovedEarlyAccessPage({
               </div>
               <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
                 <div className="text-xs font-bold text-slate-400">Early Access base price</div>
-                <div className="mt-1 text-xl font-black">{money(discountedMonthlyCents)}<span className="text-xs font-semibold text-slate-400">/mo</span></div>
-                <div className="mt-1 text-xs text-slate-500">Regularly {money(regularMonthlyCents)}/mo</div>
+                <div className="mt-1 text-xl font-black">{money(discountedMonthlyCents)} USD<span className="text-xs font-semibold text-slate-400">/mo</span></div>
+                <div className="mt-1 text-xs text-slate-500">Regularly {money(regularMonthlyCents)} USD/mo</div>
               </div>
             </div>
 
@@ -124,7 +121,9 @@ export default async function ApprovedEarlyAccessPage({
 
             <div className="mt-8">
               <EarlyAccessCheckoutButton token={token} />
-              <p className="mt-3 text-xs text-slate-500">Secure checkout is handled by Stripe. A payment method is collected now; the subscription trial starts before the first discounted paid period.</p>
+              <p className="mt-3 text-xs text-slate-500">
+                Secure checkout is handled by Stripe. Base prices shown above are USD; Stripe may present a converted local-currency amount at checkout. A payment method is collected now; the subscription trial starts before the first discounted paid period.
+              </p>
             </div>
           </div>
         </section>
