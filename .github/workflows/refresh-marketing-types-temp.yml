@@ -1,0 +1,57 @@
+name: Temporary Marketing Types Refresh
+
+on:
+  push:
+    branches:
+      - marketing/funnel-measurement-final
+    paths:
+      - ".github/workflows/refresh-marketing-types-temp.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: marketing/funnel-measurement-final
+
+      - uses: supabase/setup-cli@v2
+        with:
+          version: 2.114.0
+          github-token: ${{ github.token }}
+
+      - name: Refresh generated Supabase contract
+        shell: bash
+        run: bash scripts/check-supabase-schema-contract.sh --write
+
+      - name: Verify only the generated contract changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          changed="$(git status --short)"
+          printf '%s\n' "$changed"
+          unexpected="$(git status --short | grep -v '^ M features/shared/types/types/supabase.ts$' || true)"
+          if [[ -n "$unexpected" ]]; then
+            echo "Unexpected files changed during schema refresh:" >&2
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          fi
+          git diff --check
+          git diff --exit-code --quiet -- features/shared/types/types/supabase.ts && {
+            echo "Expected the generated Supabase contract to change." >&2
+            exit 1
+          }
+
+      - name: Commit refreshed contract to PR branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add features/shared/types/types/supabase.ts
+          git commit -m "Refresh generated Supabase type contract"
+          git push origin HEAD:marketing/funnel-measurement-final
