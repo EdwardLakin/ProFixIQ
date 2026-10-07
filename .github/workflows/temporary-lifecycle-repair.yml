@@ -26,6 +26,14 @@ jobs:
       - name: Apply lifecycle review repair
         run: python .github/scripts/repair_lifecycle_conversion.py
 
+      - name: Stage protected workflow payload
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp .github/workflows/supabase-clean-replay-audit.yml \
+            .github/scripts/supabase-clean-replay-audit.patched.yml
+          git checkout -- .github/workflows/supabase-clean-replay-audit.yml
+
       - name: Commit repair
         shell: bash
         run: |
@@ -40,7 +48,7 @@ jobs:
             features/onboarding-v2/guided/instantAnalysisHandoff.ts \
             tests/marketing-lifecycle-conversion.test.ts \
             tests/security/marketing-lifecycle-conversion.runtime.sql \
-            .github/workflows/supabase-clean-replay-audit.yml
+            .github/scripts/supabase-clean-replay-audit.patched.yml
           if git diff --cached --quiet; then
             exit 0
           fi
