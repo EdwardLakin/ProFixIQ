@@ -9,24 +9,29 @@ on:
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           ref: marketing/funnel-measurement-final
 
-      - uses: supabase/setup-cli@v2
-        with:
-          version: 2.114.0
-          github-token: ${{ github.token }}
-
-      - name: Refresh generated Supabase contract
+      - name: Restore generated contract from clean-replay artifact
         shell: bash
-        run: bash scripts/check-supabase-schema-contract.sh --write
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh api repos/${GITHUB_REPOSITORY}/actions/artifacts/11459527789/zip > /tmp/generated-types.zip
+          mkdir -p /tmp/generated-types
+          unzip -q /tmp/generated-types.zip -d /tmp/generated-types
+          test -f /tmp/generated-types/generated-supabase-types.ts
+          echo "8e4732d79b74b453073f1fb5750acae6410b9f52603ecb4e03da62e99293cd30  /tmp/generated-types/generated-supabase-types.ts" | sha256sum -c -
+          cp /tmp/generated-types/generated-supabase-types.ts features/shared/types/types/supabase.ts
 
       - name: Verify only the generated contract changed
         shell: bash
@@ -36,7 +41,7 @@ jobs:
           printf '%s\n' "$changed"
           unexpected="$(git status --short | grep -v '^ M features/shared/types/types/supabase.ts$' || true)"
           if [[ -n "$unexpected" ]]; then
-            echo "Unexpected files changed during schema refresh:" >&2
+            echo "Unexpected files changed while restoring the generated contract:" >&2
             printf '%s\n' "$unexpected" >&2
             exit 1
           fi
@@ -45,6 +50,7 @@ jobs:
             echo "Expected the generated Supabase contract to change." >&2
             exit 1
           }
+          grep -q 'marketing_events: {' features/shared/types/types/supabase.ts
 
       - name: Commit refreshed contract to PR branch
         shell: bash
