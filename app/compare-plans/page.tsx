@@ -52,14 +52,11 @@ export default function ComparePlansPage() {
 
     if (!res.ok) {
       const message = data?.details || data?.error || "Checkout failed";
-      toast.error(message);
       throw new Error(message);
     }
 
     if (!data?.url) {
-      const message = "No checkout URL returned";
-      toast.error(message);
-      throw new Error(message);
+      throw new Error("No checkout URL returned");
     }
 
     window.location.href = data.url;
