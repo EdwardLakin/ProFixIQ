@@ -9,6 +9,8 @@ export default function robots(): MetadataRoute.Robots {
         "/compare-plans",
         "/field-service",
         "/fleet-maintenance",
+        "/fleet-repair-management-software",
+        "/fleet-preventive-maintenance-software",
         "/request-demo",
       ],
       disallow: [
