@@ -6,6 +6,7 @@ import { NextResponse } from "next/server";
 import Stripe from "stripe";
 import { z } from "zod";
 
+import { recordMarketingCheckoutStarted } from "@/features/analytics/server/checkout-started";
 import { readBoundedJson } from "@/features/shared/lib/server/bounded-json";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { OWNER_PIN_PURPOSES } from "@/features/shared/lib/server/owner-pin";
@@ -334,6 +335,14 @@ export async function POST(req: Request) {
       const trialDays =
         parsed.data.checkoutMode === "paid" ? 0 : configuredDays;
       const admin = createAdminSupabase();
+      const recordCheckoutStarted = () =>
+        recordMarketingCheckoutStarted({
+          admin,
+          checkoutAttemptId: attemptId,
+          packageKey: selection.packageKey,
+          interval: parsed.data.interval ?? null,
+          checkoutMode: trialDays > 0 ? "trial" : "paid",
+        });
       const intent = await beginStripeAcquisitionIntent({
         admin,
         requestKey: `acq:${attemptId}`,
@@ -353,6 +362,7 @@ export async function POST(req: Request) {
           intent.checkoutSessionId,
         );
         if (existing.status === "open" && existing.url) {
+          await recordCheckoutStarted();
           return noStoreJson({
             ok: true,
             sessionId: existing.id,
@@ -360,6 +370,7 @@ export async function POST(req: Request) {
           });
         }
         if (existing.status === "complete") {
+          await recordCheckoutStarted();
           return noStoreJson({
             ok: true,
             sessionId: existing.id,
@@ -398,6 +409,7 @@ export async function POST(req: Request) {
         nonce: intent.nonce,
         checkoutSessionId: session.id,
       });
+      await recordCheckoutStarted();
       return noStoreJson({ ok: true, sessionId: session.id, url: session.url });
     }
 

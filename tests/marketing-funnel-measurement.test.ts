@@ -59,22 +59,110 @@ describe("marketing funnel measurement", () => {
     expect(route).not.toContain('  "onboarding_completed",');
   });
 
-  it("records checkout_started at the authoritative Stripe attachment boundary", () => {
-    const pricing = source("features/shared/components/ui/PricingSection.tsx");
-    const pricingPage = source("app/compare-plans/page.tsx");
+  it("records a new checkout only after canonical Stripe attachment with the bare attempt UUID", () => {
+    const checkout = source("app/api/stripe/checkout/route.ts");
+    const helper = source("features/analytics/server/checkout-started.ts");
+
+    expect(checkout).toContain("checkoutAttemptId: attemptId");
+    expect(checkout).not.toContain("checkoutAttemptId: `acq:${attemptId}`");
+
+    const createIndex = checkout.indexOf(
+      "const session = await stripe.checkout.sessions.create(",
+    );
+    const attachIndex = checkout.indexOf(
+      "await attachStripeAcquisitionCheckout({",
+      createIndex,
+    );
+    const recordIndex = checkout.indexOf(
+      "await recordCheckoutStarted();",
+      attachIndex,
+    );
+
+    expect(createIndex).toBeGreaterThan(-1);
+    expect(attachIndex).toBeGreaterThan(createIndex);
+    expect(recordIndex).toBeGreaterThan(attachIndex);
+    expect(helper).toContain('.from("marketing_events").insert({');
+    expect(helper).toContain('event_name: "checkout_started"');
+    expect(helper).toContain('destination: "stripe_checkout"');
+    expect(helper).toContain("checkout_attempt_id: input.checkoutAttemptId");
+  });
+
+  it("backfills checkout_started for verified existing acquisition sessions", () => {
+    const checkout = source("app/api/stripe/checkout/route.ts");
+    const retryStart = checkout.indexOf("if (intent.checkoutSessionId) {");
+    const retryEnd = checkout.indexOf("const metadata = acquisitionMetadata", retryStart);
+    const retryBlock = checkout.slice(retryStart, retryEnd);
+    const retryRecords = retryBlock.match(/await recordCheckoutStarted\(\);/g) ?? [];
+
+    expect(retryStart).toBeGreaterThan(-1);
+    expect(retryEnd).toBeGreaterThan(retryStart);
+    expect(retryBlock).toContain('existing.status === "open"');
+    expect(retryBlock).toContain('existing.status === "complete"');
+    expect(retryRecords).toHaveLength(2);
+    expect(retryBlock).toContain("Checkout attempt is no longer active");
+  });
+
+  it("makes duplicate checkout_started attempts idempotent", () => {
     const migration = source(
       "supabase/migrations/20261007021000_create_marketing_events.sql",
     );
+    const helper = source("features/analytics/server/checkout-started.ts");
 
-    expect(pricing).not.toContain('trackMarketingEvent("checkout_started"');
-    expect(pricingPage).toContain('throw new Error(message)');
-    expect(pricingPage).not.toContain('toast.error("Checkout failed"');
     expect(migration).toContain(
+      "create unique index if not exists marketing_events_checkout_started_attempt_uidx",
+    );
+    expect(migration).toContain("on public.marketing_events (checkout_attempt_id)");
+    expect(migration).toContain("where event_name = 'checkout_started'");
+    expect(migration).toContain("and checkout_attempt_id is not null");
+    expect(helper).toContain('error.code === "23505"');
+  });
+
+  it("does not let failed Stripe create or attachment paths record checkout_started", () => {
+    const checkout = source("app/api/stripe/checkout/route.ts");
+    const retryEnd = checkout.indexOf("const metadata = acquisitionMetadata");
+    const ownerStart = checkout.indexOf(
+      "const access = await requireShopScopedApiAccess",
+      retryEnd,
+    );
+    const newCheckoutBlock = checkout.slice(retryEnd, ownerStart);
+
+    const createIndex = newCheckoutBlock.indexOf(
+      "const session = await stripe.checkout.sessions.create(",
+    );
+    const attachIndex = newCheckoutBlock.indexOf(
+      "await attachStripeAcquisitionCheckout({",
+    );
+    const recordIndex = newCheckoutBlock.indexOf(
+      "await recordCheckoutStarted();",
+    );
+
+    expect(createIndex).toBeGreaterThan(-1);
+    expect(attachIndex).toBeGreaterThan(createIndex);
+    expect(recordIndex).toBeGreaterThan(attachIndex);
+    expect(
+      newCheckoutBlock.match(/await recordCheckoutStarted\(\);/g) ?? [],
+    ).toHaveLength(1);
+  });
+
+  it("keeps the canonical Stripe acquisition RPC unchanged by analytics", () => {
+    const analyticsMigration = source(
+      "supabase/migrations/20261007021000_create_marketing_events.sql",
+    );
+    const canonicalStripeMigration = source(
+      "supabase/migrations/20260725171300_harden_p0_006_stripe_identity.sql",
+    );
+
+    expect(analyticsMigration).not.toContain("attach_stripe_acquisition_checkout");
+    expect(canonicalStripeMigration).toContain(
       "create or replace function public.attach_stripe_acquisition_checkout",
     );
-    expect(migration).toContain("event_name = 'checkout_started'");
-    expect(migration).toContain("'stripe_checkout'");
-    expect(migration).toContain("v_request_key::uuid");
+  });
+
+  it("includes marketing_events in the generated Supabase contract", () => {
+    const types = source("features/shared/types/types/supabase.ts");
+    expect(types).toContain("marketing_events: {");
+    expect(types).toContain("checkout_attempt_id: string | null");
+    expect(types).toContain("anonymous_session_id: string | null");
   });
 
   it("bounds and rate-limits the first-party public collector", () => {
