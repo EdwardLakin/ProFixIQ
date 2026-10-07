@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { Toaster, toast } from "sonner";
+import { trackMarketingEvent } from "@/features/analytics/marketingEvents";
 import {
   parseActivationContextFromSearchParams,
   persistActivationContext,
@@ -57,6 +58,14 @@ export default function ComparePlansPage() {
       }
 
       if (data?.url) {
+        trackMarketingEvent("checkout_started", {
+          source: window.location.pathname,
+          destination: data.url,
+          packageKey,
+          interval,
+          checkoutMode,
+          checkoutAttemptId,
+        });
         window.location.href = data.url;
         return;
       }
