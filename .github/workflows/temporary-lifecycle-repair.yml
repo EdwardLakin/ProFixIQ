@@ -12,11 +12,16 @@ jobs:
     if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'analytics/lifecycle-conversion-funnel'
     runs-on: ubuntu-latest
     steps:
-      - name: Check out repair branch
-        uses: actions/checkout@v4
-        with:
-          ref: analytics/lifecycle-conversion-funnel
-          fetch-depth: 0
+      - name: Fetch repair branch
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init .
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin analytics/lifecycle-conversion-funnel
+          git checkout -B analytics/lifecycle-conversion-funnel FETCH_HEAD
 
       - name: Apply lifecycle review repair
         run: python .github/scripts/repair_lifecycle_conversion.py
