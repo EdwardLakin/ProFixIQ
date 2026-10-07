@@ -10,8 +10,10 @@ import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import { isStripeSubscriptionAccessBearing } from "@/features/stripe/lib/stripe/subscriptionStatus";
 import { reconcileShopBillingFromUser } from "@/features/stripe/lib/server/canonical-shop-billing";
 import {
+  deferEarlyAccessGrantShopBinding,
   earlyAccessGrantIdFromStripeMetadata,
   redeemEarlyAccessGrantAfterClaim,
+  validateEarlyAccessCheckoutBeforeClaim,
 } from "@/features/stripe/lib/server/early-access-discount";
 import {
   claimStripeAcquisitionIntent,
@@ -112,6 +114,29 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
       );
     }
 
+    const earlyAccessGrantId = earlyAccessGrantIdFromStripeMetadata(session.metadata);
+    if (earlyAccessGrantId) {
+      if (!metadata.packageKey) {
+        return noStoreJson({ error: "Early Access checkout identity could not be verified" }, 400);
+      }
+      try {
+        await validateEarlyAccessCheckoutBeforeClaim({
+          grantId: earlyAccessGrantId,
+          checkoutEmail,
+          packageKey: metadata.packageKey,
+          checkoutSessionId: session.id,
+          stripeCustomerId: customerId,
+        });
+      } catch (error) {
+        console.warn("early_access_grant_preclaim_rejected", {
+          grantId: earlyAccessGrantId,
+          intentId: metadata.intentId,
+          message: error instanceof Error ? error.message : "unknown",
+        });
+        return noStoreJson({ error: "Early Access checkout identity could not be verified" }, 400);
+      }
+    }
+
     const admin = createAdminSupabase();
     const claim = await claimStripeAcquisitionIntent({
       admin,
@@ -140,26 +165,27 @@ export async function handleStripeCheckoutLinkUser(req: Request) {
       );
     }
 
-    const earlyAccessGrantId = earlyAccessGrantIdFromStripeMetadata(session.metadata);
-    if (earlyAccessGrantId) {
-      if (!claim.shopId || !metadata.packageKey) {
-        console.error("early_access_grant_claim_missing_identity", {
+    if (earlyAccessGrantId && metadata.packageKey) {
+      if (claim.shopId) {
+        await redeemEarlyAccessGrantAfterClaim({
           grantId: earlyAccessGrantId,
-          intentId: metadata.intentId,
           shopId: claim.shopId,
+          checkoutEmail,
           packageKey: metadata.packageKey,
+          checkoutSessionId: session.id,
+          subscriptionId,
         });
-        return noStoreJson({ error: "Early Access account linking is incomplete" }, 409);
+      } else {
+        await deferEarlyAccessGrantShopBinding({
+          grantId: earlyAccessGrantId,
+          userId: user.id,
+          checkoutEmail,
+          packageKey: metadata.packageKey,
+          checkoutSessionId: session.id,
+          stripeCustomerId: customerId,
+          subscriptionId,
+        });
       }
-
-      await redeemEarlyAccessGrantAfterClaim({
-        grantId: earlyAccessGrantId,
-        shopId: claim.shopId,
-        checkoutEmail,
-        packageKey: metadata.packageKey,
-        checkoutSessionId: session.id,
-        subscriptionId,
-      });
     }
 
     const shouldUpgradePortalIdentity =
