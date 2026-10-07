@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { submitEarlyAccessApplication } from "@/features/ops/server/earlyAccessApplications";
+import { enforcePublicRouteRateLimit } from "@/features/shared/lib/server/publicRouteRateLimit";
 
 type Body = {
   fullName?: unknown;
@@ -10,6 +11,7 @@ type Body = {
   phone?: unknown;
   companyName?: unknown;
   location?: unknown;
+  productPackage?: unknown;
   operationType?: unknown;
   locationCount?: unknown;
   technicianCount?: unknown;
@@ -34,6 +36,14 @@ function optionalNumber(value: unknown): number | null {
 }
 
 export async function POST(request: Request) {
+  const limited = enforcePublicRouteRateLimit({
+    request,
+    route: "public-early-access",
+    max: 10,
+    windowMs: 10 * 60 * 1000,
+  });
+  if (limited) return limited;
+
   const body = (await request.json().catch(() => null)) as Body | null;
   if (!body) return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
 
@@ -44,6 +54,7 @@ export async function POST(request: Request) {
       phone: typeof body.phone === "string" ? body.phone : undefined,
       companyName: typeof body.companyName === "string" ? body.companyName : "",
       location: typeof body.location === "string" ? body.location : undefined,
+      productPackage: typeof body.productPackage === "string" ? body.productPackage : "",
       operationType: typeof body.operationType === "string" ? body.operationType : "",
       locationCount: optionalNumber(body.locationCount) ?? 0,
       technicianCount: optionalNumber(body.technicianCount),
