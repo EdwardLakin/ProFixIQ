@@ -1,17 +1,15 @@
 name: Temporary Lifecycle Review Repair
 
 on:
-  push:
-    branches:
-      - analytics/lifecycle-conversion-funnel
-    paths:
-      - .github/workflows/temporary-lifecycle-repair.yml
+  pull_request:
+    types: [opened, synchronize, reopened]
 
 permissions:
   contents: write
 
 jobs:
   repair:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'analytics/lifecycle-conversion-funnel'
     runs-on: ubuntu-latest
     steps:
       - name: Check out repair branch
