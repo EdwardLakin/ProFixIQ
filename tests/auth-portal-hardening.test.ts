@@ -89,7 +89,7 @@ describe("authentication and portal hardening", () => {
     const signInRoute = read("app/api/auth/sign-in/route.ts");
 
     expect(signInRoute).toContain(
-      'const INVALID_CREDENTIALS_ERROR = "Username/email or password is incorrect. Check both and try again.",
+      'const INVALID_CREDENTIALS_ERROR = "Username/email or password is incorrect. Check both and try again.";',
     );
     expect(signInRoute).toMatch(
       /if \(!signedInUser\) \{\s*return NextResponse\.json\(\s*\{ ok: false, error: INVALID_CREDENTIALS_ERROR \},\s*\{ status: 401 \}/,
