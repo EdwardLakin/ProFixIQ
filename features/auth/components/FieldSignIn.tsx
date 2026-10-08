@@ -107,9 +107,7 @@ export default function FieldSignIn() {
         surface: "field",
       });
       if (!result.ok) {
-        setError(
-          "We couldn't open a Field workspace with those details. Check your sign-in or ask an owner to enable Field access.",
-        );
+        setError(result.error);
         return;
       }
 
