@@ -7,9 +7,9 @@ function source(path: string): string {
 
 describe("public SEO foundation", () => {
   it("publishes a controlled marketing sitemap", () => {
-    const sitemap = source("app/sitemap.ts");
+    const sitemap = source("app/sitemap.xml/route.ts");
 
-    expect(sitemap).toContain('const siteUrl = "https://profixiq.com"');
+    expect(sitemap).toContain('const siteUrl = "https://profixiq.com"');\n    expect(sitemap).toContain('<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">');\n    expect(sitemap).toContain('"Content-Type": "application/xml; charset=utf-8"');
     expect(sitemap).toContain("/compare-plans");
     expect(sitemap).toContain("/field-service");
     expect(sitemap).toContain("/fleet-maintenance");
