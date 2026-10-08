@@ -11,6 +11,10 @@ const groups = [
     links: [
       { label: "Workflow", href: "/#workflow" },
       { label: "Platform", href: "/#product" },
+      {
+        label: "Repair Shop Management Software",
+        href: "/repair-shop-management-software",
+      },
       { label: "Shop Boost", href: "/#shop-boost" },
       { label: "Pricing", href: "/#pricing" },
     ],

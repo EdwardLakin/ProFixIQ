@@ -28,6 +28,7 @@ const STANDALONE_PUBLIC_PREFIXES = [
   "/service-truck-work-order-software",
   "/heavy-equipment-repair-software",
   "/off-highway-equipment-repair-software",
+  "/repair-shop-management-software",
   "/heavy-duty-shop-management-software",
   "/diesel-repair-shop-software",
   "/heavy-duty-work-order-software",
