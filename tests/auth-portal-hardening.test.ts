@@ -85,6 +85,20 @@ describe("authentication and portal hardening", () => {
     expect(retiredResolver).not.toContain("authEmail");
   });
 
+  it("shows a clear credential error without changing post-auth access denials", () => {
+    const signInRoute = read("app/api/auth/sign-in/route.ts");
+
+    expect(signInRoute).toContain(
+      'const INVALID_CREDENTIALS_ERROR = "Username/email or password is incorrect. Check both and try again.";'
+    );
+    expect(signInRoute).toMatch(
+      /if \(!signedInUser\) \{\s*return NextResponse\.json\(\s*\{ ok: false, error: INVALID_CREDENTIALS_ERROR \},\s*\{ status: 401 \}/
+    );
+    expect(signInRoute).toMatch(
+      /const deny = async \(\) => \{[\s\S]*?\{ ok: false, error: GENERIC_ERROR \}/
+    );
+  });
+
   it("requires durable accepted invite evidence for customer access", () => {
     const portalAuth = read("features/portal/server/portalAuth.ts");
     const signInRoute = read("app/api/auth/sign-in/route.ts");
