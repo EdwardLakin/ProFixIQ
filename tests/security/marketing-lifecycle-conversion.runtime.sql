@@ -326,6 +326,6 @@ begin
     raise exception 'marketing lifecycle runtime assertion failed: analytics error changed completed onboarding state';
   end if;
 end
-$;
+$$;
 
 rollback;
