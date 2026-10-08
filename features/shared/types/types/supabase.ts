@@ -30620,6 +30620,10 @@ export type Database = {
         Args: { p_breakdown_limit: number; p_since: string }
         Returns: Json
       }
+      get_ops_marketing_lifecycle_funnel_snapshot: {
+        Args: { p_breakdown_limit: number; p_since: string }
+        Returns: Json
+      }
       get_work_order_assignments: {
         Args: { p_work_order_id: string }
         Returns: {
@@ -31693,6 +31697,14 @@ export type Database = {
           p_invite_id: string
           p_shop_id: string
         }
+        Returns: boolean
+      }
+      record_marketing_onboarding_completed: {
+        Args: { p_session_id: string; p_shop_id: string }
+        Returns: boolean
+      }
+      record_marketing_signup_completed: {
+        Args: { p_intent_id: string; p_user_id: string }
         Returns: boolean
       }
       record_offline_photo_receipt_atomic: {

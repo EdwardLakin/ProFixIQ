@@ -9,7 +9,9 @@ function percent(value: number): string {
 }
 
 function pretty(value: string): string {
-  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return value
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function MetricCard({
@@ -27,7 +29,9 @@ function MetricCard({
         {label}
       </div>
       <div className="mt-2 text-2xl font-black tracking-tight">{value}</div>
-      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{detail}</div>
+      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+        {detail}
+      </div>
     </div>
   );
 }
@@ -42,23 +46,34 @@ export default function OpsMarketingFunnel({
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <div>
-        <div className="text-xs font-black uppercase tracking-[0.18em] text-sky-300">Acquisition</div>
-        <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">Marketing Funnel</h1>
+        <div className="text-xs font-black uppercase tracking-[0.18em] text-sky-300">
+          Acquisition
+        </div>
+        <h1 className="mt-2 text-2xl font-black tracking-tight sm:text-3xl">
+          Marketing Funnel
+        </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-[color:var(--theme-text-secondary)]">
-          Read-only 30-day acquisition telemetry from the first-party marketing event ledger. Counts are event volume,
-          not unique visitors. The measured funnel currently ends at authoritative Stripe checkout start; signup and
-          onboarding completion remain intentionally deferred until their server-side success boundaries are wired.
+          Read-only 30-day acquisition telemetry from the first-party marketing
+          event ledger. Counts are event volume, not unique visitors. The measured
+          funnel follows authoritative checkout start through newly created
+          acquisition accounts and completed guided onboarding without storing
+          user or shop identifiers in the marketing ledger.
         </p>
       </div>
 
       {snapshot.breakdownTruncated ? (
         <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200">
-          Summary totals are exact, but source and package breakdowns show only the newest 20,000 events in this 30-day window.
+          Summary totals are exact, but source and package breakdowns show only
+          the newest 20,000 events in this 30-day window.
         </div>
       ) : null}
 
-      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
-        <MetricCard label="Pricing views" value={number(summary.pricingViews)} detail="Public pricing page views" />
+      <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <MetricCard
+          label="Pricing views"
+          value={number(summary.pricingViews)}
+          detail="Public pricing page views"
+        />
         <MetricCard
           label="Checkout intent"
           value={number(summary.checkoutIntentClicks)}
@@ -70,18 +85,43 @@ export default function OpsMarketingFunnel({
           detail={`${number(summary.trialCheckouts)} trial · ${number(summary.paidCheckouts)} paid`}
         />
         <MetricCard
+          label="Signup completed"
+          value={number(summary.signupCompleted)}
+          detail="New acquisition accounts only"
+        />
+        <MetricCard
+          label="Onboarding completed"
+          value={number(summary.onboardingCompleted)}
+          detail="Guided setup completed"
+        />
+        <MetricCard
           label="Intent → checkout"
           value={percent(summary.intentToCheckoutStartPct)}
-          detail="Checkout-button progression, not visitor conversion"
+          detail="Checkout-button progression"
         />
-        <MetricCard label="Demo clicks" value={number(summary.demoClicks)} detail="Public demo acquisition intent" />
+        <MetricCard
+          label="Checkout → signup"
+          value={percent(summary.checkoutToSignupPct)}
+          detail="New-account progression"
+        />
+        <MetricCard
+          label="Signup → onboarding"
+          value={percent(summary.signupToOnboardingPct)}
+          detail="Guided-setup progression"
+        />
       </section>
+
+      <div className="text-sm text-[color:var(--theme-text-secondary)]">
+        Demo acquisition intent: <span className="font-bold">{number(summary.demoClicks)}</span>
+      </div>
 
       <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-4 shadow-card sm:p-5">
         <div>
           <h2 className="font-bold">By source page</h2>
           <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-            Checkout-button intent with authoritative checkout starts attributed back to canonical public acquisition pages.
+            Attempt-bearing acquisition activity with checkout, new-account, and
+            guided-onboarding completion attributed back to canonical public
+            acquisition pages.
           </p>
         </div>
 
@@ -100,19 +140,42 @@ export default function OpsMarketingFunnel({
                   <th className="px-3 py-2 text-right font-bold">Paid checkout</th>
                   <th className="px-3 py-2 text-right font-bold">Demo</th>
                   <th className="px-3 py-2 text-right font-bold">Checkout start</th>
-                  <th className="px-3 py-2 text-right font-bold">Progression</th>
+                  <th className="px-3 py-2 text-right font-bold">Signup</th>
+                  <th className="px-3 py-2 text-right font-bold">Onboarding</th>
+                  <th className="px-3 py-2 text-right font-bold">Intent → checkout</th>
+                  <th className="px-3 py-2 text-right font-bold">Checkout → signup</th>
+                  <th className="px-3 py-2 text-right font-bold">Signup → onboard</th>
                 </tr>
               </thead>
               <tbody>
                 {snapshot.sources.map((row) => (
-                  <tr key={row.sourcePath} className="border-b border-[color:var(--theme-border-soft)] last:border-0">
-                    <td className="whitespace-nowrap px-3 py-3 font-mono text-xs font-semibold">{row.sourcePath}</td>
+                  <tr
+                    key={row.sourcePath}
+                    className="border-b border-[color:var(--theme-border-soft)] last:border-0"
+                  >
+                    <td className="whitespace-nowrap px-3 py-3 font-mono text-xs font-semibold">
+                      {row.sourcePath}
+                    </td>
                     <td className="px-3 py-3 text-right">{number(row.pricingViews)}</td>
                     <td className="px-3 py-3 text-right">{number(row.trialClicks)}</td>
                     <td className="px-3 py-3 text-right">{number(row.subscribeClicks)}</td>
                     <td className="px-3 py-3 text-right">{number(row.demoClicks)}</td>
-                    <td className="px-3 py-3 text-right font-bold">{number(row.checkoutStarted)}</td>
-                    <td className="px-3 py-3 text-right">{percent(row.intentToCheckoutStartPct)}</td>
+                    <td className="px-3 py-3 text-right font-bold">
+                      {number(row.checkoutStarted)}
+                    </td>
+                    <td className="px-3 py-3 text-right">{number(row.signupCompleted)}</td>
+                    <td className="px-3 py-3 text-right">
+                      {number(row.onboardingCompleted)}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      {percent(row.intentToCheckoutStartPct)}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      {percent(row.checkoutToSignupPct)}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      {percent(row.signupToOnboardingPct)}
+                    </td>
                   </tr>
                 ))}
               </tbody>
@@ -125,7 +188,8 @@ export default function OpsMarketingFunnel({
         <div>
           <h2 className="font-bold">By product package</h2>
           <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-            Attempt-bearing trial and paid checkout intent compared with authoritative Stripe checkout starts.
+            Attempt-bearing trial and paid checkout intent compared with
+            authoritative checkout, signup, and guided-onboarding completion.
           </p>
         </div>
 
@@ -144,19 +208,42 @@ export default function OpsMarketingFunnel({
                   <th className="px-3 py-2 text-right font-bold">Checkout starts</th>
                   <th className="px-3 py-2 text-right font-bold">Trial starts</th>
                   <th className="px-3 py-2 text-right font-bold">Paid starts</th>
-                  <th className="px-3 py-2 text-right font-bold">Progression</th>
+                  <th className="px-3 py-2 text-right font-bold">Signup</th>
+                  <th className="px-3 py-2 text-right font-bold">Onboarding</th>
+                  <th className="px-3 py-2 text-right font-bold">Intent → checkout</th>
+                  <th className="px-3 py-2 text-right font-bold">Checkout → signup</th>
+                  <th className="px-3 py-2 text-right font-bold">Signup → onboard</th>
                 </tr>
               </thead>
               <tbody>
                 {snapshot.packages.map((row) => (
-                  <tr key={row.packageKey} className="border-b border-[color:var(--theme-border-soft)] last:border-0">
-                    <td className="whitespace-nowrap px-3 py-3 font-semibold">{pretty(row.packageKey)}</td>
+                  <tr
+                    key={row.packageKey}
+                    className="border-b border-[color:var(--theme-border-soft)] last:border-0"
+                  >
+                    <td className="whitespace-nowrap px-3 py-3 font-semibold">
+                      {pretty(row.packageKey)}
+                    </td>
                     <td className="px-3 py-3 text-right">{number(row.trialClicks)}</td>
                     <td className="px-3 py-3 text-right">{number(row.subscribeClicks)}</td>
-                    <td className="px-3 py-3 text-right font-bold">{number(row.checkoutStarted)}</td>
+                    <td className="px-3 py-3 text-right font-bold">
+                      {number(row.checkoutStarted)}
+                    </td>
                     <td className="px-3 py-3 text-right">{number(row.trialCheckouts)}</td>
                     <td className="px-3 py-3 text-right">{number(row.paidCheckouts)}</td>
-                    <td className="px-3 py-3 text-right">{percent(row.intentToCheckoutStartPct)}</td>
+                    <td className="px-3 py-3 text-right">{number(row.signupCompleted)}</td>
+                    <td className="px-3 py-3 text-right">
+                      {number(row.onboardingCompleted)}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      {percent(row.intentToCheckoutStartPct)}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      {percent(row.checkoutToSignupPct)}
+                    </td>
+                    <td className="px-3 py-3 text-right">
+                      {percent(row.signupToOnboardingPct)}
+                    </td>
                   </tr>
                 ))}
               </tbody>

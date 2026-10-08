@@ -29,11 +29,17 @@ type FunnelRpcSummary = {
   paidCheckouts: number;
 };
 
+type FunnelLifecycleRpcSummary = {
+  signupCompleted: number;
+  onboardingCompleted: number;
+};
+
 type FunnelRpcSnapshot = {
   generatedAt: string;
   since: string;
   breakdownTruncated: boolean;
   summary: FunnelRpcSummary;
+  lifecycleSummary: FunnelLifecycleRpcSummary;
   rows: MarketingEventRow[];
 };
 
@@ -44,7 +50,11 @@ export type OpsMarketingSourceRow = {
   subscribeClicks: number;
   demoClicks: number;
   checkoutStarted: number;
+  signupCompleted: number;
+  onboardingCompleted: number;
   intentToCheckoutStartPct: number;
+  checkoutToSignupPct: number;
+  signupToOnboardingPct: number;
 };
 
 export type OpsMarketingPackageRow = {
@@ -54,17 +64,24 @@ export type OpsMarketingPackageRow = {
   checkoutStarted: number;
   trialCheckouts: number;
   paidCheckouts: number;
+  signupCompleted: number;
+  onboardingCompleted: number;
   intentToCheckoutStartPct: number;
+  checkoutToSignupPct: number;
+  signupToOnboardingPct: number;
 };
 
 export type OpsMarketingFunnelSnapshot = {
   generatedAt: string;
   since: string;
   breakdownTruncated: boolean;
-  summary: FunnelRpcSummary & {
-    checkoutIntentClicks: number;
-    intentToCheckoutStartPct: number;
-  };
+  summary: FunnelRpcSummary &
+    FunnelLifecycleRpcSummary & {
+      checkoutIntentClicks: number;
+      intentToCheckoutStartPct: number;
+      checkoutToSignupPct: number;
+      signupToOnboardingPct: number;
+    };
   sources: OpsMarketingSourceRow[];
   packages: OpsMarketingPackageRow[];
 };
@@ -83,6 +100,14 @@ function isCheckoutIntent(row: MarketingEventRow): boolean {
     row.checkout_attempt_id &&
       (row.event_name === "marketing_trial_click" ||
         row.event_name === "marketing_subscribe_click"),
+  );
+}
+
+function isAttemptAttributedLifecycleEvent(row: MarketingEventRow): boolean {
+  return (
+    row.event_name === "checkout_started" ||
+    row.event_name === "signup_completed" ||
+    row.event_name === "onboarding_completed"
   );
 }
 
@@ -107,14 +132,13 @@ function buildSourceRows(rows: MarketingEventRow[]): OpsMarketingSourceRow[] {
       continue;
     }
 
-    const sourcePath =
-      row.event_name === "checkout_started"
-        ? row.checkout_attempt_id
-          ? sourceByAttempt.get(row.checkout_attempt_id) ?? UNATTRIBUTED_SOURCE
-          : UNATTRIBUTED_SOURCE
-        : checkoutIntent
-          ? canonicalSourcePath(row.source_path) ?? UNATTRIBUTED_SOURCE
-          : canonicalSourcePath(row.source_path);
+    const sourcePath = isAttemptAttributedLifecycleEvent(row)
+      ? row.checkout_attempt_id
+        ? sourceByAttempt.get(row.checkout_attempt_id) ?? UNATTRIBUTED_SOURCE
+        : UNATTRIBUTED_SOURCE
+      : checkoutIntent
+        ? canonicalSourcePath(row.source_path) ?? UNATTRIBUTED_SOURCE
+        : canonicalSourcePath(row.source_path);
     if (!sourcePath) continue;
 
     const current = grouped.get(sourcePath) ?? {
@@ -124,7 +148,11 @@ function buildSourceRows(rows: MarketingEventRow[]): OpsMarketingSourceRow[] {
       subscribeClicks: 0,
       demoClicks: 0,
       checkoutStarted: 0,
+      signupCompleted: 0,
+      onboardingCompleted: 0,
       intentToCheckoutStartPct: 0,
+      checkoutToSignupPct: 0,
+      signupToOnboardingPct: 0,
     };
 
     if (row.event_name === "pricing_view") current.pricingViews += 1;
@@ -132,6 +160,10 @@ function buildSourceRows(rows: MarketingEventRow[]): OpsMarketingSourceRow[] {
     if (row.event_name === "marketing_subscribe_click") current.subscribeClicks += 1;
     if (row.event_name === "marketing_demo_click") current.demoClicks += 1;
     if (row.event_name === "checkout_started") current.checkoutStarted += 1;
+    if (row.event_name === "signup_completed") current.signupCompleted += 1;
+    if (row.event_name === "onboarding_completed") {
+      current.onboardingCompleted += 1;
+    }
     grouped.set(sourcePath, current);
   }
 
@@ -141,6 +173,11 @@ function buildSourceRows(rows: MarketingEventRow[]): OpsMarketingSourceRow[] {
       intentToCheckoutStartPct: pct(
         row.checkoutStarted,
         row.trialClicks + row.subscribeClicks,
+      ),
+      checkoutToSignupPct: pct(row.signupCompleted, row.checkoutStarted),
+      signupToOnboardingPct: pct(
+        row.onboardingCompleted,
+        row.signupCompleted,
       ),
     }))
     .sort((a, b) => {
@@ -156,7 +193,7 @@ function buildSourceRows(rows: MarketingEventRow[]): OpsMarketingSourceRow[] {
 
 function packageKeyForRow(row: MarketingEventRow): string | null {
   if (row.package_key) return row.package_key;
-  if (row.event_name === "checkout_started" || isCheckoutIntent(row)) {
+  if (isAttemptAttributedLifecycleEvent(row) || isCheckoutIntent(row)) {
     return UNATTRIBUTED_PACKAGE;
   }
   return null;
@@ -184,15 +221,25 @@ function buildPackageRows(rows: MarketingEventRow[]): OpsMarketingPackageRow[] {
       checkoutStarted: 0,
       trialCheckouts: 0,
       paidCheckouts: 0,
+      signupCompleted: 0,
+      onboardingCompleted: 0,
       intentToCheckoutStartPct: 0,
+      checkoutToSignupPct: 0,
+      signupToOnboardingPct: 0,
     };
 
     if (row.event_name === "marketing_trial_click") current.trialClicks += 1;
-    if (row.event_name === "marketing_subscribe_click") current.subscribeClicks += 1;
+    if (row.event_name === "marketing_subscribe_click") {
+      current.subscribeClicks += 1;
+    }
     if (row.event_name === "checkout_started") {
       current.checkoutStarted += 1;
       if (row.checkout_mode === "trial") current.trialCheckouts += 1;
       if (row.checkout_mode === "paid") current.paidCheckouts += 1;
+    }
+    if (row.event_name === "signup_completed") current.signupCompleted += 1;
+    if (row.event_name === "onboarding_completed") {
+      current.onboardingCompleted += 1;
     }
     grouped.set(packageKey, current);
   }
@@ -203,6 +250,11 @@ function buildPackageRows(rows: MarketingEventRow[]): OpsMarketingPackageRow[] {
       intentToCheckoutStartPct: pct(
         row.checkoutStarted,
         row.trialClicks + row.subscribeClicks,
+      ),
+      checkoutToSignupPct: pct(row.signupCompleted, row.checkoutStarted),
+      signupToOnboardingPct: pct(
+        row.onboardingCompleted,
+        row.signupCompleted,
       ),
     }))
     .sort(
@@ -223,6 +275,7 @@ function parseRpcSnapshot(data: unknown): FunnelRpcSnapshot {
     typeof snapshot.since !== "string" ||
     typeof snapshot.breakdownTruncated !== "boolean" ||
     !snapshot.summary ||
+    !snapshot.lifecycleSummary ||
     !Array.isArray(snapshot.rows)
   ) {
     throw new Error("Unable to load marketing funnel: invalid snapshot payload");
@@ -236,10 +289,13 @@ export async function getOpsMarketingFunnel(): Promise<OpsMarketingFunnelSnapsho
 
   const admin = createAdminSupabase();
   const since = new Date(Date.now() - LOOKBACK_DAYS * 86400000).toISOString();
-  const { data, error } = await admin.rpc("get_ops_marketing_funnel_snapshot", {
-    p_since: since,
-    p_breakdown_limit: MAX_BREAKDOWN_ROWS,
-  });
+  const { data, error } = await admin.rpc(
+    "get_ops_marketing_lifecycle_funnel_snapshot",
+    {
+      p_since: since,
+      p_breakdown_limit: MAX_BREAKDOWN_ROWS,
+    },
+  );
 
   if (error) throw new Error(`Unable to load marketing funnel: ${error.message}`);
 
@@ -253,10 +309,19 @@ export async function getOpsMarketingFunnel(): Promise<OpsMarketingFunnelSnapsho
     breakdownTruncated: snapshot.breakdownTruncated,
     summary: {
       ...snapshot.summary,
+      ...snapshot.lifecycleSummary,
       checkoutIntentClicks,
       intentToCheckoutStartPct: pct(
         snapshot.summary.checkoutStarted,
         checkoutIntentClicks,
+      ),
+      checkoutToSignupPct: pct(
+        snapshot.lifecycleSummary.signupCompleted,
+        snapshot.summary.checkoutStarted,
+      ),
+      signupToOnboardingPct: pct(
+        snapshot.lifecycleSummary.onboardingCompleted,
+        snapshot.lifecycleSummary.signupCompleted,
       ),
     },
     sources: buildSourceRows(snapshot.rows),
