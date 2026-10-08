@@ -87,6 +87,8 @@ describe("marketing lifecycle conversion", () => {
   it("runs lifecycle behavior against the replayed database", () => {
     expect(runtimeFixture).toContain("record_marketing_signup_completed");
     expect(runtimeFixture).toContain("record_marketing_onboarding_completed");
+    expect(runtimeFixture).toContain("marketing_events_lifecycle_failure_fixture_check");
+    expect(runtimeFixture).toContain("forced onboarding analytics error was not fail-open");
     expect(runtimeFixture).toContain("existing-account acquisition emitted signup_completed");
     expect(runtimeFixture).toContain("billing-session replacement broke durable onboarding correlation");
     expect(cleanReplay).toContain(
