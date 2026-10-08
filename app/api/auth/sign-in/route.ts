@@ -42,6 +42,7 @@ type Body = {
 type RateLimitResult = ReturnType<typeof enforceAuthRateLimit>;
 
 const GENERIC_ERROR = "We couldn't sign you in with those details.";
+const INVALID_CREDENTIALS_ERROR = "Username/email or password is incorrect. Check both and try again.";
 
 function billingRecoveryDestination(input: {
   canManageBilling: boolean;
@@ -207,6 +208,8 @@ export async function POST(req: Request) {
       >["data"]["user"]
     | null = null;
 
+  let authFailure: "invalid_credentials" | "unavailable" | null = null;
+
   for (const authEmail of authEmails) {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: authEmail,
@@ -217,12 +220,32 @@ export async function POST(req: Request) {
       signedInUser = data.user;
       break;
     }
+
+    // Only tell users their credentials were rejected when every attempted
+    // identity failed specifically with invalid_credentials. Other auth errors
+    // (for example an unconfirmed account or an Auth service failure) must not
+    // be presented as a password mistake.
+    if (error && "code" in error && error.code === "invalid_credentials") {
+      authFailure ??= "invalid_credentials";
+    } else {
+      authFailure = "unavailable";
+    }
   }
 
   if (!signedInUser) {
+    if (authFailure === "invalid_credentials") {
+      return NextResponse.json(
+        { ok: false, error: INVALID_CREDENTIALS_ERROR },
+        { status: 401 },
+      );
+    }
+
     return NextResponse.json(
-      { ok: false, error: GENERIC_ERROR },
-      { status: 401 },
+      {
+        ok: false,
+        error: "Sign-in is temporarily unavailable. Try again in a moment.",
+      },
+      { status: 503 },
     );
   }
 

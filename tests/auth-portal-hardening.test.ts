@@ -85,6 +85,35 @@ describe("authentication and portal hardening", () => {
     expect(retiredResolver).not.toContain("authEmail");
   });
 
+  it("distinguishes invalid credentials from other auth failures", () => {
+    const signInRoute = read("app/api/auth/sign-in/route.ts");
+
+    expect(signInRoute).toContain(
+      'const INVALID_CREDENTIALS_ERROR = "Username/email or password is incorrect. Check both and try again.";'
+    );
+    expect(signInRoute).toContain('"code" in error && error.code === "invalid_credentials"');
+    expect(signInRoute).toContain('authFailure === "invalid_credentials"');
+    expect(signInRoute).toMatch(
+      /error: INVALID_CREDENTIALS_ERROR \},\s*\{ status: 401 \}/,
+    );
+    expect(signInRoute).toContain("Sign-in is temporarily unavailable. Try again in a moment.");
+    expect(signInRoute).toContain(
+      'error: "Sign-in is temporarily unavailable. Try again in a moment.",',
+    );
+    expect(signInRoute).toContain("{ status: 503 }");
+    expect(signInRoute).toMatch(
+      /const deny = async \(\) => \{[\s\S]*?\{ ok: false, error: GENERIC_ERROR \}/,
+    );
+  });
+
+  it("shows the server sign-in response on Field and portal forms", () => {
+    const fieldSignIn = read("features/auth/components/FieldSignIn.tsx");
+    const portalSignIn = read("app/portal/auth/sign-in/PortalSignInForm.tsx");
+
+    expect(fieldSignIn).toContain("setError(result.error)");
+    expect(portalSignIn).toContain("setError(result.error)");
+  });
+
   it("requires durable accepted invite evidence for customer access", () => {
     const portalAuth = read("features/portal/server/portalAuth.ts");
     const signInRoute = read("app/api/auth/sign-in/route.ts");
