@@ -1,18 +1,21 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import sitemap from "../app/sitemap";
+import { GET as getSitemap } from "../app/sitemap.xml/route";
 
 function source(path: string): string {
   return readFileSync(path, "utf8");
 }
 
 describe("repair shop management acquisition page", () => {
-  it("publishes the canonical route in the emitted sitemap and acquisition attribution", () => {
-    const sitemapUrls = sitemap().map((entry) => entry.url);
+  it("publishes the canonical route in valid XML and acquisition attribution", async () => {
+    const sitemapResponse = await getSitemap();
+    const sitemapXml = await sitemapResponse.text();
 
-    expect(sitemapUrls).toContain(
-      "https://profixiq.com/repair-shop-management-software",
+    expect(sitemapResponse.headers.get("content-type")).toContain("application/xml");
+    expect(sitemapXml).toContain("<urlset ");
+    expect(sitemapXml).toContain(
+      "<loc>https://profixiq.com/repair-shop-management-software</loc>",
     );
     expect(source("features/analytics/marketingEvents.ts")).toContain(
       '"/repair-shop-management-software"',

@@ -14,7 +14,7 @@ function source(path: string): string {
 
 describe("field and equipment search acquisition pages", () => {
   it("publishes all four routes in the sitemap and standalone shell boundary", () => {
-    const sitemap = source("app/sitemap.ts");
+    const sitemap = source("app/sitemap.xml/route.ts");
     const shell = source("features/shared/lib/routes/shellBoundaries.ts");
 
     for (const route of routes) {

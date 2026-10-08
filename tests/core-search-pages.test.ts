@@ -14,7 +14,7 @@ function source(path: string): string {
 
 describe("heavy-duty core search pages", () => {
   it("publishes every core route in the sitemap", () => {
-    const sitemap = source("app/sitemap.ts");
+    const sitemap = source("app/sitemap.xml/route.ts");
 
     for (const route of routes) {
       expect(sitemap).toContain(route);

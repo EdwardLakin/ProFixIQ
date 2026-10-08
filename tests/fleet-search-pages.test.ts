@@ -13,7 +13,7 @@ function source(path: string): string {
 
 describe("fleet search acquisition pages", () => {
   it("publishes every fleet search route in the sitemap", () => {
-    const sitemap = source("app/sitemap.ts");
+    const sitemap = source("app/sitemap.xml/route.ts");
 
     for (const route of routes) {
       expect(sitemap).toContain(route);

@@ -12,7 +12,7 @@ function source(path: string): string {
 
 describe("Fullbay comparison acquisition pages", () => {
   it("publishes both comparison routes in the sitemap", () => {
-    const sitemap = source("app/sitemap.ts");
+    const sitemap = source("app/sitemap.xml/route.ts");
 
     for (const route of routes) {
       expect(sitemap).toContain(route);
