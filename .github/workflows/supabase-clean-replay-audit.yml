@@ -732,6 +732,20 @@ jobs:
             -f tests/security/owner-onboarding-authorization.runtime.sql \
             2>&1 | tee owner-onboarding-authorization-runtime.log
 
+      - name: Execute guided onboarding schema integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/guided-onboarding-schema.runtime.sql \
+            2>&1 | tee guided-onboarding-schema-runtime.log
+
       - name: Execute Technician CoPilot runtime integration
         shell: bash
         env:
