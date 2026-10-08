@@ -7479,6 +7479,7 @@ export type Database = {
       guided_onboarding_events: {
         Row: {
           created_at: string
+          created_by: string | null
           event_type: string
           id: string
           payload: Json
@@ -7488,6 +7489,7 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          created_by?: string | null
           event_type: string
           id?: string
           payload?: Json
@@ -7497,6 +7499,7 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          created_by?: string | null
           event_type?: string
           id?: string
           payload?: Json
@@ -7534,8 +7537,10 @@ export type Database = {
           created_at: string
           created_by: string | null
           current_step_key: string | null
+          existing_system: string | null
           id: string
           shop_id: string
+          started_at: string | null
           status: string
           summary: Json
           updated_at: string
@@ -7545,8 +7550,10 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           current_step_key?: string | null
+          existing_system?: string | null
           id?: string
           shop_id: string
+          started_at?: string | null
           status?: string
           summary?: Json
           updated_at?: string
@@ -7556,8 +7563,10 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           current_step_key?: string | null
+          existing_system?: string | null
           id?: string
           shop_id?: string
+          started_at?: string | null
           status?: string
           summary?: Json
           updated_at?: string
