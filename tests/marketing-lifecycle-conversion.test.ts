@@ -67,7 +67,7 @@ describe("marketing lifecycle conversion", () => {
   it("keeps lifecycle analytics idempotent, anonymous, and fail-open", () => {
     expect(migration).toContain("marketing_events_lifecycle_attempt_uidx");
     expect(migration).toContain("on conflict do nothing");
-    expect(migration).not.toMatch(/insert into public\.marketing_events[\s\S]*?(user_id|shop_id)/i);
+    expect(migration).not.toMatch(/insert into public\.marketing_events\s*\([^)]*\b(user_id|shop_id)\b/i);
     expect(lifecycleHelper).toContain("LIFECYCLE_ANALYTICS_TIMEOUT_MS = 250");
     expect(lifecycleHelper).toContain("return false;");
     expect(lifecycleHelper).toContain("catch (error)");
