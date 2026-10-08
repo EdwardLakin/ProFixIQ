@@ -91,7 +91,7 @@ describe("authentication and portal hardening", () => {
     expect(signInRoute).toContain(
       'const INVALID_CREDENTIALS_ERROR = "Username/email or password is incorrect. Check both and try again.";'
     );
-    expect(signInRoute).toContain('error?.code === "invalid_credentials"');
+    expect(signInRoute).toContain('"code" in error && error.code === "invalid_credentials"');
     expect(signInRoute).toContain('authFailure === "invalid_credentials"');
     expect(signInRoute).toMatch(
       /error: INVALID_CREDENTIALS_ERROR \},\s*\{ status: 401 \}/,
