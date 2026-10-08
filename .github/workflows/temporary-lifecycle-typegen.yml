@@ -1,15 +1,14 @@
 name: Temporary Lifecycle Typegen
 
 on:
-  pull_request:
-    types: [opened, synchronize, reopened]
+  push:
+    branches: [analytics/lifecycle-conversion-funnel]
 
 permissions:
   contents: write
 
 jobs:
   typegen:
-    if: github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.head.ref == 'analytics/lifecycle-conversion-funnel'
     runs-on: ubuntu-latest
     steps:
       - name: Check out branch
