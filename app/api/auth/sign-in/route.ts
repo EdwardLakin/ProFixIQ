@@ -208,6 +208,8 @@ export async function POST(req: Request) {
       >["data"]["user"]
     | null = null;
 
+  let authFailure: "invalid_credentials" | "unavailable" | null = null;
+
   for (const authEmail of authEmails) {
     const { data, error } = await supabase.auth.signInWithPassword({
       email: authEmail,
@@ -218,12 +220,32 @@ export async function POST(req: Request) {
       signedInUser = data.user;
       break;
     }
+
+    // Only tell users their credentials were rejected when every attempted
+    // identity failed specifically with invalid_credentials. Other auth errors
+    // (for example an unconfirmed account or an Auth service failure) must not
+    // be presented as a password mistake.
+    if (error?.code === "invalid_credentials") {
+      authFailure ??= "invalid_credentials";
+    } else {
+      authFailure = "unavailable";
+    }
   }
 
   if (!signedInUser) {
+    if (authFailure === "invalid_credentials") {
+      return NextResponse.json(
+        { ok: false, error: INVALID_CREDENTIALS_ERROR },
+        { status: 401 },
+      );
+    }
+
     return NextResponse.json(
-      { ok: false, error: INVALID_CREDENTIALS_ERROR },
-      { status: 401 },
+      {
+        ok: false,
+        error: "Sign-in is temporarily unavailable. Try again in a moment.",
+      },
+      { status: 503 },
     );
   }
 
