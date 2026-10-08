@@ -132,8 +132,8 @@ values
     '8c100000-0000-4000-8000-000000000001',
     'acq:8d100000-0000-4000-8000-000000000001',
     repeat('a', 64),
-    'complete',
-    'price_lifecycle_new',
+    'unlimited',
+    'price_lifecyclenew',
     14,
     'claimed',
     'cs_test_lifecycle_new',
@@ -151,8 +151,8 @@ values
     '8c200000-0000-4000-8000-000000000002',
     'acq:8d200000-0000-4000-8000-000000000002',
     repeat('b', 64),
-    'complete',
-    'price_lifecycle_existing',
+    'unlimited',
+    'price_lifecycleexisting',
     14,
     'claimed',
     'cs_test_lifecycle_existing',
@@ -296,9 +296,9 @@ $$;
 -- must be swallowed so the already-completed onboarding state remains intact.
 alter table public.marketing_events
   add constraint marketing_events_lifecycle_failure_fixture_check
-  check (event_name not in ('signup_completed', 'onboarding_completed'));
+  check (event_name not in ('signup_completed', 'onboarding_completed')) not valid;
 
-do $
+do $$
 declare
   v_result boolean;
   v_status text;
@@ -307,7 +307,7 @@ begin
     '8c100000-0000-4000-8000-000000000001',
     '8a100000-0000-4000-8000-000000000001'
   ) into v_result;
-  if v_result then
+  if v_result is distinct from false then
     raise exception 'marketing lifecycle runtime assertion failed: forced signup analytics error was not fail-open';
   end if;
 
@@ -315,14 +315,14 @@ begin
     '8e100000-0000-4000-8000-000000000001',
     '8b100000-0000-4000-8000-000000000001'
   ) into v_result;
-  if v_result then
+  if v_result is distinct from false then
     raise exception 'marketing lifecycle runtime assertion failed: forced onboarding analytics error was not fail-open';
   end if;
 
   select status into v_status
   from public.guided_onboarding_sessions
   where id = '8e100000-0000-4000-8000-000000000001';
-  if v_status <> 'completed' then
+  if v_status is distinct from 'completed' then
     raise exception 'marketing lifecycle runtime assertion failed: analytics error changed completed onboarding state';
   end if;
 end
