@@ -42,6 +42,7 @@ type Body = {
 type RateLimitResult = ReturnType<typeof enforceAuthRateLimit>;
 
 const GENERIC_ERROR = "We couldn't sign you in with those details.";
+const INVALID_CREDENTIALS_ERROR = "Username/email or password is incorrect. Check both and try again.";
 
 function billingRecoveryDestination(input: {
   canManageBilling: boolean;
@@ -221,7 +222,7 @@ export async function POST(req: Request) {
 
   if (!signedInUser) {
     return NextResponse.json(
-      { ok: false, error: GENERIC_ERROR },
+      { ok: false, error: INVALID_CREDENTIALS_ERROR },
       { status: 401 },
     );
   }
