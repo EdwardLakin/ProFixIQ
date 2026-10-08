@@ -563,16 +563,6 @@
       "expiresOn": "2026-10-28"
     },
     {
-      "fingerprint": "99b841610817ac966b37",
-      "rule": "missing-mutation-column",
-      "severity": "error",
-      "domain": "core",
-      "file": "app/api/onboarding-v2/guided/sessions/[sessionId]/analysis/route.ts",
-      "subject": "guided_onboarding_events.created_by",
-      "message": "insert payload contains missing column guided_onboarding_events.created_by",
-      "expiresOn": "2026-10-28"
-    },
-    {
       "fingerprint": "66619f78f46af6c3ef45",
       "rule": "missing-mutation-column",
       "severity": "error",
@@ -720,16 +710,6 @@
       "file": "features/integrations/imports/runFullImport.ts",
       "subject": "staff_invite_suggestions.username",
       "message": "insert payload contains missing column staff_invite_suggestions.username",
-      "expiresOn": "2026-10-28"
-    },
-    {
-      "fingerprint": "4c985eaad006a75c6bec",
-      "rule": "missing-mutation-column",
-      "severity": "error",
-      "domain": "core",
-      "file": "features/onboarding-v2/guided/instantAnalysisHandoff.ts",
-      "subject": "guided_onboarding_events.created_by",
-      "message": "insert payload contains missing column guided_onboarding_events.created_by",
       "expiresOn": "2026-10-28"
     },
     {
