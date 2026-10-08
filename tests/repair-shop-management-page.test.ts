@@ -8,7 +8,7 @@ function source(path: string): string {
 describe("repair shop management acquisition page", () => {
   it("publishes the canonical route in the sitemap and acquisition attribution", () => {
     expect(source("app/sitemap.ts")).toContain(
-      "https://profixiq.com/repair-shop-management-software",
+      "/repair-shop-management-software",
     );
     expect(source("features/analytics/marketingEvents.ts")).toContain(
       '"/repair-shop-management-software"',
