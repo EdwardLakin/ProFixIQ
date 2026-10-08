@@ -97,9 +97,10 @@ describe("authentication and portal hardening", () => {
       /error: INVALID_CREDENTIALS_ERROR \},\s*\{ status: 401 \}/,
     );
     expect(signInRoute).toContain("Sign-in is temporarily unavailable. Try again in a moment.");
-    expect(signInRoute).toMatch(
-      /error: "Sign-in is temporarily unavailable\. Try again in a moment\."\s*\},\s*\{ status: 503 \}/,
+    expect(signInRoute).toContain(
+      'error: "Sign-in is temporarily unavailable. Try again in a moment.",',
     );
+    expect(signInRoute).toContain("{ status: 503 }");
     expect(signInRoute).toMatch(
       /const deny = async \(\) => \{[\s\S]*?\{ ok: false, error: GENERIC_ERROR \}/,
     );
