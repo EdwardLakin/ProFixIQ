@@ -12,11 +12,21 @@ jobs:
     if: ${{ !contains(github.event.head_commit.message, 'refresh lifecycle Supabase contract') }}
     runs-on: ubuntu-latest
     steps:
-      - name: Check out lifecycle branch
-        uses: actions/checkout@v4
-        with:
-          ref: analytics/lifecycle-conversion-funnel
-          fetch-depth: 0
+      - name: Fetch lifecycle branch without checkout action
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          AUTH="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git init repo
+          cd repo
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $AUTH" \
+            fetch --no-tags --prune origin \
+            https://github.com/${GITHUB_REPOSITORY}.git \
+            +refs/heads/analytics/lifecycle-conversion-funnel:refs/remotes/origin/analytics/lifecycle-conversion-funnel
+          git checkout -B analytics/lifecycle-conversion-funnel refs/remotes/origin/analytics/lifecycle-conversion-funnel
+          git remote add origin https://github.com/${GITHUB_REPOSITORY}.git
 
       - name: Set up Supabase CLI
         uses: supabase/setup-cli@v2
@@ -26,18 +36,24 @@ jobs:
 
       - name: Generate repository-native public schema contract
         shell: bash
+        working-directory: repo
         run: |
           set -euo pipefail
           supabase db start
           bash scripts/verify-supabase-generated-types.sh --write
           cp features/shared/types/types/supabase.ts /tmp/supabase.ts
 
-      - name: Rebase generated contract onto latest branch head
+      - name: Apply generated contract to latest branch head
         shell: bash
+        working-directory: repo
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          git fetch origin analytics/lifecycle-conversion-funnel
-          git reset --hard origin/analytics/lifecycle-conversion-funnel
+          AUTH="$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)"
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $AUTH" \
+            fetch origin analytics/lifecycle-conversion-funnel
+          git reset --hard FETCH_HEAD
           cp /tmp/supabase.ts features/shared/types/types/supabase.ts
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
@@ -46,8 +62,10 @@ jobs:
             exit 0
           fi
           git commit -m "chore: refresh lifecycle Supabase contract"
-          git push origin HEAD:analytics/lifecycle-conversion-funnel
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $AUTH" \
+            push origin HEAD:analytics/lifecycle-conversion-funnel
 
       - name: Stop local Supabase
         if: always()
+        working-directory: repo
         run: supabase stop --no-backup || true
