@@ -18,18 +18,48 @@ jobs:
           ref: analytics/lifecycle-conversion-funnel
           fetch-depth: 0
 
-      - name: Set up Supabase CLI
-        uses: supabase/setup-cli@v2
-        with:
-          version: 2.114.0
-          github-token: ${{ github.token }}
-
-      - name: Refresh generated public schema contract
+      - name: Restore baseline and insert lifecycle RPC contract
         shell: bash
         run: |
           set -euo pipefail
-          supabase db start
-          bash scripts/verify-supabase-generated-types.sh --write
+          git fetch origin main --depth=1
+          git checkout origin/main -- features/shared/types/types/supabase.ts
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('features/shared/types/types/supabase.ts')
+          text = path.read_text()
+
+          funnel = '''      get_ops_marketing_funnel_snapshot: {
+        Args: { p_breakdown_limit: number; p_since: string }
+        Returns: Json
+      }
+'''
+          lifecycle_snapshot = funnel + '''      get_ops_marketing_lifecycle_funnel_snapshot: {
+        Args: { p_breakdown_limit: number; p_since: string }
+        Returns: Json
+      }
+'''
+          if funnel not in text:
+              raise SystemExit('marketing funnel type anchor not found')
+          text = text.replace(funnel, lifecycle_snapshot, 1)
+
+          offline = '''      record_offline_photo_receipt_atomic: {
+'''
+          lifecycle_records = '''      record_marketing_onboarding_completed: {
+        Args: { p_session_id: string; p_shop_id: string }
+        Returns: boolean
+      }
+      record_marketing_signup_completed: {
+        Args: { p_intent_id: string; p_user_id: string }
+        Returns: boolean
+      }
+'''
+          if offline not in text:
+              raise SystemExit('record function type anchor not found')
+          text = text.replace(offline, lifecycle_records + offline, 1)
+          path.write_text(text)
+          PY
 
       - name: Commit generated contract
         shell: bash
@@ -41,9 +71,5 @@ jobs:
           if git diff --cached --quiet; then
             exit 0
           fi
-          git commit -m "chore: refresh lifecycle Supabase contract"
+          git commit -m "chore: repair lifecycle Supabase contract"
           git push origin HEAD:analytics/lifecycle-conversion-funnel
-
-      - name: Stop local Supabase
-        if: always()
-        run: supabase stop --no-backup || true
