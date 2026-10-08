@@ -38,6 +38,9 @@ describe("repair shop management acquisition page", () => {
     ]) {
       expect(content).toContain(phrase);
     }
+    expect(content).toContain(
+      "25 years of hands-on shop experience",
+    );
   });
 
   it("links the homepage and shared acquisition-page footer to the category page", () => {

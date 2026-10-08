@@ -102,7 +102,7 @@ export const repairShopManagementPage = {
     productProof: {
       heading: "Evaluate the actual shop workflow, role by role.",
       body:
-        "ProFixIQ brings the technician, parts, advisor, and customer steps together around the same repair record. See how those handoffs work in a product walkthrough.",
+        "Built by a heavy-duty mechanic with 25 years of hands-on shop experience, ProFixIQ brings the technician, parts, advisor, and customer steps together around the same repair record. See how those handoffs work in a product walkthrough.",
       media: {
         src: "/opengraph-image",
         alt: "ProFixIQ repair shop management software overview",
