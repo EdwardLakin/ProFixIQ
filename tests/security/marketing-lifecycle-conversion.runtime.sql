@@ -291,4 +291,41 @@ begin
 end
 $$;
 
+
+-- Force lifecycle writes to fail inside the analytics adapter. The exception
+-- must be swallowed so the already-completed onboarding state remains intact.
+alter table public.marketing_events
+  add constraint marketing_events_lifecycle_failure_fixture_check
+  check (event_name not in ('signup_completed', 'onboarding_completed'));
+
+do $
+declare
+  v_result boolean;
+  v_status text;
+begin
+  select public.record_marketing_signup_completed(
+    '8c100000-0000-4000-8000-000000000001',
+    '8a100000-0000-4000-8000-000000000001'
+  ) into v_result;
+  if v_result then
+    raise exception 'marketing lifecycle runtime assertion failed: forced signup analytics error was not fail-open';
+  end if;
+
+  select public.record_marketing_onboarding_completed(
+    '8e100000-0000-4000-8000-000000000001',
+    '8b100000-0000-4000-8000-000000000001'
+  ) into v_result;
+  if v_result then
+    raise exception 'marketing lifecycle runtime assertion failed: forced onboarding analytics error was not fail-open';
+  end if;
+
+  select status into v_status
+  from public.guided_onboarding_sessions
+  where id = '8e100000-0000-4000-8000-000000000001';
+  if v_status <> 'completed' then
+    raise exception 'marketing lifecycle runtime assertion failed: analytics error changed completed onboarding state';
+  end if;
+end
+$;
+
 rollback;
