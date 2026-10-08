@@ -7534,6 +7534,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           current_step_key: string | null
+          existing_system: string | null
           id: string
           shop_id: string
           status: string
@@ -7545,6 +7546,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           current_step_key?: string | null
+          existing_system?: string | null
           id?: string
           shop_id: string
           status?: string
@@ -7556,6 +7558,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           current_step_key?: string | null
+          existing_system?: string | null
           id?: string
           shop_id?: string
           status?: string
