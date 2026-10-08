@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-import sitemap from "../app/sitemap";
+import { GET as getSitemap } from "../app/sitemap.xml/route";
 
 function source(path: string): string {
   return readFileSync(path, "utf8");
