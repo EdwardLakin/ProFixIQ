@@ -22,7 +22,7 @@ jobs:
           git init repo
           cd repo
           git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $AUTH" \
-            fetch --no-tags --prune origin \
+            fetch --no-tags --prune \
             https://github.com/${GITHUB_REPOSITORY}.git \
             +refs/heads/analytics/lifecycle-conversion-funnel:refs/remotes/origin/analytics/lifecycle-conversion-funnel
           git checkout -B analytics/lifecycle-conversion-funnel refs/remotes/origin/analytics/lifecycle-conversion-funnel
