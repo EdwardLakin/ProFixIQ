@@ -24,6 +24,7 @@ describe("shell route boundaries", () => {
     "/diesel-repair-shop-software",
     "/heavy-duty-work-order-software",
     "/heavy-duty-inspection-software",
+    "/repair-shop-management-software",
     "/mobile/sign-in",
     "/portal/auth/sign-in",
     "/portal/auth/sign-in?portal=fleet",
@@ -54,5 +55,6 @@ describe("shell route boundaries", () => {
     expect(isStandalonePublicRoute("/dvir-defect-tracking-software-private")).toBe(false);
     expect(isStandalonePublicRoute("/sign-internal")).toBe(false);
     expect(isStandalonePublicRoute("/heavy-duty-work-order-software-private")).toBe(false);
+    expect(isStandalonePublicRoute("/repair-shop-management-software-private")).toBe(false);
   });
 });
