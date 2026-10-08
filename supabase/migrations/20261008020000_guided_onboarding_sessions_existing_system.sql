@@ -6,7 +6,16 @@
 
 ALTER TABLE public.guided_onboarding_sessions
   ADD COLUMN IF NOT EXISTS existing_system text,
-  ADD COLUMN IF NOT EXISTS started_at timestamp with time zone DEFAULT now();
+  ADD COLUMN IF NOT EXISTS started_at timestamp with time zone;
+
+-- Backfill historical sessions from their creation time (not the deploy time),
+-- then default future inserts.
+UPDATE public.guided_onboarding_sessions
+SET started_at = created_at
+WHERE started_at IS NULL;
+
+ALTER TABLE public.guided_onboarding_sessions
+  ALTER COLUMN started_at SET DEFAULT now();
 
 ALTER TABLE public.guided_onboarding_events
   ADD COLUMN IF NOT EXISTS created_by uuid;
