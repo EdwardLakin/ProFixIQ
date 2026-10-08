@@ -225,7 +225,7 @@ export async function POST(req: Request) {
     // identity failed specifically with invalid_credentials. Other auth errors
     // (for example an unconfirmed account or an Auth service failure) must not
     // be presented as a password mistake.
-    if (error?.code === "invalid_credentials") {
+    if (error && "code" in error && error.code === "invalid_credentials") {
       authFailure ??= "invalid_credentials";
     } else {
       authFailure = "unavailable";
