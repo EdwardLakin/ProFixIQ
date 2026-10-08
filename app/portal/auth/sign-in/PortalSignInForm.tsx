@@ -73,11 +73,7 @@ export default function PortalSignInForm({
         surface: portalType,
       });
       if (!result.ok) {
-        setError(
-          isFleet
-            ? "We couldn't verify an invited fleet account with those details."
-            : "We couldn't verify an activated customer portal account with those details.",
-        );
+        setError(result.error);
         return;
       }
 
