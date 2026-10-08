@@ -20,6 +20,7 @@ const ACQUISITION_SOURCE_PATHS = new Set([
   "/",
   "/compare-plans",
   "/request-demo",
+  "/repair-shop-management-software",
   "/heavy-duty-shop-management-software",
   "/diesel-repair-shop-software",
   "/heavy-duty-work-order-software",

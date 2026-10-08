@@ -15,6 +15,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
       priority: 0.9,
     },
     {
+      url: `${siteUrl}/repair-shop-management-software`,
+      changeFrequency: "monthly",
+      priority: 0.95,
+    },
+    {
       url: `${siteUrl}/heavy-duty-shop-management-software`,
       changeFrequency: "monthly",
       priority: 0.9,
