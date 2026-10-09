@@ -17,6 +17,53 @@ export class CustomerPortalInviteDeliveryError extends Error {
   }
 }
 
+async function recordCustomerPortalInviteDeliveryFailure(input: {
+  shopId: string;
+  inviteId: string;
+  email: string;
+  createdByProfileId?: string | null;
+}) {
+  const metadata = {
+    kind: "portal_invite",
+    portal_type: "customer",
+    customer_portal_invite_id: input.inviteId,
+  };
+
+  try {
+    const { data: existingLog, error: lookupError } = await supabaseAdmin
+      .from("email_logs")
+      .select("id")
+      .eq("shop_id", input.shopId)
+      .eq("template_key", "portal_invite")
+      .eq("to_email", input.email)
+      .contains("metadata", { customer_portal_invite_id: input.inviteId })
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (lookupError) throw lookupError;
+    if (existingLog?.id) return;
+
+    const { error: insertError } = await supabaseAdmin.from("email_logs").insert({
+      shop_id: input.shopId,
+      template_key: "portal_invite",
+      template_id: null,
+      to_email: input.email,
+      subject: "Your ProFixIQ customer portal invitation",
+      status: "failed",
+      provider: "sendgrid",
+      error_text: "The invitation email could not be prepared or submitted.",
+      metadata,
+      created_by: input.createdByProfileId ?? null,
+    });
+    if (insertError) throw insertError;
+  } catch (error) {
+    console.error("[portal/customer-invite] failed to persist delivery outcome", {
+      inviteId: input.inviteId,
+      error: error instanceof Error ? error.message : "Unknown logging error",
+    });
+  }
+}
+
 function siteUrl(): string {
   const configured = process.env.NEXT_PUBLIC_SITE_URL?.trim().replace(/\/$/, "");
   if (configured) return /^https?:\/\//i.test(configured) ? configured : `https://${configured}`;
@@ -160,6 +207,7 @@ export async function issueCustomerPortalInvite(input: {
       brandSecondaryColor: brand?.colors.secondary ?? null,
       createdBy: input.createdByProfileId ?? null,
       portalType: "customer",
+      customerPortalInviteId: inviteId,
     });
 
     return {
@@ -170,6 +218,12 @@ export async function issueCustomerPortalInvite(input: {
       portalLink,
     };
   } catch {
+    await recordCustomerPortalInviteDeliveryFailure({
+      shopId: input.shopId,
+      inviteId,
+      email,
+      createdByProfileId: input.createdByProfileId,
+    });
     throw new CustomerPortalInviteDeliveryError(inviteId, inviteCreated);
   }
 }

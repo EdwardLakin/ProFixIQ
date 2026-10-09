@@ -4,7 +4,7 @@ import { normalizeEmailSubject } from "@/features/email/server/emailSubjects";
 
 const In = z.object({
   toEmail: z.string().email(),
-  subject: z.string().trim().min(1).transform((value) => normalizeEmailSubject(value) ?? "Invoice from ProFixIQ"),
+  subject: z.string().transform((value) => normalizeEmailSubject(value) ?? "Invoice from ProFixIQ"),
   html: z.string().min(1),
 });
 export type EmailInvoiceIn = z.infer<typeof In>;

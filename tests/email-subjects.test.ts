@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { resolveEmailSubject } from "../features/email/server/emailSubjects";
+import { normalizeEmailSubject, resolveEmailSubject } from "../features/email/server/emailSubjects";
+import { toolEmailInvoice } from "../features/agent/tools/emailInvoice";
+import { customerPortalInviteAccessStatus } from "../features/portal/lib/customerPortalInviteDelivery";
 
 describe("resolveEmailSubject", () => {
   it("preserves explicit subjects after removing header-breaking whitespace", () => {
@@ -34,5 +36,27 @@ describe("resolveEmailSubject", () => {
       "Your invoice from ProFixIQ is ready",
     );
     expect(resolveEmailSubject("invoice_ready", {}, "x".repeat(300))).toHaveLength(255);
+  });
+});
+
+describe("customer portal invite delivery state", () => {
+  it("keeps failed and suppressed delivery out of pending state after reload", () => {
+    expect(customerPortalInviteAccessStatus("suppressed")).toBe("not_delivered");
+    expect(customerPortalInviteAccessStatus("failed")).toBe("delivery_issue");
+    expect(customerPortalInviteAccessStatus(null)).toBe("delivery_unknown");
+    expect(customerPortalInviteAccessStatus("queued")).toBe("sending");
+  });
+});
+
+describe("AI invoice subject normalization", () => {
+  it("uses the fallback for whitespace-only invoice subjects", () => {
+    const parsed = toolEmailInvoice.inputSchema.parse({
+      toEmail: "customer@example.com",
+      subject: "   ",
+      html: "<p>Invoice</p>",
+    });
+
+    expect(parsed.subject).toBe("Invoice from ProFixIQ");
+    expect(normalizeEmailSubject("   ")).toBeNull();
   });
 });
