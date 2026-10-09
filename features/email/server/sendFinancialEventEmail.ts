@@ -1,4 +1,5 @@
 import sgMail from "@sendgrid/mail";
+import { normalizeEmailSubject } from "./emailSubjects";
 
 let configured = false;
 
@@ -42,6 +43,7 @@ export async function sendFinancialEventEmail(input: {
 }): Promise<{ providerMessageId: string | null }> {
   assertFinancialEventEmailConfigured();
   configure();
+  const subject = normalizeEmailSubject(input.subject) ?? "A financial update from ProFixIQ";
   const heading = escapeHtml(input.heading);
   const body = escapeHtml(input.body);
   const portalUrl = input.portalUrl?.trim() || null;
@@ -52,7 +54,7 @@ export async function sendFinancialEventEmail(input: {
   const [response] = await sgMail.send({
     to: input.to.trim().toLowerCase(),
     from: requiredEnv("SENDGRID_FROM_EMAIL"),
-    subject: input.subject,
+    subject,
     text: `${input.heading}\n\n${input.body}${portalUrl ? `\n\n${portalUrl}` : ""}`,
     html: `<div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:24px;color:#111827"><h1 style="font-size:22px">${heading}</h1><p style="font-size:15px;line-height:1.6">${body}</p>${action}<p style="margin-top:28px;color:#6b7280;font-size:12px">Sent by ProFixIQ</p></div>`,
     customArgs: {

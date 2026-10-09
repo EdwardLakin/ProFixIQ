@@ -1,9 +1,10 @@
 import { z } from "zod";
 import type { ToolDef } from "../lib/toolTypes";
+import { normalizeEmailSubject } from "@/features/email/server/emailSubjects";
 
 const In = z.object({
   toEmail: z.string().email(),
-  subject: z.string().min(1),
+  subject: z.string().trim().min(1).transform((value) => normalizeEmailSubject(value) ?? "Invoice from ProFixIQ"),
   html: z.string().min(1),
 });
 export type EmailInvoiceIn = z.infer<typeof In>;

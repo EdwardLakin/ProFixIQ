@@ -1,6 +1,6 @@
 import type { EmailTemplateKey } from "./templateIds";
 
-function cleanSubject(value: unknown): string | null {
+export function normalizeEmailSubject(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const cleaned = value
     .replace(/[\r\n\t]+/g, " ")
@@ -16,12 +16,12 @@ export function resolveEmailSubject(
   explicitSubject?: string | null,
 ): string {
   const shopName =
-    cleanSubject(dynamicTemplateData.shop_name) ??
-    cleanSubject(dynamicTemplateData.shopName) ??
+    normalizeEmailSubject(dynamicTemplateData.shop_name) ??
+    normalizeEmailSubject(dynamicTemplateData.shopName) ??
     "ProFixIQ";
   const fleetName =
-    cleanSubject(dynamicTemplateData.fleet_name) ??
-    cleanSubject(dynamicTemplateData.fleetName);
+    normalizeEmailSubject(dynamicTemplateData.fleet_name) ??
+    normalizeEmailSubject(dynamicTemplateData.fleetName);
 
   const fallbackByTemplate: Record<EmailTemplateKey, string> = {
     portal_invite:
@@ -34,8 +34,8 @@ export function resolveEmailSubject(
   };
 
   return (
-    cleanSubject(explicitSubject) ??
-    cleanSubject(fallbackByTemplate[templateKey]) ??
+    normalizeEmailSubject(explicitSubject) ??
+    normalizeEmailSubject(fallbackByTemplate[templateKey]) ??
     "A message from ProFixIQ"
   );
 }
