@@ -57,6 +57,11 @@ describe("customer portal invite delivery state", () => {
     expect(customerPortalInviteDeliveryState("bounce", "2026-10-09T12:00:00Z")).toBe("delivered");
     expect(customerPortalInviteAccessStatus("delivered")).toBe("pending");
   });
+
+  it("lets terminal delivery issues override an earlier delivery timestamp", () => {
+    expect(customerPortalInviteDeliveryState("spamreport", "2026-10-09T12:00:00Z")).toBe("delivery_issue");
+    expect(customerPortalInviteDeliveryState("unsubscribe", "2026-10-09T12:00:00Z")).toBe("delivery_issue");
+  });
 });
 
 describe("AI invoice subject normalization", () => {
