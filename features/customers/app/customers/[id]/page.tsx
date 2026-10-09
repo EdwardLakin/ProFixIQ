@@ -300,7 +300,7 @@ function normalizeVehicleOdometerDraft(
   const mileage = String(mileageValue ?? "").trim();
   const unit = normalizeOdometerUnit(unitValue);
   const match = mileage.match(
-    /^([\d,]+(?:\.\d+)?)\s*(km|kilometers?|kilometres?|mi|miles?|h|hrs?|hours?)$/i,
+    /^((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*(km|kilometers?|kilometres?|mi|miles?|h|hrs?|hours?)$/i,
   );
   if (match) {
     const suffixUnit = normalizeOdometerUnit(match[2]);
@@ -312,6 +312,172 @@ function normalizeVehicleOdometerDraft(
     }
   }
   return { mileage, odometer_unit: unit };
+}
+
+type VehicleSelectOption = {
+  value: string;
+  label: string;
+};
+
+const VEHICLE_SELECT_OPTIONS: Record<
+  string,
+  readonly VehicleSelectOption[]
+> = {
+  state_province: [
+    { value: "AB", label: "Alberta" },
+    { value: "BC", label: "British Columbia" },
+    { value: "MB", label: "Manitoba" },
+    { value: "NB", label: "New Brunswick" },
+    { value: "NL", label: "Newfoundland and Labrador" },
+    { value: "NS", label: "Nova Scotia" },
+    { value: "NT", label: "Northwest Territories" },
+    { value: "NU", label: "Nunavut" },
+    { value: "ON", label: "Ontario" },
+    { value: "PE", label: "Prince Edward Island" },
+    { value: "QC", label: "Quebec" },
+    { value: "SK", label: "Saskatchewan" },
+    { value: "YT", label: "Yukon" },
+    { value: "AL", label: "Alabama" },
+    { value: "AK", label: "Alaska" },
+    { value: "AZ", label: "Arizona" },
+    { value: "AR", label: "Arkansas" },
+    { value: "CA", label: "California" },
+    { value: "CO", label: "Colorado" },
+    { value: "CT", label: "Connecticut" },
+    { value: "DE", label: "Delaware" },
+    { value: "FL", label: "Florida" },
+    { value: "GA", label: "Georgia" },
+    { value: "HI", label: "Hawaii" },
+    { value: "ID", label: "Idaho" },
+    { value: "IL", label: "Illinois" },
+    { value: "IN", label: "Indiana" },
+    { value: "IA", label: "Iowa" },
+    { value: "KS", label: "Kansas" },
+    { value: "KY", label: "Kentucky" },
+    { value: "LA", label: "Louisiana" },
+    { value: "ME", label: "Maine" },
+    { value: "MD", label: "Maryland" },
+    { value: "MA", label: "Massachusetts" },
+    { value: "MI", label: "Michigan" },
+    { value: "MN", label: "Minnesota" },
+    { value: "MS", label: "Mississippi" },
+    { value: "MO", label: "Missouri" },
+    { value: "MT", label: "Montana" },
+    { value: "NE", label: "Nebraska" },
+    { value: "NV", label: "Nevada" },
+    { value: "NH", label: "New Hampshire" },
+    { value: "NJ", label: "New Jersey" },
+    { value: "NM", label: "New Mexico" },
+    { value: "NY", label: "New York" },
+    { value: "NC", label: "North Carolina" },
+    { value: "ND", label: "North Dakota" },
+    { value: "OH", label: "Ohio" },
+    { value: "OK", label: "Oklahoma" },
+    { value: "OR", label: "Oregon" },
+    { value: "PA", label: "Pennsylvania" },
+    { value: "RI", label: "Rhode Island" },
+    { value: "SC", label: "South Carolina" },
+    { value: "SD", label: "South Dakota" },
+    { value: "TN", label: "Tennessee" },
+    { value: "TX", label: "Texas" },
+    { value: "UT", label: "Utah" },
+    { value: "VT", label: "Vermont" },
+    { value: "VA", label: "Virginia" },
+    { value: "WA", label: "Washington" },
+    { value: "WV", label: "West Virginia" },
+    { value: "WI", label: "Wisconsin" },
+    { value: "WY", label: "Wyoming" },
+  ],
+  engine_type: [
+    { value: "diesel", label: "Diesel" },
+    { value: "gasoline", label: "Gasoline" },
+    { value: "electric", label: "Electric" },
+    { value: "hybrid", label: "Hybrid" },
+    { value: "cng", label: "CNG" },
+    { value: "lpg", label: "Propane / LPG" },
+    { value: "other", label: "Other" },
+  ],
+  transmission_type: [
+    { value: "automatic", label: "Automatic" },
+    { value: "manual", label: "Manual" },
+    { value: "automated_manual", label: "Automated manual (AMT)" },
+    { value: "cvt", label: "CVT" },
+    { value: "dct", label: "Dual-clutch (DCT)" },
+    { value: "powershift", label: "Powershift" },
+    { value: "hydrostatic", label: "Hydrostatic" },
+    { value: "other", label: "Other" },
+  ],
+  fuel_type: [
+    { value: "diesel", label: "Diesel" },
+    { value: "gasoline", label: "Gasoline" },
+    { value: "electric", label: "Electric (BEV)" },
+    { value: "hybrid", label: "Hybrid" },
+    { value: "phev", label: "Plug-in hybrid" },
+    { value: "cng", label: "CNG" },
+    { value: "lpg", label: "Propane / LPG" },
+    { value: "hydrogen", label: "Hydrogen" },
+    { value: "other", label: "Other" },
+  ],
+  body_type: [
+    { value: "truck", label: "Truck" },
+    { value: "tractor", label: "Tractor" },
+    { value: "pickup", label: "Pickup" },
+    { value: "van", label: "Van" },
+    { value: "bus", label: "Bus" },
+    { value: "trailer", label: "Trailer" },
+    { value: "car", label: "Car" },
+    { value: "suv", label: "SUV" },
+    { value: "equipment", label: "Equipment" },
+    { value: "other", label: "Other" },
+  ],
+  drivetrain: [
+    { value: "fwd", label: "FWD" },
+    { value: "rwd", label: "RWD" },
+    { value: "awd", label: "AWD" },
+    { value: "4x4", label: "4x4" },
+    { value: "6x4", label: "6x4" },
+    { value: "6x6", label: "6x6" },
+    { value: "8x4", label: "8x4" },
+    { value: "tracked", label: "Tracked" },
+    { value: "other", label: "Other" },
+  ],
+  asset_type: [
+    { value: "truck", label: "Truck" },
+    { value: "tractor", label: "Highway tractor" },
+    { value: "trailer", label: "Trailer" },
+    { value: "pickup", label: "Pickup" },
+    { value: "van", label: "Van" },
+    { value: "bus", label: "Bus" },
+    { value: "car", label: "Car" },
+    { value: "suv", label: "SUV" },
+    { value: "forklift", label: "Forklift" },
+    { value: "telehandler", label: "Telehandler" },
+    { value: "man_lift", label: "Man lift" },
+    { value: "scissor_lift", label: "Scissor lift" },
+    { value: "excavator", label: "Excavator" },
+    { value: "loader", label: "Loader" },
+    { value: "dozer", label: "Dozer" },
+    { value: "grader", label: "Grader" },
+    { value: "crane", label: "Crane" },
+    { value: "skid_steer", label: "Skid steer" },
+    { value: "mining_equipment", label: "Mining equipment" },
+    { value: "generator", label: "Generator" },
+    { value: "other", label: "Other" },
+  ],
+  status: [
+    { value: "active", label: "Active" },
+    { value: "inactive", label: "Inactive" },
+    { value: "out_of_service", label: "Out of service" },
+    { value: "sold", label: "Sold" },
+    { value: "retired", label: "Retired" },
+  ],
+};
+
+function hasVehicleSelectValue(
+  options: readonly VehicleSelectOption[],
+  value: string,
+): boolean {
+  return options.some((option) => option.value === value);
 }
 
 // Historical customer summaries intentionally do not use compactDate(customer?.customer_since ?? customer?.created_at).
@@ -1738,6 +1904,16 @@ export default function CustomerProfilePage(): JSX.Element {
   const [isCreatingVehicle, setIsCreatingVehicle] = useState(false);
   const [createVehicleError, setCreateVehicleError] = useState<string | null>(null);
   const createVehicleInFlight = useRef(false);
+  const createVehicleErrorRef = useRef<HTMLDivElement | null>(null);
+
+  const showCreateVehicleError = useCallback((message: string) => {
+    setCreateVehicleError(message);
+    window.requestAnimationFrame(() => {
+      const alert = createVehicleErrorRef.current;
+      alert?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      alert?.focus({ preventScroll: true });
+    });
+  }, []);
 
   const createVehicle = useCallback(async () => {
     if (!customer?.id || createVehicleInFlight.current) return;
@@ -1748,17 +1924,12 @@ export default function CustomerProfilePage(): JSX.Element {
 
     try {
       const mileage = String(newVeh["mileage"] ?? "").trim();
-      const mileageUnit = String(newVeh["odometer_unit"] ?? "").trim();
-      if (mileage && !mileageUnit) {
-        setCreateVehicleError("Choose km or mi for the odometer reading.");
-        return;
-      }
       if (mileage && (!Number.isFinite(Number(mileage)) || Number(mileage) < 0)) {
-        setCreateVehicleError("Enter a valid odometer reading of zero or more.");
+        showCreateVehicleError("Enter a valid odometer reading of zero or more.");
         return;
       }
       if (typeof newVeh["engine_hours"] === "number" && newVeh["engine_hours"] < 0) {
-        setCreateVehicleError("Engine hours must be zero or more.");
+        showCreateVehicleError("Engine hours must be zero or more.");
         return;
       }
 
@@ -1848,7 +2019,7 @@ export default function CustomerProfilePage(): JSX.Element {
         (match) => match.match_type === "vin" && match.same_customer === false,
       );
       if (blockingMatch) {
-        setCreateVehicleError(
+        showCreateVehicleError(
           "This VIN is already assigned to another customer. Contact shop/admin to move vehicle.",
         );
         return;
@@ -1858,7 +2029,7 @@ export default function CustomerProfilePage(): JSX.Element {
         (match) => match.same_customer === true,
       );
       if (sameCustomerMatch) {
-        setCreateVehicleError(
+        showCreateVehicleError(
           "Vehicle already exists for this customer. Open/edit the existing vehicle instead.",
         );
         setSelectedVehicleId(sameCustomerMatch.id);
@@ -1872,7 +2043,7 @@ export default function CustomerProfilePage(): JSX.Element {
         .maybeSingle();
 
       if (error) {
-        setCreateVehicleError(error.message);
+        showCreateVehicleError(error.message);
         return;
       }
 
@@ -1887,14 +2058,14 @@ export default function CustomerProfilePage(): JSX.Element {
         );
       }
     } catch (error) {
-      setCreateVehicleError(
+      showCreateVehicleError(
         error instanceof Error ? error.message : "Could not create the vehicle. Please try again.",
       );
     } finally {
       createVehicleInFlight.current = false;
       setIsCreatingVehicle(false);
     }
-  }, [customer, fetchCustomerFile, newVeh, supabase]);
+  }, [customer, fetchCustomerFile, newVeh, showCreateVehicleError, supabase]);
 
   // ------------------ DIRECTORY MODE ------------------
   if (isDirectoryMode || sp.get("mode") === "search") {
@@ -3214,9 +3385,10 @@ export default function CustomerProfilePage(): JSX.Element {
                 const inputType =
                   key === "year" || key === "mileage" || key === "engine_hours"
                     ? "number"
-                    : dateField && (!rawValue || normalizedDate)
+                    : dateField
                       ? "date"
                       : "text";
+                const selectOptions = VEHICLE_SELECT_OPTIONS[key];
                 const inputId = `edit-vehicle-${key}`;
                 return (
                   <div key={key} className="space-y-1">
@@ -3269,6 +3441,29 @@ export default function CustomerProfilePage(): JSX.Element {
                           ) : null}
                         </select>
                       </div>
+                    ) : selectOptions ? (
+                      <select
+                        id={inputId}
+                        value={rawValue}
+                        onChange={(event) =>
+                          setVehDraft((current) => ({
+                            ...current,
+                            [key]: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                      >
+                        <option value="">Select {label.toLowerCase()}</option>
+                        {selectOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                        {rawValue &&
+                        !hasVehicleSelectValue(selectOptions, rawValue) ? (
+                          <option value={rawValue}>{rawValue} (existing)</option>
+                        ) : null}
+                      </select>
                     ) : key === "notes" ? (
                       <textarea
                         id={inputId}
@@ -3291,9 +3486,7 @@ export default function CustomerProfilePage(): JSX.Element {
                         inputMode={inputType === "number" ? "decimal" : undefined}
                         enterKeyHint="next"
                         autoCapitalize={key === "vin" ? "characters" : undefined}
-                        value={
-                          dateField && normalizedDate ? normalizedDate : rawValue
-                        }
+                        value={dateField ? normalizedDate : rawValue}
                         onChange={(event) => {
                           const raw = event.target.value;
                           setVehDraft((current) => {
@@ -3397,9 +3590,11 @@ export default function CustomerProfilePage(): JSX.Element {
           >
             {createVehicleError ? (
               <div
+                ref={createVehicleErrorRef}
                 role="alert"
                 aria-live="assertive"
-                className="rounded-xl border border-rose-400/50 bg-rose-50 px-3 py-2 text-sm text-rose-900 dark:bg-rose-950/30 dark:text-rose-100"
+                tabIndex={-1}
+                className="rounded-xl border border-rose-400/50 bg-rose-50 px-3 py-2 text-sm text-rose-900 outline-none focus:ring-2 focus:ring-rose-500 dark:bg-rose-950/30 dark:text-rose-100"
               >
                 {createVehicleError}
               </div>
@@ -3430,7 +3625,7 @@ export default function CustomerProfilePage(): JSX.Element {
               {
                 title: "Usage and appearance",
                 fields: [
-                  { label: "Odometer reading", key: "mileage", type: "number", placeholder: "e.g. 565000", hint: "Enter a number; choose km, mi, or hours.", min: "0", step: "1" },
+                  { label: "Odometer reading", key: "mileage", type: "number", placeholder: "e.g. 565000 or 565000.5", hint: "Enter a reading; choose a unit if it is known.", min: "0", step: "any" },
                   { label: "Color", key: "color", type: "text", placeholder: "e.g. White", hint: "" },
                   { label: "Engine hours", key: "engine_hours", type: "number", placeholder: "e.g. 6432", hint: "Keep separate from the odometer reading.", min: "0", step: "any" },
                   { label: "Tags", key: "tags", type: "text", placeholder: "e.g. seasonal, loaner", hint: "Separate multiple tags with commas.", wide: true },
@@ -3494,14 +3689,35 @@ export default function CustomerProfilePage(): JSX.Element {
                           rows={3}
                           className="w-full resize-y rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
                         />
+                      ) : VEHICLE_SELECT_OPTIONS[field.key] ? (
+                        <select
+                          id={`new-vehicle-${field.key}`}
+                          value={String(newVeh[field.key] ?? "")}
+                          onChange={(event) =>
+                            setNewVeh((current) => ({
+                              ...current,
+                              [field.key]: event.target.value,
+                            }))
+                          }
+                          className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                        >
+                          <option value="">
+                            Select {field.label.toLowerCase()}
+                          </option>
+                          {VEHICLE_SELECT_OPTIONS[field.key].map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
                       ) : field.key === "mileage" ? (
                         <div className="flex gap-2">
                           <input
                             id="new-vehicle-mileage"
                             type="number"
                             min="0"
-                            step="1"
-                            inputMode="numeric"
+                            step="any"
+                            inputMode="decimal"
                             enterKeyHint="next"
                             value={String(newVeh.mileage ?? "")}
                             onChange={(event) =>
