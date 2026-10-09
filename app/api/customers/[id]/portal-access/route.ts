@@ -58,7 +58,7 @@ export async function GET(_req: Request, context: Context) {
   const customerInvite = accepted ?? latest;
   const deliveryLog = customerInvite
     ? await supabaseAdmin.from("email_logs")
-        .select("status,delivered_at,created_at")
+        .select("status,delivered_at,last_event_type,last_event_at,created_at")
         .eq("shop_id", access.profile.shop_id)
         .eq("template_key", "portal_invite")
         .eq("to_email", email)
@@ -74,6 +74,7 @@ export async function GET(_req: Request, context: Context) {
     ? customerPortalInviteDeliveryState(
         deliveryLog.data?.status,
         deliveryLog.data?.delivered_at,
+        deliveryLog.data?.last_event_type,
       )
     : null;
   const customerStatus = accepted
