@@ -62,6 +62,11 @@ describe("customer portal invite delivery state", () => {
     expect(customerPortalInviteDeliveryState("spamreport", "2026-10-09T12:00:00Z")).toBe("delivery_issue");
     expect(customerPortalInviteDeliveryState("unsubscribe", "2026-10-09T12:00:00Z")).toBe("delivery_issue");
   });
+
+  it("lets confirmed delivery override a local send failure", () => {
+    expect(customerPortalInviteDeliveryState("failed")).toBe("delivery_issue");
+    expect(customerPortalInviteDeliveryState("failed", "2026-10-09T12:00:00Z")).toBe("delivered");
+  });
 });
 
 describe("AI invoice subject normalization", () => {
