@@ -73,6 +73,8 @@ export async function sendDynamicTemplateEmail(
   const from = fromName ? { email: fromEmail, name: fromName } : fromEmail;
   const to = input.to.trim().toLowerCase();
   const subject = resolveEmailSubject(input.templateKey, input.dynamicTemplateData, input.subject);
+  // Dynamic SendGrid templates must reference {{subject}} in their Subject field.
+  const templateData = { ...(input.dynamicTemplateData ?? {}), subject };
 
   const { data: suppression, error: suppressionError } = await supabase
     .from("email_suppressions")
@@ -140,7 +142,7 @@ export async function sendDynamicTemplateEmail(
           to,
           from,
           templateId: getTemplateId(input.templateKey),
-          dynamicTemplateData: input.dynamicTemplateData ?? {},
+          dynamicTemplateData: templateData,
           customArgs,
           subject,
         };
