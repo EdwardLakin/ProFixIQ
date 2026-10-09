@@ -284,6 +284,36 @@ function dateInputValue(value: unknown): string {
   return `${year}-${month}-${day}`;
 }
 
+function normalizeOdometerUnit(value: unknown): string {
+  const unit = typeof value === "string" ? value.trim() : "";
+  const normalized = unit.toLowerCase();
+  if (/^(km|kilometers?|kilometres?)$/.test(normalized)) return "km";
+  if (/^(mi|miles?)$/.test(normalized)) return "mi";
+  if (/^(h|hr|hrs|hours?)$/.test(normalized)) return "hours";
+  return unit;
+}
+
+function normalizeVehicleOdometerDraft(
+  mileageValue: unknown,
+  unitValue: unknown,
+): { mileage: string; odometer_unit: string } {
+  const mileage = String(mileageValue ?? "").trim();
+  const unit = normalizeOdometerUnit(unitValue);
+  const match = mileage.match(
+    /^([\d,]+(?:\.\d+)?)\s*(km|kilometers?|kilometres?|mi|miles?|h|hrs?|hours?)$/i,
+  );
+  if (match) {
+    const suffixUnit = normalizeOdometerUnit(match[2]);
+    if (!unit || unit === suffixUnit) {
+      return {
+        mileage: match[1].replace(/,/g, ""),
+        odometer_unit: suffixUnit,
+      };
+    }
+  }
+  return { mileage, odometer_unit: unit };
+}
+
 // Historical customer summaries intentionally do not use compactDate(customer?.customer_since ?? customer?.created_at).
 function compactDate(iso: string | null | undefined): string | null {
   if (!iso) return null;
@@ -479,7 +509,14 @@ type ModalProps = {
 };
 
 function moveToNextFormField(event: React.KeyboardEvent<HTMLFormElement>) {
-  if (event.key !== "Enter" || event.shiftKey) return;
+  if (
+    event.key !== "Enter" ||
+    event.shiftKey ||
+    event.nativeEvent.isComposing ||
+    event.nativeEvent.keyCode === 229
+  ) {
+    return;
+  }
   const current = event.target;
   if (!(current instanceof HTMLInputElement)) return;
 
@@ -1523,7 +1560,14 @@ export default function CustomerProfilePage(): JSX.Element {
 
   useEffect(() => {
     if (!selectedVehicle) return;
-    setVehDraft({ ...(selectedVehicle as unknown as Record<string, unknown>) });
+    const record = selectedVehicle as unknown as Record<string, unknown>;
+    setVehDraft({
+      ...record,
+      ...normalizeVehicleOdometerDraft(
+        selectedVehicle.mileage,
+        record["odometer_unit"],
+      ),
+    });
   }, [selectedVehicle]);
 
   const saveVehicle = useCallback(async () => {
@@ -3126,7 +3170,7 @@ export default function CustomerProfilePage(): JSX.Element {
             onKeyDown={moveToNextFormField}
           >
             <p className="text-xs text-[color:var(--theme-text-secondary)]">
-              Enter the odometer reading once, then choose km or mi. Engine hours are tracked separately.
+              Enter the odometer reading once, then choose km, mi, or hours.
             </p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               {(
@@ -3186,10 +3230,8 @@ export default function CustomerProfilePage(): JSX.Element {
                       <div className="flex gap-2">
                         <input
                           id={inputId}
-                          type="number"
-                          min="0"
-                          step="1"
-                          inputMode="numeric"
+                          type="text"
+                          inputMode="decimal"
                           enterKeyHint="next"
                           value={String(vehDraft.mileage ?? "")}
                           onChange={(event) =>
@@ -3216,6 +3258,15 @@ export default function CustomerProfilePage(): JSX.Element {
                           <option value="">Unit</option>
                           <option value="km">km</option>
                           <option value="mi">mi</option>
+                          <option value="hours">hours</option>
+                          {String(vehDraft.odometer_unit ?? "").trim() &&
+                          !["km", "mi", "hours"].includes(
+                            String(vehDraft.odometer_unit).toLowerCase(),
+                          ) ? (
+                            <option value={String(vehDraft.odometer_unit)}>
+                              {String(vehDraft.odometer_unit)} (existing)
+                            </option>
+                          ) : null}
                         </select>
                       </div>
                     ) : key === "notes" ? (
@@ -3236,18 +3287,6 @@ export default function CustomerProfilePage(): JSX.Element {
                       <input
                         id={inputId}
                         type={inputType}
-                        min={
-                          key === "year"
-                            ? "1900"
-                            : key === "engine_hours"
-                              ? "0"
-                              : undefined
-                        }
-                        max={
-                          key === "year"
-                            ? String(new Date().getFullYear() + 1)
-                            : undefined
-                        }
                         step={key === "engine_hours" ? "any" : undefined}
                         inputMode={inputType === "number" ? "decimal" : undefined}
                         enterKeyHint="next"
@@ -3360,7 +3399,7 @@ export default function CustomerProfilePage(): JSX.Element {
               <div
                 role="alert"
                 aria-live="assertive"
-                className="rounded-xl border border-rose-400/50 bg-rose-950/30 px-3 py-2 text-sm text-rose-100"
+                className="rounded-xl border border-rose-400/50 bg-rose-50 px-3 py-2 text-sm text-rose-900 dark:bg-rose-950/30 dark:text-rose-100"
               >
                 {createVehicleError}
               </div>
@@ -3373,7 +3412,7 @@ export default function CustomerProfilePage(): JSX.Element {
               {
                 title: "Vehicle basics",
                 fields: [
-                  { label: "Year", key: "year", type: "number", placeholder: "e.g. 2023", hint: "Model year", min: "1900", max: String(new Date().getFullYear() + 1) },
+                  { label: "Year", key: "year", type: "number", placeholder: "e.g. 2023", hint: "Model year", min: "1900", max: "2100" },
                   { label: "Make", key: "make", type: "text", placeholder: "e.g. Western Star", hint: "" },
                   { label: "Model", key: "model", type: "text", placeholder: "e.g. 4900", hint: "" },
                   { label: "Trim", key: "submodel", type: "text", placeholder: "Optional trim or submodel", hint: "" },
@@ -3391,7 +3430,7 @@ export default function CustomerProfilePage(): JSX.Element {
               {
                 title: "Usage and appearance",
                 fields: [
-                  { label: "Odometer reading", key: "mileage", type: "number", placeholder: "e.g. 565000", hint: "Enter a number; choose km or mi.", min: "0", step: "1" },
+                  { label: "Odometer reading", key: "mileage", type: "number", placeholder: "e.g. 565000", hint: "Enter a number; choose km, mi, or hours.", min: "0", step: "1" },
                   { label: "Color", key: "color", type: "text", placeholder: "e.g. White", hint: "" },
                   { label: "Engine hours", key: "engine_hours", type: "number", placeholder: "e.g. 6432", hint: "Keep separate from the odometer reading.", min: "0", step: "any" },
                   { label: "Tags", key: "tags", type: "text", placeholder: "e.g. seasonal, loaner", hint: "Separate multiple tags with commas.", wide: true },
@@ -3489,6 +3528,7 @@ export default function CustomerProfilePage(): JSX.Element {
                             <option value="">Unit</option>
                             <option value="km">km</option>
                             <option value="mi">mi</option>
+                            <option value="hours">hours</option>
                           </select>
                         </div>
                       ) : (
