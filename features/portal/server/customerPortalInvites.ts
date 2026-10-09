@@ -115,8 +115,6 @@ export async function issueCustomerPortalInvite(input: {
   }
 
   if (!inviteId) throw new Error("Portal invite could not be created.");
-  const persistedInviteId = inviteId;
-
   try {
     const portalDestination = input.workOrderId
       ? `/portal/work-orders/view/${input.workOrderId}`
@@ -138,7 +136,7 @@ export async function issueCustomerPortalInvite(input: {
     const portalLink = `${siteUrl()}/portal/auth/activate?${new URLSearchParams({
       token_hash: tokenHash,
       type: verificationType,
-      invite: persistedInviteId,
+      invite: inviteId,
       next: afterAccept,
     }).toString()}`;
 
@@ -165,13 +163,13 @@ export async function issueCustomerPortalInvite(input: {
     });
 
     return {
-      inviteId: persistedInviteId,
+      inviteId,
       inviteCreated,
       deliveryStatus: delivery.status,
       ...(delivery.status === "suppressed" ? { deliveryReason: delivery.reason } : {}),
       portalLink,
     };
   } catch {
-    throw new CustomerPortalInviteDeliveryError(persistedInviteId, inviteCreated);
+    throw new CustomerPortalInviteDeliveryError(inviteId, inviteCreated);
   }
 }
