@@ -19,6 +19,14 @@ describe("create work order customer and vehicle lookup", () => {
     expect(form).toContain("handlePickedCustomer(pickedCustomer, pickedVehicle)");
   });
 
+  it("only opens autocomplete for the customer field being edited", () => {
+    expect(form).toContain('setActiveCustomerSearchField("business_name")');
+    expect(form).toContain('activeCustomerSearchField !== "business_name"');
+    expect(form).toContain('setActiveCustomerSearchField("email")');
+    expect(form).toContain('activeCustomerSearchField !== "email"');
+    expect(form).toContain("setActiveCustomerSearchField(null)");
+  });
+
   it("searches unit number and licence plate across the current shop", () => {
     const unitLookup = form.slice(
       form.indexOf("function UnitNumberAutocomplete"),
@@ -30,6 +38,13 @@ describe("create work order customer and vehicle lookup", () => {
     expect(unitLookup).toContain('.eq("shop_id", shopId)');
     expect(unitLookup).not.toContain('.eq("customer_id", customerId)');
     expect(form.match(/q=\{vehicle\.license_plate \?\? ""\}/g)).toHaveLength(1);
+  });
+
+  it("provides a dedicated existing-vehicle picker", () => {
+    expect(form).toContain("Select existing vehicle");
+    expect(form).toContain("customerVehicles.map((option)");
+    expect(form).toContain('query = query.eq("customer_id", currentCustomerId)');
+    expect(form).toContain("void handlePickedVehicle(pickedVehicle)");
   });
 
   it("hydrates the vehicle owner when a vehicle result is selected", () => {
