@@ -168,6 +168,24 @@ describe("POST /api/maintenance/generate-rules", () => {
     );
   });
 
+  it("does not trust the newest rows when the match list may be truncated", async () => {
+    vehicles = Array.from({ length: 200 }, () => ({
+      make: "Western Star",
+      model: "4900",
+      engine_family: null,
+      engine: "DD15",
+    }));
+
+    // The requested engine isn't in the returned page: it could be an older
+    // vehicle beyond the cap, so the route must not fall back to the newest row.
+    const missing = await POST(request({ ...spec, engineFamily: "DD13" }));
+    const found = await POST(request({ ...spec, engineFamily: "DD15" }));
+
+    expect(missing.status).toBe(409);
+    expect(found.status).toBe(200);
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+
   it("never lets the client force regeneration", async () => {
     await POST(request({ ...spec, forceRefresh: true }));
 

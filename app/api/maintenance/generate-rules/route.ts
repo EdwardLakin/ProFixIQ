@@ -54,6 +54,8 @@ function parseBody(json: unknown): GenerateBody {
   return { year, make, model, engineFamily, forceRefresh };
 }
 
+const MAX_MATCHING_VEHICLES = 200;
+
 export async function POST(req: Request) {
   const supabase = createServerSupabaseRSC();
 
@@ -121,7 +123,7 @@ export async function POST(req: Request) {
       .ilike("make", escapeLike(body.make))
       .ilike("model", escapeLike(body.model))
       .order("created_at", { ascending: false })
-      .limit(20);
+      .limit(MAX_MATCHING_VEHICLES);
 
     if (vehicleError) {
       return NextResponse.json(
@@ -159,7 +161,10 @@ export async function POST(req: Request) {
     const engineKeys = new Set(
       vehicles.map((v) => vehicleEngineKey(v)?.toLowerCase() ?? null),
     );
-    if (!exactVehicle && engineKeys.size > 1) {
+    // A full page may be hiding vehicles with another engine, so treat it as
+    // ambiguous too rather than trusting the newest row.
+    const mayBeTruncated = vehicles.length >= MAX_MATCHING_VEHICLES;
+    if (!exactVehicle && (engineKeys.size > 1 || mayBeTruncated)) {
       return NextResponse.json(
         { error: "Several vehicles match; the engine could not be resolved." },
         { status: 409 },
