@@ -2,15 +2,9 @@
 import { aiBudgetStopResponse, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import "server-only";
 import { NextResponse } from "next/server";
-import {
-  createAdminSupabase,
-  createServerSupabaseRSC,
-} from "@/features/shared/lib/supabase/server";
+import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
 import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import { generateMaintenanceRulesForVehicle } from "@/features/maintenance/server/generateMaintenanceRules";
-import { vehicleEngineKey } from "@/features/maintenance/server/vehicleEngineKey";
-import { escapeLike } from "@/features/maintenance/server/escapeLike";
-import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 
 
 export const runtime = "nodejs";
@@ -54,8 +48,6 @@ function parseBody(json: unknown): GenerateBody {
   return { year, make, model, engineFamily, forceRefresh };
 }
 
-const MAX_MATCHING_VEHICLES = 200;
-
 export async function POST(req: Request) {
   const supabase = createServerSupabaseRSC();
 
@@ -88,13 +80,11 @@ export async function POST(req: Request) {
     // Charge the generation to the signed-in user's shop AI budget. A failed
     // lookup is not "no shop": without a known shop the spend could not be
     // governed, so refuse (retryable) instead of running the call ungoverned.
-    // Imported/legacy staff can be linked through profiles.user_id, so use the
-    // canonical resolver rather than assuming profiles.id === auth id.
-    const { profile, error: profileError } = await resolveCanonicalStaffProfile(
-      supabase,
-      user.id,
-      { linkedProfileClient: () => createAdminSupabase() },
-    );
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("shop_id")
+      .eq("id", user.id)
+      .maybeSingle<{ shop_id: string | null }>();
 
     if (profileError) {
       return NextResponse.json(
@@ -103,123 +93,29 @@ export async function POST(req: Request) {
       );
     }
 
-    const shopId = profile?.shop_id ?? null;
-    if (!shopId) {
-      return NextResponse.json(
-        { error: "No shop is linked to your account." },
-        { status: 403 },
-      );
-    }
-
-    // The schedule is written to the shared catalog with the service role, so
-    // the requested spec must belong to a real vehicle in the caller's shop
-    // rather than being whatever the client sent. The engine family comes from
-    // that vehicle, which is also the key the suggestions lookup uses.
-    const { data: vehicleRows, error: vehicleError } = await supabase
-      .from("vehicles")
-      .select("make, model, engine_family, engine")
-      .eq("shop_id", shopId)
-      .eq("year", body.year)
-      .ilike("make", escapeLike(body.make))
-      .ilike("model", escapeLike(body.model))
-      .order("created_at", { ascending: false })
-      .limit(MAX_MATCHING_VEHICLES);
-
-    if (vehicleError) {
-      return NextResponse.json(
-        { error: "Could not verify the vehicle. Try again." },
-        { status: 503 },
-      );
-    }
-
-    const vehicles = (vehicleRows ?? []) as Array<{
-      make: string | null;
-      model: string | null;
-      engine_family: string | null;
-      engine: string | null;
-    }>;
-    if (vehicles.length === 0) {
-      return NextResponse.json(
-        { error: "No matching vehicle in your shop." },
-        { status: 404 },
-      );
-    }
-
-    const requestedEngine = body.engineFamily?.toLowerCase() ?? null;
-    const exactMatches = requestedEngine
-      ? vehicles.filter(
-          (v) =>
-            v.engine_family?.toLowerCase() === requestedEngine ||
-            v.engine?.toLowerCase() === requestedEngine,
-        )
-      : [];
-    // `engine` and `engine_family` are edited independently, so vehicles that
-    // share a raw engine can still resolve to different schedule keys.
-    const exactKeys = new Set(
-      exactMatches.map((v) => vehicleEngineKey(v)?.toLowerCase() ?? null),
-    );
-    if (exactKeys.size > 1) {
-      return NextResponse.json(
-        { error: "The requested engine matches more than one schedule." },
-        { status: 409 },
-      );
-    }
-    const exactVehicle = exactMatches[0];
-
-    // If the shop has several engine variants of this spec and the request does
-    // not identify one, do not guess: generating under another asset's engine
-    // would spend AI budget and leave this vehicle's schedule missing. The
-    // suggestions path generates from the exact work-order vehicle anyway.
-    const engineKeys = new Set(
-      vehicles.map((v) => vehicleEngineKey(v)?.toLowerCase() ?? null),
-    );
-    const mayBeTruncated = vehicles.length >= MAX_MATCHING_VEHICLES;
-    // A full page can hide an older vehicle whose raw engine matches but whose
-    // family differs, so it is refused even when a row in the page matches.
-    if (mayBeTruncated || (!exactVehicle && engineKeys.size > 1)) {
-      return NextResponse.json(
-        { error: "Several vehicles match; the engine could not be resolved." },
-        { status: 409 },
-      );
-    }
-    const matchedVehicle = exactVehicle ?? vehicles[0];
-
-    // Persist the stored vehicle's own make/model/engine, not the client's
-    // strings: the lookup above is case-insensitive but the schedule cache and
-    // its unique key are not, so differently-cased requests would otherwise
-    // create duplicate global rule sets.
-    const make = matchedVehicle.make?.trim() || (body.make as string);
-    const model = matchedVehicle.model?.trim() || (body.model as string);
-    const engineKey = vehicleEngineKey(matchedVehicle);
-
     const { servicesInserted, rulesInserted } = await withAITelemetryContext(
       {
         endpoint: "/api/maintenance/generate-rules",
-        shopId,
+        shopId: profile?.shop_id ?? null,
         userId: user.id,
       },
       () =>
         generateMaintenanceRulesForVehicle({
           supabase,
-          // maintenance_rules / maintenance_services are read-only to
-          // `authenticated`; the caller and vehicle were authorized above, so
-          // write the shared catalog rows with the service role.
-          writeClient: createAdminSupabase(),
           year: body.year as number,
-          make,
-          model,
-          engineFamily: engineKey,
-          // Never let a client force regeneration (repeat AI spend).
-          forceRefresh: false,
+          make: body.make as string,
+          model: body.model as string,
+          engineFamily: body.engineFamily ?? null,
+          forceRefresh: body.forceRefresh ?? false,
         }),
     );
 
     return NextResponse.json({
       ok: true,
       year: body.year,
-      make,
-      model,
-      engineFamily: engineKey,
+      make: body.make,
+      model: body.model,
+      engineFamily: body.engineFamily ?? null,
       servicesInserted,
       rulesInserted,
     });
@@ -230,7 +126,6 @@ export async function POST(req: Request) {
     }
     const message =
       e instanceof Error ? e.message : "Failed to generate maintenance rules";
-    console.error("[maintenance] generate-rules failed", { error: message });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }
