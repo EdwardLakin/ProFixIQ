@@ -2741,6 +2741,7 @@ export default function CreateWorkOrderPage() {
                 shopId={wo?.shop_id ?? currentShopId}
                 selectedCustomerId={customerId}
                 selectedVehicleId={vehicleIdProp}
+                enableExistingVehiclePicker
                 handlers={{
                   onCustomerChange,
                   onVehicleChange: onVehicleChange as unknown as (

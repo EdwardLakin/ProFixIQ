@@ -66,6 +66,13 @@ type VehicleRow = {
   created_at?: string | null;
 };
 
+type CustomerSearchField =
+  | "business_name"
+  | "first_name"
+  | "last_name"
+  | "phone"
+  | "email";
+
 /** ✅ Public props are serializable */
 interface Props {
   customer: CustomerInfo;
@@ -81,6 +88,9 @@ interface Props {
   /** Existing rows selected by a handoff or picker; prevents duplicate creates. */
   selectedCustomerId?: string | null;
   selectedVehicleId?: string | null;
+
+  /** Opt-in: Work Order create flow only. Other callers keep their prior UI/queries. */
+  enableExistingVehiclePicker?: boolean;
 
   /** One object for callbacks; typed as unknown to keep props serializable */
   handlers?: unknown;
@@ -485,6 +495,7 @@ export default function CustomerVehicleForm({
   shopId,
   selectedCustomerId = null,
   selectedVehicleId = null,
+  enableExistingVehiclePicker = false,
   handlers,
 }: Props) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
@@ -504,6 +515,16 @@ export default function CustomerVehicleForm({
   const [customerSearchSuspended, setCustomerSearchSuspended] = useState(
     Boolean(selectedCustomerId),
   );
+  const [activeCustomerSearchField, setActiveCustomerSearchField] =
+    useState<CustomerSearchField | null>(null);
+  const [customerVehicles, setCustomerVehicles] = useState<VehicleRow[]>([]);
+  const [customerVehiclesLoading, setCustomerVehiclesLoading] = useState(false);
+  const [customerVehiclesError, setCustomerVehiclesError] = useState(false);
+  const [customerVehiclesRetry, setCustomerVehiclesRetry] = useState(0);
+  const [vehicleSelectionError, setVehicleSelectionError] = useState<
+    string | null
+  >(null);
+  const vehicleSelectionRef = useRef(0);
   const [duplicateMatches, setDuplicateMatches] = useState<
     VehicleDuplicateMatch[]
   >([]);
@@ -512,7 +533,60 @@ export default function CustomerVehicleForm({
   useEffect(() => {
     setCurrentCustomerId(selectedCustomerId);
     setCustomerSearchSuspended(Boolean(selectedCustomerId));
+    setActiveCustomerSearchField(null);
   }, [selectedCustomerId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!enableExistingVehiclePicker || !shopId) {
+      setCustomerVehicles([]);
+      setCustomerVehiclesLoading(false);
+      setCustomerVehiclesError(false);
+      return;
+    }
+
+    setCustomerVehiclesLoading(true);
+    setCustomerVehiclesError(false);
+
+    void (async () => {
+      try {
+        let query = supabase
+          .from("vehicles")
+          .select(
+            "id, unit_number, license_plate, vin, year, make, model, mileage, color, engine_hours, engine, submodel, engine_family, engine_type, transmission, transmission_type, fuel_type, drivetrain, customer_id, created_at",
+          )
+          .eq("shop_id", shopId)
+          .order("created_at", { ascending: false })
+          .limit(100);
+
+        if (currentCustomerId) {
+          query = query.eq("customer_id", currentCustomerId);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        if (!cancelled) setCustomerVehicles((data ?? []) as VehicleRow[]);
+      } catch {
+        if (!cancelled) {
+          setCustomerVehicles([]);
+          setCustomerVehiclesError(true);
+        }
+      } finally {
+        if (!cancelled) setCustomerVehiclesLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    currentCustomerId,
+    customerVehiclesRetry,
+    enableExistingVehiclePicker,
+    shopId,
+    supabase,
+  ]);
 
   const safeSetCustomer = useCallback(
     (field: keyof CustomerInfo, value: string | null | undefined) => {
@@ -621,8 +695,11 @@ export default function CustomerVehicleForm({
   async function handlePickedCustomer(
     c: CustomerRow,
     pickedVehicle: VehicleRow | null = null,
+    selectionId: number = ++vehicleSelectionRef.current,
   ) {
+    const isStale = () => selectionId !== vehicleSelectionRef.current;
     setCustomerSearchSuspended(true);
+    setActiveCustomerSearchField(null);
 
     const applyCustomer = (picked: CustomerRow) => {
       const fields = hydrateCustomerFields(picked);
@@ -646,11 +723,13 @@ export default function CustomerVehicleForm({
         ? await query.eq("shop_id", shopId).maybeSingle()
         : await query.maybeSingle();
 
+      if (isStale()) return;
       if (data) applyCustomer(data as CustomerRow);
     } catch {
       /* Keep the fields already returned by autocomplete. */
     }
 
+    if (isStale()) return;
     onCustomerSelected?.(c.id);
     setCurrentCustomerId(c.id);
 
@@ -673,6 +752,7 @@ export default function CustomerVehicleForm({
         .limit(2);
 
       const arr = (vehs ?? []) as VehicleRow[];
+      if (isStale()) return;
       if (arr.length === 1) applyPickedVehicle(arr[0]);
     } catch {
       /* ignore */
@@ -680,9 +760,20 @@ export default function CustomerVehicleForm({
   }
 
   async function handlePickedVehicle(v: VehicleRow) {
-    if (v.customer_id && shopId) {
+    const selectionId = ++vehicleSelectionRef.current;
+    setVehicleSelectionError(null);
+
+    if (!v.customer_id) {
+      applyPickedVehicle(v);
+      return;
+    }
+
+    // A vehicle with an owner is only accepted once the owner is hydrated, so
+    // the customer/vehicle pairing can never be left half-applied.
+    let owner: CustomerRow | null = null;
+    if (shopId) {
       try {
-        const { data: owner } = await supabase
+        const { data } = await supabase
           .from("customers")
           .select(
             "id, business_name, first_name, last_name, name, phone, phone_number, email, address, city, province, postal_code, created_at",
@@ -690,17 +781,22 @@ export default function CustomerVehicleForm({
           .eq("id", v.customer_id)
           .eq("shop_id", shopId)
           .maybeSingle();
-
-        if (owner) {
-          await handlePickedCustomer(owner as CustomerRow, v);
-          return;
-        }
+        owner = (data as CustomerRow | null) ?? null;
       } catch {
-        /* Fall through and at least apply the vehicle. */
+        owner = null;
       }
     }
 
-    applyPickedVehicle(v);
+    if (selectionId !== vehicleSelectionRef.current) return;
+
+    if (!owner) {
+      setVehicleSelectionError(
+        "Couldn't load this vehicle's customer. Please select the vehicle again.",
+      );
+      return;
+    }
+
+    await handlePickedCustomer(owner, v, selectionId);
   }
 
   const handleSaveClick = async () => {
@@ -804,13 +900,17 @@ export default function CustomerVehicleForm({
                 value={customer.business_name ?? ""}
                 onChange={(e) => {
                   setCustomerSearchSuspended(false);
+                  setActiveCustomerSearchField("business_name");
                   safeSetCustomer("business_name", e.target.value || null);
                 }}
               />
               <CustomerAutocomplete
                 q={customer.business_name ?? ""}
                 shopId={shopId}
-                suspended={customerSearchSuspended}
+                suspended={
+                  customerSearchSuspended ||
+                  activeCustomerSearchField !== "business_name"
+                }
                 onPick={({
                   customer: pickedCustomer,
                   vehicle: pickedVehicle,
@@ -829,13 +929,17 @@ export default function CustomerVehicleForm({
                 value={customer.first_name ?? ""}
                 onChange={(e) => {
                   setCustomerSearchSuspended(false);
+                  setActiveCustomerSearchField("first_name");
                   safeSetCustomer("first_name", e.target.value || null);
                 }}
               />
               <CustomerAutocomplete
                 q={customer.first_name ?? ""}
                 shopId={shopId}
-                suspended={customerSearchSuspended}
+                suspended={
+                  customerSearchSuspended ||
+                  activeCustomerSearchField !== "first_name"
+                }
                 onPick={({
                   customer: pickedCustomer,
                   vehicle: pickedVehicle,
@@ -854,13 +958,17 @@ export default function CustomerVehicleForm({
                 value={customer.last_name ?? ""}
                 onChange={(e) => {
                   setCustomerSearchSuspended(false);
+                  setActiveCustomerSearchField("last_name");
                   safeSetCustomer("last_name", e.target.value || null);
                 }}
               />
               <CustomerAutocomplete
                 q={customer.last_name ?? ""}
                 shopId={shopId}
-                suspended={customerSearchSuspended}
+                suspended={
+                  customerSearchSuspended ||
+                  activeCustomerSearchField !== "last_name"
+                }
                 onPick={({
                   customer: pickedCustomer,
                   vehicle: pickedVehicle,
@@ -879,13 +987,17 @@ export default function CustomerVehicleForm({
                 value={customer.phone ?? ""}
                 onChange={(e) => {
                   setCustomerSearchSuspended(false);
+                  setActiveCustomerSearchField("phone");
                   safeSetCustomer("phone", e.target.value || null);
                 }}
               />
               <CustomerAutocomplete
                 q={customer.phone ?? ""}
                 shopId={shopId}
-                suspended={customerSearchSuspended}
+                suspended={
+                  customerSearchSuspended ||
+                  activeCustomerSearchField !== "phone"
+                }
                 onPick={({
                   customer: pickedCustomer,
                   vehicle: pickedVehicle,
@@ -905,13 +1017,17 @@ export default function CustomerVehicleForm({
                 value={customer.email ?? ""}
                 onChange={(e) => {
                   setCustomerSearchSuspended(false);
+                  setActiveCustomerSearchField("email");
                   safeSetCustomer("email", e.target.value || null);
                 }}
               />
               <CustomerAutocomplete
                 q={customer.email ?? ""}
                 shopId={shopId}
-                suspended={customerSearchSuspended}
+                suspended={
+                  customerSearchSuspended ||
+                  activeCustomerSearchField !== "email"
+                }
                 onPick={({
                   customer: pickedCustomer,
                   vehicle: pickedVehicle,
@@ -1001,11 +1117,84 @@ export default function CustomerVehicleForm({
                 ) : null}
               </div>
               <p className="mt-0.5 text-xs text-[color:var(--theme-text-muted)]">
-                Search by unit or plate, or enter only the details available
-                now.
+                {enableExistingVehiclePicker
+                  ? "Pick a saved vehicle, search by unit or plate, or enter only the details available now."
+                  : "Search by unit or plate, or enter only the details available now."}
               </p>
             </div>
           </div>
+
+          {enableExistingVehiclePicker ? (
+          <div className="space-y-1">
+            <label className={labelClass}>Select existing vehicle</label>
+            <select
+              className={intakeFieldClass}
+              value={
+                selectedVehicleId &&
+                customerVehicles.some((option) => option.id === selectedVehicleId)
+                  ? selectedVehicleId
+                  : ""
+              }
+              disabled={
+                !shopId || customerVehiclesLoading || customerVehiclesError
+              }
+              onChange={(e) => {
+                const pickedVehicle = customerVehicles.find(
+                  (option) => option.id === e.target.value,
+                );
+                if (pickedVehicle) void handlePickedVehicle(pickedVehicle);
+              }}
+            >
+              <option value="">
+                {customerVehiclesLoading
+                  ? "Loading vehicles…"
+                  : customerVehiclesError
+                    ? "Couldn't load vehicles"
+                    : customerVehicles.length === 0
+                    ? currentCustomerId
+                      ? "No saved vehicles for this customer"
+                      : "No saved vehicles"
+                    : currentCustomerId
+                      ? "Choose this customer's vehicle"
+                      : "Choose a vehicle"}
+              </option>
+              {customerVehicles.map((option) => {
+                const optionLabel = [
+                  option.unit_number ? `Unit ${option.unit_number}` : null,
+                  option.license_plate ? `Plate ${option.license_plate}` : null,
+                  [option.year, option.make, option.model]
+                    .filter(Boolean)
+                    .join(" "),
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+
+                return (
+                  <option key={option.id} value={option.id}>
+                    {optionLabel || option.vin || "Vehicle"}
+                  </option>
+                );
+              })}
+            </select>
+            {customerVehiclesError ? (
+              <p role="alert" className="text-xs text-red-300">
+                Couldn&apos;t load saved vehicles.{" "}
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={() => setCustomerVehiclesRetry((n) => n + 1)}
+                >
+                  Retry
+                </button>
+              </p>
+            ) : null}
+            {vehicleSelectionError ? (
+              <p role="alert" className="text-xs text-red-300">
+                {vehicleSelectionError}
+              </p>
+            ) : null}
+          </div>
+          ) : null}
 
           {duplicateWarning && (
             <div className="rounded-xl border border-amber-400/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-100">
