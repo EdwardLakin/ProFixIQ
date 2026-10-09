@@ -51,12 +51,20 @@ export function CustomerPortalAccess({ customerId }: { customerId: string }) {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customerId, email: access.email }),
       });
-      const payload = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(payload.error || "Customer invitation could not be sent.");
-      toast.success("Customer portal invitation submitted.");
+      const payload = await response.json() as {
+        ok?: boolean; error?: string; inviteCreated?: boolean;
+        deliveryStatus?: "accepted" | "suppressed" | "unknown";
+      };
+      if (!response.ok || !payload.ok) {
+        await load();
+        toast.error(payload.error || "Invitation status could not be confirmed. Refresh Portal access before retrying.");
+        return;
+      }
+      toast.success("Customer portal invitation saved and email submitted.");
       await load();
-    } catch (value) {
-      toast.error(value instanceof Error ? value.message : "Customer invitation could not be sent.");
+    } catch {
+      toast.error("Invitation status could not be confirmed. Refresh Portal access before retrying.");
+      await load();
     } finally { setSending(""); }
   }
 

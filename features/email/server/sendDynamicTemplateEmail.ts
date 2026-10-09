@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@shared/types/types/supabase";
 import { getTemplateId, type EmailTemplateKey } from "./templateIds";
 import { sanitizeEmailMetadata } from "./sendgridWebhook";
+import { resolveEmailSubject } from "./emailSubjects";
 
 type DB = Database;
 
@@ -71,6 +72,7 @@ export async function sendDynamicTemplateEmail(
   const fromName = input.fromName?.trim();
   const from = fromName ? { email: fromEmail, name: fromName } : fromEmail;
   const to = input.to.trim().toLowerCase();
+  const subject = resolveEmailSubject(input.templateKey, input.dynamicTemplateData, input.subject);
 
   const { data: suppression, error: suppressionError } = await supabase
     .from("email_suppressions")
@@ -92,7 +94,7 @@ export async function sendDynamicTemplateEmail(
       template_key: input.templateKey,
       template_id: templateId,
       to_email: to,
-      subject: input.subject ?? null,
+      subject,
       status: "queued",
       provider: "sendgrid",
       metadata: sanitizeEmailMetadata(
@@ -126,7 +128,7 @@ export async function sendDynamicTemplateEmail(
       ? {
           to,
           from,
-          subject: input.subject?.trim() || "A message from ProFixIQ",
+          subject,
           text: input.content.text,
           html: input.content.html,
           customArgs,
@@ -140,7 +142,7 @@ export async function sendDynamicTemplateEmail(
           templateId: getTemplateId(input.templateKey),
           dynamicTemplateData: input.dynamicTemplateData ?? {},
           customArgs,
-          ...(input.subject ? { subject: input.subject } : {}),
+          subject,
         };
     const [response] = await sgMail.send(message);
 
