@@ -288,7 +288,7 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
         year: vehicle.year,
         make: trimmedVehicleMake,
         model: trimmedVehicleModel,
-        engineFamily: vehicle.engine_family ?? null,
+        engineFamily: vehicleEngineKey(vehicle),
         error: error instanceof Error ? error.message : String(error),
       });
     }
@@ -333,9 +333,26 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
     if (hasVehicleSpecificRules && rule.make == null) return false;
     return ruleMatchesVehicle(vehicle, rule);
   });
+
+  // An engine-specific schedule supersedes an engine-agnostic rule for the same
+  // service on the same vehicle spec (older runs stored rules without the
+  // engine); otherwise both would match and suggest the service twice.
+  const engineSpecificServiceCodes = new Set(
+    matchedRules
+      .filter((rule) => rule.make != null && normalizeText(rule.engine_family))
+      .map((rule) => rule.service_code),
+  );
+  const schedule = matchedRules.filter(
+    (rule) =>
+      !(
+        rule.make != null &&
+        !normalizeText(rule.engine_family) &&
+        engineSpecificServiceCodes.has(rule.service_code)
+      ),
+  );
   const suggestions: MaintenanceSuggestionItem[] = [];
 
-  for (const rule of matchedRules) {
+  for (const rule of schedule) {
     const service = servicesByCode.get(rule.service_code);
     if (!service) continue;
 
@@ -347,7 +364,7 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
         year: vehicle.year ?? null,
         make: vehicle.make ?? null,
         model: vehicle.model ?? null,
-        engineFamily: vehicle.engine_family ?? null,
+        engineFamily: vehicleEngineKey(vehicle),
       },
     });
 

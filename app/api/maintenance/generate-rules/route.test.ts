@@ -1,9 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const generate = vi.fn();
-const adminClient = { __client: "admin" };
 
 let profile: { shop_id: string | null } | null = { shop_id: "s1" };
+let linkedProfile: { shop_id: string | null } | null = null;
 let profileError: unknown = null;
 let vehicles: Array<{
   make: string | null;
@@ -29,18 +29,28 @@ function vehicleBuilder() {
   return builder;
 }
 
+function profilesBuilder() {
+  const builder: Record<string, unknown> = {};
+  builder.select = () => builder;
+  builder.eq = (column: string) => {
+    builder.column = column;
+    return builder;
+  };
+  builder.maybeSingle = async () => ({
+    data: builder.column === "user_id" ? linkedProfile : profile,
+    error: profileError,
+  });
+  return builder;
+}
+
+const adminClient = { __client: "admin", from: () => profilesBuilder() };
+
 const userClient = {
   __client: "user",
   auth: { getUser: async () => ({ data: { user: { id: "u1" } }, error: null }) },
   from: (table: string) => {
     if (table === "vehicles") return vehicleBuilder();
-    return {
-      select: () => ({
-        eq: () => ({
-          maybeSingle: async () => ({ data: profile, error: profileError }),
-        }),
-      }),
-    };
+    return profilesBuilder();
   },
 };
 
@@ -77,6 +87,7 @@ describe("POST /api/maintenance/generate-rules", () => {
     generate.mockReset();
     generate.mockResolvedValue({ servicesInserted: 1, rulesInserted: 2 });
     profile = { shop_id: "s1" };
+    linkedProfile = null;
     profileError = null;
     vehicles = [
       { make: "Western Star", model: "4900", engine_family: "Detroit", engine: "DD15" },
@@ -148,6 +159,17 @@ describe("POST /api/maintenance/generate-rules", () => {
 
     expect(res.status).toBe(403);
     expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("resolves legacy staff whose profile is linked through user_id", async () => {
+    profile = null;
+    linkedProfile = { shop_id: "s1" };
+
+    const res = await POST(request(spec));
+
+    expect(res.status).toBe(200);
+    expect(vehicleFilters).toContainEqual(["eq:shop_id", "s1"]);
+    expect(generate).toHaveBeenCalled();
   });
 
   it("returns a retryable error when the shop or vehicle lookup fails", async () => {

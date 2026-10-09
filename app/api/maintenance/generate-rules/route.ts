@@ -9,6 +9,8 @@ import {
 import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import { generateMaintenanceRulesForVehicle } from "@/features/maintenance/server/generateMaintenanceRules";
 import { vehicleEngineKey } from "@/features/maintenance/server/vehicleEngineKey";
+import { escapeLike } from "@/features/maintenance/server/escapeLike";
+import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 
 
 export const runtime = "nodejs";
@@ -52,10 +54,6 @@ function parseBody(json: unknown): GenerateBody {
   return { year, make, model, engineFamily, forceRefresh };
 }
 
-function escapeLike(value: string): string {
-  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
-}
-
 export async function POST(req: Request) {
   const supabase = createServerSupabaseRSC();
 
@@ -88,11 +86,13 @@ export async function POST(req: Request) {
     // Charge the generation to the signed-in user's shop AI budget. A failed
     // lookup is not "no shop": without a known shop the spend could not be
     // governed, so refuse (retryable) instead of running the call ungoverned.
-    const { data: profile, error: profileError } = await supabase
-      .from("profiles")
-      .select("shop_id")
-      .eq("id", user.id)
-      .maybeSingle<{ shop_id: string | null }>();
+    // Imported/legacy staff can be linked through profiles.user_id, so use the
+    // canonical resolver rather than assuming profiles.id === auth id.
+    const { profile, error: profileError } = await resolveCanonicalStaffProfile(
+      supabase,
+      user.id,
+      { linkedProfileClient: () => createAdminSupabase() },
+    );
 
     if (profileError) {
       return NextResponse.json(

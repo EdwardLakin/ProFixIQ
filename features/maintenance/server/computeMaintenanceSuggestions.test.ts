@@ -249,4 +249,57 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
     expect(suggestions).toHaveLength(1);
     expect(suggestions[0].serviceCode).toBe("OIL_CHANGE");
   });
+
+  it("passes the stored-engine key to menu resolution, matching the generated schedule", async () => {
+    const supabase = makeSupabase({
+      vehicle: {
+        id: "vehicle-1",
+        year: 2023,
+        make: "Western Star",
+        model: "4900",
+        mileage: null,
+        engine_family: null,
+        engine: "DD15",
+      },
+      services: [oilChangeService],
+      rules: [
+        { ...genericOilChangeRule, id: "r-ws", make: "Western Star", model: "4900", engine_family: "DD15" },
+      ],
+    });
+
+    await computeMaintenanceSuggestionsForWorkOrder({ supabase, workOrderId: "wo-1" });
+
+    expect(vi.mocked(resolveMaintenanceMenuMap)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        vehicle: expect.objectContaining({ engineFamily: "DD15" }),
+      }),
+    );
+  });
+
+  it("prefers an engine-specific rule over an older engine-agnostic one for the same service", async () => {
+    const supabase = makeSupabase({
+      vehicle: {
+        id: "vehicle-1",
+        year: 2023,
+        make: "Western Star",
+        model: "4900",
+        mileage: null,
+        engine_family: null,
+        engine: "DD15",
+      },
+      services: [oilChangeService],
+      rules: [
+        { ...genericOilChangeRule, id: "legacy", make: "Western Star", model: "4900", engine_family: null },
+        { ...genericOilChangeRule, id: "engine", make: "Western Star", model: "4900", engine_family: "DD15" },
+      ],
+    });
+
+    const { suggestions } = await computeMaintenanceSuggestionsForWorkOrder({
+      supabase,
+      workOrderId: "wo-1",
+    });
+
+    expect(suggestions).toHaveLength(1);
+    expect(vi.mocked(getVehicleMaintenanceHistory)).toHaveBeenCalledTimes(1);
+  });
 });

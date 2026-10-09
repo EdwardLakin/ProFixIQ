@@ -35,6 +35,10 @@ function makeClient(opts: { existingRules?: unknown[]; calls: Call[] }) {
           opts.calls.push({ table, method: "eq", args });
           return builder;
         },
+        ilike: (...args: unknown[]) => {
+          opts.calls.push({ table, method: "ilike", args });
+          return builder;
+        },
         is: (...args: unknown[]) => {
           opts.calls.push({ table, method: "is", args });
           return builder;
@@ -88,13 +92,38 @@ describe("generateMaintenanceRulesForVehicle", () => {
 
     expect(readCalls).toContainEqual({
       table: "maintenance_rules",
-      method: "eq",
+      method: "ilike",
       args: ["engine_family", "5.0L V8"],
     });
     expect(readCalls).toContainEqual({
       table: "maintenance_rules",
       method: "is",
       args: ["engine_family", null],
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("looks for an existing schedule case-insensitively, so FORD and Ford share one", async () => {
+    const readCalls: Call[] = [];
+
+    await generateMaintenanceRulesForVehicle({
+      supabase: makeClient({ existingRules: [{ id: "r1" }], calls: readCalls }),
+      year: 2019,
+      make: "Ford",
+      model: "F_150",
+      engineFamily: "dd15",
+    });
+
+    expect(readCalls).toContainEqual({
+      table: "maintenance_rules",
+      method: "ilike",
+      args: ["make", "Ford"],
+    });
+    // `_` is escaped so it only matches itself.
+    expect(readCalls).toContainEqual({
+      table: "maintenance_rules",
+      method: "ilike",
+      args: ["model", "F\\_150"],
     });
     expect(create).not.toHaveBeenCalled();
   });

@@ -8,6 +8,7 @@ import {
   openAIReasoningEffortParam,
   openAITemperatureParam,
 } from "@/features/shared/lib/server/openai-models";
+import { escapeLike } from "./escapeLike";
 import {
   MAINTENANCE_SERVICE_CATALOG,
   canonicalizeServiceCode,
@@ -193,14 +194,16 @@ export async function generateMaintenanceRulesForVehicle(opts: {
     const existingQuery = supabase
       .from("maintenance_rules")
       .select("id")
-      .eq("make", trimmedMake)
-      .eq("model", trimmedModel)
+      // Case-insensitive: rule matching lowercases make/model/engine, so a set
+      // stored as "FORD" already covers "Ford" and must not be generated twice.
+      .ilike("make", escapeLike(trimmedMake))
+      .ilike("model", escapeLike(trimmedModel))
       .eq("year_from", year)
       .eq("year_to", year);
 
     const { data: existingRules, error: existingError } = await (
       normalizedEngineFamily
-        ? existingQuery.eq("engine_family", normalizedEngineFamily)
+        ? existingQuery.ilike("engine_family", escapeLike(normalizedEngineFamily))
         : existingQuery.is("engine_family", null)
     ).limit(1);
 
