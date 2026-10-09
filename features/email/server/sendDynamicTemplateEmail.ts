@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import type { Database, Json } from "@shared/types/types/supabase";
 import { getTemplateId, type EmailTemplateKey } from "./templateIds";
 import { sanitizeEmailMetadata } from "./sendgridWebhook";
+import { resolveEmailSubject } from "./emailSubjects";
 
 type DB = Database;
 
@@ -71,6 +72,9 @@ export async function sendDynamicTemplateEmail(
   const fromName = input.fromName?.trim();
   const from = fromName ? { email: fromEmail, name: fromName } : fromEmail;
   const to = input.to.trim().toLowerCase();
+  const subject = resolveEmailSubject(input.templateKey, input.dynamicTemplateData, input.subject);
+  // Dynamic SendGrid templates must reference {{subject}} in their Subject field.
+  const templateData = { ...(input.dynamicTemplateData ?? {}), subject };
 
   const { data: suppression, error: suppressionError } = await supabase
     .from("email_suppressions")
@@ -92,7 +96,7 @@ export async function sendDynamicTemplateEmail(
       template_key: input.templateKey,
       template_id: templateId,
       to_email: to,
-      subject: input.subject ?? null,
+      subject,
       status: "queued",
       provider: "sendgrid",
       metadata: sanitizeEmailMetadata(
@@ -120,13 +124,15 @@ export async function sendDynamicTemplateEmail(
     return { status: "suppressed", reason, emailLogId: logRow.id };
   }
 
+  let providerAcceptance: { acceptedAt: string; providerMessageId: string | null } | null = null;
+
   try {
     const customArgs = { email_log_id: logRow.id };
     const message: MailDataRequired = input.content
       ? {
           to,
           from,
-          subject: input.subject?.trim() || "A message from ProFixIQ",
+          subject,
           text: input.content.text,
           html: input.content.html,
           customArgs,
@@ -138,9 +144,9 @@ export async function sendDynamicTemplateEmail(
           to,
           from,
           templateId: getTemplateId(input.templateKey),
-          dynamicTemplateData: input.dynamicTemplateData ?? {},
+          dynamicTemplateData: templateData,
           customArgs,
-          ...(input.subject ? { subject: input.subject } : {}),
+          subject,
         };
     const [response] = await sgMail.send(message);
 
@@ -154,25 +160,35 @@ export async function sendDynamicTemplateEmail(
       : headerValue;
 
     const acceptedAt = new Date().toISOString();
-    const { error: updateError } = await supabase
+    providerAcceptance = { acceptedAt, providerMessageId };
+    const { data: acceptedLog, error: updateError } = await supabase
       .from("email_logs")
       .update({
         status: "accepted",
         provider_message_id: providerMessageId,
         sent_at: acceptedAt,
       })
-      .eq("id", logRow.id);
+      .eq("id", logRow.id)
+      .eq("status", "queued")
+      .is("last_event_at", null)
+      .select("id")
+      .maybeSingle();
 
     if (updateError) {
-      console.error(
-        "[email/sendDynamicTemplateEmail] failed to mark email log as sent",
-        {
-          emailLogId: logRow.id,
-          templateKey: input.templateKey,
-          to,
-          error: updateError.message,
-        },
-      );
+      throw new Error(`SendGrid accepted the email, but its delivery state could not be persisted: ${updateError.message}`);
+    }
+
+    if (!acceptedLog?.id) {
+      // A webhook may win the race after SendGrid accepts the message. Confirm
+      // that durable provider evidence exists before reporting success.
+      const { data: providerLog, error: providerLogError } = await supabase
+        .from("email_logs")
+        .select("last_event_type")
+        .eq("id", logRow.id)
+        .maybeSingle();
+      if (providerLogError || !providerLog?.last_event_type) {
+        throw new Error("SendGrid accepted the email, but its delivery state could not be confirmed.");
+      }
     }
 
     return { status: "accepted", acceptedAt, emailLogId: logRow.id };
@@ -180,13 +196,36 @@ export async function sendDynamicTemplateEmail(
     const message =
       error instanceof Error ? error.message : "Unknown SendGrid error";
 
+    if (providerAcceptance) {
+      // The provider has accepted the message. Keep this distinct from an
+      // actual send failure so callers advance their workflow instead of
+      // retrying and potentially sending a duplicate. A SendGrid webhook can
+      // still reconcile the guarded queued row with durable provider evidence.
+      console.error(
+        "[email/sendDynamicTemplateEmail] provider accepted email but log persistence is pending",
+        {
+          emailLogId: logRow.id,
+          templateKey: input.templateKey,
+          to,
+          error: message,
+        },
+      );
+      return {
+        status: "accepted",
+        acceptedAt: providerAcceptance.acceptedAt,
+        emailLogId: logRow.id,
+      };
+    }
+
     await supabase
       .from("email_logs")
       .update({
         status: "failed",
         error_text: message,
       })
-      .eq("id", logRow.id);
+      .eq("id", logRow.id)
+      .eq("status", "queued")
+      .is("last_event_at", null);
 
     throw error;
   }

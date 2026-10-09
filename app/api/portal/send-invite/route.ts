@@ -3,7 +3,10 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
-import { issueCustomerPortalInvite } from "@/features/portal/server/customerPortalInvites";
+import {
+  CustomerPortalInviteDeliveryError,
+  issueCustomerPortalInvite,
+} from "@/features/portal/server/customerPortalInvites";
 
 type Body = {
   email?: string;
@@ -25,7 +28,7 @@ export async function POST(req: Request) {
   if (!access.ok) return access.response;
 
   try {
-    await issueCustomerPortalInvite({
+    const result = await issueCustomerPortalInvite({
       shopId: access.profile.shop_id,
       customerId,
       workOrderId: workOrderId || null,
@@ -34,8 +37,28 @@ export async function POST(req: Request) {
       createdBy: access.authUserId,
       createdByProfileId: access.profile.id,
     });
-    return NextResponse.json({ ok: true });
+    if (result.deliveryStatus === "suppressed") {
+      return NextResponse.json({
+        ok: false,
+        inviteCreated: result.inviteCreated,
+        deliveryStatus: "suppressed",
+        error: "The invitation is saved, but this email address is suppressed; no message was sent.",
+      }, { status: 422 });
+    }
+    return NextResponse.json({
+      ok: true,
+      inviteCreated: result.inviteCreated,
+      deliveryStatus: "accepted",
+    });
   } catch (error) {
+    if (error instanceof CustomerPortalInviteDeliveryError) {
+      return NextResponse.json({
+        ok: false,
+        inviteCreated: error.inviteCreated,
+        deliveryStatus: "unknown",
+        error: error.message,
+      }, { status: 502 });
+    }
     const message = error instanceof Error ? error.message : "Portal invite could not be sent.";
     return NextResponse.json({ ok: false, error: message }, { status: 400 });
   }

@@ -138,6 +138,8 @@ export async function sendPortalInviteEmail(input: {
   year?: number;
   createdBy?: string | null;
   portalType?: "customer" | "fleet";
+  customerPortalInviteId?: string | null;
+  customerPortalInviteAttemptId?: string | null;
   fleetName?: string | null;
   fleetRole?: string | null;
 }) {
@@ -153,6 +155,12 @@ export async function sendPortalInviteEmail(input: {
     metadata: {
       kind: "portal_invite",
       portal_type: input.portalType ?? "customer",
+      ...(input.customerPortalInviteId
+        ? { customer_portal_invite_id: input.customerPortalInviteId }
+        : {}),
+      ...(input.customerPortalInviteAttemptId
+        ? { customer_portal_invite_attempt_id: input.customerPortalInviteAttemptId }
+        : {}),
     } as Json,
     dynamicTemplateData: {
       portal_link: input.portalLink,

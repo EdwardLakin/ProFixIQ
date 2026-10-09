@@ -7,6 +7,7 @@ import { toast } from "sonner";
 type CustomerInvite = {
   id: string; email: string; created_at: string; expires_at: string;
   accepted_at: string | null; revoked_at: string | null;
+  delivery_status: string | null;
 };
 type FleetInvite = {
   id: string; fleet_id: string; email: string; role: string; created_at: string;
@@ -51,12 +52,20 @@ export function CustomerPortalAccess({ customerId }: { customerId: string }) {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customerId, email: access.email }),
       });
-      const payload = await response.json() as { error?: string };
-      if (!response.ok) throw new Error(payload.error || "Customer invitation could not be sent.");
-      toast.success("Customer portal invitation submitted.");
+      const payload = await response.json() as {
+        ok?: boolean; error?: string; inviteCreated?: boolean;
+        deliveryStatus?: "accepted" | "suppressed" | "unknown";
+      };
+      if (!response.ok || !payload.ok) {
+        await load();
+        toast.error(payload.error || "Invitation status could not be confirmed. Refresh Portal access before retrying.");
+        return;
+      }
+      toast.success("Customer portal invitation saved and email submitted.");
       await load();
-    } catch (value) {
-      toast.error(value instanceof Error ? value.message : "Customer invitation could not be sent.");
+    } catch {
+      toast.error("Invitation status could not be confirmed. Refresh Portal access before retrying.");
+      await load();
     } finally { setSending(""); }
   }
 
@@ -106,6 +115,9 @@ export function CustomerPortalAccess({ customerId }: { customerId: string }) {
           <div className="flex items-center gap-2 font-semibold"><ShieldCheck className="h-4 w-4 text-[var(--accent-copper)]" /> Customer Portal</div>
           <p className="mt-2 break-all text-xs text-[color:var(--theme-text-secondary)]">{access.email || "Customer email required"}</p>
           <p className="mt-2 text-sm font-semibold capitalize">{access.customer.status.replaceAll("_", " ")}</p>
+          {access.customer.status !== "active" && access.customer.invite?.delivery_status ? <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+            Invitation email: {access.customer.invite.delivery_status.replaceAll("_", " ")}
+          </p> : null}
           {access.customer.invite ? <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
             Invited: {fmt(access.customer.invite.created_at)} · {access.customer.invite.accepted_at
               ? `Activated: ${fmt(access.customer.invite.accepted_at)}`

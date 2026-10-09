@@ -71,4 +71,18 @@ describe("sendDynamicTemplateEmail sender and template scoping", () => {
       "const templateId = input.content ? null : getTemplateId(input.templateKey);",
     );
   });
+
+  it("passes the resolved subject to dynamic template variables", () => {
+    expect(src).toContain("const templateData = {");
+    expect(src).toContain("dynamicTemplateData: templateData,");
+  });
+
+  it("keeps provider acceptance distinct from send failure", () => {
+    expect(src).toContain('.is("last_event_at", null)');
+    expect(src).toContain("if (updateError) {");
+    expect(src).toContain("delivery state could not be persisted");
+    expect(src).toContain("providerLog?.last_event_type");
+    expect(src).toContain("if (providerAcceptance) {");
+    expect(src).toContain("log persistence is pending");
+  });
 });

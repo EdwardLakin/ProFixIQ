@@ -5,6 +5,10 @@ import { NextResponse } from "next/server";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { supabaseAdmin } from "@/features/shared/lib/supabase/admin";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import {
+  customerPortalInviteAccessStatus,
+  customerPortalInviteDeliveryState,
+} from "@/features/portal/lib/customerPortalInviteDelivery";
 
 type Context = { params: Promise<{ id: string }> };
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -51,14 +55,50 @@ export async function GET(_req: Request, context: Context) {
   const matching = (customerInvites.data ?? []).filter((invite) => invite.email.toLowerCase() === email);
   const accepted = matching.find((invite) => invite.accepted_at && !invite.revoked_at);
   const latest = matching[0] ?? null;
-  const customerStatus = accepted ? "active" : !latest ? "not_invited" : latest.revoked_at
-    ? "revoked" : new Date(latest.expires_at) <= new Date() ? "expired" : "pending";
+  const customerInvite = accepted ?? latest;
+  const deliveryLog = customerInvite
+    ? await supabaseAdmin.from("email_logs")
+        .select("status,delivered_at,last_event_type,last_event_at,created_at")
+        .eq("shop_id", access.profile.shop_id)
+        .eq("template_key", "portal_invite")
+        .eq("to_email", email)
+        .eq("metadata->>customer_portal_invite_id", customerInvite.id)
+        .order("created_at", { ascending: false })
+        .limit(1)
+        .maybeSingle()
+    : { data: null, error: null };
+  if (deliveryLog.error) {
+    return NextResponse.json({ error: "Portal access could not be loaded." }, { status: 500 });
+  }
+  const deliveryStatus = customerInvite
+    ? customerPortalInviteDeliveryState(
+        deliveryLog.data?.status,
+        deliveryLog.data?.delivered_at,
+        deliveryLog.data?.last_event_type,
+      )
+    : null;
+  const customerStatus = accepted
+    ? "active"
+    : !latest
+      ? "not_invited"
+      : latest.revoked_at
+        ? "revoked"
+        : new Date(latest.expires_at) <= new Date()
+          ? "expired"
+          : deliveryStatus
+            ? customerPortalInviteAccessStatus(deliveryStatus)
+            : "delivery_unknown";
   return NextResponse.json({
     ok: true,
     email,
     customerActive: customer.active && !customer.merged_into_customer_id,
     canViewFleet,
-    customer: { status: customerStatus, invite: accepted ?? latest },
+    customer: {
+      status: customerStatus,
+      invite: customerInvite
+        ? { ...customerInvite, delivery_status: deliveryStatus }
+        : null,
+    },
     fleets: (canViewFleet ? fleets.data ?? [] : []).map((fleet) => ({
       ...fleet,
       invites: (fleetInvites.data ?? []).filter((invite) => invite.fleet_id === fleet.id),
