@@ -71,4 +71,9 @@ describe("sendDynamicTemplateEmail sender and template scoping", () => {
       "const templateId = input.content ? null : getTemplateId(input.templateKey);",
     );
   });
+
+  it("passes the resolved subject to dynamic template variables", () => {
+    expect(src).toContain("const templateData = {");
+    expect(src).toContain("dynamicTemplateData: templateData,");
+  });
 });
