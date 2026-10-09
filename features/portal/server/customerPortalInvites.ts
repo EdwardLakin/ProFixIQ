@@ -20,6 +20,7 @@ export class CustomerPortalInviteDeliveryError extends Error {
 async function recordCustomerPortalInviteDeliveryFailure(input: {
   shopId: string;
   inviteId: string;
+  attemptId: string;
   email: string;
   createdByProfileId?: string | null;
 }) {
@@ -27,6 +28,7 @@ async function recordCustomerPortalInviteDeliveryFailure(input: {
     kind: "portal_invite",
     portal_type: "customer",
     customer_portal_invite_id: input.inviteId,
+    customer_portal_invite_attempt_id: input.attemptId,
   };
 
   try {
@@ -36,7 +38,7 @@ async function recordCustomerPortalInviteDeliveryFailure(input: {
       .eq("shop_id", input.shopId)
       .eq("template_key", "portal_invite")
       .eq("to_email", input.email)
-      .contains("metadata", { customer_portal_invite_id: input.inviteId })
+      .eq("metadata->>customer_portal_invite_attempt_id", input.attemptId)
       .order("created_at", { ascending: false })
       .limit(1)
       .maybeSingle();
@@ -162,6 +164,7 @@ export async function issueCustomerPortalInvite(input: {
   }
 
   if (!inviteId) throw new Error("Portal invite could not be created.");
+  const inviteAttemptId = crypto.randomUUID();
   try {
     const portalDestination = input.workOrderId
       ? `/portal/work-orders/view/${input.workOrderId}`
@@ -208,6 +211,7 @@ export async function issueCustomerPortalInvite(input: {
       createdBy: input.createdByProfileId ?? null,
       portalType: "customer",
       customerPortalInviteId: inviteId,
+      customerPortalInviteAttemptId: inviteAttemptId,
     });
 
     return {
@@ -221,6 +225,7 @@ export async function issueCustomerPortalInvite(input: {
     await recordCustomerPortalInviteDeliveryFailure({
       shopId: input.shopId,
       inviteId,
+      attemptId: inviteAttemptId,
       email,
       createdByProfileId: input.createdByProfileId,
     });
