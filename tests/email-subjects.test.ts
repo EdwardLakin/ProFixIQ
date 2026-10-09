@@ -67,6 +67,12 @@ describe("customer portal invite delivery state", () => {
     expect(customerPortalInviteDeliveryState("failed")).toBe("delivery_issue");
     expect(customerPortalInviteDeliveryState("failed", "2026-10-09T12:00:00Z")).toBe("delivered");
   });
+
+  it("lets durable provider complaints override later local status writes", () => {
+    expect(customerPortalInviteDeliveryState("accepted", null, "spamreport")).toBe("delivery_issue");
+    expect(customerPortalInviteDeliveryState("failed", "2026-10-09T12:00:00Z", "bounce")).toBe("not_delivered");
+    expect(customerPortalInviteDeliveryState("failed", "2026-10-09T12:00:00Z", "delivered")).toBe("delivered");
+  });
 });
 
 describe("AI invoice subject normalization", () => {
