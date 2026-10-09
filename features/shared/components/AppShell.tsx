@@ -10,6 +10,8 @@ import type { Database } from "@shared/types/types/supabase";
 
 import RoleSidebar from "@/features/shared/components/RoleSidebar";
 import ShiftTracker from "@shared/components/ShiftTracker";
+import ActionButton from "@/features/shared/components/ActionButton";
+import PwaUpdateButton from "@/features/shared/components/pwa/PwaUpdateButton";
 import {
   fetchMobileShiftState,
   type MobileShiftState,
@@ -37,30 +39,6 @@ import {
 import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 
 const HEADER_OFFSET_DESKTOP = "pt-14";
-
-const ActionButton = ({
-  onClick,
-  children,
-  title,
-}: {
-  onClick?: () => void;
-  children: React.ReactNode;
-  title?: string;
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    title={title}
-    className="app-shell-action inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs font-medium shadow-sm backdrop-blur-md transition-colors"
-    style={{
-      borderColor: "var(--theme-border-soft)",
-      background: "var(--theme-gradient-panel)",
-      color: "var(--theme-text-primary)",
-    }}
-  >
-    {children}
-  </button>
-);
 
 type ShopBillingScope = Pick<
   Database["public"]["Tables"]["shops"]["Row"],
@@ -710,6 +688,8 @@ export default function AppShell({
                         : "Shift"}
                 </ActionButton>
               ) : null}
+
+              <PwaUpdateButton />
 
               <ActionButton onClick={() => setChatOpen(true)} title="Inbox">
                 <span>Inbox</span>
