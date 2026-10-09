@@ -40,7 +40,10 @@ function hasUsableTrigger(rule: MaintenanceRuleRow): boolean {
     rule.time_months_severe,
     rule.first_due_km,
     rule.first_due_months,
-  ].some((value) => typeof value === "number" && Number.isFinite(value));
+  ].some(
+    // Positive only: a generated 0 or negative stands in for "no interval".
+    (value) => typeof value === "number" && Number.isFinite(value) && value > 0,
+  );
 }
 
 function ruleMatchesVehicle(
@@ -342,6 +345,10 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
   // them so an asset like a trailer doesn't inherit engine/drivetrain rules.
   const matchedRules = rules.filter((rule) => {
     if (hasVehicleSpecificRules && rule.make == null) return false;
+    // A generated rule with no positive interval can never come due properly
+    // (a 0 first-due is always due), so it is not part of any schedule and
+    // must not displace a working rule either.
+    if (!hasUsableTrigger(rule)) return false;
     return ruleMatchesVehicle(vehicle, rule);
   });
 
@@ -358,10 +365,7 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
         (rule) =>
           vehicleEngine != null &&
           rule.make != null &&
-          normalizeText(rule.engine_family) === vehicleEngine &&
-          // A generated rule can have no interval at all; it can never come due,
-          // so it must not displace a working engine-agnostic rule.
-          hasUsableTrigger(rule),
+          normalizeText(rule.engine_family) === vehicleEngine,
       )
       .map((rule) => rule.service_code),
   );

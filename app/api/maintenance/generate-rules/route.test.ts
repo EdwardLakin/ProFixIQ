@@ -168,7 +168,7 @@ describe("POST /api/maintenance/generate-rules", () => {
     );
   });
 
-  it("does not trust the newest rows when the match list may be truncated", async () => {
+  it("refuses a full (possibly truncated) page of matches, even with an exact engine match", async () => {
     vehicles = Array.from({ length: 200 }, () => ({
       make: "Western Star",
       model: "4900",
@@ -182,8 +182,10 @@ describe("POST /api/maintenance/generate-rules", () => {
     const found = await POST(request({ ...spec, engineFamily: "DD15" }));
 
     expect(missing.status).toBe(409);
-    expect(found.status).toBe(200);
-    expect(generate).toHaveBeenCalledTimes(1);
+    // Even a row in the page that matches is not trusted when the page is full:
+    // an older vehicle beyond it could share the raw engine under another family.
+    expect(found.status).toBe(409);
+    expect(generate).not.toHaveBeenCalled();
   });
 
   it("refuses an engine that resolves to more than one schedule key", async () => {

@@ -173,10 +173,10 @@ export async function POST(req: Request) {
     const engineKeys = new Set(
       vehicles.map((v) => vehicleEngineKey(v)?.toLowerCase() ?? null),
     );
-    // A full page may be hiding vehicles with another engine, so treat it as
-    // ambiguous too rather than trusting the newest row.
     const mayBeTruncated = vehicles.length >= MAX_MATCHING_VEHICLES;
-    if (!exactVehicle && (engineKeys.size > 1 || mayBeTruncated)) {
+    // A full page can hide an older vehicle whose raw engine matches but whose
+    // family differs, so it is refused even when a row in the page matches.
+    if (mayBeTruncated || (!exactVehicle && engineKeys.size > 1)) {
       return NextResponse.json(
         { error: "Several vehicles match; the engine could not be resolved." },
         { status: 409 },

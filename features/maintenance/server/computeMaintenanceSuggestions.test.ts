@@ -357,8 +357,8 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
           distance_km_severe: null,
           time_months_normal: null,
           time_months_severe: null,
-          first_due_km: null,
-          first_due_months: null,
+          first_due_km: 0,
+          first_due_months: -1,
         },
       ],
     });
@@ -368,7 +368,7 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
       workOrderId: "wo-1",
     });
 
-    // The empty rule can never come due; the agnostic rule still surfaces it.
+    // The empty rule (nulls, 0 and negatives) can never come due; the agnostic rule still surfaces it.
     expect(suggestions).toHaveLength(1);
   });
 });
