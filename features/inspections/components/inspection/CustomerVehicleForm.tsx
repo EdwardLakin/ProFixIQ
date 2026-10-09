@@ -89,6 +89,9 @@ interface Props {
   selectedCustomerId?: string | null;
   selectedVehicleId?: string | null;
 
+  /** Opt-in: Work Order create flow only. Other callers keep their prior UI/queries. */
+  enableExistingVehiclePicker?: boolean;
+
   /** One object for callbacks; typed as unknown to keep props serializable */
   handlers?: unknown;
 }
@@ -492,6 +495,7 @@ export default function CustomerVehicleForm({
   shopId,
   selectedCustomerId = null,
   selectedVehicleId = null,
+  enableExistingVehiclePicker = false,
   handlers,
 }: Props) {
   const supabase = useMemo(() => createBrowserSupabase(), []);
@@ -515,6 +519,12 @@ export default function CustomerVehicleForm({
     useState<CustomerSearchField | null>(null);
   const [customerVehicles, setCustomerVehicles] = useState<VehicleRow[]>([]);
   const [customerVehiclesLoading, setCustomerVehiclesLoading] = useState(false);
+  const [customerVehiclesError, setCustomerVehiclesError] = useState(false);
+  const [customerVehiclesRetry, setCustomerVehiclesRetry] = useState(0);
+  const [vehicleSelectionError, setVehicleSelectionError] = useState<
+    string | null
+  >(null);
+  const vehicleSelectionRef = useRef(0);
   const [duplicateMatches, setDuplicateMatches] = useState<
     VehicleDuplicateMatch[]
   >([]);
@@ -529,13 +539,15 @@ export default function CustomerVehicleForm({
   useEffect(() => {
     let cancelled = false;
 
-    if (!shopId) {
+    if (!enableExistingVehiclePicker || !shopId) {
       setCustomerVehicles([]);
       setCustomerVehiclesLoading(false);
+      setCustomerVehiclesError(false);
       return;
     }
 
     setCustomerVehiclesLoading(true);
+    setCustomerVehiclesError(false);
 
     void (async () => {
       try {
@@ -556,7 +568,10 @@ export default function CustomerVehicleForm({
         if (error) throw error;
         if (!cancelled) setCustomerVehicles((data ?? []) as VehicleRow[]);
       } catch {
-        if (!cancelled) setCustomerVehicles([]);
+        if (!cancelled) {
+          setCustomerVehicles([]);
+          setCustomerVehiclesError(true);
+        }
       } finally {
         if (!cancelled) setCustomerVehiclesLoading(false);
       }
@@ -565,7 +580,13 @@ export default function CustomerVehicleForm({
     return () => {
       cancelled = true;
     };
-  }, [currentCustomerId, shopId, supabase]);
+  }, [
+    currentCustomerId,
+    customerVehiclesRetry,
+    enableExistingVehiclePicker,
+    shopId,
+    supabase,
+  ]);
 
   const safeSetCustomer = useCallback(
     (field: keyof CustomerInfo, value: string | null | undefined) => {
@@ -674,7 +695,9 @@ export default function CustomerVehicleForm({
   async function handlePickedCustomer(
     c: CustomerRow,
     pickedVehicle: VehicleRow | null = null,
+    selectionId: number = ++vehicleSelectionRef.current,
   ) {
+    const isStale = () => selectionId !== vehicleSelectionRef.current;
     setCustomerSearchSuspended(true);
     setActiveCustomerSearchField(null);
 
@@ -700,11 +723,13 @@ export default function CustomerVehicleForm({
         ? await query.eq("shop_id", shopId).maybeSingle()
         : await query.maybeSingle();
 
+      if (isStale()) return;
       if (data) applyCustomer(data as CustomerRow);
     } catch {
       /* Keep the fields already returned by autocomplete. */
     }
 
+    if (isStale()) return;
     onCustomerSelected?.(c.id);
     setCurrentCustomerId(c.id);
 
@@ -727,6 +752,7 @@ export default function CustomerVehicleForm({
         .limit(2);
 
       const arr = (vehs ?? []) as VehicleRow[];
+      if (isStale()) return;
       if (arr.length === 1) applyPickedVehicle(arr[0]);
     } catch {
       /* ignore */
@@ -734,9 +760,20 @@ export default function CustomerVehicleForm({
   }
 
   async function handlePickedVehicle(v: VehicleRow) {
-    if (v.customer_id && shopId) {
+    const selectionId = ++vehicleSelectionRef.current;
+    setVehicleSelectionError(null);
+
+    if (!v.customer_id) {
+      applyPickedVehicle(v);
+      return;
+    }
+
+    // A vehicle with an owner is only accepted once the owner is hydrated, so
+    // the customer/vehicle pairing can never be left half-applied.
+    let owner: CustomerRow | null = null;
+    if (shopId) {
       try {
-        const { data: owner } = await supabase
+        const { data } = await supabase
           .from("customers")
           .select(
             "id, business_name, first_name, last_name, name, phone, phone_number, email, address, city, province, postal_code, created_at",
@@ -744,17 +781,22 @@ export default function CustomerVehicleForm({
           .eq("id", v.customer_id)
           .eq("shop_id", shopId)
           .maybeSingle();
-
-        if (owner) {
-          await handlePickedCustomer(owner as CustomerRow, v);
-          return;
-        }
+        owner = (data as CustomerRow | null) ?? null;
       } catch {
-        /* Fall through and at least apply the vehicle. */
+        owner = null;
       }
     }
 
-    applyPickedVehicle(v);
+    if (selectionId !== vehicleSelectionRef.current) return;
+
+    if (!owner) {
+      setVehicleSelectionError(
+        "Couldn't load this vehicle's customer. Please select the vehicle again.",
+      );
+      return;
+    }
+
+    await handlePickedCustomer(owner, v, selectionId);
   }
 
   const handleSaveClick = async () => {
@@ -1075,12 +1117,14 @@ export default function CustomerVehicleForm({
                 ) : null}
               </div>
               <p className="mt-0.5 text-xs text-[color:var(--theme-text-muted)]">
-                Pick a saved vehicle, search by unit or plate, or enter only the
-                details available now.
+                {enableExistingVehiclePicker
+                  ? "Pick a saved vehicle, search by unit or plate, or enter only the details available now."
+                  : "Search by unit or plate, or enter only the details available now."}
               </p>
             </div>
           </div>
 
+          {enableExistingVehiclePicker ? (
           <div className="space-y-1">
             <label className={labelClass}>Select existing vehicle</label>
             <select
@@ -1091,7 +1135,9 @@ export default function CustomerVehicleForm({
                   ? selectedVehicleId
                   : ""
               }
-              disabled={!shopId || customerVehiclesLoading}
+              disabled={
+                !shopId || customerVehiclesLoading || customerVehiclesError
+              }
               onChange={(e) => {
                 const pickedVehicle = customerVehicles.find(
                   (option) => option.id === e.target.value,
@@ -1102,7 +1148,9 @@ export default function CustomerVehicleForm({
               <option value="">
                 {customerVehiclesLoading
                   ? "Loading vehicles…"
-                  : customerVehicles.length === 0
+                  : customerVehiclesError
+                    ? "Couldn't load vehicles"
+                    : customerVehicles.length === 0
                     ? currentCustomerId
                       ? "No saved vehicles for this customer"
                       : "No saved vehicles"
@@ -1128,7 +1176,25 @@ export default function CustomerVehicleForm({
                 );
               })}
             </select>
+            {customerVehiclesError ? (
+              <p role="alert" className="text-xs text-red-300">
+                Couldn&apos;t load saved vehicles.{" "}
+                <button
+                  type="button"
+                  className="underline"
+                  onClick={() => setCustomerVehiclesRetry((n) => n + 1)}
+                >
+                  Retry
+                </button>
+              </p>
+            ) : null}
+            {vehicleSelectionError ? (
+              <p role="alert" className="text-xs text-red-300">
+                {vehicleSelectionError}
+              </p>
+            ) : null}
           </div>
+          ) : null}
 
           {duplicateWarning && (
             <div className="rounded-xl border border-amber-400/40 bg-amber-950/30 px-3 py-2 text-xs text-amber-100">

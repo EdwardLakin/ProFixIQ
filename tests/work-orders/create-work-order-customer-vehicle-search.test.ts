@@ -16,7 +16,9 @@ describe("create work order customer and vehicle lookup", () => {
     expect(form).toContain('.in("customer_id", customerIds)');
     expect(form).toContain("matches.push({ customer, vehicle })");
     expect(form).toContain("onPick({ customer: c, vehicle: v })");
-    expect(form).toContain("handlePickedCustomer(pickedCustomer, pickedVehicle)");
+    expect(form).toContain(
+      "handlePickedCustomer(pickedCustomer, pickedVehicle)",
+    );
   });
 
   it("only opens autocomplete for the customer field being edited", () => {
@@ -43,14 +45,43 @@ describe("create work order customer and vehicle lookup", () => {
   it("provides a dedicated existing-vehicle picker", () => {
     expect(form).toContain("Select existing vehicle");
     expect(form).toContain("customerVehicles.map((option)");
-    expect(form).toContain('query = query.eq("customer_id", currentCustomerId)');
+    expect(form).toContain(
+      'query = query.eq("customer_id", currentCustomerId)',
+    );
     expect(form).toContain("void handlePickedVehicle(pickedVehicle)");
+  });
+
+  it("gates the picker to the Work Order create flow only", () => {
+    expect(form).toContain("enableExistingVehiclePicker = false");
+    expect(form).toContain("!enableExistingVehiclePicker || !shopId");
+    expect(form).toContain("{enableExistingVehiclePicker ? (");
+    expect(createPage).toContain("enableExistingVehiclePicker");
+    const estimate = readFileSync(
+      "features/estimates/components/EstimateBuilder.tsx",
+      "utf8",
+    );
+    expect(estimate).not.toContain("enableExistingVehiclePicker");
+  });
+
+  it("surfaces vehicle-picker load failures with a retry", () => {
+    expect(form).toContain("setCustomerVehiclesError(true)");
+    expect(form).toContain("Couldn&apos;t load saved vehicles.");
+    expect(form).toContain("setCustomerVehiclesRetry((n) => n + 1)");
+  });
+
+  it("discards stale hydrations and requires owner hydration", () => {
+    expect(form).toContain("vehicleSelectionRef");
+    expect(form).toContain("selectionId !== vehicleSelectionRef.current");
+    expect(form).toContain("setVehicleSelectionError(");
+    expect(form).not.toContain("Fall through and at least apply the vehicle");
   });
 
   it("hydrates the vehicle owner when a vehicle result is selected", () => {
     expect(form).toContain("async function handlePickedVehicle");
     expect(form).toContain('.eq("id", v.customer_id)');
-    expect(form).toContain("await handlePickedCustomer(owner as CustomerRow, v)");
+    expect(form).toContain(
+      "await handlePickedCustomer(owner, v, selectionId)",
+    );
     expect(form).toContain("applyPickedVehicle(pickedVehicle)");
   });
 
