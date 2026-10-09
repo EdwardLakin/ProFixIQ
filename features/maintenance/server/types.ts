@@ -20,7 +20,7 @@ export type WorkOrderRow =
 export type VehicleRow =
   Pick<
     DB["public"]["Tables"]["vehicles"]["Row"],
-    "id" | "year" | "make" | "model" | "mileage" | "engine_family"
+    "id" | "year" | "make" | "model" | "mileage" | "engine_family" | "engine"
   >;
 
 export type WorkOrderHistoryRow =

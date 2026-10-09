@@ -11,6 +11,7 @@ import { getVehicleMaintenanceHistory } from "./getVehicleMaintenanceHistory";
 import { resolveMaintenanceMenuMap } from "./resolveMaintenanceMenuMap";
 import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import { generateMaintenanceRulesForVehicle } from "./generateMaintenanceRules";
+import { vehicleEngineKey } from "./vehicleEngineKey";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 const SCHEDULE_GENERATION_TIMEOUT_MS = 20_000;
@@ -48,7 +49,7 @@ function ruleMatchesVehicle(
   const ruleModel = normalizeText(rule.model);
   if (ruleModel && vehicleModel && ruleModel !== vehicleModel) return false;
 
-  const vehicleEngine = normalizeText(vehicle.engine_family);
+  const vehicleEngine = normalizeText(vehicleEngineKey(vehicle));
   const ruleEngine = normalizeText(rule.engine_family);
   if (ruleEngine && vehicleEngine && ruleEngine !== vehicleEngine) return false;
 
@@ -242,7 +243,7 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
 
   const { data: vehicleRow, error: vehicleError } = await supabase
     .from("vehicles")
-    .select("id, year, make, model, mileage, engine_family")
+    .select("id, year, make, model, mileage, engine_family, engine")
     .eq("id", workOrder.vehicle_id)
     .maybeSingle();
 
@@ -274,7 +275,7 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
             year: vehicle.year as number,
             make: trimmedVehicleMake,
             model: trimmedVehicleModel,
-            engineFamily: vehicle.engine_family ?? null,
+            engineFamily: vehicleEngineKey(vehicle),
             timeoutMs: SCHEDULE_GENERATION_TIMEOUT_MS,
           }),
       );

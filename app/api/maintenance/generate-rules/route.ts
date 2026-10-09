@@ -8,6 +8,7 @@ import {
 } from "@/features/shared/lib/supabase/server";
 import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import { generateMaintenanceRulesForVehicle } from "@/features/maintenance/server/generateMaintenanceRules";
+import { vehicleEngineKey } from "@/features/maintenance/server/vehicleEngineKey";
 
 
 export const runtime = "nodejs";
@@ -114,7 +115,7 @@ export async function POST(req: Request) {
     // that vehicle, which is also the key the suggestions lookup uses.
     const { data: vehicleRows, error: vehicleError } = await supabase
       .from("vehicles")
-      .select("engine_family, engine")
+      .select("make, model, engine_family, engine")
       .eq("shop_id", shopId)
       .eq("year", body.year)
       .ilike("make", escapeLike(body.make))
@@ -130,6 +131,8 @@ export async function POST(req: Request) {
     }
 
     const vehicles = (vehicleRows ?? []) as Array<{
+      make: string | null;
+      model: string | null;
       engine_family: string | null;
       engine: string | null;
     }>;
@@ -150,6 +153,14 @@ export async function POST(req: Request) {
           )
         : null) ?? vehicles[0];
 
+    // Persist the stored vehicle's own make/model/engine, not the client's
+    // strings: the lookup above is case-insensitive but the schedule cache and
+    // its unique key are not, so differently-cased requests would otherwise
+    // create duplicate global rule sets.
+    const make = matchedVehicle.make?.trim() || (body.make as string);
+    const model = matchedVehicle.model?.trim() || (body.model as string);
+    const engineKey = vehicleEngineKey(matchedVehicle);
+
     const { servicesInserted, rulesInserted } = await withAITelemetryContext(
       {
         endpoint: "/api/maintenance/generate-rules",
@@ -164,9 +175,9 @@ export async function POST(req: Request) {
           // write the shared catalog rows with the service role.
           writeClient: createAdminSupabase(),
           year: body.year as number,
-          make: body.make as string,
-          model: body.model as string,
-          engineFamily: matchedVehicle.engine_family?.trim() || null,
+          make,
+          model,
+          engineFamily: engineKey,
           // Never let a client force regeneration (repeat AI spend).
           forceRefresh: false,
         }),
@@ -175,9 +186,9 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       year: body.year,
-      make: body.make,
-      model: body.model,
-      engineFamily: matchedVehicle.engine_family?.trim() || null,
+      make,
+      model,
+      engineFamily: engineKey,
       servicesInserted,
       rulesInserted,
     });

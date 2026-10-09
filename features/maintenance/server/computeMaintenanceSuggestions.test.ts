@@ -139,6 +139,7 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
         model: "Flatbed",
         mileage: null,
         engine_family: null,
+        engine: null,
       },
       services: [oilChangeService],
       rules: [genericOilChangeRule],
@@ -158,6 +159,28 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
     );
   });
 
+  it("keys the schedule on the stored engine when the engine family is absent", async () => {
+    const supabase = makeSupabase({
+      vehicle: {
+        id: "vehicle-1",
+        year: 2023,
+        make: "Western Star",
+        model: "4900",
+        mileage: null,
+        engine_family: null,
+        engine: " DD15 ",
+      },
+      services: [oilChangeService],
+      rules: [genericOilChangeRule],
+    });
+
+    await computeMaintenanceSuggestionsForWorkOrder({ supabase, workOrderId: "wo-1" });
+
+    expect(generateMaintenanceRulesForVehicle).toHaveBeenCalledWith(
+      expect.objectContaining({ engineFamily: "DD15" }),
+    );
+  });
+
   it("does not attempt generation when the vehicle is missing make/model/year", async () => {
     const supabase = makeSupabase({
       vehicle: {
@@ -167,6 +190,7 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
         model: null,
         mileage: null,
         engine_family: null,
+        engine: null,
       },
       services: [oilChangeService],
       rules: [genericOilChangeRule],
@@ -186,6 +210,7 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
         model: "Flatbed",
         mileage: null,
         engine_family: null,
+        engine: null,
       },
       services: [oilChangeService],
       rules: [genericOilChangeRule, vehicleSpecificOilChangeRule],
@@ -210,6 +235,7 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
         model: "Flatbed",
         mileage: null,
         engine_family: null,
+        engine: null,
       },
       services: [oilChangeService],
       rules: [genericOilChangeRule],

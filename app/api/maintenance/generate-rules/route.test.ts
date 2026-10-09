@@ -5,7 +5,12 @@ const adminClient = { __client: "admin" };
 
 let profile: { shop_id: string | null } | null = { shop_id: "s1" };
 let profileError: unknown = null;
-let vehicles: Array<{ engine_family: string | null; engine: string | null }> = [];
+let vehicles: Array<{
+  make: string | null;
+  model: string | null;
+  engine_family: string | null;
+  engine: string | null;
+}> = [];
 let vehicleError: unknown = null;
 const vehicleFilters: Array<[string, unknown]> = [];
 
@@ -73,7 +78,9 @@ describe("POST /api/maintenance/generate-rules", () => {
     generate.mockResolvedValue({ servicesInserted: 1, rulesInserted: 2 });
     profile = { shop_id: "s1" };
     profileError = null;
-    vehicles = [{ engine_family: "Detroit", engine: "DD15" }];
+    vehicles = [
+      { make: "Western Star", model: "4900", engine_family: "Detroit", engine: "DD15" },
+    ];
     vehicleError = null;
     vehicleFilters.length = 0;
     vi.spyOn(console, "error").mockImplementation(() => {});
@@ -93,6 +100,27 @@ describe("POST /api/maintenance/generate-rules", () => {
         // Taken from the stored vehicle (what suggestions look up by), not the client.
         engineFamily: "Detroit",
       }),
+    );
+  });
+
+  it("persists the stored vehicle's make/model, so casing can't create duplicate rule sets", async () => {
+    await POST(request({ year: 2023, make: "western STAR", model: "4900" }));
+
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({ make: "Western Star", model: "4900" }),
+    );
+  });
+
+  it("keys the schedule on the stored engine when the vehicle has no engine family", async () => {
+    vehicles = [
+      { make: "Western Star", model: "4900", engine_family: null, engine: " DD15 " },
+    ];
+
+    const res = await POST(request(spec));
+
+    expect(res.status).toBe(200);
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({ engineFamily: "DD15" }),
     );
   });
 
