@@ -332,4 +332,43 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
     expect(vi.mocked(getVehicleMaintenanceHistory)).toHaveBeenCalledTimes(3);
     expect(suggestions.length).toBe(3);
   });
+
+  it("keeps the working generic rule when the engine-specific replacement has no interval", async () => {
+    const supabase = makeSupabase({
+      vehicle: {
+        id: "vehicle-1",
+        year: 2023,
+        make: "Western Star",
+        model: "4900",
+        mileage: null,
+        engine_family: null,
+        engine: "DD15",
+      },
+      services: [oilChangeService],
+      rules: [
+        { ...genericOilChangeRule, id: "agnostic", make: "Western Star", model: "4900", engine_family: null },
+        {
+          ...genericOilChangeRule,
+          id: "empty",
+          make: "Western Star",
+          model: "4900",
+          engine_family: "DD15",
+          distance_km_normal: null,
+          distance_km_severe: null,
+          time_months_normal: null,
+          time_months_severe: null,
+          first_due_km: null,
+          first_due_months: null,
+        },
+      ],
+    });
+
+    const { suggestions } = await computeMaintenanceSuggestionsForWorkOrder({
+      supabase,
+      workOrderId: "wo-1",
+    });
+
+    // The empty rule can never come due; the agnostic rule still surfaces it.
+    expect(suggestions).toHaveLength(1);
+  });
 });

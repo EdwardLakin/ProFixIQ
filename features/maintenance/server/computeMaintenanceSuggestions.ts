@@ -32,6 +32,17 @@ function normalizeText(value: string | null | undefined): string | null {
   return next.length ? next : null;
 }
 
+function hasUsableTrigger(rule: MaintenanceRuleRow): boolean {
+  return [
+    rule.distance_km_normal,
+    rule.distance_km_severe,
+    rule.time_months_normal,
+    rule.time_months_severe,
+    rule.first_due_km,
+    rule.first_due_months,
+  ].some((value) => typeof value === "number" && Number.isFinite(value));
+}
+
 function ruleMatchesVehicle(
   vehicle: VehicleRow,
   rule: MaintenanceRuleRow,
@@ -347,7 +358,10 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
         (rule) =>
           vehicleEngine != null &&
           rule.make != null &&
-          normalizeText(rule.engine_family) === vehicleEngine,
+          normalizeText(rule.engine_family) === vehicleEngine &&
+          // A generated rule can have no interval at all; it can never come due,
+          // so it must not displace a working engine-agnostic rule.
+          hasUsableTrigger(rule),
       )
       .map((rule) => rule.service_code),
   );

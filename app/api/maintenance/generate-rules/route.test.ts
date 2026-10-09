@@ -186,6 +186,18 @@ describe("POST /api/maintenance/generate-rules", () => {
     expect(generate).toHaveBeenCalledTimes(1);
   });
 
+  it("refuses an engine that resolves to more than one schedule key", async () => {
+    vehicles = [
+      { make: "Western Star", model: "4900", engine_family: "Detroit", engine: "DD15" },
+      { make: "Western Star", model: "4900", engine_family: "DD15 Gen5", engine: "DD15" },
+    ];
+
+    const res = await POST(request({ ...spec, engineFamily: "DD15" }));
+
+    expect(res.status).toBe(409);
+    expect(generate).not.toHaveBeenCalled();
+  });
+
   it("never lets the client force regeneration", async () => {
     await POST(request({ ...spec, forceRefresh: true }));
 

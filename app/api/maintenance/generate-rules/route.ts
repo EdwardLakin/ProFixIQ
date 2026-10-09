@@ -146,13 +146,25 @@ export async function POST(req: Request) {
     }
 
     const requestedEngine = body.engineFamily?.toLowerCase() ?? null;
-    const exactVehicle = requestedEngine
-      ? vehicles.find(
+    const exactMatches = requestedEngine
+      ? vehicles.filter(
           (v) =>
             v.engine_family?.toLowerCase() === requestedEngine ||
             v.engine?.toLowerCase() === requestedEngine,
         )
-      : undefined;
+      : [];
+    // `engine` and `engine_family` are edited independently, so vehicles that
+    // share a raw engine can still resolve to different schedule keys.
+    const exactKeys = new Set(
+      exactMatches.map((v) => vehicleEngineKey(v)?.toLowerCase() ?? null),
+    );
+    if (exactKeys.size > 1) {
+      return NextResponse.json(
+        { error: "The requested engine matches more than one schedule." },
+        { status: 409 },
+      );
+    }
+    const exactVehicle = exactMatches[0];
 
     // If the shop has several engine variants of this spec and the request does
     // not identify one, do not guess: generating under another asset's engine
