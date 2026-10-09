@@ -20,7 +20,21 @@ export function customerPortalInviteDeliveryState(
 ): CustomerPortalInviteDeliveryState {
   const event = status?.toLowerCase();
 
-  // Engagement events can replace the latest status after a successful delivery.
+  // Terminal events must override an earlier delivery timestamp.
+  switch (event) {
+    case "suppressed":
+    case "bounce":
+    case "bounced":
+    case "dropped":
+      return "not_delivered";
+    case "failed":
+    case "spamreport":
+    case "unsubscribe":
+    case "group_unsubscribe":
+      return "delivery_issue";
+  }
+
+  // SendGrid engagement events replace status after delivery; delivered_at preserves it.
   if (deliveredAt || event === "delivered" || event === "open" || event === "click") {
     return "delivered";
   }
@@ -32,16 +46,6 @@ export function customerPortalInviteDeliveryState(
     case "processed":
     case "deferred":
       return "awaiting_delivery";
-    case "suppressed":
-    case "bounce":
-    case "bounced":
-    case "dropped":
-      return "not_delivered";
-    case "failed":
-    case "spamreport":
-    case "unsubscribe":
-    case "group_unsubscribe":
-      return "delivery_issue";
     default:
       return "delivery_unknown";
   }
