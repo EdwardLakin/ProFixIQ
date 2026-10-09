@@ -54,7 +54,7 @@ describe("customer portal invite delivery state", () => {
     expect(customerPortalInviteDeliveryState("delivered")).toBe("delivered");
     expect(customerPortalInviteDeliveryState("open")).toBe("delivered");
     expect(customerPortalInviteDeliveryState("click")).toBe("delivered");
-    expect(customerPortalInviteDeliveryState("bounce", "2026-10-09T12:00:00Z")).toBe("delivered");
+    expect(customerPortalInviteDeliveryState("processed", "2026-10-09T12:00:00Z")).toBe("delivered");
     expect(customerPortalInviteAccessStatus("delivered")).toBe("pending");
   });
 
