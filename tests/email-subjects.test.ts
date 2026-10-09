@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { normalizeEmailSubject, resolveEmailSubject } from "../features/email/server/emailSubjects";
 import { toolEmailInvoice } from "../features/agent/tools/emailInvoice";
-import { customerPortalInviteAccessStatus } from "../features/portal/lib/customerPortalInviteDelivery";
+import { customerPortalInviteAccessStatus, customerPortalInviteDeliveryState } from "../features/portal/lib/customerPortalInviteDelivery";
 
 describe("resolveEmailSubject", () => {
   it("preserves explicit subjects after removing header-breaking whitespace", () => {
@@ -40,11 +40,22 @@ describe("resolveEmailSubject", () => {
 });
 
 describe("customer portal invite delivery state", () => {
-  it("keeps failed and suppressed delivery out of pending state after reload", () => {
-    expect(customerPortalInviteAccessStatus("suppressed")).toBe("not_delivered");
-    expect(customerPortalInviteAccessStatus("failed")).toBe("delivery_issue");
-    expect(customerPortalInviteAccessStatus(null)).toBe("delivery_unknown");
-    expect(customerPortalInviteAccessStatus("queued")).toBe("sending");
+  it("maps SendGrid webhook event names to invite delivery states", () => {
+    expect(customerPortalInviteDeliveryState("suppressed")).toBe("not_delivered");
+    expect(customerPortalInviteDeliveryState("bounce")).toBe("not_delivered");
+    expect(customerPortalInviteDeliveryState("dropped")).toBe("not_delivered");
+    expect(customerPortalInviteDeliveryState("failed")).toBe("delivery_issue");
+    expect(customerPortalInviteDeliveryState("processed")).toBe("awaiting_delivery");
+    expect(customerPortalInviteDeliveryState("deferred")).toBe("awaiting_delivery");
+    expect(customerPortalInviteDeliveryState(null)).toBe("delivery_unknown");
+  });
+
+  it("keeps delivered invites pending after engagement events replace the status", () => {
+    expect(customerPortalInviteDeliveryState("delivered")).toBe("delivered");
+    expect(customerPortalInviteDeliveryState("open")).toBe("delivered");
+    expect(customerPortalInviteDeliveryState("click")).toBe("delivered");
+    expect(customerPortalInviteDeliveryState("bounce", "2026-10-09T12:00:00Z")).toBe("delivered");
+    expect(customerPortalInviteAccessStatus("delivered")).toBe("pending");
   });
 });
 
