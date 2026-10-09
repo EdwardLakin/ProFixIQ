@@ -17,8 +17,11 @@ export type CustomerPortalInviteAccessStatus =
 export function customerPortalInviteDeliveryState(
   status: string | null | undefined,
   deliveredAt?: string | null,
+  providerEvent?: string | null,
 ): CustomerPortalInviteDeliveryState {
-  const event = status?.toLowerCase();
+  // A webhook event is durable provider evidence and takes precedence over
+  // later local accepted/failed writes from the SendGrid request lifecycle.
+  const event = providerEvent?.toLowerCase() ?? status?.toLowerCase();
 
   // Terminal events must override an earlier delivery timestamp.
   switch (event) {
