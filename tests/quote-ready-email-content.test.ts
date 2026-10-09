@@ -76,4 +76,11 @@ describe("sendDynamicTemplateEmail sender and template scoping", () => {
     expect(src).toContain("const templateData = {");
     expect(src).toContain("dynamicTemplateData: templateData,");
   });
+
+  it("does not report accepted until the delivery state is durable", () => {
+    expect(src).toContain('.is("last_event_at", null)');
+    expect(src).toContain("if (updateError) {");
+    expect(src).toContain("delivery state could not be persisted");
+    expect(src).toContain("providerLog?.last_event_type");
+  });
 });
