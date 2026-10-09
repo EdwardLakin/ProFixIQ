@@ -124,6 +124,8 @@ export async function sendDynamicTemplateEmail(
     return { status: "suppressed", reason, emailLogId: logRow.id };
   }
 
+  let providerAcceptance: { acceptedAt: string; providerMessageId: string | null } | null = null;
+
   try {
     const customArgs = { email_log_id: logRow.id };
     const message: MailDataRequired = input.content
@@ -158,6 +160,7 @@ export async function sendDynamicTemplateEmail(
       : headerValue;
 
     const acceptedAt = new Date().toISOString();
+    providerAcceptance = { acceptedAt, providerMessageId };
     const { data: acceptedLog, error: updateError } = await supabase
       .from("email_logs")
       .update({
@@ -192,6 +195,27 @@ export async function sendDynamicTemplateEmail(
   } catch (error) {
     const message =
       error instanceof Error ? error.message : "Unknown SendGrid error";
+
+    if (providerAcceptance) {
+      // The provider has accepted the message. Keep this distinct from an
+      // actual send failure so callers advance their workflow instead of
+      // retrying and potentially sending a duplicate. A SendGrid webhook can
+      // still reconcile the guarded queued row with durable provider evidence.
+      console.error(
+        "[email/sendDynamicTemplateEmail] provider accepted email but log persistence is pending",
+        {
+          emailLogId: logRow.id,
+          templateKey: input.templateKey,
+          to,
+          error: message,
+        },
+      );
+      return {
+        status: "accepted",
+        acceptedAt: providerAcceptance.acceptedAt,
+        emailLogId: logRow.id,
+      };
+    }
 
     await supabase
       .from("email_logs")
