@@ -302,4 +302,34 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
     expect(suggestions).toHaveLength(1);
     expect(vi.mocked(getVehicleMaintenanceHistory)).toHaveBeenCalledTimes(1);
   });
+
+  it("keeps the generic rule when the vehicle's engine is unknown", async () => {
+    const supabase = makeSupabase({
+      vehicle: {
+        id: "vehicle-1",
+        year: 2023,
+        make: "Western Star",
+        model: "4900",
+        mileage: null,
+        engine_family: null,
+        engine: null,
+      },
+      services: [oilChangeService],
+      rules: [
+        { ...genericOilChangeRule, id: "agnostic", make: "Western Star", model: "4900", engine_family: null },
+        { ...genericOilChangeRule, id: "dd15", make: "Western Star", model: "4900", engine_family: "DD15" },
+        { ...genericOilChangeRule, id: "dd13", make: "Western Star", model: "4900", engine_family: "DD13" },
+      ],
+    });
+
+    const { suggestions } = await computeMaintenanceSuggestionsForWorkOrder({
+      supabase,
+      workOrderId: "wo-1",
+    });
+
+    // The engine-agnostic rule is not displaced by variant-specific ones, and
+    // the two variants still both match (unknown engine), as before.
+    expect(vi.mocked(getVehicleMaintenanceHistory)).toHaveBeenCalledTimes(3);
+    expect(suggestions.length).toBe(3);
+  });
 });

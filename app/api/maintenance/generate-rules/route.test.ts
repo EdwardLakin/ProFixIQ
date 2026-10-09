@@ -135,6 +135,39 @@ describe("POST /api/maintenance/generate-rules", () => {
     );
   });
 
+  it("does not guess between engine variants when the request doesn't identify one", async () => {
+    vehicles = [
+      { make: "Western Star", model: "4900", engine_family: null, engine: "DD13" },
+      { make: "Western Star", model: "4900", engine_family: null, engine: "DD15" },
+    ];
+
+    const unspecified = await POST(request(spec));
+    const unknownEngine = await POST(request({ ...spec, engineFamily: "X15" }));
+    const identified = await POST(request({ ...spec, engineFamily: "dd15" }));
+
+    expect(unspecified.status).toBe(409);
+    expect(unknownEngine.status).toBe(409);
+    expect(identified.status).toBe(200);
+    expect(generate).toHaveBeenCalledTimes(1);
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({ engineFamily: "DD15" }),
+    );
+  });
+
+  it("proceeds when every matching vehicle shares one engine, whatever the client sent", async () => {
+    vehicles = [
+      { make: "Western Star", model: "4900", engine_family: null, engine: "DD15" },
+      { make: "Western Star", model: "4900", engine_family: null, engine: "dd15" },
+    ];
+
+    const res = await POST(request({ ...spec, engineFamily: "X15" }));
+
+    expect(res.status).toBe(200);
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({ engineFamily: "DD15" }),
+    );
+  });
+
   it("never lets the client force regeneration", async () => {
     await POST(request({ ...spec, forceRefresh: true }));
 

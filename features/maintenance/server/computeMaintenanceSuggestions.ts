@@ -337,9 +337,18 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
   // An engine-specific schedule supersedes an engine-agnostic rule for the same
   // service on the same vehicle spec (older runs stored rules without the
   // engine); otherwise both would match and suggest the service twice.
+  // Only when the vehicle's engine is known and the rule is for that engine: a
+  // vehicle with no engine matches every variant's rules, and one of them must
+  // not displace the generic interval.
+  const vehicleEngine = normalizeText(vehicleEngineKey(vehicle));
   const engineSpecificServiceCodes = new Set(
     matchedRules
-      .filter((rule) => rule.make != null && normalizeText(rule.engine_family))
+      .filter(
+        (rule) =>
+          vehicleEngine != null &&
+          rule.make != null &&
+          normalizeText(rule.engine_family) === vehicleEngine,
+      )
       .map((rule) => rule.service_code),
   );
   const schedule = matchedRules.filter(

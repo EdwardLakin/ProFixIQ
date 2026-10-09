@@ -21,6 +21,7 @@ describe("openAIReasoningEffortParam", () => {
   it("sends nothing to models that do not take the parameter", () => {
     expect(openAIReasoningEffortParam("gpt-4o-mini")).toEqual({});
     expect(openAIReasoningEffortParam("o1-mini")).toEqual({});
+    expect(openAIReasoningEffortParam("gpt-5-pro")).toEqual({});
     expect(openAIReasoningEffortParam("gpt-5-chat-latest")).toEqual({});
     expect(openAIReasoningEffortParam("")).toEqual({});
   });

@@ -86,16 +86,19 @@ export function supportsOpenAITemperature(model: string): boolean {
  * GPT-5 reasoning models spend completion tokens on hidden reasoning before
  * they write any output, so structured-output calls should ask for low effort.
  * Covers the GPT-5 family and the o3/o4 models, which take low/medium/high.
- * Models that do not take the parameter (o1-mini/preview, non-reasoning chat
- * models) get nothing.
+ * Models that do not take it or only take `high` (o1-mini/preview, GPT-5 Pro,
+ * non-reasoning chat models) get nothing.
  */
 export function openAIReasoningEffortParam(
   model: string,
   effort: "low" | "medium" | "high" = "low",
 ): { reasoning_effort: "low" | "medium" | "high" } | Record<string, never> {
   const normalized = model.trim().toLowerCase();
+  // gpt-5-pro only accepts high effort, so it is left at its default.
   const supportsEffort =
-    (normalized.startsWith("gpt-5") && !normalized.includes("chat")) ||
+    (normalized.startsWith("gpt-5") &&
+      !normalized.includes("chat") &&
+      !normalized.includes("pro")) ||
     normalized.startsWith("o3") ||
     normalized.startsWith("o4");
   return supportsEffort ? { reasoning_effort: effort } : {};

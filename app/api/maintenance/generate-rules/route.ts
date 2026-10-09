@@ -144,14 +144,28 @@ export async function POST(req: Request) {
     }
 
     const requestedEngine = body.engineFamily?.toLowerCase() ?? null;
-    const matchedVehicle =
-      (requestedEngine
-        ? vehicles.find(
-            (v) =>
-              v.engine_family?.toLowerCase() === requestedEngine ||
-              v.engine?.toLowerCase() === requestedEngine,
-          )
-        : null) ?? vehicles[0];
+    const exactVehicle = requestedEngine
+      ? vehicles.find(
+          (v) =>
+            v.engine_family?.toLowerCase() === requestedEngine ||
+            v.engine?.toLowerCase() === requestedEngine,
+        )
+      : undefined;
+
+    // If the shop has several engine variants of this spec and the request does
+    // not identify one, do not guess: generating under another asset's engine
+    // would spend AI budget and leave this vehicle's schedule missing. The
+    // suggestions path generates from the exact work-order vehicle anyway.
+    const engineKeys = new Set(
+      vehicles.map((v) => vehicleEngineKey(v)?.toLowerCase() ?? null),
+    );
+    if (!exactVehicle && engineKeys.size > 1) {
+      return NextResponse.json(
+        { error: "Several vehicles match; the engine could not be resolved." },
+        { status: 409 },
+      );
+    }
+    const matchedVehicle = exactVehicle ?? vehicles[0];
 
     // Persist the stored vehicle's own make/model/engine, not the client's
     // strings: the lookup above is case-insensitive but the schedule cache and
