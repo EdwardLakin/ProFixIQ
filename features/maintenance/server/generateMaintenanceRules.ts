@@ -264,6 +264,8 @@ export async function generateMaintenanceRulesForVehicle(opts: {
       feature: "maintenance_rules_generate",
       endpoint: "/api/maintenance/generate-rules",
       model: getOpenAIModelForPurpose("fast"),
+      // Reserve the budget this request can actually spend, not the default.
+      maxCompletionTokens: MAX_SCHEDULE_COMPLETION_TOKENS,
     },
     () =>
       openai.chat.completions.create({

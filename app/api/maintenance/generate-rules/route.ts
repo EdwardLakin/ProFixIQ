@@ -51,6 +51,10 @@ function parseBody(json: unknown): GenerateBody {
   return { year, make, model, engineFamily, forceRefresh };
 }
 
+function escapeLike(value: string): string {
+  return value.replace(/[\\%_]/g, (ch) => `\\${ch}`);
+}
+
 export async function POST(req: Request) {
   const supabase = createServerSupabaseRSC();
 
@@ -96,24 +100,75 @@ export async function POST(req: Request) {
       );
     }
 
+    const shopId = profile?.shop_id ?? null;
+    if (!shopId) {
+      return NextResponse.json(
+        { error: "No shop is linked to your account." },
+        { status: 403 },
+      );
+    }
+
+    // The schedule is written to the shared catalog with the service role, so
+    // the requested spec must belong to a real vehicle in the caller's shop
+    // rather than being whatever the client sent. The engine family comes from
+    // that vehicle, which is also the key the suggestions lookup uses.
+    const { data: vehicleRows, error: vehicleError } = await supabase
+      .from("vehicles")
+      .select("engine_family, engine")
+      .eq("shop_id", shopId)
+      .eq("year", body.year)
+      .ilike("make", escapeLike(body.make))
+      .ilike("model", escapeLike(body.model))
+      .order("created_at", { ascending: false })
+      .limit(20);
+
+    if (vehicleError) {
+      return NextResponse.json(
+        { error: "Could not verify the vehicle. Try again." },
+        { status: 503 },
+      );
+    }
+
+    const vehicles = (vehicleRows ?? []) as Array<{
+      engine_family: string | null;
+      engine: string | null;
+    }>;
+    if (vehicles.length === 0) {
+      return NextResponse.json(
+        { error: "No matching vehicle in your shop." },
+        { status: 404 },
+      );
+    }
+
+    const requestedEngine = body.engineFamily?.toLowerCase() ?? null;
+    const matchedVehicle =
+      (requestedEngine
+        ? vehicles.find(
+            (v) =>
+              v.engine_family?.toLowerCase() === requestedEngine ||
+              v.engine?.toLowerCase() === requestedEngine,
+          )
+        : null) ?? vehicles[0];
+
     const { servicesInserted, rulesInserted } = await withAITelemetryContext(
       {
         endpoint: "/api/maintenance/generate-rules",
-        shopId: profile?.shop_id ?? null,
+        shopId,
         userId: user.id,
       },
       () =>
         generateMaintenanceRulesForVehicle({
           supabase,
           // maintenance_rules / maintenance_services are read-only to
-          // `authenticated`; the caller was authorized above, so write the
-          // shared catalog rows with the service role.
+          // `authenticated`; the caller and vehicle were authorized above, so
+          // write the shared catalog rows with the service role.
           writeClient: createAdminSupabase(),
           year: body.year as number,
           make: body.make as string,
           model: body.model as string,
-          engineFamily: body.engineFamily ?? null,
-          forceRefresh: body.forceRefresh ?? false,
+          engineFamily: matchedVehicle.engine_family?.trim() || null,
+          // Never let a client force regeneration (repeat AI spend).
+          forceRefresh: false,
         }),
     );
 
@@ -122,7 +177,7 @@ export async function POST(req: Request) {
       year: body.year,
       make: body.make,
       model: body.model,
-      engineFamily: body.engineFamily ?? null,
+      engineFamily: matchedVehicle.engine_family?.trim() || null,
       servicesInserted,
       rulesInserted,
     });

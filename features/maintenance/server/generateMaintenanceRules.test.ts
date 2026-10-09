@@ -3,8 +3,13 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DB } from "./types";
 
 const create = vi.fn();
+const ledger = vi.fn((_context: unknown, call: () => unknown) => call());
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/features/shared/lib/server/ai-provider-accounting", () => ({
+  ledgerOpenAICall: (context: unknown, call: () => unknown) =>
+    ledger(context, call),
+}));
 vi.mock("@/features/shared/lib/server/openai", () => ({
   openai: { chat: { completions: { create: (...args: unknown[]) => create(...args) } } },
 }));
@@ -56,6 +61,7 @@ const aiPayload = {
 describe("generateMaintenanceRulesForVehicle", () => {
   beforeEach(() => {
     create.mockReset();
+    ledger.mockClear();
     create.mockResolvedValue({
       choices: [{ message: { content: JSON.stringify(aiPayload) } }],
     });
@@ -149,6 +155,25 @@ describe("generateMaintenanceRulesForVehicle", () => {
     expect(body).not.toHaveProperty("max_tokens");
     expect(body.max_completion_tokens).toBe(4000);
     expect(body.reasoning_effort).toBe("low");
+  });
+
+  it("reserves the full completion budget in the AI accounting context", async () => {
+    await generateMaintenanceRulesForVehicle({
+      supabase: makeClient({ calls: [] }),
+      writeClient: makeClient({ calls: [] }),
+      year: 2023,
+      make: "Western Star",
+      model: "4900",
+    });
+
+    const body = create.mock.calls[0][0] as Record<string, unknown>;
+    expect(ledger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        feature: "maintenance_rules_generate",
+        maxCompletionTokens: body.max_completion_tokens,
+      }),
+      expect.any(Function),
+    );
   });
 
   it("fails loudly when the schedule is cut off by the token limit", async () => {

@@ -2,16 +2,41 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const generate = vi.fn();
 const adminClient = { __client: "admin" };
+
+let profile: { shop_id: string | null } | null = { shop_id: "s1" };
+let profileError: unknown = null;
+let vehicles: Array<{ engine_family: string | null; engine: string | null }> = [];
+let vehicleError: unknown = null;
+const vehicleFilters: Array<[string, unknown]> = [];
+
+function vehicleBuilder() {
+  const builder: Record<string, unknown> = {};
+  for (const method of ["select", "order"]) {
+    builder[method] = () => builder;
+  }
+  for (const method of ["eq", "ilike"]) {
+    builder[method] = (column: string, value: unknown) => {
+      vehicleFilters.push([`${method}:${column}`, value]);
+      return builder;
+    };
+  }
+  builder.limit = async () => ({ data: vehicles, error: vehicleError });
+  return builder;
+}
+
 const userClient = {
   __client: "user",
   auth: { getUser: async () => ({ data: { user: { id: "u1" } }, error: null }) },
-  from: () => ({
-    select: () => ({
-      eq: () => ({
-        maybeSingle: async () => ({ data: { shop_id: "s1" }, error: null }),
+  from: (table: string) => {
+    if (table === "vehicles") return vehicleBuilder();
+    return {
+      select: () => ({
+        eq: () => ({
+          maybeSingle: async () => ({ data: profile, error: profileError }),
+        }),
       }),
-    }),
-  }),
+    };
+  },
 };
 
 vi.mock("server-only", () => ({}));
@@ -40,35 +65,77 @@ function request(body: unknown) {
   });
 }
 
+const spec = { year: 2023, make: "Western Star", model: "4900" };
+
 describe("POST /api/maintenance/generate-rules", () => {
   beforeEach(() => {
     generate.mockReset();
     generate.mockResolvedValue({ servicesInserted: 1, rulesInserted: 2 });
+    profile = { shop_id: "s1" };
+    profileError = null;
+    vehicles = [{ engine_family: "Detroit", engine: "DD15" }];
+    vehicleError = null;
+    vehicleFilters.length = 0;
+    vi.spyOn(console, "error").mockImplementation(() => {});
   });
 
-  it("writes the shared catalog with the service-role client, reading with the user's", async () => {
-    const res = await POST(
-      request({ year: 2023, make: "Western Star", model: "4900", engineFamily: "Detroit" }),
-    );
+  it("writes the shared catalog with the service role, for a vehicle in the caller's shop", async () => {
+    const res = await POST(request({ ...spec, engineFamily: "DD15" }));
 
     expect(res.status).toBe(200);
+    expect(vehicleFilters).toContainEqual(["eq:shop_id", "s1"]);
+    expect(vehicleFilters).toContainEqual(["eq:year", 2023]);
     expect(generate).toHaveBeenCalledWith(
       expect.objectContaining({
         supabase: userClient,
         writeClient: adminClient,
-        year: 2023,
-        make: "Western Star",
-        model: "4900",
+        ...spec,
+        // Taken from the stored vehicle (what suggestions look up by), not the client.
         engineFamily: "Detroit",
       }),
     );
   });
 
+  it("never lets the client force regeneration", async () => {
+    await POST(request({ ...spec, forceRefresh: true }));
+
+    expect(generate).toHaveBeenCalledWith(
+      expect.objectContaining({ forceRefresh: false }),
+    );
+  });
+
+  it("refuses a spec that matches no vehicle in the caller's shop", async () => {
+    vehicles = [];
+
+    const res = await POST(request({ year: 1999, make: "Made", model: "Up" }));
+
+    expect(res.status).toBe(404);
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("refuses callers with no shop, without touching the catalog", async () => {
+    profile = { shop_id: null };
+
+    const res = await POST(request(spec));
+
+    expect(res.status).toBe(403);
+    expect(generate).not.toHaveBeenCalled();
+  });
+
+  it("returns a retryable error when the shop or vehicle lookup fails", async () => {
+    profileError = new Error("db down");
+    expect((await POST(request(spec))).status).toBe(503);
+
+    profileError = null;
+    vehicleError = new Error("db down");
+    expect((await POST(request(spec))).status).toBe(503);
+    expect(generate).not.toHaveBeenCalled();
+  });
+
   it("returns the generation error instead of reporting success", async () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
     generate.mockRejectedValue(new Error("AI did not return valid JSON"));
 
-    const res = await POST(request({ year: 2023, make: "Western Star", model: "4900" }));
+    const res = await POST(request(spec));
 
     expect(res.status).toBe(500);
     expect(await res.json()).toEqual({ error: "AI did not return valid JSON" });
