@@ -158,25 +158,34 @@ export async function sendDynamicTemplateEmail(
       : headerValue;
 
     const acceptedAt = new Date().toISOString();
-    const { error: updateError } = await supabase
+    const { data: acceptedLog, error: updateError } = await supabase
       .from("email_logs")
       .update({
         status: "accepted",
         provider_message_id: providerMessageId,
         sent_at: acceptedAt,
       })
-      .eq("id", logRow.id);
+      .eq("id", logRow.id)
+      .eq("status", "queued")
+      .is("last_event_at", null)
+      .select("id")
+      .maybeSingle();
 
     if (updateError) {
-      console.error(
-        "[email/sendDynamicTemplateEmail] failed to mark email log as sent",
-        {
-          emailLogId: logRow.id,
-          templateKey: input.templateKey,
-          to,
-          error: updateError.message,
-        },
-      );
+      throw new Error(`SendGrid accepted the email, but its delivery state could not be persisted: ${updateError.message}`);
+    }
+
+    if (!acceptedLog?.id) {
+      // A webhook may win the race after SendGrid accepts the message. Confirm
+      // that durable provider evidence exists before reporting success.
+      const { data: providerLog, error: providerLogError } = await supabase
+        .from("email_logs")
+        .select("last_event_type")
+        .eq("id", logRow.id)
+        .maybeSingle();
+      if (providerLogError || !providerLog?.last_event_type) {
+        throw new Error("SendGrid accepted the email, but its delivery state could not be confirmed.");
+      }
     }
 
     return { status: "accepted", acceptedAt, emailLogId: logRow.id };
@@ -190,7 +199,9 @@ export async function sendDynamicTemplateEmail(
         status: "failed",
         error_text: message,
       })
-      .eq("id", logRow.id);
+      .eq("id", logRow.id)
+      .eq("status", "queued")
+      .is("last_event_at", null);
 
     throw error;
   }
