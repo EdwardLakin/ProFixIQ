@@ -268,6 +268,218 @@ function safeDate(iso: string | null): string {
   return format(d, "PPpp");
 }
 
+function dateInputValue(value: unknown): string {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return "";
+  const isoDate = raw.match(/^(\d{4}-\d{2}-\d{2})/);
+  if (isoDate) return isoDate[1];
+  const yearMonth = raw.match(/^(\d{4})-(\d{2})$/);
+  if (yearMonth) return `${yearMonth[1]}-${yearMonth[2]}-01`;
+
+  const parsed = new Date(raw);
+  if (Number.isNaN(parsed.getTime())) return "";
+  const year = parsed.getUTCFullYear();
+  const month = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(parsed.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function normalizeOdometerUnit(value: unknown): string {
+  const unit = typeof value === "string" ? value.trim() : "";
+  const normalized = unit.toLowerCase();
+  if (/^(km|kilometers?|kilometres?)$/.test(normalized)) return "km";
+  if (/^(mi|miles?)$/.test(normalized)) return "mi";
+  if (/^(h|hr|hrs|hours?)$/.test(normalized)) return "hours";
+  return unit;
+}
+
+function normalizeVehicleOdometerDraft(
+  mileageValue: unknown,
+  unitValue: unknown,
+): { mileage: string; odometer_unit: string } {
+  const mileage = String(mileageValue ?? "").trim();
+  const unit = normalizeOdometerUnit(unitValue);
+  const match = mileage.match(
+    /^((?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?)\s*(km|kilometers?|kilometres?|mi|miles?|h|hrs?|hours?)$/i,
+  );
+  if (match) {
+    const suffixUnit = normalizeOdometerUnit(match[2]);
+    if (!unit || unit === suffixUnit) {
+      return {
+        mileage: match[1].replace(/,/g, ""),
+        odometer_unit: suffixUnit,
+      };
+    }
+  }
+  return { mileage, odometer_unit: unit };
+}
+
+type VehicleSelectOption = {
+  value: string;
+  label: string;
+};
+
+const VEHICLE_SELECT_OPTIONS: Record<
+  string,
+  readonly VehicleSelectOption[]
+> = {
+  state_province: [
+    { value: "AB", label: "Alberta" },
+    { value: "BC", label: "British Columbia" },
+    { value: "MB", label: "Manitoba" },
+    { value: "NB", label: "New Brunswick" },
+    { value: "NL", label: "Newfoundland and Labrador" },
+    { value: "NS", label: "Nova Scotia" },
+    { value: "NT", label: "Northwest Territories" },
+    { value: "NU", label: "Nunavut" },
+    { value: "ON", label: "Ontario" },
+    { value: "PE", label: "Prince Edward Island" },
+    { value: "QC", label: "Quebec" },
+    { value: "SK", label: "Saskatchewan" },
+    { value: "YT", label: "Yukon" },
+    { value: "AL", label: "Alabama" },
+    { value: "AK", label: "Alaska" },
+    { value: "AZ", label: "Arizona" },
+    { value: "AR", label: "Arkansas" },
+    { value: "CA", label: "California" },
+    { value: "CO", label: "Colorado" },
+    { value: "CT", label: "Connecticut" },
+    { value: "DE", label: "Delaware" },
+    { value: "FL", label: "Florida" },
+    { value: "GA", label: "Georgia" },
+    { value: "HI", label: "Hawaii" },
+    { value: "ID", label: "Idaho" },
+    { value: "IL", label: "Illinois" },
+    { value: "IN", label: "Indiana" },
+    { value: "IA", label: "Iowa" },
+    { value: "KS", label: "Kansas" },
+    { value: "KY", label: "Kentucky" },
+    { value: "LA", label: "Louisiana" },
+    { value: "ME", label: "Maine" },
+    { value: "MD", label: "Maryland" },
+    { value: "MA", label: "Massachusetts" },
+    { value: "MI", label: "Michigan" },
+    { value: "MN", label: "Minnesota" },
+    { value: "MS", label: "Mississippi" },
+    { value: "MO", label: "Missouri" },
+    { value: "MT", label: "Montana" },
+    { value: "NE", label: "Nebraska" },
+    { value: "NV", label: "Nevada" },
+    { value: "NH", label: "New Hampshire" },
+    { value: "NJ", label: "New Jersey" },
+    { value: "NM", label: "New Mexico" },
+    { value: "NY", label: "New York" },
+    { value: "NC", label: "North Carolina" },
+    { value: "ND", label: "North Dakota" },
+    { value: "OH", label: "Ohio" },
+    { value: "OK", label: "Oklahoma" },
+    { value: "OR", label: "Oregon" },
+    { value: "PA", label: "Pennsylvania" },
+    { value: "RI", label: "Rhode Island" },
+    { value: "SC", label: "South Carolina" },
+    { value: "SD", label: "South Dakota" },
+    { value: "TN", label: "Tennessee" },
+    { value: "TX", label: "Texas" },
+    { value: "UT", label: "Utah" },
+    { value: "VT", label: "Vermont" },
+    { value: "VA", label: "Virginia" },
+    { value: "WA", label: "Washington" },
+    { value: "WV", label: "West Virginia" },
+    { value: "WI", label: "Wisconsin" },
+    { value: "WY", label: "Wyoming" },
+  ],
+  engine_type: [
+    { value: "diesel", label: "Diesel" },
+    { value: "gasoline", label: "Gasoline" },
+    { value: "electric", label: "Electric" },
+    { value: "hybrid", label: "Hybrid" },
+    { value: "cng", label: "CNG" },
+    { value: "lpg", label: "Propane / LPG" },
+    { value: "other", label: "Other" },
+  ],
+  transmission_type: [
+    { value: "automatic", label: "Automatic" },
+    { value: "manual", label: "Manual" },
+    { value: "automated_manual", label: "Automated manual (AMT)" },
+    { value: "cvt", label: "CVT" },
+    { value: "dct", label: "Dual-clutch (DCT)" },
+    { value: "powershift", label: "Powershift" },
+    { value: "hydrostatic", label: "Hydrostatic" },
+    { value: "other", label: "Other" },
+  ],
+  fuel_type: [
+    { value: "diesel", label: "Diesel" },
+    { value: "gasoline", label: "Gasoline" },
+    { value: "electric", label: "Electric (BEV)" },
+    { value: "hybrid", label: "Hybrid" },
+    { value: "phev", label: "Plug-in hybrid" },
+    { value: "cng", label: "CNG" },
+    { value: "lpg", label: "Propane / LPG" },
+    { value: "hydrogen", label: "Hydrogen" },
+    { value: "other", label: "Other" },
+  ],
+  body_type: [
+    { value: "truck", label: "Truck" },
+    { value: "tractor", label: "Tractor" },
+    { value: "pickup", label: "Pickup" },
+    { value: "van", label: "Van" },
+    { value: "bus", label: "Bus" },
+    { value: "trailer", label: "Trailer" },
+    { value: "car", label: "Car" },
+    { value: "suv", label: "SUV" },
+    { value: "equipment", label: "Equipment" },
+    { value: "other", label: "Other" },
+  ],
+  drivetrain: [
+    { value: "fwd", label: "FWD" },
+    { value: "rwd", label: "RWD" },
+    { value: "awd", label: "AWD" },
+    { value: "4x4", label: "4x4" },
+    { value: "6x4", label: "6x4" },
+    { value: "6x6", label: "6x6" },
+    { value: "8x4", label: "8x4" },
+    { value: "tracked", label: "Tracked" },
+    { value: "other", label: "Other" },
+  ],
+  asset_type: [
+    { value: "truck", label: "Truck" },
+    { value: "tractor", label: "Highway tractor" },
+    { value: "trailer", label: "Trailer" },
+    { value: "pickup", label: "Pickup" },
+    { value: "van", label: "Van" },
+    { value: "bus", label: "Bus" },
+    { value: "car", label: "Car" },
+    { value: "suv", label: "SUV" },
+    { value: "forklift", label: "Forklift" },
+    { value: "telehandler", label: "Telehandler" },
+    { value: "man_lift", label: "Man lift" },
+    { value: "scissor_lift", label: "Scissor lift" },
+    { value: "excavator", label: "Excavator" },
+    { value: "loader", label: "Loader" },
+    { value: "dozer", label: "Dozer" },
+    { value: "grader", label: "Grader" },
+    { value: "crane", label: "Crane" },
+    { value: "skid_steer", label: "Skid steer" },
+    { value: "mining_equipment", label: "Mining equipment" },
+    { value: "generator", label: "Generator" },
+    { value: "other", label: "Other" },
+  ],
+  status: [
+    { value: "active", label: "Active" },
+    { value: "inactive", label: "Inactive" },
+    { value: "out_of_service", label: "Out of service" },
+    { value: "sold", label: "Sold" },
+    { value: "retired", label: "Retired" },
+  ],
+};
+
+function hasVehicleSelectValue(
+  options: readonly VehicleSelectOption[],
+  value: string,
+): boolean {
+  return options.some((option) => option.value === value);
+}
+
 // Historical customer summaries intentionally do not use compactDate(customer?.customer_since ?? customer?.created_at).
 function compactDate(iso: string | null | undefined): string | null {
   if (!iso) return null;
@@ -462,19 +674,103 @@ type ModalProps = {
   footer?: React.ReactNode;
 };
 
+function moveToNextFormField(event: React.KeyboardEvent<HTMLFormElement>) {
+  if (
+    event.key !== "Enter" ||
+    event.shiftKey ||
+    event.nativeEvent.isComposing ||
+    event.nativeEvent.keyCode === 229
+  ) {
+    return;
+  }
+  const current = event.target;
+  if (!(current instanceof HTMLInputElement)) return;
+
+  const form = current.form;
+  if (!form) return;
+  const fields = Array.from(
+    form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
+      'input:not([disabled]), select:not([disabled]), textarea:not([disabled])',
+    ),
+  ).filter((field) => !("readOnly" in field) || !field.readOnly);
+  const currentIndex = fields.indexOf(current);
+  const next = fields[currentIndex + 1];
+  if (next) {
+    event.preventDefault();
+    next.focus();
+  }
+}
+
 function Modal({ title, open, onClose, children, footer }: ModalProps) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+    const dialog = dialogRef.current;
+    const firstField = dialog?.querySelector<HTMLElement>(
+      'input:not([disabled]), select:not([disabled]), textarea:not([disabled])',
+    );
+    const fallback = dialog?.querySelector<HTMLElement>(
+      'button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+    (firstField ?? fallback ?? dialog)?.focus();
+
+    return () => {
+      previouslyFocused?.focus();
+    };
+  }, [open]);
+
   if (!open) return null;
   return (
     <div
       className="fixed inset-0 z-[80] flex items-center justify-center bg-[color:var(--desktop-panel-bg-soft)] p-3"
-      role="dialog"
-      aria-modal="true"
-      aria-label={title}
       onMouseDown={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[color:var(--desktop-border)] bg-[var(--theme-gradient-panel)] shadow-[var(--theme-shadow-medium)]">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label={title}
+        tabIndex={-1}
+        onKeyDown={(event) => {
+          if (event.key !== "Tab") return;
+          const dialog = dialogRef.current;
+          if (!dialog) return;
+          const focusable = Array.from(
+            dialog.querySelectorAll<HTMLElement>(
+              'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+            ),
+          ).filter((element) => element.getClientRects().length > 0);
+          if (focusable.length === 0) {
+            event.preventDefault();
+            dialog.focus();
+            return;
+          }
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+          if (!first || !last) {
+            event.preventDefault();
+            dialog.focus();
+            return;
+          }
+          const active = document.activeElement;
+          if (event.shiftKey && (active === first || !dialog.contains(active))) {
+            event.preventDefault();
+            last.focus();
+          } else if (!event.shiftKey && (active === last || !dialog.contains(active))) {
+            event.preventDefault();
+            first.focus();
+          }
+        }}
+        className="flex max-h-[calc(100dvh-1.5rem)] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border border-[color:var(--desktop-border)] bg-[var(--theme-gradient-panel)] shadow-[var(--theme-shadow-medium)]"
+      >
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[color:var(--desktop-border)] px-4 py-3">
           <div className="min-w-0">
             <div className="truncate text-sm font-semibold text-[color:var(--theme-text-primary)]">
@@ -1430,7 +1726,14 @@ export default function CustomerProfilePage(): JSX.Element {
 
   useEffect(() => {
     if (!selectedVehicle) return;
-    setVehDraft({ ...(selectedVehicle as unknown as Record<string, unknown>) });
+    const record = selectedVehicle as unknown as Record<string, unknown>;
+    setVehDraft({
+      ...record,
+      ...normalizeVehicleOdometerDraft(
+        selectedVehicle.mileage,
+        record["odometer_unit"],
+      ),
+    });
   }, [selectedVehicle]);
 
   const saveVehicle = useCallback(async () => {
@@ -1598,131 +1901,171 @@ export default function CustomerProfilePage(): JSX.Element {
     tags: "",
     notes: "",
   });
+  const [isCreatingVehicle, setIsCreatingVehicle] = useState(false);
+  const [createVehicleError, setCreateVehicleError] = useState<string | null>(null);
+  const createVehicleInFlight = useRef(false);
+  const createVehicleErrorRef = useRef<HTMLDivElement | null>(null);
+
+  const showCreateVehicleError = useCallback((message: string) => {
+    setCreateVehicleError(message);
+    window.requestAnimationFrame(() => {
+      const alert = createVehicleErrorRef.current;
+      alert?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      alert?.focus({ preventScroll: true });
+    });
+  }, []);
 
   const createVehicle = useCallback(async () => {
-    if (!customer?.id) return;
+    if (!customer?.id || createVehicleInFlight.current) return;
 
-    const insertRecord: Record<string, unknown> = {
-      customer_id: customer.id,
-      shop_id: customer.shop_id,
-      year: typeof newVeh["year"] === "number" ? newVeh["year"] : null,
-      make:
-        typeof newVeh["make"] === "string"
-          ? (newVeh["make"] as string) || null
-          : null,
-      model:
-        typeof newVeh["model"] === "string"
-          ? (newVeh["model"] as string) || null
-          : null,
-      vin:
-        typeof newVeh["vin"] === "string"
-          ? (newVeh["vin"] as string) || null
-          : null,
-      license_plate:
-        typeof newVeh["license_plate"] === "string"
-          ? (newVeh["license_plate"] as string) || null
-          : null,
-      mileage:
-        typeof newVeh["mileage"] === "string"
-          ? (newVeh["mileage"] as string) || null
-          : null,
-    };
+    createVehicleInFlight.current = true;
+    setIsCreatingVehicle(true);
+    setCreateVehicleError(null);
 
-    if (typeof newVeh["unit_number"] === "string")
-      insertRecord["unit_number"] = newVeh["unit_number"] || null;
-    if (typeof newVeh["color"] === "string")
-      insertRecord["color"] = newVeh["color"] || null;
-    if (typeof newVeh["engine_hours"] === "number")
-      insertRecord["engine_hours"] = newVeh["engine_hours"];
+    try {
+      const mileage = String(newVeh["mileage"] ?? "").trim();
+      if (mileage && (!Number.isFinite(Number(mileage)) || Number(mileage) < 0)) {
+        showCreateVehicleError("Enter a valid odometer reading of zero or more.");
+        return;
+      }
+      if (typeof newVeh["engine_hours"] === "number" && newVeh["engine_hours"] < 0) {
+        showCreateVehicleError("Engine hours must be zero or more.");
+        return;
+      }
 
-    // ✅ extra vehicle profile fields (confirmed by your vehicles table)
-    if (typeof newVeh["submodel"] === "string")
-      insertRecord["submodel"] = newVeh["submodel"] || null;
+      const insertRecord: Record<string, unknown> = {
+        customer_id: customer.id,
+        shop_id: customer.shop_id,
+        year: typeof newVeh["year"] === "number" ? newVeh["year"] : null,
+        make:
+          typeof newVeh["make"] === "string"
+            ? (newVeh["make"] as string) || null
+            : null,
+        model:
+          typeof newVeh["model"] === "string"
+            ? (newVeh["model"] as string) || null
+            : null,
+        vin:
+          typeof newVeh["vin"] === "string"
+            ? (newVeh["vin"] as string) || null
+            : null,
+        license_plate:
+          typeof newVeh["license_plate"] === "string"
+            ? (newVeh["license_plate"] as string) || null
+            : null,
+        mileage:
+          typeof newVeh["mileage"] === "string"
+            ? (newVeh["mileage"] as string) || null
+            : null,
+      };
 
-    if (typeof newVeh["engine"] === "string")
-      insertRecord["engine"] = newVeh["engine"] || null;
-    if (typeof newVeh["engine_type"] === "string")
-      insertRecord["engine_type"] = newVeh["engine_type"] || null;
-    if (typeof newVeh["engine_family"] === "string")
-      insertRecord["engine_family"] = newVeh["engine_family"] || null;
+      if (typeof newVeh["unit_number"] === "string")
+        insertRecord["unit_number"] = newVeh["unit_number"] || null;
+      if (typeof newVeh["color"] === "string")
+        insertRecord["color"] = newVeh["color"] || null;
+      if (typeof newVeh["engine_hours"] === "number")
+        insertRecord["engine_hours"] = newVeh["engine_hours"];
 
-    if (typeof newVeh["transmission"] === "string")
-      insertRecord["transmission"] = newVeh["transmission"] || null;
-    if (typeof newVeh["transmission_type"] === "string")
-      insertRecord["transmission_type"] = newVeh["transmission_type"] || null;
+      // ✅ extra vehicle profile fields (confirmed by your vehicles table)
+      if (typeof newVeh["submodel"] === "string")
+        insertRecord["submodel"] = newVeh["submodel"] || null;
 
-    if (typeof newVeh["fuel_type"] === "string")
-      insertRecord["fuel_type"] = newVeh["fuel_type"] || null;
-    if (typeof newVeh["drivetrain"] === "string")
-      insertRecord["drivetrain"] = newVeh["drivetrain"] || null;
-    for (const key of [
-      "state_province",
-      "odometer_unit",
-      "body_type",
-      "asset_type",
-      "status",
-      "purchase_date",
-      "in_service_date",
-      "last_service_date",
-      "tags",
-      "notes",
-    ] as const) {
-      if (typeof newVeh[key] === "string")
-        insertRecord[key] = newVeh[key] || null;
-    }
+      if (typeof newVeh["engine"] === "string")
+        insertRecord["engine"] = newVeh["engine"] || null;
+      if (typeof newVeh["engine_type"] === "string")
+        insertRecord["engine_type"] = newVeh["engine_type"] || null;
+      if (typeof newVeh["engine_family"] === "string")
+        insertRecord["engine_family"] = newVeh["engine_family"] || null;
 
-    const duplicateCheck = await checkVehicleDuplicates({
-      vin: typeof insertRecord["vin"] === "string" ? insertRecord["vin"] : null,
-      licensePlate:
-        typeof insertRecord["license_plate"] === "string"
-          ? insertRecord["license_plate"]
-          : null,
-      unitNumber:
-        typeof insertRecord["unit_number"] === "string"
-          ? insertRecord["unit_number"]
-          : null,
-      customerId: customer.id,
-    });
+      if (typeof newVeh["transmission"] === "string")
+        insertRecord["transmission"] = newVeh["transmission"] || null;
+      if (typeof newVeh["transmission_type"] === "string")
+        insertRecord["transmission_type"] = newVeh["transmission_type"] || null;
 
-    const blockingMatch = duplicateCheck.matches.find(
-      (match) => match.match_type === "vin" && match.same_customer === false,
-    );
-    if (blockingMatch) {
-      setViewError(
-        "This VIN is already assigned to another customer. Contact shop/admin to move vehicle.",
+      if (typeof newVeh["fuel_type"] === "string")
+        insertRecord["fuel_type"] = newVeh["fuel_type"] || null;
+      if (typeof newVeh["drivetrain"] === "string")
+        insertRecord["drivetrain"] = newVeh["drivetrain"] || null;
+      for (const key of [
+        "state_province",
+        "odometer_unit",
+        "body_type",
+        "asset_type",
+        "status",
+        "purchase_date",
+        "in_service_date",
+        "last_service_date",
+        "tags",
+        "notes",
+      ] as const) {
+        if (typeof newVeh[key] === "string")
+          insertRecord[key] = newVeh[key] || null;
+      }
+
+      const duplicateCheck = await checkVehicleDuplicates({
+        vin: typeof insertRecord["vin"] === "string" ? insertRecord["vin"] : null,
+        licensePlate:
+          typeof insertRecord["license_plate"] === "string"
+            ? insertRecord["license_plate"]
+            : null,
+        unitNumber:
+          typeof insertRecord["unit_number"] === "string"
+            ? insertRecord["unit_number"]
+            : null,
+        customerId: customer.id,
+      });
+
+      const blockingMatch = duplicateCheck.matches.find(
+        (match) => match.match_type === "vin" && match.same_customer === false,
       );
-      return;
-    }
+      if (blockingMatch) {
+        showCreateVehicleError(
+          "This VIN is already assigned to another customer. Contact shop/admin to move vehicle.",
+        );
+        return;
+      }
 
-    const sameCustomerMatch = duplicateCheck.matches.find(
-      (match) => match.same_customer === true,
-    );
-    if (sameCustomerMatch) {
-      setViewError(
-        "Vehicle already exists for this customer. Open/edit the existing vehicle instead.",
+      const sameCustomerMatch = duplicateCheck.matches.find(
+        (match) => match.same_customer === true,
       );
-      setSelectedVehicleId(sameCustomerMatch.id);
+      if (sameCustomerMatch) {
+        showCreateVehicleError(
+          "Vehicle already exists for this customer. Open/edit the existing vehicle instead.",
+        );
+        setSelectedVehicleId(sameCustomerMatch.id);
+        return;
+      }
+
+      const { data, error } = await supabase
+        .from("vehicles")
+        .insert(insertRecord as DB["public"]["Tables"]["vehicles"]["Insert"])
+        .select("id")
+        .maybeSingle();
+
+      if (error) {
+        showCreateVehicleError(error.message);
+        return;
+      }
+
+      const newId = (data as Pick<Vehicle, "id"> | null)?.id ?? null;
+      if (newId) setSelectedVehicleId(newId);
       setAddVehicleOpen(false);
-      return;
+      try {
+        await fetchCustomerFile(customer.id);
+      } catch {
+        setViewError(
+          "Vehicle created, but the details could not refresh. Reload the customer page.",
+        );
+      }
+    } catch (error) {
+      showCreateVehicleError(
+        error instanceof Error ? error.message : "Could not create the vehicle. Please try again.",
+      );
+    } finally {
+      createVehicleInFlight.current = false;
+      setIsCreatingVehicle(false);
     }
-
-    const { data, error } = await supabase
-      .from("vehicles")
-      .insert(insertRecord as DB["public"]["Tables"]["vehicles"]["Insert"])
-      .select("id")
-      .maybeSingle();
-
-    if (error) {
-      setViewError(error.message);
-      return;
-    }
-
-    setAddVehicleOpen(false);
-    await fetchCustomerFile(customer.id);
-
-    const newId = (data as Pick<Vehicle, "id"> | null)?.id ?? null;
-    if (newId) setSelectedVehicleId(newId);
-  }, [customer, fetchCustomerFile, newVeh, supabase]);
+  }, [customer, fetchCustomerFile, newVeh, showCreateVehicleError, supabase]);
 
   // ------------------ DIRECTORY MODE ------------------
   if (isDirectoryMode || sp.get("mode") === "search") {
@@ -2376,7 +2719,10 @@ export default function CustomerProfilePage(): JSX.Element {
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => setAddVehicleOpen(true)}
+                    onClick={() => {
+                setCreateVehicleError(null);
+                setAddVehicleOpen(true);
+              }}
                     className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-[12px] font-semibold text-[color:var(--theme-text-primary)] hover:border-[var(--accent-copper-soft)]/65"
                   >
                     + Add vehicle
@@ -2969,8 +3315,8 @@ export default function CustomerProfilePage(): JSX.Element {
               Cancel
             </button>
             <button
-              type="button"
-              onClick={() => void saveVehicle()}
+              type="submit"
+              form="edit-vehicle-form"
               className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-[12px] font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110"
             >
               Save
@@ -2985,62 +3331,216 @@ export default function CustomerProfilePage(): JSX.Element {
             No vehicle selected.
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {(
-              [
-                ["Year", "year"],
-                ["Make", "make"],
-                ["Model", "model"],
-                ["Trim", "submodel"],
-                ["VIN", "vin"],
-                ["License plate", "license_plate"],
-                ["State / province", "state_province"],
-                ["Mileage / odometer", "mileage"],
-                ["Odometer unit", "odometer_unit"],
-                ["Unit #", "unit_number"],
-                ["Color", "color"],
-                ["Engine hours", "engine_hours"],
-                ["Engine", "engine"],
-                ["Engine type", "engine_type"],
-                ["Engine family", "engine_family"],
-                ["Transmission", "transmission"],
-                ["Transmission type", "transmission_type"],
-                ["Fuel type", "fuel_type"],
-                ["Body type", "body_type"],
-                ["Drive type", "drivetrain"],
-                ["Asset type", "asset_type"],
-                ["Status", "status"],
-                ["Purchase date", "purchase_date"],
-                ["In-service date", "in_service_date"],
-                ["Last service date", "last_service_date"],
-                ["Tags", "tags"],
-                ["Notes", "notes"],
-              ] as const
-            ).map(([label, key]) => (
-              <div key={key} className="space-y-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                  {label}
-                </div>
-                <input
-                  value={String(vehDraft[key] ?? "")}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    setVehDraft((p) => {
-                      if (key === "year" || key === "engine_hours") {
-                        const n = raw.trim().length ? Number(raw) : null;
-                        return {
-                          ...p,
-                          [key]: Number.isFinite(n as number) ? n : null,
-                        };
-                      }
-                      return { ...p, [key]: raw };
-                    });
-                  }}
-                  className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
-                />
-              </div>
-            ))}
-          </div>
+          <form
+            id="edit-vehicle-form"
+            className="space-y-3"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void saveVehicle();
+            }}
+            onKeyDown={moveToNextFormField}
+          >
+            <p className="text-xs text-[color:var(--theme-text-secondary)]">
+              Enter the odometer reading once, then choose km, mi, or hours.
+            </p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {(
+                [
+                  ["Year", "year"],
+                  ["Make", "make"],
+                  ["Model", "model"],
+                  ["Trim", "submodel"],
+                  ["VIN", "vin"],
+                  ["License plate", "license_plate"],
+                  ["State / province", "state_province"],
+                  ["Odometer reading", "mileage"],
+                  ["Unit #", "unit_number"],
+                  ["Color", "color"],
+                  ["Engine hours", "engine_hours"],
+                  ["Engine", "engine"],
+                  ["Engine type", "engine_type"],
+                  ["Engine family", "engine_family"],
+                  ["Transmission", "transmission"],
+                  ["Transmission type", "transmission_type"],
+                  ["Fuel type", "fuel_type"],
+                  ["Body type", "body_type"],
+                  ["Drive type", "drivetrain"],
+                  ["Asset type", "asset_type"],
+                  ["Status", "status"],
+                  ["Purchase date", "purchase_date"],
+                  ["In-service date", "in_service_date"],
+                  ["Last service date", "last_service_date"],
+                  ["Tags", "tags"],
+                  ["Notes", "notes"],
+                ] as const
+              ).map(([label, key]) => {
+                const dateField =
+                  key === "purchase_date" ||
+                  key === "in_service_date" ||
+                  key === "last_service_date";
+                const rawValue = String(vehDraft[key] ?? "");
+                const normalizedDate = dateField
+                  ? dateInputValue(vehDraft[key])
+                  : "";
+                const inputType =
+                  key === "year" || key === "mileage" || key === "engine_hours"
+                    ? "number"
+                    : dateField
+                      ? "date"
+                      : "text";
+                const selectOptions = VEHICLE_SELECT_OPTIONS[key];
+                const inputId = `edit-vehicle-${key}`;
+                return (
+                  <div key={key} className="space-y-1">
+                    <label
+                      htmlFor={inputId}
+                      className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]"
+                    >
+                      {label}
+                    </label>
+                    {key === "mileage" ? (
+                      <div className="flex gap-2">
+                        <input
+                          id={inputId}
+                          type="text"
+                          inputMode="decimal"
+                          enterKeyHint="next"
+                          value={String(vehDraft.mileage ?? "")}
+                          onChange={(event) =>
+                            setVehDraft((current) => ({
+                              ...current,
+                              mileage: event.target.value,
+                            }))
+                          }
+                          placeholder="e.g. 565000"
+                          className="min-w-0 flex-1 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                        />
+                        <select
+                          id="edit-vehicle-odometer-unit"
+                          aria-label="Odometer unit"
+                          value={String(vehDraft.odometer_unit ?? "")}
+                          onChange={(event) =>
+                            setVehDraft((current) => ({
+                              ...current,
+                              odometer_unit: event.target.value,
+                            }))
+                          }
+                          className="w-24 shrink-0 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                        >
+                          <option value="">Unit</option>
+                          <option value="km">km</option>
+                          <option value="mi">mi</option>
+                          <option value="hours">hours</option>
+                          {String(vehDraft.odometer_unit ?? "").trim() &&
+                          !["km", "mi", "hours"].includes(
+                            String(vehDraft.odometer_unit).toLowerCase(),
+                          ) ? (
+                            <option value={String(vehDraft.odometer_unit)}>
+                              {String(vehDraft.odometer_unit)} (existing)
+                            </option>
+                          ) : null}
+                        </select>
+                      </div>
+                    ) : selectOptions ? (
+                      <select
+                        id={inputId}
+                        value={rawValue}
+                        onChange={(event) =>
+                          setVehDraft((current) => ({
+                            ...current,
+                            [key]: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                      >
+                        <option value="">Select {label.toLowerCase()}</option>
+                        {selectOptions.map((option) => (
+                          <option key={option.value} value={option.value}>
+                            {option.label}
+                          </option>
+                        ))}
+                        {rawValue &&
+                        !hasVehicleSelectValue(selectOptions, rawValue) ? (
+                          <option value={rawValue}>{rawValue} (existing)</option>
+                        ) : null}
+                      </select>
+                    ) : key === "notes" ? (
+                      <textarea
+                        id={inputId}
+                        value={String(vehDraft[key] ?? "")}
+                        onChange={(event) =>
+                          setVehDraft((current) => ({
+                            ...current,
+                            [key]: event.target.value,
+                          }))
+                        }
+                        placeholder="Add relevant vehicle notes"
+                        rows={3}
+                        className="w-full resize-y rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                      />
+                    ) : (
+                      <input
+                        id={inputId}
+                        type={inputType}
+                        step={key === "engine_hours" ? "any" : undefined}
+                        inputMode={inputType === "number" ? "decimal" : undefined}
+                        enterKeyHint="next"
+                        autoCapitalize={key === "vin" ? "characters" : undefined}
+                        value={dateField ? normalizedDate : rawValue}
+                        onChange={(event) => {
+                          const raw = event.target.value;
+                          setVehDraft((current) => {
+                            if (key === "year" || key === "engine_hours") {
+                              const parsed = raw.trim() ? Number(raw) : null;
+                              return {
+                                ...current,
+                                [key]:
+                                  parsed === null || Number.isFinite(parsed)
+                                    ? parsed
+                                    : null,
+                              };
+                            }
+                            return { ...current, [key]: raw };
+                          });
+                        }}
+                        placeholder={
+                          dateField
+                            ? "e.g. 2023-09-15"
+                            : key === "vin"
+                              ? "17-character VIN, if applicable"
+                              : key === "year"
+                              ? "e.g. 2023"
+                              : key === "make"
+                                ? "e.g. Western Star"
+                                : key === "model"
+                                  ? "e.g. 4900"
+                                  : key === "license_plate"
+                                    ? "e.g. ABCD123"
+                                    : key === "state_province"
+                                      ? "e.g. Alberta"
+                                      : key === "engine_hours"
+                                        ? "e.g. 6432"
+                                        : key === "tags"
+                                          ? "Separate multiple tags with commas"
+                                          : undefined
+                        }
+                        className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                      />
+                    )}
+                    {key === "vin" ? (
+                      <p className="text-[11px] text-[color:var(--theme-text-muted)]">
+                        Some off-road equipment uses a shorter serial number.
+                      </p>
+                    ) : key === "engine_hours" ? (
+                      <p className="text-[11px] text-[color:var(--theme-text-muted)]">
+                        Separate from odometer distance.
+                      </p>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          </form>
         )}
       </Modal>
 
@@ -3048,23 +3548,26 @@ export default function CustomerProfilePage(): JSX.Element {
       <Modal
         title="Add vehicle"
         open={addVehicleOpen}
-        onClose={() => setAddVehicleOpen(false)}
+        onClose={() => {
+          if (!isCreatingVehicle) setAddVehicleOpen(false);
+        }}
         footer={
           <>
             <button
               type="button"
               onClick={() => setAddVehicleOpen(false)}
-              className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-[12px] font-semibold text-[color:var(--theme-text-primary)] hover:border-[color:var(--theme-border-soft)]"
+              disabled={isCreatingVehicle}
+              className="rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-4 py-2 text-[12px] font-semibold text-[color:var(--theme-text-primary)] hover:border-[color:var(--theme-border-soft)] disabled:cursor-not-allowed disabled:opacity-60"
             >
               Cancel
             </button>
             <button
-              type="button"
-              onClick={() => void createVehicle()}
-              className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-[12px] font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110"
-              disabled={!customer}
+              type="submit"
+              form="add-vehicle-form"
+              className="rounded-xl bg-[linear-gradient(to_right,var(--accent-copper-soft),var(--accent-copper))] px-4 py-2 text-[12px] font-semibold text-[color:var(--theme-text-on-accent)] shadow-[0_0_22px_rgba(212,118,49,0.75)] hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+              disabled={!customer || isCreatingVehicle}
             >
-              Create
+              {isCreatingVehicle ? "Creating…" : "Create"}
             </button>
           </>
         }
@@ -3076,62 +3579,216 @@ export default function CustomerProfilePage(): JSX.Element {
             No customer loaded.
           </div>
         ) : (
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {(
-              [
-                ["Year", "year"],
-                ["Make", "make"],
-                ["Model", "model"],
-                ["Trim", "submodel"],
-                ["VIN", "vin"],
-                ["License plate", "license_plate"],
-                ["State / province", "state_province"],
-                ["Mileage / odometer", "mileage"],
-                ["Odometer unit", "odometer_unit"],
-                ["Unit #", "unit_number"],
-                ["Color", "color"],
-                ["Engine hours", "engine_hours"],
-                ["Engine", "engine"],
-                ["Engine type", "engine_type"],
-                ["Engine family", "engine_family"],
-                ["Transmission", "transmission"],
-                ["Transmission type", "transmission_type"],
-                ["Fuel type", "fuel_type"],
-                ["Body type", "body_type"],
-                ["Drive type", "drivetrain"],
-                ["Asset type", "asset_type"],
-                ["Status", "status"],
-                ["Purchase date", "purchase_date"],
-                ["In-service date", "in_service_date"],
-                ["Last service date", "last_service_date"],
-                ["Tags", "tags"],
-                ["Notes", "notes"],
-              ] as const
-            ).map(([label, key]) => (
-              <div key={key} className="space-y-1">
-                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                  {label}
-                </div>
-                <input
-                  value={String(newVeh[key] ?? "")}
-                  onChange={(e) => {
-                    const raw = e.target.value;
-                    setNewVeh((p) => {
-                      if (key === "year" || key === "engine_hours") {
-                        const n = raw.trim().length ? Number(raw) : null;
-                        return {
-                          ...p,
-                          [key]: Number.isFinite(n as number) ? n : null,
-                        };
-                      }
-                      return { ...p, [key]: raw };
-                    });
-                  }}
-                  className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
-                />
+          <form
+            id="add-vehicle-form"
+            className="space-y-4"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void createVehicle();
+            }}
+            onKeyDown={moveToNextFormField}
+          >
+            {createVehicleError ? (
+              <div
+                ref={createVehicleErrorRef}
+                role="alert"
+                aria-live="assertive"
+                tabIndex={-1}
+                className="rounded-xl border border-rose-400/50 bg-rose-50 px-3 py-2 text-sm text-rose-900 outline-none focus:ring-2 focus:ring-rose-500 dark:bg-rose-950/30 dark:text-rose-100"
+              >
+                {createVehicleError}
               </div>
+            ) : null}
+            <p className="text-xs text-[color:var(--theme-text-secondary)]">
+              Year, make, and model are helpful. Other details are optional.
+            </p>
+
+            {([
+              {
+                title: "Vehicle basics",
+                fields: [
+                  { label: "Year", key: "year", type: "number", placeholder: "e.g. 2023", hint: "Model year", min: "1900", max: "2100" },
+                  { label: "Make", key: "make", type: "text", placeholder: "e.g. Western Star", hint: "" },
+                  { label: "Model", key: "model", type: "text", placeholder: "e.g. 4900", hint: "" },
+                  { label: "Trim", key: "submodel", type: "text", placeholder: "Optional trim or submodel", hint: "" },
+                ],
+              },
+              {
+                title: "Identifiers",
+                fields: [
+                  { label: "VIN", key: "vin", type: "text", placeholder: "17-character VIN, if applicable", hint: "Some off-road equipment uses a shorter serial number." },
+                  { label: "License plate", key: "license_plate", type: "text", placeholder: "e.g. ABCD123", hint: "" },
+                  { label: "State / province", key: "state_province", type: "text", placeholder: "e.g. Alberta", hint: "" },
+                  { label: "Unit #", key: "unit_number", type: "text", placeholder: "e.g. 13", hint: "" },
+                ],
+              },
+              {
+                title: "Usage and appearance",
+                fields: [
+                  { label: "Odometer reading", key: "mileage", type: "number", placeholder: "e.g. 565000 or 565000.5", hint: "Enter a reading; choose a unit if it is known.", min: "0", step: "any" },
+                  { label: "Color", key: "color", type: "text", placeholder: "e.g. White", hint: "" },
+                  { label: "Engine hours", key: "engine_hours", type: "number", placeholder: "e.g. 6432", hint: "Keep separate from the odometer reading.", min: "0", step: "any" },
+                  { label: "Tags", key: "tags", type: "text", placeholder: "e.g. seasonal, loaner", hint: "Separate multiple tags with commas.", wide: true },
+                ],
+              },
+              {
+                title: "Powertrain and type",
+                fields: [
+                  { label: "Engine", key: "engine", type: "text", placeholder: "e.g. DD15", hint: "" },
+                  { label: "Engine type", key: "engine_type", type: "text", placeholder: "e.g. Diesel", hint: "" },
+                  { label: "Engine family", key: "engine_family", type: "text", placeholder: "e.g. Detroit DD15", hint: "" },
+                  { label: "Transmission", key: "transmission", type: "text", placeholder: "e.g. Allison", hint: "" },
+                  { label: "Transmission type", key: "transmission_type", type: "text", placeholder: "e.g. Automatic", hint: "" },
+                  { label: "Fuel type", key: "fuel_type", type: "text", placeholder: "e.g. Diesel", hint: "" },
+                  { label: "Body type", key: "body_type", type: "text", placeholder: "e.g. Truck", hint: "" },
+                  { label: "Drive type", key: "drivetrain", type: "text", placeholder: "e.g. 4x4 or RWD", hint: "" },
+                  { label: "Asset type", key: "asset_type", type: "text", placeholder: "e.g. Truck, forklift, excavator", hint: "" },
+                ],
+              },
+              {
+                title: "Dates and notes",
+                fields: [
+                  { label: "Status", key: "status", type: "text", placeholder: "e.g. Active", hint: "" },
+                  { label: "Purchase date", key: "purchase_date", type: "date", placeholder: "", hint: "" },
+                  { label: "In-service date", key: "in_service_date", type: "date", placeholder: "", hint: "" },
+                  { label: "Last service date", key: "last_service_date", type: "date", placeholder: "", hint: "" },
+                  { label: "Notes", key: "notes", type: "text", placeholder: "Add relevant vehicle notes", hint: "", wide: true },
+                ],
+              },
+            ] as const).map((group) => (
+              <fieldset
+                key={group.title}
+                className="rounded-xl border border-[color:var(--desktop-border)] p-3"
+              >
+                <legend className="px-1 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+                  {group.title}
+                </legend>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  {group.fields.map((field) => (
+                    <div
+                      key={field.key}
+                      className={`space-y-1 ${"wide" in field && field.wide ? "sm:col-span-2" : ""}`}
+                    >
+                      <label
+                        htmlFor={`new-vehicle-${field.key}`}
+                        className="block text-[11px] font-semibold uppercase tracking-[0.14em] text-[color:var(--theme-text-secondary)]"
+                      >
+                        {field.label}
+                      </label>
+                      {field.key === "notes" ? (
+                        <textarea
+                          id={`new-vehicle-${field.key}`}
+                          value={String(newVeh[field.key] ?? "")}
+                          onChange={(event) =>
+                            setNewVeh((current) => ({
+                              ...current,
+                              [field.key]: event.target.value,
+                            }))
+                          }
+                          placeholder={field.placeholder}
+                          rows={3}
+                          className="w-full resize-y rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                        />
+                      ) : VEHICLE_SELECT_OPTIONS[field.key] ? (
+                        <select
+                          id={`new-vehicle-${field.key}`}
+                          value={String(newVeh[field.key] ?? "")}
+                          onChange={(event) =>
+                            setNewVeh((current) => ({
+                              ...current,
+                              [field.key]: event.target.value,
+                            }))
+                          }
+                          className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                        >
+                          <option value="">
+                            Select {field.label.toLowerCase()}
+                          </option>
+                          {VEHICLE_SELECT_OPTIONS[field.key].map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : field.key === "mileage" ? (
+                        <div className="flex gap-2">
+                          <input
+                            id="new-vehicle-mileage"
+                            type="number"
+                            min="0"
+                            step="any"
+                            inputMode="decimal"
+                            enterKeyHint="next"
+                            value={String(newVeh.mileage ?? "")}
+                            onChange={(event) =>
+                              setNewVeh((current) => ({
+                                ...current,
+                                mileage: event.target.value,
+                              }))
+                            }
+                            placeholder={field.placeholder}
+                            className="min-w-0 flex-1 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                          />
+                          <select
+                            id="new-vehicle-odometer-unit"
+                            aria-label="Odometer unit"
+                            value={String(newVeh.odometer_unit ?? "")}
+                            onChange={(event) =>
+                              setNewVeh((current) => ({
+                                ...current,
+                                odometer_unit: event.target.value,
+                              }))
+                            }
+                            className="w-24 shrink-0 rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-2 text-sm text-[color:var(--theme-text-primary)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                          >
+                            <option value="">Unit</option>
+                            <option value="km">km</option>
+                            <option value="mi">mi</option>
+                            <option value="hours">hours</option>
+                          </select>
+                        </div>
+                      ) : (
+                        <input
+                          id={`new-vehicle-${field.key}`}
+                          type={field.type}
+                          min={"min" in field ? field.min : undefined}
+                          max={"max" in field ? field.max : undefined}
+                          step={"step" in field ? field.step : undefined}
+                          inputMode={field.type === "number" ? "decimal" : undefined}
+                          enterKeyHint="next"
+                          autoCapitalize={field.key === "vin" ? "characters" : undefined}
+                          value={String(newVeh[field.key] ?? "")}
+                          onChange={(event) => {
+                            const raw = event.target.value;
+                            setNewVeh((current) => {
+                              if (field.key === "year" || field.key === "engine_hours") {
+                                const parsed = raw.trim() ? Number(raw) : null;
+                                return {
+                                  ...current,
+                                  [field.key]:
+                                    parsed === null || Number.isFinite(parsed)
+                                      ? parsed
+                                      : null,
+                                };
+                              }
+                              return { ...current, [field.key]: raw };
+                            });
+                          }}
+                          placeholder={field.placeholder || undefined}
+                          className="w-full rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-2 text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-copper-soft)]"
+                        />
+                      )}
+                      {field.hint ? (
+                        <p className="text-[11px] text-[color:var(--theme-text-muted)]">
+                          {field.hint}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              </fieldset>
             ))}
-          </div>
+          </form>
         )}
       </Modal>
     </PageShell>
