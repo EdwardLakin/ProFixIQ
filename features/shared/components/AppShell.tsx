@@ -128,6 +128,11 @@ export default function AppShell({
   const [headerShiftState, setHeaderShiftState] =
     useState<MobileShiftState | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
+  const [pwaUpdate, setPwaUpdate] = useState({
+    ready: false,
+    activating: false,
+    pending: 0,
+  });
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [incomingConvoId, setIncomingConvoId] = useState<string | null>(null);
   const [incomingConvoRequestId, setIncomingConvoRequestId] = useState(0);
@@ -178,6 +183,31 @@ export default function AppShell({
   const showBillingBadge = isBillingAttentionStatus(subStatus);
 
   const billingHref = "/dashboard/owner/settings#billing";
+
+  useEffect(() => {
+    const onRuntimeStatus = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{
+          updateReady?: boolean;
+          activatingUpdate?: boolean;
+          pending?: number;
+        }>
+      ).detail;
+      setPwaUpdate({
+        ready: Boolean(detail?.updateReady),
+        activating: Boolean(detail?.activatingUpdate),
+        pending: detail?.pending ?? 0,
+      });
+    };
+    window.addEventListener("profixiq:pwa-runtime-status", onRuntimeStatus);
+    window.dispatchEvent(new Event("profixiq:pwa-runtime-status-request"));
+    return () => {
+      window.removeEventListener(
+        "profixiq:pwa-runtime-status",
+        onRuntimeStatus,
+      );
+    };
+  }, []);
 
   const loadInboxUnreadCount = useCallback(async () => {
     const generation = ++inboxRequestGeneration.current;
@@ -708,6 +738,30 @@ export default function AppShell({
                       : headerShiftState?.activity === "on_lunch"
                         ? "Lunch"
                         : "Shift"}
+                </ActionButton>
+              ) : null}
+
+              {pwaUpdate.ready ? (
+                <ActionButton
+                  onClick={() => {
+                    if (pwaUpdate.activating || pwaUpdate.pending > 0) return;
+                    window.dispatchEvent(
+                      new Event("profixiq:pwa-update-request"),
+                    );
+                  }}
+                  title={
+                    pwaUpdate.pending > 0
+                      ? "Finish syncing offline changes before updating"
+                      : "A new version is ready. Tap to update and reload."
+                  }
+                >
+                  <span>
+                    {pwaUpdate.activating
+                      ? "Updating…"
+                      : pwaUpdate.pending > 0
+                        ? "Sync first"
+                        : "Update"}
+                  </span>
                 </ActionButton>
               ) : null}
 
