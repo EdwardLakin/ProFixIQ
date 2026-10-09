@@ -66,6 +66,13 @@ type VehicleRow = {
   created_at?: string | null;
 };
 
+type CustomerSearchField =
+  | "business_name"
+  | "first_name"
+  | "last_name"
+  | "phone"
+  | "email";
+
 /** ✅ Public props are serializable */
 interface Props {
   customer: CustomerInfo;
@@ -504,6 +511,10 @@ export default function CustomerVehicleForm({
   const [customerSearchSuspended, setCustomerSearchSuspended] = useState(
     Boolean(selectedCustomerId),
   );
+  const [activeCustomerSearchField, setActiveCustomerSearchField] =
+    useState<CustomerSearchField | null>(null);
+  const [customerVehicles, setCustomerVehicles] = useState<VehicleRow[]>([]);
+  const [customerVehiclesLoading, setCustomerVehiclesLoading] = useState(false);
   const [duplicateMatches, setDuplicateMatches] = useState<
     VehicleDuplicateMatch[]
   >([]);
@@ -512,7 +523,49 @@ export default function CustomerVehicleForm({
   useEffect(() => {
     setCurrentCustomerId(selectedCustomerId);
     setCustomerSearchSuspended(Boolean(selectedCustomerId));
+    setActiveCustomerSearchField(null);
   }, [selectedCustomerId]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!shopId) {
+      setCustomerVehicles([]);
+      setCustomerVehiclesLoading(false);
+      return;
+    }
+
+    setCustomerVehiclesLoading(true);
+
+    void (async () => {
+      try {
+        let query = supabase
+          .from("vehicles")
+          .select(
+            "id, unit_number, license_plate, vin, year, make, model, mileage, color, engine_hours, engine, submodel, engine_family, engine_type, transmission, transmission_type, fuel_type, drivetrain, customer_id, created_at",
+          )
+          .eq("shop_id", shopId)
+          .order("created_at", { ascending: false })
+          .limit(100);
+
+        if (currentCustomerId) {
+          query = query.eq("customer_id", currentCustomerId);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+        if (!cancelled) setCustomerVehicles((data ?? []) as VehicleRow[]);
+      } catch {
+        if (!cancelled) setCustomerVehicles([]);
+      } finally {
+        if (!cancelled) setCustomerVehiclesLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentCustomerId, shopId, supabase]);
 
   const safeSetCustomer = useCallback(
     (field: keyof CustomerInfo, value: string | null | undefined) => {
@@ -623,6 +676,7 @@ export default function CustomerVehicleForm({
     pickedVehicle: VehicleRow | null = null,
   ) {
     setCustomerSearchSuspended(true);
+    setActiveCustomerSearchField(null);
 
     const applyCustomer = (picked: CustomerRow) => {
       const fields = hydrateCustomerFields(picked);
@@ -804,13 +858,17 @@ export default function CustomerVehicleForm({
                 value={customer.business_name ?? ""}
                 onChange={(e) => {
                   setCustomerSearchSuspended(false);
+                  setActiveCustomerSearchField("business_name");
                   safeSetCustomer("business_name", e.target.value || null);
                 }}
               />
               <CustomerAutocomplete
                 q={customer.business_name ?? ""}
                 shopId={shopId}
-                suspended={customerSearchSuspended}
+                suspended={
+                  customerSearchSuspended ||
+                  activeCustomerSearchField !== "business_name"
+                }
                 onPick={({
                   customer: pickedCustomer,
                   vehicle: pickedVehicle,
@@ -829,13 +887,17 @@ export default function CustomerVehicleForm({
                 value={customer.first_name ?? ""}
                 onChange={(e) => {
                   setCustomerSearchSuspended(false);
+                  setActiveCustomerSearchField("first_name");
                   safeSetCustomer("first_name", e.target.value || null);
                 }}
               />
               <CustomerAutocomplete
                 q={customer.first_name ?? ""}
                 shopId={shopId}
-                suspended={customerSearchSuspended}
+                suspended={
+                  customerSearchSuspended ||
+                  activeCustomerSearchField !== "first_name"
+                }
                 onPick={({
                   customer: pickedCustomer,
                   vehicle: pickedVehicle,
@@ -854,13 +916,17 @@ export default function CustomerVehicleForm({
                 value={customer.last_name ?? ""}
                 onChange={(e) => {
                   setCustomerSearchSuspended(false);
+                  setActiveCustomerSearchField("last_name");
                   safeSetCustomer("last_name", e.target.value || null);
                 }}
               />
               <CustomerAutocomplete
                 q={customer.last_name ?? ""}
                 shopId={shopId}
-                suspended={customerSearchSuspended}
+                suspended={
+                  customerSearchSuspended ||
+                  activeCustomerSearchField !== "last_name"
+                }
                 onPick={({
                   customer: pickedCustomer,
                   vehicle: pickedVehicle,
@@ -879,13 +945,17 @@ export default function CustomerVehicleForm({
                 value={customer.phone ?? ""}
                 onChange={(e) => {
                   setCustomerSearchSuspended(false);
+                  setActiveCustomerSearchField("phone");
                   safeSetCustomer("phone", e.target.value || null);
                 }}
               />
               <CustomerAutocomplete
                 q={customer.phone ?? ""}
                 shopId={shopId}
-                suspended={customerSearchSuspended}
+                suspended={
+                  customerSearchSuspended ||
+                  activeCustomerSearchField !== "phone"
+                }
                 onPick={({
                   customer: pickedCustomer,
                   vehicle: pickedVehicle,
@@ -905,13 +975,17 @@ export default function CustomerVehicleForm({
                 value={customer.email ?? ""}
                 onChange={(e) => {
                   setCustomerSearchSuspended(false);
+                  setActiveCustomerSearchField("email");
                   safeSetCustomer("email", e.target.value || null);
                 }}
               />
               <CustomerAutocomplete
                 q={customer.email ?? ""}
                 shopId={shopId}
-                suspended={customerSearchSuspended}
+                suspended={
+                  customerSearchSuspended ||
+                  activeCustomerSearchField !== "email"
+                }
                 onPick={({
                   customer: pickedCustomer,
                   vehicle: pickedVehicle,
@@ -1001,10 +1075,59 @@ export default function CustomerVehicleForm({
                 ) : null}
               </div>
               <p className="mt-0.5 text-xs text-[color:var(--theme-text-muted)]">
-                Search by unit or plate, or enter only the details available
-                now.
+                Pick a saved vehicle, search by unit or plate, or enter only the
+                details available now.
               </p>
             </div>
+          </div>
+
+          <div className="space-y-1">
+            <label className={labelClass}>Select existing vehicle</label>
+            <select
+              className={intakeFieldClass}
+              value={
+                selectedVehicleId &&
+                customerVehicles.some((option) => option.id === selectedVehicleId)
+                  ? selectedVehicleId
+                  : ""
+              }
+              disabled={!shopId || customerVehiclesLoading}
+              onChange={(e) => {
+                const pickedVehicle = customerVehicles.find(
+                  (option) => option.id === e.target.value,
+                );
+                if (pickedVehicle) void handlePickedVehicle(pickedVehicle);
+              }}
+            >
+              <option value="">
+                {customerVehiclesLoading
+                  ? "Loading vehicles…"
+                  : customerVehicles.length === 0
+                    ? currentCustomerId
+                      ? "No saved vehicles for this customer"
+                      : "No saved vehicles"
+                    : currentCustomerId
+                      ? "Choose this customer's vehicle"
+                      : "Choose a vehicle"}
+              </option>
+              {customerVehicles.map((option) => {
+                const optionLabel = [
+                  option.unit_number ? `Unit ${option.unit_number}` : null,
+                  option.license_plate ? `Plate ${option.license_plate}` : null,
+                  [option.year, option.make, option.model]
+                    .filter(Boolean)
+                    .join(" "),
+                ]
+                  .filter(Boolean)
+                  .join(" · ");
+
+                return (
+                  <option key={option.id} value={option.id}>
+                    {optionLabel || option.vin || "Vehicle"}
+                  </option>
+                );
+              })}
+            </select>
           </div>
 
           {duplicateWarning && (
