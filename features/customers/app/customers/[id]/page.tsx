@@ -1693,6 +1693,7 @@ export default function CustomerProfilePage(): JSX.Element {
   });
   const [isCreatingVehicle, setIsCreatingVehicle] = useState(false);
   const [createVehicleError, setCreateVehicleError] = useState<string | null>(null);
+  const createVehicleInFlight = useRef(false);
 
   const createVehicle = useCallback(async () => {
     if (!customer?.id || createVehicleInFlight.current) return;
