@@ -34,7 +34,7 @@ async function recordCustomerPortalInviteDeliveryFailure(input: {
   try {
     const { data: existingLog, error: lookupError } = await supabaseAdmin
       .from("email_logs")
-      .select("id")
+      .select("id,status")
       .eq("shop_id", input.shopId)
       .eq("template_key", "portal_invite")
       .eq("to_email", input.email)
@@ -43,7 +43,23 @@ async function recordCustomerPortalInviteDeliveryFailure(input: {
       .limit(1)
       .maybeSingle();
     if (lookupError) throw lookupError;
-    if (existingLog?.id) return;
+    if (existingLog?.id) {
+      // The sender records a queued row before calling SendGrid. If its own
+      // best-effort failure update also failed, reconcile this attempt so it
+      // cannot remain "sending" forever. Preserve any concurrent provider event.
+      if (existingLog.status === "queued") {
+        const { error: updateError } = await supabaseAdmin
+          .from("email_logs")
+          .update({
+            status: "failed",
+            error_text: "The invitation email could not be prepared or submitted.",
+          })
+          .eq("id", existingLog.id)
+          .eq("status", "queued");
+        if (updateError) throw updateError;
+      }
+      return;
+    }
 
     const { error: insertError } = await supabaseAdmin.from("email_logs").insert({
       shop_id: input.shopId,
