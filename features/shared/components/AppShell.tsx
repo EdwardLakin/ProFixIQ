@@ -10,6 +10,8 @@ import type { Database } from "@shared/types/types/supabase";
 
 import RoleSidebar from "@/features/shared/components/RoleSidebar";
 import ShiftTracker from "@shared/components/ShiftTracker";
+import ActionButton from "@/features/shared/components/ActionButton";
+import PwaUpdateButton from "@/features/shared/components/pwa/PwaUpdateButton";
 import {
   fetchMobileShiftState,
   type MobileShiftState,
@@ -37,30 +39,6 @@ import {
 import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
 
 const HEADER_OFFSET_DESKTOP = "pt-14";
-
-const ActionButton = ({
-  onClick,
-  children,
-  title,
-}: {
-  onClick?: () => void;
-  children: React.ReactNode;
-  title?: string;
-}) => (
-  <button
-    type="button"
-    onClick={onClick}
-    title={title}
-    className="app-shell-action inline-flex h-8 items-center justify-center gap-1.5 rounded-md border px-2.5 text-xs font-medium shadow-sm backdrop-blur-md transition-colors"
-    style={{
-      borderColor: "var(--theme-border-soft)",
-      background: "var(--theme-gradient-panel)",
-      color: "var(--theme-text-primary)",
-    }}
-  >
-    {children}
-  </button>
-);
 
 type ShopBillingScope = Pick<
   Database["public"]["Tables"]["shops"]["Row"],
@@ -128,11 +106,6 @@ export default function AppShell({
   const [headerShiftState, setHeaderShiftState] =
     useState<MobileShiftState | null>(null);
   const [chatOpen, setChatOpen] = useState(false);
-  const [pwaUpdate, setPwaUpdate] = useState({
-    ready: false,
-    activating: false,
-    pending: 0,
-  });
   const [agentDialogOpen, setAgentDialogOpen] = useState(false);
   const [incomingConvoId, setIncomingConvoId] = useState<string | null>(null);
   const [incomingConvoRequestId, setIncomingConvoRequestId] = useState(0);
@@ -183,31 +156,6 @@ export default function AppShell({
   const showBillingBadge = isBillingAttentionStatus(subStatus);
 
   const billingHref = "/dashboard/owner/settings#billing";
-
-  useEffect(() => {
-    const onRuntimeStatus = (event: Event) => {
-      const detail = (
-        event as CustomEvent<{
-          updateReady?: boolean;
-          activatingUpdate?: boolean;
-          pending?: number;
-        }>
-      ).detail;
-      setPwaUpdate({
-        ready: Boolean(detail?.updateReady),
-        activating: Boolean(detail?.activatingUpdate),
-        pending: detail?.pending ?? 0,
-      });
-    };
-    window.addEventListener("profixiq:pwa-runtime-status", onRuntimeStatus);
-    window.dispatchEvent(new Event("profixiq:pwa-runtime-status-request"));
-    return () => {
-      window.removeEventListener(
-        "profixiq:pwa-runtime-status",
-        onRuntimeStatus,
-      );
-    };
-  }, []);
 
   const loadInboxUnreadCount = useCallback(async () => {
     const generation = ++inboxRequestGeneration.current;
@@ -741,29 +689,7 @@ export default function AppShell({
                 </ActionButton>
               ) : null}
 
-              {pwaUpdate.ready ? (
-                <ActionButton
-                  onClick={() => {
-                    if (pwaUpdate.activating || pwaUpdate.pending > 0) return;
-                    window.dispatchEvent(
-                      new Event("profixiq:pwa-update-request"),
-                    );
-                  }}
-                  title={
-                    pwaUpdate.pending > 0
-                      ? "Finish syncing offline changes before updating"
-                      : "A new version is ready. Tap to update and reload."
-                  }
-                >
-                  <span>
-                    {pwaUpdate.activating
-                      ? "Updating…"
-                      : pwaUpdate.pending > 0
-                        ? "Sync first"
-                        : "Update"}
-                  </span>
-                </ActionButton>
-              ) : null}
+              <PwaUpdateButton />
 
               <ActionButton onClick={() => setChatOpen(true)} title="Inbox">
                 <span>Inbox</span>
