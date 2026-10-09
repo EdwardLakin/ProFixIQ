@@ -11,6 +11,7 @@ vi.mock("@/features/shared/lib/server/openai", () => ({
 vi.mock("@/features/shared/lib/server/openai-models", () => ({
   getOpenAIModelForPurpose: () => "test-model",
   openAITemperatureParam: () => ({}),
+  openAIReasoningEffortParam: () => ({ reasoning_effort: "low" }),
 }));
 
 import { generateMaintenanceRulesForVehicle } from "./generateMaintenanceRules";
@@ -133,6 +134,53 @@ describe("generateMaintenanceRulesForVehicle", () => {
         ],
       }),
     );
+  });
+
+  it("sends a GPT-5-compatible request: max_completion_tokens, no max_tokens", async () => {
+    await generateMaintenanceRulesForVehicle({
+      supabase: makeClient({ calls: [] }),
+      writeClient: makeClient({ calls: [] }),
+      year: 2023,
+      make: "Western Star",
+      model: "4900",
+    });
+
+    const body = create.mock.calls[0][0] as Record<string, unknown>;
+    expect(body).not.toHaveProperty("max_tokens");
+    expect(body.max_completion_tokens).toBe(4000);
+    expect(body.reasoning_effort).toBe("low");
+  });
+
+  it("fails loudly when the schedule is cut off by the token limit", async () => {
+    create.mockResolvedValue({
+      choices: [
+        { finish_reason: "length", message: { content: '{"services":[{"code":' } },
+      ],
+    });
+
+    await expect(
+      generateMaintenanceRulesForVehicle({
+        supabase: makeClient({ calls: [] }),
+        writeClient: makeClient({ calls: [] }),
+        year: 2023,
+        make: "Western Star",
+        model: "4900",
+      }),
+    ).rejects.toThrow(/cut off/);
+  });
+
+  it("fails loudly when the model returns no content", async () => {
+    create.mockResolvedValue({ choices: [{ message: { content: "" } }] });
+
+    await expect(
+      generateMaintenanceRulesForVehicle({
+        supabase: makeClient({ calls: [] }),
+        writeClient: makeClient({ calls: [] }),
+        year: 2023,
+        make: "Western Star",
+        model: "4900",
+      }),
+    ).rejects.toThrow(/empty maintenance schedule/);
   });
 
   it("maps generated services onto catalog codes and labels", async () => {

@@ -2,7 +2,10 @@
 import { aiBudgetStopResponse, isAIBudgetStop } from "@/features/shared/lib/server/ai-governance";
 import "server-only";
 import { NextResponse } from "next/server";
-import { createServerSupabaseRSC } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRSC,
+} from "@/features/shared/lib/supabase/server";
 import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import { generateMaintenanceRulesForVehicle } from "@/features/maintenance/server/generateMaintenanceRules";
 
@@ -102,6 +105,10 @@ export async function POST(req: Request) {
       () =>
         generateMaintenanceRulesForVehicle({
           supabase,
+          // maintenance_rules / maintenance_services are read-only to
+          // `authenticated`; the caller was authorized above, so write the
+          // shared catalog rows with the service role.
+          writeClient: createAdminSupabase(),
           year: body.year as number,
           make: body.make as string,
           model: body.model as string,
@@ -126,6 +133,7 @@ export async function POST(req: Request) {
     }
     const message =
       e instanceof Error ? e.message : "Failed to generate maintenance rules";
+    console.error("[maintenance] generate-rules failed", { error: message });
     return NextResponse.json({ error: message }, { status: 500 });
   }
 }

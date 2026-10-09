@@ -13,7 +13,7 @@ import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetr
 import { generateMaintenanceRulesForVehicle } from "./generateMaintenanceRules";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
-const SCHEDULE_GENERATION_TIMEOUT_MS = 8000;
+const SCHEDULE_GENERATION_TIMEOUT_MS = 20_000;
 
 function parseMileage(value: string | number | null | undefined): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -278,9 +278,18 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
             timeoutMs: SCHEDULE_GENERATION_TIMEOUT_MS,
           }),
       );
-    } catch {
+    } catch (error) {
       // Best-effort: if AI schedule generation fails, fall back to whatever
-      // rules already exist rather than blocking suggestions entirely.
+      // rules already exist rather than blocking suggestions entirely. Log it,
+      // otherwise the generic fallback rules look like a real schedule.
+      console.error("[maintenance] schedule generation failed", {
+        vehicleId: vehicle.id,
+        year: vehicle.year,
+        make: trimmedVehicleMake,
+        model: trimmedVehicleModel,
+        engineFamily: vehicle.engine_family ?? null,
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 

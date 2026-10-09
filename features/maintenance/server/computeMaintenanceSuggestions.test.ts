@@ -153,7 +153,7 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
         model: "Flatbed",
         engineFamily: null,
         writeClient: adminClient,
-        timeoutMs: 8000,
+        timeoutMs: 20_000,
       }),
     );
   });

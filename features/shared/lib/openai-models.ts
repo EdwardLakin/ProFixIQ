@@ -82,6 +82,22 @@ export function supportsOpenAITemperature(model: string): boolean {
   );
 }
 
+/**
+ * GPT-5 reasoning models spend completion tokens on hidden reasoning before
+ * they write any output, so structured-output calls should ask for low effort.
+ * Models that do not take the parameter (o-series, non-reasoning chat models)
+ * get nothing.
+ */
+export function openAIReasoningEffortParam(
+  model: string,
+  effort: "low" | "medium" | "high" = "low",
+): { reasoning_effort: "low" | "medium" | "high" } | Record<string, never> {
+  const normalized = model.trim().toLowerCase();
+  const isGpt5Reasoning =
+    normalized.startsWith("gpt-5") && !normalized.includes("chat");
+  return isGpt5Reasoning ? { reasoning_effort: effort } : {};
+}
+
 export function openAITemperatureParam(
   model: string,
   temperature: number,

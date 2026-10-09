@@ -825,7 +825,15 @@ export default function CustomerVehicleForm({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ year, make, model, engineFamily }),
-      }).catch(() => {});
+      })
+        .then((res) => {
+          if (!res.ok) {
+            console.warn("Maintenance schedule generation failed", res.status);
+          }
+        })
+        .catch((err) => {
+          console.warn("Maintenance schedule generation failed", err);
+        });
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("Save & rule generation failed", err);
