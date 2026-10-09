@@ -27,7 +27,6 @@ export function customerPortalInviteDeliveryState(
     case "bounced":
     case "dropped":
       return "not_delivered";
-    case "failed":
     case "spamreport":
     case "unsubscribe":
     case "group_unsubscribe":
@@ -46,6 +45,8 @@ export function customerPortalInviteDeliveryState(
     case "processed":
     case "deferred":
       return "awaiting_delivery";
+    case "failed":
+      return "delivery_issue";
     default:
       return "delivery_unknown";
   }
