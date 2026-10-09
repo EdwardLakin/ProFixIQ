@@ -489,7 +489,7 @@ function moveToNextFormField(event: React.KeyboardEvent<HTMLFormElement>) {
     form.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(
       'input:not([disabled]), select:not([disabled]), textarea:not([disabled])',
     ),
-  ).filter((field) => !field.readOnly);
+  ).filter((field) => !("readOnly" in field) || !field.readOnly);
   const currentIndex = fields.indexOf(current);
   const next = fields[currentIndex + 1];
   if (next) {
