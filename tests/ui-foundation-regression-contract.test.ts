@@ -5,6 +5,7 @@ const read = (path: string) => readFileSync(path, "utf8");
 
 const globals = read("app/globals.css");
 const appShell = read("features/shared/components/AppShell.tsx");
+const actionButton = read("features/shared/components/ActionButton.tsx");
 const operationalSwitcher = read(
   "features/dashboard/components/OperationalViewSwitcher.tsx",
 );
@@ -44,7 +45,10 @@ describe("premium UI foundation regressions", () => {
     expect(globals).toContain(
       'html[data-theme-mode="light"] .app-shell-action',
     );
-    expect(appShell).toContain("app-shell-action");
+    expect(actionButton).toContain("app-shell-action");
+    expect(appShell).toContain(
+      'import ActionButton from "@/features/shared/components/ActionButton"',
+    );
     expect(operationalSwitcher).toContain("text-blue-800");
     expect(operationalSwitcher).toContain("dark:text-blue-100");
   });
