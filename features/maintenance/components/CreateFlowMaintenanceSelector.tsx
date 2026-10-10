@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import CollapsibleSearchList from "@/features/shared/components/ui/CollapsibleSearchList";
 
 type SuggestionRow = {
   serviceCode: string;
@@ -102,9 +103,15 @@ export default function CreateFlowMaintenanceSelector({
     onChange(Array.from(next));
   }
 
-  function toggleAll(nextChecked: boolean) {
-    if (!rows.length) return;
-    onChange(nextChecked ? rows.map((row) => row.serviceCode) : []);
+  function selectMatching(matching: SuggestionRow[]) {
+    if (!matching.length) return;
+    const next = new Set(selectedSet);
+    for (const row of matching) next.add(row.serviceCode);
+    onChange(Array.from(next));
+  }
+
+  function clearSelection() {
+    onChange([]);
   }
 
   async function addSelectedToQuote() {
@@ -216,137 +223,143 @@ export default function CreateFlowMaintenanceSelector({
   const itemPanelClass =
     "rounded-xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-3";
 
+  const addButton = (
+    <button
+      type="button"
+      onClick={() => void addSelectedToQuote()}
+      disabled={!workOrderId || selectedServiceCodes.length === 0 || adding}
+      title={!workOrderId ? "Save & Continue before adding items to the quote." : undefined}
+      className="rounded-full border border-[color:var(--copper)]/70 bg-[color:var(--copper)]/12 px-3 py-1.5 text-xs font-semibold text-[color:var(--copper)] hover:bg-[color:var(--copper)]/18 disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {adding ? "Adding..." : `Add to quote (${selectedServiceCodes.length})`}
+    </button>
+  );
+
   return (
     <section className="rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 shadow-[var(--theme-shadow-medium)] sm:p-5">
-      <div className="mb-3 flex items-start justify-between gap-3 border-b border-[color:var(--theme-border-soft)] pb-3">
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
-            Scheduled maintenance suggestions
-          </h2>
-          <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
+      <CollapsibleSearchList<SuggestionRow>
+        bare
+        title="Scheduled maintenance suggestions"
+        description={
+          <>
             History-aware scheduled maintenance due for this vehicle. Select the items to add to this work order&apos;s quote as pending approval lines.
-          </p>
-          <p className="mt-1 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">
-            Separate lane from menu-items catalog and inspection-template quick add
-          </p>
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          <button
-            type="button"
-            onClick={() => setReloadKey((v) => v + 1)}
-            disabled={!canLoad || loading}
-            className={softButtonClass}
-          >
-            Refresh
-          </button>
-          <button
-            type="button"
-            onClick={() => toggleAll(true)}
-            disabled={!rows.length}
-            className={softButtonClass}
-          >
-            Select all
-          </button>
-          <button
-            type="button"
-            onClick={() => toggleAll(false)}
-            disabled={!rows.length || adding}
-            className={softButtonClass}
-          >
-            Clear
-          </button>
-          <button
-            type="button"
-            onClick={() => void addSelectedToQuote()}
-            disabled={!workOrderId || selectedServiceCodes.length === 0 || adding}
-            title={!workOrderId ? "Save & Continue before adding items to the quote." : undefined}
-            className="rounded-full border border-[color:var(--copper)]/70 bg-[color:var(--copper)]/12 px-3 py-1.5 text-xs font-semibold text-[color:var(--copper)] hover:bg-[color:var(--copper)]/18 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            {adding
-              ? "Adding..."
-              : `Add to quote (${selectedServiceCodes.length})`}
-          </button>
-        </div>
-      </div>
-
-      {notice ? (
-        <div className="mb-3 rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
-          {notice}
-        </div>
-      ) : null}
-
-      {!workOrderId && selectedServiceCodes.length > 0 ? (
-        <div className="mb-3 text-xs text-[color:var(--theme-text-muted)]">
-          Save &amp; Continue first, then add the selected items to the quote.
-        </div>
-      ) : null}
-
-      {!canLoad ? (
-        <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-4 text-sm text-[color:var(--theme-text-secondary)]">
-          Save customer and vehicle first to load maintenance suggestions.
-        </div>
-      ) : error ? (
-        <div className="mb-3 rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-          {error}
-        </div>
-      ) : loading ? (
-        <div className="text-sm text-[color:var(--theme-text-secondary)]">Loading suggestions...</div>
-      ) : rows.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-4 text-sm text-[color:var(--theme-text-secondary)]">
-          No active maintenance suggestions for this vehicle.
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {rows.map((item) => {
-            const checked = selectedSet.has(item.serviceCode);
-            return (
-              <div
-                key={item.serviceCode}
-                className={itemPanelClass}
-              >
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <label className="flex min-w-0 flex-1 items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => toggle(item.serviceCode, e.target.checked)}
-                      className="mt-1"
-                    />
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{item.label}</div>
-                        <span className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                          {item.serviceCode}
-                        </span>
-                      </div>
-
-                      <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                        maintenance
-                        {typeof item.laborHours === "number" ? ` • ${item.laborHours.toFixed(1)}h` : ""}
-                        {item.priority ? ` • ${item.priority}` : ""}
-                      </div>
-
-                      {item.description ? (
-                        <div className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">{item.description}</div>
-                      ) : null}
+            <span className="mt-1 block text-[10px] uppercase tracking-wide">
+              Separate lane from menu-items catalog and inspection-template quick add
+            </span>
+          </>
+        }
+        items={rows}
+        getKey={(item) => item.serviceCode}
+        getSearchText={(item) =>
+          [item.label, item.serviceCode, item.description, item.priority]
+            .map((x) => (typeof x === "string" ? x : ""))
+            .join(" ")
+        }
+        searchPlaceholder="Search suggestions (e.g. oil, brake, differential)…"
+        loading={loading && canLoad}
+        loadingMessage="Loading suggestions..."
+        emptyMessage={canLoad && !error ? "No active maintenance suggestions for this vehicle." : ""}
+        listClassName="space-y-3"
+        headerActions={({ matches }) => (
+          <>
+            <button
+              type="button"
+              onClick={() => setReloadKey((v) => v + 1)}
+              disabled={!canLoad || loading}
+              className={softButtonClass}
+            >
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={() => selectMatching(matches)}
+              disabled={!matches.length}
+              className={softButtonClass}
+            >
+              {matches.length && matches.length !== rows.length
+                ? `Select matching (${matches.length})`
+                : "Select all"}
+            </button>
+            <button
+              type="button"
+              onClick={clearSelection}
+              disabled={!selectedServiceCodes.length || adding}
+              className={softButtonClass}
+            >
+              Clear
+            </button>
+            {addButton}
+          </>
+        )}
+        renderItem={(item) => {
+          const checked = selectedSet.has(item.serviceCode);
+          return (
+            <div className={itemPanelClass}>
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <label className="flex min-w-0 flex-1 items-start gap-3">
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    onChange={(e) => toggle(item.serviceCode, e.target.checked)}
+                    className="mt-1"
+                  />
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-sm font-semibold text-[color:var(--theme-text-primary)]">{item.label}</div>
+                      <span className="rounded-full border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-2 py-0.5 text-[10px] uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+                        {item.serviceCode}
+                      </span>
                     </div>
-                  </label>
 
-                  <button
-                    type="button"
-                    onClick={() => void dismissCompletedPreviously(item.serviceCode)}
-                    disabled={!!busyCode}
-                    className={softButtonClass}
-                  >
-                    {busyCode === item.serviceCode ? "Saving..." : "Mark done elsewhere"}
-                  </button>
-                </div>
+                    <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                      maintenance
+                      {typeof item.laborHours === "number" ? ` • ${item.laborHours.toFixed(1)}h` : ""}
+                      {item.priority ? ` • ${item.priority}` : ""}
+                    </div>
+
+                    {item.description ? (
+                      <div className="mt-2 text-sm text-[color:var(--theme-text-secondary)]">{item.description}</div>
+                    ) : null}
+                  </div>
+                </label>
+
+                <button
+                  type="button"
+                  onClick={() => void dismissCompletedPreviously(item.serviceCode)}
+                  disabled={!!busyCode}
+                  className={softButtonClass}
+                >
+                  {busyCode === item.serviceCode ? "Saving..." : "Mark done elsewhere"}
+                </button>
               </div>
-            );
-          })}
-        </div>
-      )}
+            </div>
+          );
+        }}
+      >
+        {notice ? (
+          <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-xs text-emerald-200">
+            {notice}
+          </div>
+        ) : null}
+
+        {!workOrderId && selectedServiceCodes.length > 0 ? (
+          <div className="text-xs text-[color:var(--theme-text-muted)]">
+            Save &amp; Continue first, then add the selected items to the quote.
+          </div>
+        ) : null}
+
+        {!canLoad ? (
+          <div className="rounded-xl border border-dashed border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-4 text-sm text-[color:var(--theme-text-secondary)]">
+            Save customer and vehicle first to load maintenance suggestions.
+          </div>
+        ) : null}
+
+        {error ? (
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-3 py-2 text-xs text-red-200">
+            {error}
+          </div>
+        ) : null}
+      </CollapsibleSearchList>
     </section>
   );
 }
