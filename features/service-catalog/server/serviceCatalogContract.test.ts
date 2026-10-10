@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const read = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
 
 describe("service catalog import contract", () => {
-  const migration = read("supabase/migrations/20261010120000_import_service_catalog.sql");
+  const migration = read("supabase/migrations/20261010030310_import_service_catalog.sql");
   const previewRoute = read("app/api/service-catalog/preview/route.ts");
   const importRoute = read("app/api/service-catalog/import/route.ts");
 

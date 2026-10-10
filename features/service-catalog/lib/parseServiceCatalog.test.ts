@@ -94,3 +94,56 @@ describe("parseCatalogCsv", () => {
     expect(rows[1].a).toBe("line1\nline2");
   });
 });
+
+describe("shop reel service catalog (menu items + inspections)", () => {
+  const csv = readFileSync(join(__dirname, "../__fixtures__/service-catalog-shop-reel.csv"), "utf8");
+  const plan = buildCatalogPlan(csv);
+  const payload = toImportPayload(plan);
+
+  it("recognizes 24 services, 9 inspection templates, 9 links, nothing to review", () => {
+    expect(plan.summary).toMatchObject({
+      servicesRecognized: 24,
+      servicesImportable: 24,
+      templatesImportable: 9,
+      linksImportable: 9,
+      reviewRequired: 0,
+    });
+    expect(plan.warnings).toEqual([]);
+    expect(payload.services.filter((s) => s.template_key === null)).toHaveLength(15);
+  });
+
+  it("joins each canned job to its same-named inspection template by explicit template_name", () => {
+    for (const svc of plan.services.filter((s) => s.templateKey)) {
+      expect(svc.templateName).toBe(svc.name);
+      expect(svc.linkSource).toBe("explicit");
+    }
+  });
+
+  it("keeps pricing, labor and interval on the menu item", () => {
+    const pm = payload.services.find((s) => s.service_code === "PM-HD");
+    expect(pm).toMatchObject({ name: "Heavy-Duty PM Service", labor_hours: 3.5, price: 599, category: "Preventive Maintenance" });
+    expect(pm?.description).toContain("Recommended interval: 25,000 km / 6 months");
+    expect(payload.services.find((s) => s.service_code === "ROADSIDE-NOSTART")).toMatchObject({ labor_hours: 1, price: 349 });
+  });
+
+  it("builds runnable checklists with the right sections and item counts", () => {
+    const byName = (n: string) => toInspectionCategories(payload.templates.find((t) => t.name === n)?.sections);
+    const pm = byName("Heavy-Duty PM Service");
+    expect(pm.map((c) => c.title)).toEqual(["Engine & Fluids", "Fuel & Aftertreatment", "Air & Brakes", "Chassis & Safety"]);
+    expect(pm.reduce((n, c) => n + c.items.length, 0)).toBe(17);
+    const annual = byName("Commercial Vehicle Annual Safety Inspection");
+    expect(annual.map((c) => c.title)).toContain("Tires, Wheels & Lighting");
+    expect(annual.reduce((n, c) => n + c.items.length, 0)).toBe(15);
+    for (const t of payload.templates) {
+      expect(toInspectionCategories(t.sections).length).toBe(t.sections.length);
+    }
+  });
+
+  it("maps usage context to the inspection vehicle vocabulary and keeps the original text", () => {
+    const vt = Object.fromEntries(payload.templates.map((t) => [t.name, t.vehicle_type]));
+    expect(vt["Heavy-Duty PM Service"]).toBe("truck");
+    expect(vt["Trailer PM Service"]).toBe("trailer");
+    expect(vt["Heavy Equipment Preventive Maintenance"]).toBeNull();
+    expect(payload.templates.find((t) => t.name === "Trailer PM Service")?.usage_context).toBe("Commercial trailers");
+  });
+});

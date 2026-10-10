@@ -91,12 +91,14 @@ begin
       trim(coalesce(t.name, '')) as name,
       nullif(trim(coalesce(t.description, '')), '') as description,
       nullif(trim(coalesce(t.vehicle_type, '')), '') as vehicle_type,
+      nullif(trim(coalesce(t.usage_context, '')), '') as usage_context,
       t.sections
     from jsonb_to_recordset(coalesce(p_templates, '[]'::jsonb)) as t(
       import_key text,
       name text,
       description text,
       vehicle_type text,
+      usage_context text,
       sections jsonb
     )
   loop
@@ -105,6 +107,11 @@ begin
     end if;
     if char_length(v_tpl.name) > 180 then
       raise exception 'Inspection template name is too long: %', v_tpl.name;
+    end if;
+    -- vehicle_type is a small vocabulary used by the inspection runtime; the
+    -- free-text usage context is kept in provenance instead.
+    if v_tpl.vehicle_type is not null and v_tpl.vehicle_type not in ('car', 'truck', 'bus', 'trailer') then
+      raise exception 'Unsupported vehicle type % for inspection template %', v_tpl.vehicle_type, v_tpl.name;
     end if;
     -- The inspection runtime consumes a plain array of { title, items[] }.
     if jsonb_typeof(v_tpl.sections) <> 'array' or jsonb_array_length(v_tpl.sections) = 0 then
@@ -116,6 +123,7 @@ begin
         'source', 'service_catalog_csv',
         'import_key', v_tpl.import_key,
         'source_ref', p_source_ref,
+        'usage_context', v_tpl.usage_context,
         'imported_at', now()
       )
     );

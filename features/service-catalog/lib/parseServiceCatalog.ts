@@ -18,6 +18,8 @@ export type CatalogTemplateCandidate = {
   templateName: string;
   note: string | null;
   usageContext: string | null;
+  /** Canonical inspection vehicle type (car | truck | bus | trailer) derived from the usage context, when recognizable. */
+  vehicleType: "car" | "truck" | "bus" | "trailer" | null;
   /** Exactly the shape the inspection runtime consumes (toInspectionCategories). */
   sections: CatalogChecklistSection[];
   itemCount: number;
@@ -61,6 +63,17 @@ export type CatalogPlan = {
 type CsvRow = Record<string, string>;
 
 /* ------------------------------- CSV parsing ------------------------------ */
+
+/** inspection_templates.vehicle_type is a small vocabulary, not free text. */
+export function deriveVehicleType(usageContext: string | null): CatalogTemplateCandidate["vehicleType"] {
+  const text = normalizeCatalogText(usageContext);
+  if (!text) return null;
+  if (/\b(bus|coach)\b/.test(text)) return "bus";
+  if (/\b(truck|trucks|tractor|tractors|heavy duty)\b/.test(text)) return "truck";
+  if (/\btrailers?\b/.test(text)) return "trailer";
+  if (/\b(car|cars|passenger|light duty)\b/.test(text)) return "car";
+  return null;
+}
 
 export function parseCatalogCsv(csv: string): { header: string[]; rows: CsvRow[] } {
   const text = csv.replace(/^﻿/, "");
@@ -230,6 +243,12 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
     const serviceName = pick(row, [/^service_name$/, /^job_name$/, /^operation_name$/, /^operation$/, /^service$/, /^name$/, /^menu_item$/]);
     const description = pick(row, [/^description$/, /^service_description$/, /^details$/, /^op_description$/]);
     const category = pick(row, [/^category$/, /^service_category$/, /^department$/, /^shop_department$/]);
+    const intervalKm = pick(row, [/^recommended_interval_km$/, /^interval_km$/]);
+    const intervalMonths = pick(row, [/^recommended_interval_months$/, /^interval_months$/]);
+    const interval =
+      intervalKm || intervalMonths
+        ? `Recommended interval: ${[intervalKm ? `${Number(intervalKm).toLocaleString("en-US")} km` : null, intervalMonths ? `${intervalMonths} months` : null].filter(Boolean).join(" / ")}`
+        : null;
     const laborHours = parseHours(
       pick(row, [/^default_labor_hours$/, /^labor_hours$/, /^labor_time$/, /^hours$/, /^flat_rate$/]),
     );
@@ -254,6 +273,8 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
     const usageContext = pick(row, [/^usage_context$/, /^vehicle_type$/, /^applies_to$/, /^usage$/]);
     const inspectionNote = pick(row, [/^inspection_note$/, /^template_description$/]);
 
+    const fullDescription = [description, interval].filter(Boolean).join(" • ") || null;
+
     if (serviceName) {
       const { importKey, serviceKey } = buildCatalogServiceKey(serviceCode, serviceName);
       const existing = services.get(importKey);
@@ -265,7 +286,7 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
           serviceKey,
           serviceCode,
           name: serviceName,
-          description,
+          description: fullDescription,
           category,
           laborHours,
           price,
@@ -276,7 +297,7 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
         });
       } else {
         // Same service on another row (e.g. one row per checklist item): fill gaps only.
-        existing.description ??= description;
+        existing.description ??= fullDescription;
         existing.category ??= category;
         existing.laborHours ??= laborHours;
         existing.price ??= price;
@@ -327,6 +348,7 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
       templateName: acc.templateName,
       note: acc.note,
       usageContext: acc.usageContext,
+      vehicleType: deriveVehicleType(acc.usageContext),
       sections,
       itemCount,
       confidence,
@@ -396,6 +418,7 @@ export function toImportPayload(plan: CatalogPlan): {
     name: string;
     description: string | null;
     vehicle_type: string | null;
+    usage_context: string | null;
     sections: CatalogChecklistSection[];
   }>;
   services: Array<{
@@ -416,7 +439,8 @@ export function toImportPayload(plan: CatalogPlan): {
       import_key: t.importKey,
       name: t.templateName,
       description: t.note,
-      vehicle_type: t.usageContext,
+      vehicle_type: t.vehicleType,
+      usage_context: t.usageContext,
       sections: t.sections,
     }));
   const services = plan.services
