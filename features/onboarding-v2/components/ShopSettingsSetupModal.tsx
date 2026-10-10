@@ -375,7 +375,16 @@ export default function ShopSettingsSetupModal({
           <div className="flex gap-2">
             <Button type="button" variant="secondary" onClick={onClose} disabled={saving}>Close</Button>
             <Button type="button" variant="secondary" onClick={skip} disabled={saving}>Skip for now</Button>
-            <Button type="button" onClick={save} disabled={saving || loading || !settingsReady}>
+            <Button
+              type="button"
+              onClick={isUnlocked ? save : () => setPinModalOpen(true)}
+              disabled={
+                saving ||
+                loading ||
+                (!isUnlocked && !shopId) ||
+                (isUnlocked && !settingsReady)
+              }
+            >
               {saving ? "Saving..." : isUnlocked ? "Save Shop Settings" : "Unlock & save"}
             </Button>
           </div>
