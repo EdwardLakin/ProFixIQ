@@ -1,12 +1,14 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
-const migrationPath =
+const pricingMigrationPath =
   "supabase/migrations/20261010212648_fix_portal_quote_approval_direct_pricing_sync.sql";
+const anchorMigrationPath =
+  "supabase/migrations/20261010213041_allow_portal_quote_source_line_part_anchor.sql";
 
 describe("portal quote approval direct pricing sync regression", () => {
   it("returns protected pricing before the authenticated-staff guard", () => {
-    const migration = readFileSync(migrationPath, "utf8").toLowerCase();
+    const migration = readFileSync(pricingMigrationPath, "utf8").toLowerCase();
     const protectedCheck = migration.indexOf("quote_line_pricing_is_protected");
     const protectedReturn = migration.indexOf(
       "'skipped', 'protected_quote_line_state'",
@@ -29,6 +31,18 @@ describe("portal quote approval direct pricing sync regression", () => {
 
     expect(migration).toContain(
       "perform public.sync_quote_line_pricing_from_parts(\n      v_request.shop_id,\n      v_request.quote_line_id",
+    );
+  });
+
+  it("allows approval to anchor parts to the quote's recorded source line", () => {
+    const migration = readFileSync(anchorMigrationPath, "utf8").toLowerCase();
+
+    expect(migration).toContain("q.source_work_order_line_id = wol.id");
+    expect(migration).toContain("q.id = v_quote_line_id");
+    expect(migration).toContain("q.shop_id = new.shop_id");
+    expect(migration).toContain("q.work_order_id = new.work_order_id");
+    expect(migration).toContain(
+      "part_request_items.work_order_line_id cannot be changed",
     );
   });
 });
