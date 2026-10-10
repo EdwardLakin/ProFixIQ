@@ -30672,6 +30672,18 @@ export type Database = {
         }
         Returns: Json
       }
+      import_service_catalog_with_parts: {
+        Args: {
+          p_actor_auth_user_id: string
+          p_actor_profile_id: string
+          p_parts: Json
+          p_services: Json
+          p_shop_id: string
+          p_source_ref: string
+          p_templates: Json
+        }
+        Returns: Json
+      }
       increment_user_limit: {
         Args: { increment_by?: number; input_shop_id: string }
         Returns: undefined
@@ -31936,6 +31948,16 @@ export type Database = {
           p_work_order_id: string
         }
         Returns: Json
+      }
+      resolve_catalog_parts: {
+        Args: { p_part_keys: string[]; p_shop_id: string }
+        Returns: {
+          match_count: number
+          part_id: string
+          part_key: string
+          part_name: string
+          unit_cost: number
+        }[]
       }
       resolve_deferred_recommendation_elsewhere: {
         Args: {

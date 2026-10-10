@@ -26,4 +26,33 @@ describe("service catalog import contract", () => {
     expect(importRoute).toContain("import_service_catalog");
     expect(importRoute).toContain('allowRoles: [...SERVICE_CATALOG_ROLES]');
   });
+
+  describe("parts (BOM) mapping", () => {
+    const partsMigration = read("supabase/migrations/20261010045002_service_catalog_parts_bom.sql");
+    const previewSource = read("app/api/service-catalog/preview/route.ts");
+
+    it("is additive: new functions only, the merged importer is called not redefined", () => {
+      expect(partsMigration).not.toContain("create or replace function public.import_service_catalog(");
+      expect(partsMigration).toContain("v_result := public.import_service_catalog(");
+      expect(partsMigration).toMatch(/create or replace function public\.resolve_catalog_parts/);
+      expect(partsMigration).toMatch(/create or replace function public\.import_service_catalog_with_parts/);
+    });
+
+    it("writes the same recipe + intake records as the service builder, with explicit enum casts", () => {
+      expect(partsMigration).toContain("insert into public.menu_item_parts");
+      expect(partsMigration).toContain("insert into public.part_requests");
+      expect(partsMigration).toContain("insert into public.part_request_items");
+      expect(partsMigration).toContain("::public.part_request_status");
+      expect(partsMigration).toContain("::public.part_request_item_status");
+      expect(partsMigration).toContain("source_menu_item_part_id");
+    });
+
+    it("matches inventory scoped to the shop, and the preview uses the same resolver", () => {
+      expect(partsMigration).toMatch(/p\.shop_id = p_shop_id/);
+      expect(previewSource).toContain("resolvePlanParts");
+      expect(read("features/service-catalog/server/resolveParts.ts")).toContain('"resolve_catalog_parts"');
+      expect(importRoute).toContain("import_service_catalog_with_parts");
+      expect(importRoute).toContain("p_parts: payload.parts");
+    });
+  });
 });

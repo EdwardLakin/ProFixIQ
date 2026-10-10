@@ -4,6 +4,7 @@ import {
   SERVICE_CATALOG_ROLES,
   readCatalogRequest,
 } from "@/features/service-catalog/server/readCatalogRequest";
+import { resolvePlanParts } from "@/features/service-catalog/server/resolveParts";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,10 +37,27 @@ export async function POST(req: Request) {
     for (const row of data ?? []) if (row.service_key) existing.add(row.service_key);
   }
 
+  const resolved = await resolvePlanParts(access.supabase, access.profile.shop_id, plan);
+  if (!resolved.ok) {
+    return NextResponse.json(
+      { ok: false, error: "lookup_failed", detail: "Could not check parts inventory." },
+      { status: 500 },
+    );
+  }
+  const partStatus = (partKey: string) => {
+    const match = resolved.byKey.get(partKey);
+    if (match && match.matchCount === 1) return "matched" as const;
+    return match && match.matchCount > 1 ? ("ambiguous" as const) : ("not_found" as const);
+  };
+  const importableServices = plan.services.filter((s) => !s.needsReview);
+  const partStatuses = importableServices.flatMap((s) => s.parts.map((p) => partStatus(p.partKey)));
+
   return NextResponse.json({
     ok: true,
     summary: {
       ...plan.summary,
+      partsMatched: partStatuses.filter((s) => s === "matched").length,
+      partsToRequest: partStatuses.filter((s) => s !== "matched").length,
       servicesToCreate: importableKeys.filter((key) => !existing.has(key)).length,
       servicesToUpdate: importableKeys.filter((key) => existing.has(key)).length,
     },
@@ -50,6 +68,12 @@ export async function POST(req: Request) {
       laborHours: s.laborHours,
       price: s.price,
       inspection: s.templateName,
+      parts: s.parts.map((p) => ({
+        partNumber: p.partNumber,
+        quantity: p.quantity,
+        name: resolved.byKey.get(p.partKey)?.name ?? p.name,
+        status: partStatus(p.partKey),
+      })),
       status: s.needsReview ? "review" : existing.has(s.serviceKey) ? "update" : "new",
       reviewReason: s.reviewReason,
     })),
