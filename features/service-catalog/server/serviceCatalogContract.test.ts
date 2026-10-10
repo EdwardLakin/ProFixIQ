@@ -51,8 +51,30 @@ describe("service catalog import contract", () => {
       expect(partsMigration).toMatch(/p\.shop_id = p_shop_id/);
       expect(previewSource).toContain("resolvePlanParts");
       expect(read("features/service-catalog/server/resolveParts.ts")).toContain('"resolve_catalog_parts"');
-      expect(importRoute).toContain("import_service_catalog_with_parts");
+      expect(importRoute).toContain("import_service_catalog_complete");
       expect(importRoute).toContain("p_parts: payload.parts");
+    });
+  });
+
+  describe("template labor", () => {
+    const laborMigration = read("supabase/migrations/20261010172242_service_catalog_template_labor.sql");
+
+    it("sets the labor the work-order picker reads, additively and atomically", () => {
+      expect(laborMigration).not.toMatch(/create or replace function public\.import_service_catalog(_with_parts)?\(/);
+      expect(laborMigration).toContain("v_result := public.import_service_catalog_with_parts(");
+      expect(laborMigration).toMatch(/update public\.inspection_templates tpl\s+set labor_hours = src\.labor_hours/);
+    });
+
+    it("never overwrites labor a user typed, and remembers catalog-sourced labor across the wrapped import", () => {
+      expect(laborMigration).toContain("labor_hours_source");
+      expect(laborMigration).toContain("v_catalog_labor_keys");
+      expect(laborMigration).toMatch(/tpl\.labor_hours is null\s+or/);
+    });
+
+    it("backfills only templates created by the catalog importer", () => {
+      expect(laborMigration).toContain("'service_catalog_csv'");
+      expect(laborMigration).toContain("tpl.labor_hours is null");
+      expect(read("app/api/service-catalog/import/route.ts")).toContain("templatesLaborSet");
     });
   });
 });

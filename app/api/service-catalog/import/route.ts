@@ -20,6 +20,7 @@ type ImportResult = {
   partsAttached?: number;
   partsRequested?: number;
   partsAmbiguous?: number;
+  templatesLaborSet?: number;
 };
 
 type RpcClient = {
@@ -48,7 +49,7 @@ export async function POST(req: Request) {
     );
   }
 
-  const { data, error } = (await (access.supabase as unknown as RpcClient).rpc("import_service_catalog_with_parts", {
+  const { data, error } = (await (access.supabase as unknown as RpcClient).rpc("import_service_catalog_complete", {
     p_shop_id: access.profile.shop_id,
     p_actor_profile_id: access.profile.id,
     p_actor_auth_user_id: access.authUserId,
@@ -74,6 +75,7 @@ export async function POST(req: Request) {
     partsAttached: data.partsAttached ?? 0,
     partsRequested: data.partsRequested ?? 0,
     partsAmbiguous: data.partsAmbiguous ?? 0,
+    templatesLaborSet: data.templatesLaborSet ?? 0,
     reviewRequired: plan.summary.reviewRequired,
   });
 }
