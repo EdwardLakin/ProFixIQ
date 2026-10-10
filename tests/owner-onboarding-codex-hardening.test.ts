@@ -90,7 +90,8 @@ describe("owner onboarding Codex hardening", () => {
     expect(guidedSettingsSource).toContain("setSettingsReady(true)");
     expect(guidedSettingsSource).toContain("Unable to load shop hours.");
     expect(guidedSettingsSource).toContain("PIN status is optional convenience only");
-    expect(guidedSettingsSource).toContain("saving || loading || !settingsReady");
+    expect(guidedSettingsSource).toContain("(!isUnlocked && !shopId)");
+    expect(guidedSettingsSource).toContain("(isUnlocked && !settingsReady)");
   });
 
   it("uses the shared timezone contract but preserves an existing unmatched stored timezone", () => {
