@@ -213,7 +213,19 @@ export type MatchContext = {
   sectionTitle?: string | null;
 };
 
+const frequencyCache = new Map<string, Map<string, number>>();
+
 function tokenFrequency(context: MatchContext): Map<string, number> {
+  const scope = context.assetScope ?? (context.vehicleType ? "on_road" : "unknown");
+  const cacheKey = [
+    scope,
+    context.vehicleType ?? "*",
+    context.brakeSystem ?? "*",
+    context.dutyClass ?? "*",
+  ].join("|");
+  const cached = frequencyCache.get(cacheKey);
+  if (cached) return cached;
+
   const frequency = new Map<string, number>();
   for (const entry of masterIndex()) {
     if (!applies(entry, context)) continue;
@@ -221,6 +233,7 @@ function tokenFrequency(context: MatchContext): Map<string, number> {
       frequency.set(token, (frequency.get(token) ?? 0) + 1);
     }
   }
+  frequencyCache.set(cacheKey, frequency);
   return frequency;
 }
 
