@@ -44,6 +44,7 @@ import { checkVehicleDuplicates } from "@/features/shared/lib/vehicles/duplicate
 import { requestVehicleRecallEnrichment } from "@/features/vehicles/lib/requestRecallEnrichment";
 import { desktopPrimitives as ui } from "@/features/shared/components/ui/desktopPrimitives";
 import {
+  CREATE_RESUME_BLOCKED_PREFIX,
   CREATE_WORK_ORDER_STALE_EVENT,
   requireResumableCreateWorkOrder,
   STALE_CREATE_WORK_ORDER_MESSAGE,
@@ -68,6 +69,11 @@ const InspectionModal = dynamic(
    Theme constants (match quote-review)
 ============================================================================= */
 const COPPER = "#C57A4A";
+
+// A draft remembered by this browser tab (not opened through ?resume=) that has
+// since moved past setup is not an error: drop it and start a fresh form.
+const STALE_TAB_DRAFT_NOTICE =
+  "Your previous draft has already moved past setup, so this page was reset. Start a new work order below.";
 
 const divider = "border-[color:var(--desktop-border)]";
 const sectionPanel =
@@ -745,6 +751,12 @@ export default function CreateWorkOrderPage() {
       setWo(null);
       setLines([]);
       setValidatedWorkOrderId(null);
+      if (!resumeWorkOrderId && message.startsWith(CREATE_RESUME_BLOCKED_PREFIX)) {
+        setResumeNotice(STALE_TAB_DRAFT_NOTICE);
+        setResumeBlocked(false);
+        setError("");
+        return;
+      }
       setResumeNotice(null);
       setResumeBlocked(Boolean(resumeWorkOrderId));
       setError(message);
@@ -1050,6 +1062,15 @@ export default function CreateWorkOrderPage() {
         setWo(null);
         setLines([]);
         setValidatedWorkOrderId(null);
+        if (
+          !resumeWorkOrderId &&
+          message.startsWith(CREATE_RESUME_BLOCKED_PREFIX)
+        ) {
+          setResumeNotice(STALE_TAB_DRAFT_NOTICE);
+          setResumeBlocked(false);
+          setError("");
+          return;
+        }
         setResumeNotice(null);
         setResumeBlocked(Boolean(resumeWorkOrderId));
         setError(message);
