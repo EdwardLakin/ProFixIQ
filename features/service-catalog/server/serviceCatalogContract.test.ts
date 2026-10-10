@@ -57,7 +57,7 @@ describe("service catalog import contract", () => {
   });
 
   describe("template labor", () => {
-    const laborMigration = read("supabase/migrations/20261010180000_service_catalog_template_labor.sql");
+    const laborMigration = read("supabase/migrations/20261010172242_service_catalog_template_labor.sql");
 
     it("sets the labor the work-order picker reads, additively and atomically", () => {
       expect(laborMigration).not.toMatch(/create or replace function public\.import_service_catalog(_with_parts)?\(/);
