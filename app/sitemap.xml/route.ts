@@ -1,3 +1,5 @@
+import { listPublishedBlogArticles } from "@/features/marketing/blog/server";
+
 const siteUrl = "https://profixiq.com";
 
 const sitemapEntries = [
@@ -20,6 +22,7 @@ const sitemapEntries = [
   { path: "/field-service", changeFrequency: "monthly", priority: 0.8 },
   { path: "/fleet-maintenance", changeFrequency: "monthly", priority: 0.8 },
   { path: "/request-demo", changeFrequency: "monthly", priority: 0.7 },
+  { path: "/resources", changeFrequency: "weekly", priority: 0.8 },
 ] as const;
 
 function escapeXml(value: string): string {
@@ -31,18 +34,33 @@ function escapeXml(value: string): string {
     .replaceAll("'", "&apos;");
 }
 
-export const dynamic = "force-static";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
-export function GET(): Response {
-  const urls = sitemapEntries
-    .map(
-      ({ path, changeFrequency, priority }) => `    <url>
+export async function GET(): Promise<Response> {
+  let articles: Awaited<ReturnType<typeof listPublishedBlogArticles>> = [];
+  try {
+    articles = await listPublishedBlogArticles();
+  } catch (error) {
+    console.error("sitemap blog article listing failed", error);
+  }
+
+  const staticUrls = sitemapEntries.map(
+    ({ path, changeFrequency, priority }) => `    <url>
       <loc>${escapeXml(`${siteUrl}${path}`)}</loc>
       <changefreq>${changeFrequency}</changefreq>
       <priority>${priority}</priority>
     </url>`,
-    )
-    .join("\n");
+  );
+  const articleUrls = articles.map(
+    (article) => `    <url>
+      <loc>${escapeXml(`${siteUrl}/resources/${article.slug}`)}</loc>
+      <lastmod>${escapeXml(article.updatedAt)}</lastmod>
+      <changefreq>monthly</changefreq>
+      <priority>0.7</priority>
+    </url>`,
+  );
+  const urls = [...staticUrls, ...articleUrls].join("\n");
 
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -53,7 +71,7 @@ ${urls}
   return new Response(xml, {
     headers: {
       "Content-Type": "application/xml; charset=utf-8",
-      "Cache-Control": "public, max-age=0, s-maxage=86400, stale-while-revalidate=86400",
+      "Cache-Control": "public, max-age=0, s-maxage=3600, stale-while-revalidate=86400",
     },
   });
 }
