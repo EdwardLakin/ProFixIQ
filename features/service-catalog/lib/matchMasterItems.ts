@@ -195,23 +195,10 @@ function indexMaster(list: MasterCategory[]): MasterEntry[] {
 }
 
 let cachedIndex: MasterEntry[] | null = null;
-let cachedFrequency: Map<string, number> | null = null;
 
 function masterIndex(): MasterEntry[] {
   cachedIndex ??= indexMaster(masterInspectionList);
   return cachedIndex;
-}
-
-function tokenFrequency(): Map<string, number> {
-  if (cachedFrequency) return cachedFrequency;
-  const frequency = new Map<string, number>();
-  for (const entry of masterIndex()) {
-    for (const token of new Set(entry.tokens.filter((t) => !LOW_SIGNAL_WORDS.has(t)))) {
-      frequency.set(token, (frequency.get(token) ?? 0) + 1);
-    }
-  }
-  cachedFrequency = frequency;
-  return frequency;
 }
 
 export const MASTER_MATCH_MIN_SCORE = 0.6;
@@ -225,6 +212,17 @@ export type MatchContext = {
   templateName?: string | null;
   sectionTitle?: string | null;
 };
+
+function tokenFrequency(context: MatchContext): Map<string, number> {
+  const frequency = new Map<string, number>();
+  for (const entry of masterIndex()) {
+    if (!applies(entry, context)) continue;
+    for (const token of new Set(entry.tokens.filter((t) => !LOW_SIGNAL_WORDS.has(t)))) {
+      frequency.set(token, (frequency.get(token) ?? 0) + 1);
+    }
+  }
+  return frequency;
+}
 
 type Scored = {
   entry: MasterEntry;
@@ -274,7 +272,7 @@ function score(csvTokens: string[], entry: MasterEntry, context: MatchContext): 
     ? (2 * csvCoverage * masterCoverage) / (csvCoverage + masterCoverage)
     : 0;
 
-  const frequency = tokenFrequency();
+  const frequency = tokenFrequency(context);
   const rareShared = strongSharedTokens.some((token) => (frequency.get(token) ?? Number.MAX_SAFE_INTEGER) <= 3);
 
   const sectionTokens = tokens(context.sectionTitle);
@@ -325,9 +323,9 @@ export function findMasterItem(text: string, context: MatchContext): MasterEntry
     const candidate = score(csvTokens, entry, context);
     if (!candidate) continue;
 
-    // A single shared noun is only enough when it is unusual in the master
-    // catalog. This is what lets "chambers ... leakage" resolve safely while
-    // keeping vague rows such as "inspect components" custom.
+    // A single shared noun is only enough when it is unusual in the applicable
+    // slice of the master catalog. This lets "chambers ... leakage" resolve
+    // safely without making generic words such as "components" authoritative.
     if (candidate.strongShared < 2 && !candidate.rareShared) continue;
     if (candidate.csvCoverage < 0.48 || candidate.masterCoverage < 0.42) continue;
     scored.push(candidate);
