@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import {
   buildSectionsFromMasterList,
   mapSectionsToMaster,
+  type CatalogAssetScope,
   type CatalogChecklistItem,
   type MatchedChecklistItem,
 } from "./matchMasterItems";
@@ -107,6 +108,27 @@ export function deriveVehicleType(usageContext: string | null): CatalogTemplateC
   if (/\btrailers?\b/.test(text)) return "trailer";
   if (/\b(car|cars|passenger|light duty)\b/.test(text)) return "car";
   return null;
+}
+
+/**
+ * Asset scope must come from explicit template metadata, not checklist wording.
+ * Ambiguous or mixed contexts stay unknown; the importer uses the on-road
+ * catalog as the conservative fallback so equipment-only specs are never
+ * attached merely because a free-text line happens to mention hydraulics.
+ */
+export function deriveCatalogAssetScope(
+  usageContext: string | null,
+  templateName: string | null = null,
+): CatalogAssetScope {
+  const text = normalizeCatalogText([usageContext, templateName].filter(Boolean).join(" "));
+  if (!text) return "unknown";
+
+  const offRoad = /\b(off highway|off road|heavy equipment|construction equipment|industrial equipment|earthmoving|mining|excavator|loader|dozer|grader|skid steer|forklift|telehandler|boom lift|scissor lift)\b/.test(text);
+  const onRoad = /\b(on road|highway vehicles?|commercial vehicle|truck|trucks|tractor|tractors|trailer|trailers|bus|coach|passenger|light duty)\b/.test(text);
+
+  if (offRoad && !onRoad) return "off_road";
+  if (onRoad && !offRoad) return "on_road";
+  return "unknown";
 }
 
 export function parseCatalogCsv(csv: string): { header: string[]; rows: CsvRow[] } {
@@ -433,6 +455,7 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
   const templateCandidates: CatalogTemplateCandidate[] = [];
   for (const [importKey, acc] of templates) {
     const vehicleType = deriveVehicleType(acc.usageContext);
+    const assetScope = deriveCatalogAssetScope(acc.usageContext, acc.templateName);
     const listedSections = Array.from(acc.sections.entries()).map(([title, items]) => ({ title, items }));
     const listed = listedSections.reduce((sum, sec) => sum + sec.items.length, 0);
 
@@ -464,8 +487,16 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
       if (acc.fromMaster) {
         warnings.push(`Inspection "${acc.templateName}": no recognizable vehicle type to build from the master list; using the listed items.`);
       }
-      // The shop listed the items: map each onto the master inspection list.
-      sections = mapSectionsToMaster(listedSections, { vehicleType });
+      // Feed the matcher the metadata the CSV gave us. Ambiguous scope uses the
+      // on-road catalog as the precision-first fallback; explicit off-highway
+      // metadata is required before equipment-only master items can auto-map.
+      sections = mapSectionsToMaster(listedSections, {
+        vehicleType,
+        brakeSystem: acc.brakeSystem,
+        dutyClass: acc.dutyClass,
+        assetScope: assetScope === "off_road" ? "off_road" : "on_road",
+        templateName: acc.templateName,
+      });
       confidence = listed >= 8 ? 0.9 : listed >= 5 ? 0.82 : 0.62;
       if (confidence < SERVICE_CATALOG_HIGH_CONFIDENCE) {
         reviewReason = `Only ${listed} checklist item${listed === 1 ? "" : "s"}`;
