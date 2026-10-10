@@ -7,6 +7,7 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { toast } from "sonner";
 import type { Database, TablesInsert } from "@shared/types/types/supabase";
 import { AiSuggestModal } from "@work-orders/components/AiSuggestModal";
+import CollapsibleSearchList from "@/features/shared/components/ui/CollapsibleSearchList";
 import { calculateTax, type ProvinceCode } from "@/features/integrations/tax";
 import {
   isMissingWorkOrderWriteError,
@@ -169,11 +170,8 @@ function scoreMenuItemFit(args: { mi: MenuItemRow; vehicle: VehicleLite | null }
   return score;
 }
 
-function menuSearchHit(mi: MenuItemRow, q: string): boolean {
-  const needle = q.trim().toLowerCase();
-  if (!needle) return true;
-
-  const hay = [
+function menuSearchText(mi: MenuItemRow): string {
+  return [
     mi.name,
     mi.description,
     mi.category,
@@ -183,10 +181,13 @@ function menuSearchHit(mi: MenuItemRow, q: string): boolean {
     mi.correction,
   ]
     .map((x) => (typeof x === "string" ? x : ""))
-    .join(" ")
-    .toLowerCase();
+    .join(" ");
+}
 
-  return hay.includes(needle);
+function templateSearchText(t: TemplateRow): string {
+  return [t.template_name, t.description]
+    .map((x) => (typeof x === "string" ? x : ""))
+    .join(" ");
 }
 
 function isProvinceCode(v: string): v is ProvinceCode {
@@ -313,7 +314,6 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
 
   const [aiOpen, setAiOpen] = useState(false);
 
-  const [menuQuery, setMenuQuery] = useState("");
   const [includeGlobal, setIncludeGlobal] = useState(true);
 
   const lastSetShopId = useRef<string | null>(null);
@@ -594,30 +594,29 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
         ? `Plate ${vehicle.license_plate}`
         : null;
 
-  const menuItemsDisplay = useMemo(() => {
-    const q = menuQuery.trim();
-    const scored = menuItemsAll
-      .filter((mi) => menuSearchHit(mi, q))
-      .map((mi) => ({
-        mi,
-        score: scoreMenuItemFit({ mi, vehicle }),
-        global: isGlobalMenuItem(mi),
-      }))
-      .filter((x) => (includeGlobal ? true : !x.global))
-      .filter((x) => {
-        if (!vehicle) return true;
-        if (x.global) return true;
-        return x.score > 0;
-      })
-      .sort((a, b) => {
-        if (b.score !== a.score) return b.score - a.score;
-        const aT = new Date(a.mi.created_at ?? 0).getTime();
-        const bT = new Date(b.mi.created_at ?? 0).getTime();
-        return bT - aT;
-      });
-
-    return scored.map((x) => x.mi);
-  }, [menuItemsAll, menuQuery, includeGlobal, vehicle]);
+  const filterMenuItems = useCallback(
+    (all: readonly MenuItemRow[]): readonly MenuItemRow[] =>
+      all
+        .map((mi) => ({
+          mi,
+          score: scoreMenuItemFit({ mi, vehicle }),
+          global: isGlobalMenuItem(mi),
+        }))
+        .filter((x) => (includeGlobal ? true : !x.global))
+        .filter((x) => {
+          if (!vehicle) return true;
+          if (x.global) return true;
+          return x.score > 0;
+        })
+        .sort((a, b) => {
+          if (b.score !== a.score) return b.score - a.score;
+          const aT = new Date(a.mi.created_at ?? 0).getTime();
+          const bT = new Date(b.mi.created_at ?? 0).getTime();
+          return bT - aT;
+        })
+        .map((x) => x.mi),
+    [includeGlobal, vehicle],
+  );
 
   const currency: "CAD" | "USD" = shopDefaults?.country === "CA" ? "CAD" : "USD";
   const panelClass =
@@ -681,120 +680,104 @@ export function MenuQuickAdd({ workOrderId }: { workOrderId: string }) {
       </div>
 
       {/* templates */}
-      <div className={`${panelClass} p-3 sm:p-4`}>
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--theme-text-secondary)]">Inspection Templates</h4>
-          <p className="text-[10px] text-[color:var(--theme-text-muted)]">Reusable inspection templates you can attach as jobs.</p>
-        </div>
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {templatesLoading ? (
-            <div className="col-span-full w-full py-2 text-center text-sm text-[color:var(--theme-text-secondary)]">Loading templates…</div>
-          ) : templates.length ? (
-            templates.slice(0, 9).map((t) => (
-              <button
-                key={t.id}
-                type="button"
-                onClick={() => void addTemplateAsLine(t)}
-                disabled={addingId === t.id || !shopReady}
-                className={itemCardClass}
-                title={t.description ?? undefined}
-              >
-                <span className="font-medium text-[color:var(--theme-text-primary)]">{t.template_name ?? "Inspection"}</span>
-                <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                  inspection • {typeof t.labor_hours === "number" ? `${t.labor_hours.toFixed(1)}h` : "Labor TBD"}
-                </div>
-              </button>
-            ))
-          ) : (
-            <div className="col-span-full w-full py-2 text-center text-sm text-[color:var(--theme-text-secondary)]">No templates yet.</div>
-          )}
-        </div>
-      </div>
+      <CollapsibleSearchList
+        title="Inspection Templates"
+        description="Reusable inspection templates you can attach as jobs."
+        items={templates}
+        getKey={(t) => t.id}
+        getSearchText={templateSearchText}
+        searchPlaceholder="Search inspection templates…"
+        loading={templatesLoading}
+        loadingMessage="Loading templates…"
+        emptyMessage="No templates yet."
+        renderItem={(t) => (
+          <button
+            type="button"
+            onClick={() => void addTemplateAsLine(t)}
+            disabled={addingId === t.id || !shopReady}
+            className={itemCardClass}
+            title={t.description ?? undefined}
+          >
+            <span className="font-medium text-[color:var(--theme-text-primary)]">{t.template_name ?? "Inspection"}</span>
+            <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+              inspection • {typeof t.labor_hours === "number" ? `${t.labor_hours.toFixed(1)}h` : "Labor TBD"}
+            </div>
+          </button>
+        )}
+      />
 
       {/* menu items */}
-      <div className={`${panelClass} p-3 sm:p-4`}>
-        <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-          <div className="space-y-1">
-            <h4 className="text-xs font-semibold uppercase tracking-wide text-[color:var(--theme-text-secondary)]">Menu Items</h4>
-            <p className="text-[10px] text-[color:var(--theme-text-muted)]">
-              Reusable catalog entries from <span className="font-mono">menu_items</span>. Matches for this vehicle are shown first.
-            </p>
-          </div>
-
-          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <CollapsibleSearchList
+        title="Menu Items"
+        description={
+          <>
+            Reusable catalog entries from <span className="font-mono">menu_items</span>. Matches for this vehicle are shown first.
+          </>
+        }
+        items={menuItemsAll}
+        filterItems={filterMenuItems}
+        getKey={(mi) => mi.id}
+        getSearchText={menuSearchText}
+        searchPlaceholder="Search menu items (e.g. brakes, alignment, oil)…"
+        loading={menuLoading}
+        loadingMessage="Loading menu items…"
+        emptyMessage="No menu items yet."
+        noMatchMessage="No menu items match this filter."
+        toolbar={
+          <label className="flex items-center gap-2 text-[11px] text-[color:var(--theme-text-secondary)]">
             <input
-              value={menuQuery}
-              onChange={(e) => setMenuQuery(e.target.value)}
-              placeholder="Search menu items (e.g. brakes, alignment, oil)…"
-              className="w-full sm:w-[320px] rounded-md border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] px-3 py-1.5 text-xs sm:text-sm text-[color:var(--theme-text-primary)] placeholder:text-[color:var(--theme-text-muted)] focus:border-sky-400/70 focus:outline-none"
+              type="checkbox"
+              checked={includeGlobal}
+              onChange={(e) => setIncludeGlobal(e.target.checked)}
+              className="h-4 w-4 rounded border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]"
             />
-            <label className="flex items-center gap-2 text-[11px] text-[color:var(--theme-text-secondary)]">
-              <input
-                type="checkbox"
-                checked={includeGlobal}
-                onChange={(e) => setIncludeGlobal(e.target.checked)}
-                className="h-4 w-4 rounded border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]"
-              />
-              Include global services
-            </label>
-          </div>
-        </div>
+            Include global services
+          </label>
+        }
+        renderItem={(mi) => {
+          const p = calcMenuTotals({ mi, shop: shopDefaults });
 
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-          {menuLoading ? (
-            <div className="col-span-full w-full py-2 text-center text-sm text-[color:var(--theme-text-secondary)]">Loading menu items…</div>
-          ) : menuItemsDisplay.length ? (
-            menuItemsDisplay.slice(0, 12).map((mi) => {
-              const p = calcMenuTotals({ mi, shop: shopDefaults });
+          const laborLabel = p.laborHours > 0 ? `${p.laborHours.toFixed(1)}h` : "Labor TBD";
+          const partsLabel = p.partsTotal > 0 ? `${moneyLabel(currency, p.partsTotal)} parts` : "No parts";
+          const totalLabel = p.total > 0 ? moneyLabel(currency, p.total) : "No total";
+          const taxLabel =
+            p.taxTotal > 0 ? `${p.taxLabel ?? "Tax"} ${moneyLabel(currency, p.taxTotal)}` : null;
 
-              const laborLabel = p.laborHours > 0 ? `${p.laborHours.toFixed(1)}h` : "Labor TBD";
-              const partsLabel = p.partsTotal > 0 ? `${moneyLabel(currency, p.partsTotal)} parts` : "No parts";
-              const totalLabel = p.total > 0 ? moneyLabel(currency, p.total) : "No total";
-              const taxLabel =
-                p.taxTotal > 0 ? `${p.taxLabel ?? "Tax"} ${moneyLabel(currency, p.taxTotal)}` : null;
+          return (
+            <button
+              type="button"
+              onClick={() => void addSavedMenuItem(mi)}
+              disabled={addingId === (mi.name ?? "") || !shopReady}
+              className={itemCardClass}
+              title={mi.description ?? undefined}
+            >
+              <span className="font-medium text-[color:var(--theme-text-primary)]">{mi.name}</span>
+              <div className="mt-1 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">
+                Source: menu_items
+              </div>
 
-              return (
-                <button
-                  type="button"
-                  key={mi.id}
-                  onClick={() => void addSavedMenuItem(mi)}
-                  disabled={addingId === (mi.name ?? "") || !shopReady}
-                  className={itemCardClass}
-                  title={mi.description ?? undefined}
-                >
-                  <span className="font-medium text-[color:var(--theme-text-primary)]">{mi.name}</span>
-                  <div className="mt-1 text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">
-                    Source: menu_items
-                  </div>
+              <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
+                {laborLabel} • {partsLabel} • <span className="text-[color:var(--theme-text-primary)]">{totalLabel}</span>
+                {taxLabel ? <span className="ml-1 text-[color:var(--theme-text-muted)]">• {taxLabel}</span> : null}
 
-                  <div className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                    {laborLabel} • {partsLabel} • <span className="text-[color:var(--theme-text-primary)]">{totalLabel}</span>
-                    {taxLabel ? <span className="ml-1 text-[color:var(--theme-text-muted)]">• {taxLabel}</span> : null}
+                {isGlobalMenuItem(mi) ? (
+                  <span className={`ml-2 ${chipClass}`}>
+                    GLOBAL
+                  </span>
+                ) : (
+                  <span className="ml-2 rounded-full border border-cyan-500/60 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-100">
+                    FIT
+                  </span>
+                )}
+              </div>
 
-                    {isGlobalMenuItem(mi) ? (
-                      <span className={`ml-2 ${chipClass}`}>
-                        GLOBAL
-                      </span>
-                    ) : (
-                      <span className="ml-2 rounded-full border border-cyan-500/60 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-100">
-                        FIT
-                      </span>
-                    )}
-                  </div>
-
-                  {mi.service_key ? (
-                    <div className="mt-1 font-mono text-[10px] text-[color:var(--theme-text-muted)]">{mi.service_key}</div>
-                  ) : null}
-                </button>
-              );
-            })
-          ) : (
-            <div className="col-span-full w-full py-2 text-center text-sm text-[color:var(--theme-text-secondary)]">
-              No menu items match this filter.
-            </div>
-          )}
-        </div>
-      </div>
+              {mi.service_key ? (
+                <div className="mt-1 font-mono text-[10px] text-[color:var(--theme-text-muted)]">{mi.service_key}</div>
+              ) : null}
+            </button>
+          );
+        }}
+      />
 
       <AiSuggestModal
         open={aiOpen}
