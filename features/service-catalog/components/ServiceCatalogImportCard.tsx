@@ -17,6 +17,9 @@ export type CatalogPreview = {
     partsRecognized: number;
     partsMatched: number;
     partsToRequest: number;
+    checklistItems: number;
+    checklistItemsFromMaster: number;
+    checklistItemsCustom: number;
   };
   services: Array<{
     importKey: string;
@@ -29,7 +32,18 @@ export type CatalogPreview = {
     status: "new" | "update" | "review";
     reviewReason: string | null;
   }>;
-  templates: Array<{ importKey: string; name: string; itemCount: number; sectionCount: number; status: "ready" | "review" }>;
+  templates: Array<{
+    importKey: string;
+    name: string;
+    itemCount: number;
+    sectionCount: number;
+    source: "listed" | "master";
+    fromMaster: number;
+    custom: number;
+    matched: Array<{ original: string; item: string; unit: string | null }>;
+    reviewReason: string | null;
+    status: "ready" | "review";
+  }>;
   warnings: string[];
 };
 
@@ -156,7 +170,7 @@ export function ServiceCatalogImportCard({ guided, onImported }: Props) {
             </p>
             <p>
               Useful columns: service_code, service_name, default_labor_hours, default_labor_rate or price,
-              inspection_template, section, checklist_item, plus part_number, part_qty and part_name to attach parts. Re-uploading the same codes updates your existing
+              inspection_template, section, checklist_item (matched to your master inspection list; or set inspection_source=master with vehicle_type to build a template from it), plus part_number, part_qty and part_name to attach parts. Re-uploading the same codes updates your existing
               services instead of duplicating them.
             </p>
           </>
@@ -208,6 +222,12 @@ export function ServiceCatalogImportCard({ guided, onImported }: Props) {
               <p className="text-xs text-[color:var(--theme-text-secondary)]">
                 {s.servicesToCreate} new · {s.servicesToUpdate} will update existing services
               </p>
+              {s.checklistItems > 0 ? (
+                <p className="text-xs text-[color:var(--theme-text-secondary)]" data-testid="service-catalog-master-summary">
+                  {s.checklistItems} checklist items · {s.checklistItemsFromMaster} mapped to your master inspection list ·{" "}
+                  {s.checklistItemsCustom} kept as written
+                </p>
+              ) : null}
               {s.partsRecognized > 0 ? (
                 <p className="text-xs text-[color:var(--theme-text-secondary)]" data-testid="service-catalog-parts-summary">
                   {s.partsRecognized} parts · {s.partsMatched} matched to inventory · {s.partsToRequest} not found
@@ -276,6 +296,35 @@ export function ServiceCatalogImportCard({ guided, onImported }: Props) {
                   </tbody>
                 </table>
               </div>
+
+              {preview.templates.length > 0 ? (
+                <details className="rounded-xl border border-[color:var(--theme-border-soft)] p-3 text-xs" data-testid="service-catalog-template-mapping">
+                  <summary className="cursor-pointer font-semibold text-[color:var(--theme-text-primary)]">
+                    Inspection templates and master-list mapping
+                  </summary>
+                  <ul className="mt-2 space-y-2">
+                    {preview.templates.map((template) => (
+                      <li key={template.importKey}>
+                        <div className="text-[color:var(--theme-text-primary)]">
+                          {template.name} · {template.itemCount} items ·{" "}
+                          {template.source === "master" ? "built from the master list" : `${template.fromMaster} mapped to master list, ${template.custom} custom`}
+                          {template.status === "review" ? ` · needs review${template.reviewReason ? ` (${template.reviewReason})` : ""}` : ""}
+                        </div>
+                        {template.matched.length > 0 && template.source === "listed" ? (
+                          <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[color:var(--theme-text-secondary)]">
+                            {template.matched.slice(0, 8).map((match, index) => (
+                              <li key={`${match.original}-${index}`}>
+                                {match.original} → {match.item}
+                                {match.unit ? ` (${match.unit})` : ""}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </details>
+              ) : null}
 
               <div className="flex flex-wrap gap-2">
                 <button type="button" className={PRIMARY} disabled={busy !== null || importCount === 0} onClick={() => void confirmImport()}>

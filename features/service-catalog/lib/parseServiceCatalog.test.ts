@@ -42,7 +42,7 @@ describe("buildCatalogPlan", () => {
       "Air & Brakes",
       "Chassis & Safety",
     ]);
-    expect(categories[0].items.map((i) => i.item)).toContain("Engine oil level and condition");
+    expect(categories[0].items.map((i) => i.item)).toContain("Engine oil level/condition");
     expect(categories.reduce((n, c) => n + c.items.length, 0)).toBe(14);
   });
 
@@ -206,5 +206,119 @@ describe("service catalog parts (BOM)", () => {
     const result = buildCatalogPlan(csv2);
     expect(result.services.find((s) => s.serviceCode === "S-1")?.parts[0].quantity).toBe(1);
     expect(result.services.find((s) => s.serviceCode === "S-2")?.parts).toEqual([]);
+  });
+});
+
+describe("master inspection list mapping", () => {
+  const reel = buildCatalogPlan(readFileSync(join(__dirname, "../__fixtures__/service-catalog-shop-reel.csv"), "utf8"));
+  const payload = toImportPayload(reel);
+  const tpl = (name: string) => payload.templates.find((t) => t.name === name);
+  const itemsOf = (name: string) => tpl(name)?.sections.flatMap((sec) => sec.items) ?? [];
+
+  it("adopts the master wording, unit and spec code for items that clearly match", () => {
+    const brake = itemsOf("Brake System Inspection");
+    expect(brake).toContainEqual({ item: "Brake shoes/linings", unit: "mm", specCode: "brake_lining_other", cvipCode: null });
+    expect(brake).toContainEqual(expect.objectContaining({ item: "Governor cut-in / cut-out pressure", unit: "psi" }));
+    expect(itemsOf("Steering & Suspension Inspection")).toContainEqual(
+      expect.objectContaining({ item: "Steering wheel free play at rim", unit: "mm", specCode: "steering_freeplay_max" }),
+    );
+  });
+
+  it("keeps section titles and every unmatched item exactly as the shop wrote them", () => {
+    expect(tpl("Heavy-Duty PM Service")?.sections.map((s) => s.title)).toEqual([
+      "Engine & Fluids",
+      "Fuel & Aftertreatment",
+      "Air & Brakes",
+      "Chassis & Safety",
+    ]);
+    expect(itemsOf("Heavy-Duty PM Service")).toContainEqual({
+      item: "Inspect fuel filter service condition",
+      unit: null,
+      specCode: null,
+      cvipCode: null,
+    });
+  });
+
+  it("reports how many items were mapped, and never drops an item", () => {
+    expect(reel.summary.checklistItemsFromMaster).toBeGreaterThanOrEqual(12);
+    expect(reel.summary.checklistItems).toBe(reel.summary.checklistItemsFromMaster + reel.summary.checklistItemsCustom);
+    for (const t of reel.templates) expect(t.itemCount).toBeGreaterThanOrEqual(t.mapping.listed);
+  });
+
+  it("does not map to a master item that adds a different concept", () => {
+    const csv = [
+      "service_code,service_name,default_labor_hours,template_name,section,item,usage_context",
+      ...["Inspect air dryer operation", "Inspect fan and fan clutch operation", "Inspect belts and hoses", "Check DEF level and contamination indicators", "Inspect exhaust and aftertreatment clamps for leaks", "Review code A", "Review code B", "Review code C"].map(
+        (it) => `S1,Svc,1,Truck check,Misc,${it},Heavy-duty trucks`,
+      ),
+    ].join("\n");
+    const plan = buildCatalogPlan(csv);
+    const sources = plan.templates[0].sections.flatMap((sec) => sec.items.map((i) => [i.original, i.source]));
+    expect(sources.find(([o]) => o === "Inspect air dryer operation")?.[1]).toBe("custom");
+    expect(sources.find(([o]) => o === "Inspect fan and fan clutch operation")?.[1]).toBe("custom");
+    expect(sources.find(([o]) => o === "Inspect belts and hoses")?.[1]).toBe("custom");
+  });
+
+  it("uses a master item at most once per template", () => {
+    const csv = [
+      "service_code,service_name,default_labor_hours,template_name,section,item,usage_context",
+      ...["Check wheel bearing play", "Inspect wheel bearing play", "Item three", "Item four", "Item five", "Item six", "Item seven", "Item eight"].map(
+        (it) => `S1,Svc,1,Wheels,Misc,${it},Heavy-duty trucks`,
+      ),
+    ].join("\n");
+    const items = buildCatalogPlan(csv).templates[0].sections.flatMap((sec) => sec.items);
+    expect(items.filter((i) => i.item === "Wheel bearings/play")).toHaveLength(1);
+    expect(items).toHaveLength(8);
+  });
+
+  it("splits a compound line into master items only when every part resolves", () => {
+    const csv = [
+      "service_code,service_name,default_labor_hours,template_name,section,item,usage_context",
+      ...["Inspect drag link and tie rod ends", "Inspect windshield, mirrors and wipers", "Item three", "Item four", "Item five", "Item six", "Item seven", "Item eight"].map(
+        (it) => `S1,Svc,1,Steering,Misc,"${it}",Heavy-duty trucks`,
+      ),
+    ].join("\n");
+    const items = buildCatalogPlan(csv).templates[0].sections.flatMap((sec) => sec.items);
+    expect(items.filter((i) => i.original === "Inspect drag link and tie rod ends").map((i) => i.item)).toEqual(["Drag link", "Tie rod ends"]);
+    expect(items.filter((i) => i.original === "Inspect windshield, mirrors and wipers")).toEqual([
+      expect.objectContaining({ item: "Inspect windshield, mirrors and wipers", source: "custom" }),
+    ]);
+  });
+
+  it("keeps equipment-only master items out of highway templates", () => {
+    const csv = [
+      "service_code,service_name,default_labor_hours,template_name,section,item,usage_context",
+      ...["Check hydraulic oil level and condition", "Item two", "Item three", "Item four", "Item five", "Item six", "Item seven", "Item eight"].map(
+        (it) => `S1,Svc,1,Truck hydraulics,Misc,${it},Heavy-duty trucks`,
+      ),
+    ].join("\n");
+    const items = buildCatalogPlan(csv).templates[0].sections.flatMap((sec) => sec.items);
+    expect(items[0]).toMatchObject({ original: "Check hydraulic oil level and condition", source: "custom" });
+  });
+
+  it("builds a template from the master list when the CSV names it with inspection_source=master", () => {
+    const csv = [
+      "service_code,service_name,default_labor_hours,price,template_name,inspection_source,usage_context,brake_system,inspection_item_count",
+      "CVIP-1,Annual CVIP,2,300,Annual CVIP Truck,master,Heavy-duty trucks and tractors,air,50",
+    ].join("\n");
+    const plan = buildCatalogPlan(csv);
+    const t = plan.templates[0];
+    expect(t.source).toBe("master");
+    expect(t.needsReview).toBe(false);
+    expect(t.itemCount).toBeGreaterThanOrEqual(40);
+    expect(t.itemCount).toBeLessThanOrEqual(50);
+    expect(t.mapping.fromMaster).toBe(t.itemCount);
+    expect(plan.services[0].templateName).toBe("Annual CVIP Truck");
+    const out = toImportPayload(plan).templates[0];
+    expect(toInspectionCategories(out.sections).length).toBe(out.sections.length);
+    expect(out.sections.flatMap((s) => s.items).some((i) => i.unit)).toBe(true);
+  });
+
+  it("flags a master-only template with no vehicle type instead of importing an empty checklist", () => {
+    const csv = ["service_code,service_name,default_labor_hours,template_name", "X-1,Mystery,1,Mystery Inspection"].join("\n");
+    const plan = buildCatalogPlan(csv);
+    expect(plan.templates[0].needsReview).toBe(true);
+    expect(plan.services[0].templateKey).toBeNull();
+    expect(toImportPayload(plan).templates).toHaveLength(0);
   });
 });

@@ -82,6 +82,15 @@ export async function POST(req: Request) {
       name: t.templateName,
       itemCount: t.itemCount,
       sectionCount: t.sections.length,
+      source: t.source,
+      fromMaster: t.mapping.fromMaster,
+      custom: t.mapping.custom,
+      matched: t.sections.flatMap((sec) =>
+        sec.items
+          .filter((i) => i.source === "master")
+          .map((i) => ({ original: i.original, item: i.item, unit: i.unit })),
+      ),
+      reviewReason: t.reviewReason,
       status: t.needsReview ? "review" : "ready",
     })),
     warnings: plan.warnings,
