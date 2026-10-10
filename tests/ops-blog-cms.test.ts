@@ -35,6 +35,30 @@ describe("Ops blog CMS", () => {
     expect(mediaRoute).not.toContain('"image/svg+xml"');
   });
 
+  it("allows incomplete drafts but keeps public publishing requirements server-side", () => {
+    const articlesRoute = read("app/api/ops/blog/articles/route.ts");
+    const draft = BlogArticleInputSchema.safeParse({
+      title: "Started draft",
+      slug: "started-draft",
+      excerpt: "",
+      bodyMarkdown: "",
+      authorName: "Edward Lakin",
+      authorTitle: "Founder, ProFixIQ",
+      category: "Founder Notes",
+      heroImageUrl: null,
+      heroImageAlt: null,
+      seoTitle: "",
+      seoDescription: "",
+      status: "draft",
+      featured: false,
+    });
+
+    expect(draft.success).toBe(true);
+    expect(articlesRoute).toContain('parsed.data.status === "published"');
+    expect(articlesRoute).toContain('"article body"');
+    expect(articlesRoute).toContain("before publishing");
+  });
+
   it("exposes only explicitly published documents on public resource paths", () => {
     const server = read("features/marketing/blog/server.ts");
     const latest = read("app/api/resources/latest/route.ts");

@@ -42,6 +42,21 @@ export async function POST(request: Request) {
     );
   }
 
+  if (parsed.data.status === "published") {
+    const missing = [
+      ["excerpt", parsed.data.excerpt],
+      ["article body", parsed.data.bodyMarkdown],
+    ]
+      .filter(([, value]) => !value.trim())
+      .map(([label]) => label);
+    if (missing.length > 0) {
+      return NextResponse.json(
+        { error: `Add ${missing.join(" and ")} before publishing` },
+        { status: 400 },
+      );
+    }
+  }
+
   if (parsed.data.heroImageUrl && !parsed.data.heroImageAlt?.trim()) {
     return NextResponse.json(
       { error: "Hero image alt text is required when a hero image is set" },
