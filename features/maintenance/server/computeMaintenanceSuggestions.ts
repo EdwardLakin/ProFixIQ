@@ -11,9 +11,10 @@ import { getVehicleMaintenanceHistory } from "./getVehicleMaintenanceHistory";
 import { resolveMaintenanceMenuMap } from "./resolveMaintenanceMenuMap";
 import { withAITelemetryContext } from "@/features/shared/lib/server/ai-telemetry-context";
 import { generateMaintenanceRulesForVehicle } from "./generateMaintenanceRules";
+import { vehicleEngineKey } from "./vehicleEngineKey";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
-const SCHEDULE_GENERATION_TIMEOUT_MS = 8000;
+const SCHEDULE_GENERATION_TIMEOUT_MS = 20_000;
 
 function parseMileage(value: string | number | null | undefined): number | null {
   if (typeof value === "number" && Number.isFinite(value)) return value;
@@ -29,6 +30,20 @@ function parseMileage(value: string | number | null | undefined): number | null 
 function normalizeText(value: string | null | undefined): string | null {
   const next = value?.trim().toLowerCase() ?? "";
   return next.length ? next : null;
+}
+
+function hasUsableTrigger(rule: MaintenanceRuleRow): boolean {
+  return [
+    rule.distance_km_normal,
+    rule.distance_km_severe,
+    rule.time_months_normal,
+    rule.time_months_severe,
+    rule.first_due_km,
+    rule.first_due_months,
+  ].some(
+    // Positive only: a generated 0 or negative stands in for "no interval".
+    (value) => typeof value === "number" && Number.isFinite(value) && value > 0,
+  );
 }
 
 function ruleMatchesVehicle(
@@ -48,7 +63,7 @@ function ruleMatchesVehicle(
   const ruleModel = normalizeText(rule.model);
   if (ruleModel && vehicleModel && ruleModel !== vehicleModel) return false;
 
-  const vehicleEngine = normalizeText(vehicle.engine_family);
+  const vehicleEngine = normalizeText(vehicleEngineKey(vehicle));
   const ruleEngine = normalizeText(rule.engine_family);
   if (ruleEngine && vehicleEngine && ruleEngine !== vehicleEngine) return false;
 
@@ -242,7 +257,7 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
 
   const { data: vehicleRow, error: vehicleError } = await supabase
     .from("vehicles")
-    .select("id, year, make, model, mileage, engine_family")
+    .select("id, year, make, model, mileage, engine_family, engine")
     .eq("id", workOrder.vehicle_id)
     .maybeSingle();
 
@@ -274,13 +289,22 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
             year: vehicle.year as number,
             make: trimmedVehicleMake,
             model: trimmedVehicleModel,
-            engineFamily: vehicle.engine_family ?? null,
+            engineFamily: vehicleEngineKey(vehicle),
             timeoutMs: SCHEDULE_GENERATION_TIMEOUT_MS,
           }),
       );
-    } catch {
+    } catch (error) {
       // Best-effort: if AI schedule generation fails, fall back to whatever
-      // rules already exist rather than blocking suggestions entirely.
+      // rules already exist rather than blocking suggestions entirely. Log it,
+      // otherwise the generic fallback rules look like a real schedule.
+      console.error("[maintenance] schedule generation failed", {
+        vehicleId: vehicle.id,
+        year: vehicle.year,
+        make: trimmedVehicleMake,
+        model: trimmedVehicleModel,
+        engineFamily: vehicleEngineKey(vehicle),
+        error: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -321,11 +345,41 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
   // them so an asset like a trailer doesn't inherit engine/drivetrain rules.
   const matchedRules = rules.filter((rule) => {
     if (hasVehicleSpecificRules && rule.make == null) return false;
+    // A generated rule with no positive interval can never come due properly
+    // (a 0 first-due is always due), so it is not part of any schedule and
+    // must not displace a working rule either.
+    if (!hasUsableTrigger(rule)) return false;
     return ruleMatchesVehicle(vehicle, rule);
   });
+
+  // An engine-specific schedule supersedes an engine-agnostic rule for the same
+  // service on the same vehicle spec (older runs stored rules without the
+  // engine); otherwise both would match and suggest the service twice.
+  // Only when the vehicle's engine is known and the rule is for that engine: a
+  // vehicle with no engine matches every variant's rules, and one of them must
+  // not displace the generic interval.
+  const vehicleEngine = normalizeText(vehicleEngineKey(vehicle));
+  const engineSpecificServiceCodes = new Set(
+    matchedRules
+      .filter(
+        (rule) =>
+          vehicleEngine != null &&
+          rule.make != null &&
+          normalizeText(rule.engine_family) === vehicleEngine,
+      )
+      .map((rule) => rule.service_code),
+  );
+  const schedule = matchedRules.filter(
+    (rule) =>
+      !(
+        rule.make != null &&
+        !normalizeText(rule.engine_family) &&
+        engineSpecificServiceCodes.has(rule.service_code)
+      ),
+  );
   const suggestions: MaintenanceSuggestionItem[] = [];
 
-  for (const rule of matchedRules) {
+  for (const rule of schedule) {
     const service = servicesByCode.get(rule.service_code);
     if (!service) continue;
 
@@ -337,7 +391,7 @@ export async function computeMaintenanceSuggestionsForWorkOrder(opts: {
         year: vehicle.year ?? null,
         make: vehicle.make ?? null,
         model: vehicle.model ?? null,
-        engineFamily: vehicle.engine_family ?? null,
+        engineFamily: vehicleEngineKey(vehicle),
       },
     });
 

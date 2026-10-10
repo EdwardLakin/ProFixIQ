@@ -3,11 +3,18 @@ import { ledgerOpenAICall } from "@/features/shared/lib/server/ai-provider-accou
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { openai } from "@/features/shared/lib/server/openai";
-import { getOpenAIModelForPurpose, openAITemperatureParam } from "@/features/shared/lib/server/openai-models";
+import {
+  getOpenAIModelForPurpose,
+  openAIReasoningEffortParam,
+  openAITemperatureParam,
+} from "@/features/shared/lib/server/openai-models";
+import { escapeLike } from "./escapeLike";
 import {
   MAINTENANCE_SERVICE_CATALOG,
   canonicalizeServiceCode,
 } from "./serviceCatalog";
+
+const MAX_SCHEDULE_COMPLETION_TOKENS = 4000;
 
 const CATALOG_LABEL_BY_CODE = new Map(
   MAINTENANCE_SERVICE_CATALOG.map((entry) => [entry.code, entry.label]),
@@ -187,14 +194,16 @@ export async function generateMaintenanceRulesForVehicle(opts: {
     const existingQuery = supabase
       .from("maintenance_rules")
       .select("id")
-      .eq("make", trimmedMake)
-      .eq("model", trimmedModel)
+      // Case-insensitive: rule matching lowercases make/model/engine, so a set
+      // stored as "FORD" already covers "Ford" and must not be generated twice.
+      .ilike("make", escapeLike(trimmedMake))
+      .ilike("model", escapeLike(trimmedModel))
       .eq("year_from", year)
       .eq("year_to", year);
 
     const { data: existingRules, error: existingError } = await (
       normalizedEngineFamily
-        ? existingQuery.eq("engine_family", normalizedEngineFamily)
+        ? existingQuery.ilike("engine_family", escapeLike(normalizedEngineFamily))
         : existingQuery.is("engine_family", null)
     ).limit(1);
 
@@ -258,12 +267,17 @@ export async function generateMaintenanceRulesForVehicle(opts: {
       feature: "maintenance_rules_generate",
       endpoint: "/api/maintenance/generate-rules",
       model: getOpenAIModelForPurpose("fast"),
+      // Reserve the budget this request can actually spend, not the default.
+      maxCompletionTokens: MAX_SCHEDULE_COMPLETION_TOKENS,
     },
     () =>
       openai.chat.completions.create({
         model: getOpenAIModelForPurpose("fast"),
         ...openAITemperatureParam(getOpenAIModelForPurpose("fast"), 0.4),
-        max_tokens: 900,
+        ...openAIReasoningEffortParam(getOpenAIModelForPurpose("fast"), "low"),
+        // GPT-5 models reject `max_tokens`; the budget also covers reasoning
+        // tokens, and a full schedule (services + rules) runs well past 900.
+        max_completion_tokens: MAX_SCHEDULE_COMPLETION_TOKENS,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -271,7 +285,16 @@ export async function generateMaintenanceRulesForVehicle(opts: {
       }, timeoutMs ? { timeout: timeoutMs, maxRetries: 0 } : undefined),
   );
 
-  const rawContent = completion.choices[0]?.message?.content ?? "{}";
+  const choice = completion.choices[0];
+  if (choice?.finish_reason === "length") {
+    throw new Error(
+      "AI maintenance schedule was cut off before it finished (token limit).",
+    );
+  }
+  const rawContent = choice?.message?.content?.trim();
+  if (!rawContent) {
+    throw new Error("AI returned an empty maintenance schedule.");
+  }
 
   let parsed: LlmPayloadShape;
   try {

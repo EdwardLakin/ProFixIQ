@@ -8,6 +8,7 @@ import {
 
 export {
   DEFAULT_OPENAI_MODELS,
+  openAIReasoningEffortParam,
   openAITemperatureParam,
   resolveOpenAIModel,
   supportsOpenAITemperature,

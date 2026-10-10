@@ -3,14 +3,20 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { DB } from "./types";
 
 const create = vi.fn();
+const ledger = vi.fn((_context: unknown, call: () => unknown) => call());
 
 vi.mock("server-only", () => ({}));
+vi.mock("@/features/shared/lib/server/ai-provider-accounting", () => ({
+  ledgerOpenAICall: (context: unknown, call: () => unknown) =>
+    ledger(context, call),
+}));
 vi.mock("@/features/shared/lib/server/openai", () => ({
   openai: { chat: { completions: { create: (...args: unknown[]) => create(...args) } } },
 }));
 vi.mock("@/features/shared/lib/server/openai-models", () => ({
   getOpenAIModelForPurpose: () => "test-model",
   openAITemperatureParam: () => ({}),
+  openAIReasoningEffortParam: () => ({ reasoning_effort: "low" }),
 }));
 
 import { generateMaintenanceRulesForVehicle } from "./generateMaintenanceRules";
@@ -27,6 +33,10 @@ function makeClient(opts: { existingRules?: unknown[]; calls: Call[] }) {
         },
         eq: (...args: unknown[]) => {
           opts.calls.push({ table, method: "eq", args });
+          return builder;
+        },
+        ilike: (...args: unknown[]) => {
+          opts.calls.push({ table, method: "ilike", args });
           return builder;
         },
         is: (...args: unknown[]) => {
@@ -55,6 +65,7 @@ const aiPayload = {
 describe("generateMaintenanceRulesForVehicle", () => {
   beforeEach(() => {
     create.mockReset();
+    ledger.mockClear();
     create.mockResolvedValue({
       choices: [{ message: { content: JSON.stringify(aiPayload) } }],
     });
@@ -81,13 +92,38 @@ describe("generateMaintenanceRulesForVehicle", () => {
 
     expect(readCalls).toContainEqual({
       table: "maintenance_rules",
-      method: "eq",
+      method: "ilike",
       args: ["engine_family", "5.0L V8"],
     });
     expect(readCalls).toContainEqual({
       table: "maintenance_rules",
       method: "is",
       args: ["engine_family", null],
+    });
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it("looks for an existing schedule case-insensitively, so FORD and Ford share one", async () => {
+    const readCalls: Call[] = [];
+
+    await generateMaintenanceRulesForVehicle({
+      supabase: makeClient({ existingRules: [{ id: "r1" }], calls: readCalls }),
+      year: 2019,
+      make: "Ford",
+      model: "F_150",
+      engineFamily: "dd15",
+    });
+
+    expect(readCalls).toContainEqual({
+      table: "maintenance_rules",
+      method: "ilike",
+      args: ["make", "Ford"],
+    });
+    // `_` is escaped so it only matches itself.
+    expect(readCalls).toContainEqual({
+      table: "maintenance_rules",
+      method: "ilike",
+      args: ["model", "F\\_150"],
     });
     expect(create).not.toHaveBeenCalled();
   });
@@ -133,6 +169,72 @@ describe("generateMaintenanceRulesForVehicle", () => {
         ],
       }),
     );
+  });
+
+  it("sends a GPT-5-compatible request: max_completion_tokens, no max_tokens", async () => {
+    await generateMaintenanceRulesForVehicle({
+      supabase: makeClient({ calls: [] }),
+      writeClient: makeClient({ calls: [] }),
+      year: 2023,
+      make: "Western Star",
+      model: "4900",
+    });
+
+    const body = create.mock.calls[0][0] as Record<string, unknown>;
+    expect(body).not.toHaveProperty("max_tokens");
+    expect(body.max_completion_tokens).toBe(4000);
+    expect(body.reasoning_effort).toBe("low");
+  });
+
+  it("reserves the full completion budget in the AI accounting context", async () => {
+    await generateMaintenanceRulesForVehicle({
+      supabase: makeClient({ calls: [] }),
+      writeClient: makeClient({ calls: [] }),
+      year: 2023,
+      make: "Western Star",
+      model: "4900",
+    });
+
+    const body = create.mock.calls[0][0] as Record<string, unknown>;
+    expect(ledger).toHaveBeenCalledWith(
+      expect.objectContaining({
+        feature: "maintenance_rules_generate",
+        maxCompletionTokens: body.max_completion_tokens,
+      }),
+      expect.any(Function),
+    );
+  });
+
+  it("fails loudly when the schedule is cut off by the token limit", async () => {
+    create.mockResolvedValue({
+      choices: [
+        { finish_reason: "length", message: { content: '{"services":[{"code":' } },
+      ],
+    });
+
+    await expect(
+      generateMaintenanceRulesForVehicle({
+        supabase: makeClient({ calls: [] }),
+        writeClient: makeClient({ calls: [] }),
+        year: 2023,
+        make: "Western Star",
+        model: "4900",
+      }),
+    ).rejects.toThrow(/cut off/);
+  });
+
+  it("fails loudly when the model returns no content", async () => {
+    create.mockResolvedValue({ choices: [{ message: { content: "" } }] });
+
+    await expect(
+      generateMaintenanceRulesForVehicle({
+        supabase: makeClient({ calls: [] }),
+        writeClient: makeClient({ calls: [] }),
+        year: 2023,
+        make: "Western Star",
+        model: "4900",
+      }),
+    ).rejects.toThrow(/empty maintenance schedule/);
   });
 
   it("maps generated services onto catalog codes and labels", async () => {

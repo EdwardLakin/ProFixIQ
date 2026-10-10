@@ -139,6 +139,7 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
         model: "Flatbed",
         mileage: null,
         engine_family: null,
+        engine: null,
       },
       services: [oilChangeService],
       rules: [genericOilChangeRule],
@@ -153,8 +154,30 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
         model: "Flatbed",
         engineFamily: null,
         writeClient: adminClient,
-        timeoutMs: 8000,
+        timeoutMs: 20_000,
       }),
+    );
+  });
+
+  it("keys the schedule on the stored engine when the engine family is absent", async () => {
+    const supabase = makeSupabase({
+      vehicle: {
+        id: "vehicle-1",
+        year: 2023,
+        make: "Western Star",
+        model: "4900",
+        mileage: null,
+        engine_family: null,
+        engine: " DD15 ",
+      },
+      services: [oilChangeService],
+      rules: [genericOilChangeRule],
+    });
+
+    await computeMaintenanceSuggestionsForWorkOrder({ supabase, workOrderId: "wo-1" });
+
+    expect(generateMaintenanceRulesForVehicle).toHaveBeenCalledWith(
+      expect.objectContaining({ engineFamily: "DD15" }),
     );
   });
 
@@ -167,6 +190,7 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
         model: null,
         mileage: null,
         engine_family: null,
+        engine: null,
       },
       services: [oilChangeService],
       rules: [genericOilChangeRule],
@@ -186,6 +210,7 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
         model: "Flatbed",
         mileage: null,
         engine_family: null,
+        engine: null,
       },
       services: [oilChangeService],
       rules: [genericOilChangeRule, vehicleSpecificOilChangeRule],
@@ -210,6 +235,7 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
         model: "Flatbed",
         mileage: null,
         engine_family: null,
+        engine: null,
       },
       services: [oilChangeService],
       rules: [genericOilChangeRule],
@@ -222,5 +248,127 @@ describe("computeMaintenanceSuggestionsForWorkOrder", () => {
 
     expect(suggestions).toHaveLength(1);
     expect(suggestions[0].serviceCode).toBe("OIL_CHANGE");
+  });
+
+  it("passes the stored-engine key to menu resolution, matching the generated schedule", async () => {
+    const supabase = makeSupabase({
+      vehicle: {
+        id: "vehicle-1",
+        year: 2023,
+        make: "Western Star",
+        model: "4900",
+        mileage: null,
+        engine_family: null,
+        engine: "DD15",
+      },
+      services: [oilChangeService],
+      rules: [
+        { ...genericOilChangeRule, id: "r-ws", make: "Western Star", model: "4900", engine_family: "DD15" },
+      ],
+    });
+
+    await computeMaintenanceSuggestionsForWorkOrder({ supabase, workOrderId: "wo-1" });
+
+    expect(vi.mocked(resolveMaintenanceMenuMap)).toHaveBeenCalledWith(
+      expect.objectContaining({
+        vehicle: expect.objectContaining({ engineFamily: "DD15" }),
+      }),
+    );
+  });
+
+  it("prefers an engine-specific rule over an older engine-agnostic one for the same service", async () => {
+    const supabase = makeSupabase({
+      vehicle: {
+        id: "vehicle-1",
+        year: 2023,
+        make: "Western Star",
+        model: "4900",
+        mileage: null,
+        engine_family: null,
+        engine: "DD15",
+      },
+      services: [oilChangeService],
+      rules: [
+        { ...genericOilChangeRule, id: "legacy", make: "Western Star", model: "4900", engine_family: null },
+        { ...genericOilChangeRule, id: "engine", make: "Western Star", model: "4900", engine_family: "DD15" },
+      ],
+    });
+
+    const { suggestions } = await computeMaintenanceSuggestionsForWorkOrder({
+      supabase,
+      workOrderId: "wo-1",
+    });
+
+    expect(suggestions).toHaveLength(1);
+    expect(vi.mocked(getVehicleMaintenanceHistory)).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the generic rule when the vehicle's engine is unknown", async () => {
+    const supabase = makeSupabase({
+      vehicle: {
+        id: "vehicle-1",
+        year: 2023,
+        make: "Western Star",
+        model: "4900",
+        mileage: null,
+        engine_family: null,
+        engine: null,
+      },
+      services: [oilChangeService],
+      rules: [
+        { ...genericOilChangeRule, id: "agnostic", make: "Western Star", model: "4900", engine_family: null },
+        { ...genericOilChangeRule, id: "dd15", make: "Western Star", model: "4900", engine_family: "DD15" },
+        { ...genericOilChangeRule, id: "dd13", make: "Western Star", model: "4900", engine_family: "DD13" },
+      ],
+    });
+
+    const { suggestions } = await computeMaintenanceSuggestionsForWorkOrder({
+      supabase,
+      workOrderId: "wo-1",
+    });
+
+    // The engine-agnostic rule is not displaced by variant-specific ones, and
+    // the two variants still both match (unknown engine), as before.
+    expect(vi.mocked(getVehicleMaintenanceHistory)).toHaveBeenCalledTimes(3);
+    expect(suggestions.length).toBe(3);
+  });
+
+  it("keeps the working generic rule when the engine-specific replacement has no interval", async () => {
+    const supabase = makeSupabase({
+      vehicle: {
+        id: "vehicle-1",
+        year: 2023,
+        make: "Western Star",
+        model: "4900",
+        mileage: null,
+        engine_family: null,
+        engine: "DD15",
+      },
+      services: [oilChangeService],
+      rules: [
+        { ...genericOilChangeRule, id: "agnostic", make: "Western Star", model: "4900", engine_family: null },
+        {
+          ...genericOilChangeRule,
+          id: "empty",
+          make: "Western Star",
+          model: "4900",
+          engine_family: "DD15",
+          distance_km_normal: null,
+          distance_km_severe: null,
+          time_months_normal: null,
+          time_months_severe: null,
+          first_due_km: 0,
+          first_due_months: -1,
+        },
+      ],
+    });
+
+    const { suggestions } = await computeMaintenanceSuggestionsForWorkOrder({
+      supabase,
+      workOrderId: "wo-1",
+    });
+
+    // The empty rule (nulls, 0 and negatives) can never come due; the agnostic rule still surfaces it.
+    expect(suggestions).toHaveLength(1);
   });
 });
