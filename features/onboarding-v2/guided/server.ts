@@ -13,7 +13,7 @@ const STEPS_TABLE = `${GUIDED_TABLE_PREFIX}steps`;
 const EVENTS_TABLE = `${GUIDED_TABLE_PREFIX}events`;
 
 const SAFE_STEP_STATUSES: GuidedOnboardingStepStatus[] = ["not_started", "in_progress", "completed", "skipped"];
-const STARTING_FROM_SCRATCH_SKIP_STEPS = ["customers", "vehicles", "vehicle_history", "invoices", "parts"] as const;
+const STARTING_FROM_SCRATCH_SKIP_STEPS = ["customers", "vehicles", "vehicle_history", "invoices", "parts", "services_inspections"] as const;
 const STARTING_FROM_SCRATCH_FIRST_STEP = "shop_settings";
 
 type Access = Extract<Awaited<ReturnType<typeof requireShopScopedApiAccess>>, { ok: true }>;

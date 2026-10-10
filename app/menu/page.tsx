@@ -19,6 +19,8 @@ import { useUser } from "@auth/hooks/useUser";
 import { PartPicker, type PickedPart } from "@parts/components/PartPicker";
 import { masterServicesList } from "@inspections/lib/inspection/masterServicesList";
 import GuidedPageStepPanel from "@/features/onboarding-v2/components/GuidedPageStepPanel";
+import { usePersistentGuidedPageContext } from "@/features/onboarding-v2/guided/persistence";
+import { ServiceCatalogImportCard } from "@/features/service-catalog/components/ServiceCatalogImportCard";
 import {
   COMPLETED_REPAIR_SOURCE,
   COMPLETED_REPAIR_STATUSES,
@@ -147,6 +149,7 @@ export default function MenuItemsPage() {
   const router = useRouter();
   const { user, isLoading } = useUser();
   const shopId = useMemo(() => getShopIdFromUser(user), [user]);
+  const guidedContext = usePersistentGuidedPageContext();
 
   const [menuItems, setMenuItems] = useState<MenuItemRow[]>([]);
   const [learnedRepairs, setLearnedRepairs] = useState<LearnedRepairRow[]>([]);
@@ -559,8 +562,13 @@ export default function MenuItemsPage() {
         </button>
       </header>
 
+      <ServiceCatalogImportCard
+        guided={guidedContext ? { sessionId: guidedContext.sessionId, stepKey: guidedContext.stepKey } : null}
+        onImported={() => void refreshLibrary()}
+      />
+
       <div className={editorOpen ? "grid items-start gap-5 xl:grid-cols-[minmax(0,1fr)_440px]" : ""}>
-        <section className={`${CARD} min-w-0 overflow-hidden`} aria-label="Service library">
+        <section id="service-library" className={`${CARD} min-w-0 scroll-mt-6 overflow-hidden`} aria-label="Service library">
           <div className="border-b border-[color:var(--theme-border-soft)] p-4 sm:p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
               <div className="inline-flex w-full rounded-xl bg-[color:var(--theme-surface-subtle)] p-1 sm:w-auto" role="tablist" aria-label="Service source">

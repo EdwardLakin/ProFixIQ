@@ -54,6 +54,8 @@ export function getGuidedStepPageInstructions(stepKey: GuidedOnboardingStepKey):
       return "Review completed, ready-to-invoice, and invoiced work so closeout paperwork is ready before go-live.";
     case "parts":
       return "Add parts manually or open the existing CSV import tools to prepare inventory for quoting and receiving.";
+    case "services_inspections":
+      return "Upload your service catalog CSV, review what ProFixIQ recognized, then confirm to activate the services and their linked inspection checklists. Nothing is written until you confirm.";
     case "shop_settings":
       return "Review shop identity, rates, supplies, hours, and workflow defaults in the focused onboarding Shop Settings card. Staff setup lives later in User Management/Create User.";
     case "analysis":

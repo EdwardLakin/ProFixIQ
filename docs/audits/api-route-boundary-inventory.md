@@ -1,16 +1,16 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-10-07T04:16:46.199Z
+Generated: 2026-10-10T02:45:43.772Z
 
 ## Summary
-- Total route count: **540**
+- Total route count: **546**
 - Routes exporting GET: **200**
-- Routes exporting POST: **364**
+- Routes exporting POST: **370**
 - Routes exporting PUT: **12**
 - Routes exporting PATCH: **34**
 - Routes exporting DELETE: **15**
-- Routes with service-role pattern: **26**
-- Routes using requireShopScopedApiAccess: **218**
+- Routes with service-role pattern: **27**
+- Routes using requireShopScopedApiAccess: **220**
 - Routes with auth.getUser references: **122**
 
 ## High-Risk Routes
@@ -18,6 +18,7 @@ Generated: 2026-10-07T04:16:46.199Z
 - `app/api/agent/requests/[id]/reply/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/agent/requests/[id]/retry/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/agent/requests/[id]/route.ts` | methods: PATCH, DELETE | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/analytics/marketing-events/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary
 - `app/api/assistant/answer/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/assistant/suggested-actions/route.ts` | methods: GET, POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/auth/resolve-login/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
@@ -72,6 +73,8 @@ Generated: 2026-10-07T04:16:46.199Z
 - `app/api/ops/demo-access/requests/[id]/approve/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/ops/demo-access/requests/[id]/dismiss/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/ops/demo-access/revoke/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/ops/early-access/[id]/approve/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/ops/early-access/[id]/decline/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/parts/items/[itemId]/receive/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/parts/receiving/receive-item/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/parts/requests/items/[itemId]/allocate/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
@@ -126,6 +129,7 @@ Generated: 2026-10-07T04:16:46.199Z
 
 ## Service-Role Route List
 - `app/api/admin/reset-user-password/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
+- `app/api/analytics/marketing-events/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary
 - `app/api/auth/sign-in/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_with_shop_identifier_input_or_reference
 - `app/api/chatbot/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary
 - `app/api/demo/shop-boost/run/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_with_shop_identifier_input_or_reference
@@ -222,6 +226,8 @@ Generated: 2026-10-07T04:16:46.199Z
 - `app/api/ops/demo-access/requests/[id]/approve/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/ops/demo-access/requests/[id]/dismiss/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/ops/demo-access/revoke/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/ops/early-access/[id]/approve/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/ops/early-access/[id]/decline/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/parts/items/[itemId]/receive/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/parts/receiving/receive-item/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/parts/requests/items/[itemId]/allocate/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker

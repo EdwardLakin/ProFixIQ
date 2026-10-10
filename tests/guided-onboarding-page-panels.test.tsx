@@ -238,6 +238,7 @@ describe("guided onboarding page panels", () => {
       "vehicle_history",
       "invoices",
       "parts",
+      "services_inspections",
       "shop_settings",
       "analysis",
     ]);
@@ -261,6 +262,7 @@ describe("guided onboarding page panels", () => {
       vehicle_history: "/work-orders/history",
       invoices: "/billing",
       parts: "/parts/inventory",
+      services_inspections: "/menu",
       shop_settings: "/dashboard/onboarding-v2",
       analysis: "/dashboard/onboarding-v2/session-xyz/summary",
     };

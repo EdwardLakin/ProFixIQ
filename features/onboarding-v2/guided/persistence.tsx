@@ -31,6 +31,7 @@ const STEP_PATH_PREFIXES: Record<GuidedOnboardingStepKey, string[]> = {
   vehicle_history: ["/work-orders/history"],
   invoices: ["/billing"],
   parts: ["/parts/inventory"],
+  services_inspections: ["/menu"],
   shop_settings: ["/dashboard/onboarding-v2"],
   analysis: ["/dashboard/onboarding-v2"],
 };

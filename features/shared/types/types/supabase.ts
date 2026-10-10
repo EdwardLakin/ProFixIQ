@@ -30661,6 +30661,17 @@ export type Database = {
         }
         Returns: Json
       }
+      import_service_catalog: {
+        Args: {
+          p_actor_auth_user_id: string
+          p_actor_profile_id: string
+          p_services: Json
+          p_shop_id: string
+          p_source_ref: string
+          p_templates: Json
+        }
+        Returns: Json
+      }
       increment_user_limit: {
         Args: { increment_by?: number; input_shop_id: string }
         Returns: undefined
