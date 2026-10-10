@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const migrationPath =
-  "supabase/migrations/20261010212800_fix_portal_quote_approval_direct_pricing_sync.sql";
+  "supabase/migrations/20261010212648_fix_portal_quote_approval_direct_pricing_sync.sql";
 
 describe("portal quote approval direct pricing sync regression", () => {
   it("returns protected pricing before the authenticated-staff guard", () => {
