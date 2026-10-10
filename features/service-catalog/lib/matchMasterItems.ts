@@ -201,7 +201,7 @@ function masterIndex(): MasterEntry[] {
   return cachedIndex;
 }
 
-export const MASTER_MATCH_MIN_SCORE = 0.6;
+export const MASTER_MATCH_MIN_SCORE = 0.55;
 export const MASTER_MATCH_MIN_MARGIN = 0.07;
 
 export type MatchContext = {
