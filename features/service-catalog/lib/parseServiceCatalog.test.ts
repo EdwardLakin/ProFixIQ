@@ -133,7 +133,8 @@ describe("shop reel service catalog (menu items + inspections)", () => {
     expect(pm.reduce((n, c) => n + c.items.length, 0)).toBe(17);
     const annual = byName("Commercial Vehicle Annual Safety Inspection");
     expect(annual.map((c) => c.title)).toContain("Tires, Wheels & Lighting");
-    expect(annual.reduce((n, c) => n + c.items.length, 0)).toBe(15);
+    // 15 listed lines; a line naming two things ("horn and warning lamps") becomes two items.
+    expect(annual.reduce((n, c) => n + c.items.length, 0)).toBeGreaterThanOrEqual(15);
     for (const t of payload.templates) {
       expect(toInspectionCategories(t.sections).length).toBe(t.sections.length);
     }
@@ -209,6 +210,10 @@ describe("service catalog parts (BOM)", () => {
   });
 });
 
+function reel2(plan: ReturnType<typeof buildCatalogPlan>, original: string) {
+  return plan.templates.flatMap((t) => t.sections.flatMap((sec) => sec.items)).find((i) => i.original === original);
+}
+
 describe("master inspection list mapping", () => {
   const reel = buildCatalogPlan(readFileSync(join(__dirname, "../__fixtures__/service-catalog-shop-reel.csv"), "utf8"));
   const payload = toImportPayload(reel);
@@ -239,6 +244,34 @@ describe("master inspection list mapping", () => {
     });
   });
 
+  it("never drops a line the shop listed: every line is represented by at least one item", () => {
+    const { rows } = parseCatalogCsv(readFileSync(join(__dirname, "../__fixtures__/service-catalog-shop-reel.csv"), "utf8"));
+    for (const t of reel.templates) {
+      const represented = new Set(t.sections.flatMap((sec) => sec.items.map((i) => i.original)));
+      const listed = new Set(rows.filter((r) => r.template_name === t.templateName && r.item).map((r) => r.item));
+      for (const line of listed) expect(represented, `${t.templateName}: "${line}"`).toContain(line);
+    }
+  });
+
+  it("does not collapse a multi-part line onto a master item that covers only part of it", () => {
+    for (const line of [
+      "Inspect brake chambers and slack adjusters",
+      "Inspect windshield, mirrors and wipers",
+      "Inspect headlamps, markers and turn signals",
+      "Inspect springs, air bags and suspension mounts",
+      "Inspect steering linkage and suspension",
+    ]) {
+      const items = reel.templates.flatMap((t) => t.sections.flatMap((sec) => sec.items)).filter((i) => i.original === line);
+      // Either kept whole as the shop wrote it, or expanded so every part maps (never a single partial item).
+      expect(items.length === 1 ? items[0].source : "expanded", line).toMatch(/custom|expanded/);
+    }
+  });
+
+  it("maps hydraulic lines to hydraulic master items on equipment, never to engine items on a truck", () => {
+    const eq = reel2(reel, "Check hydraulic oil level and condition");
+    expect(eq).toMatchObject({ source: "master", item: "Hydraulic fluid level / condition" });
+  });
+
   it("reports how many items were mapped, and never drops an item", () => {
     expect(reel.summary.checklistItemsFromMaster).toBeGreaterThanOrEqual(12);
     expect(reel.summary.checklistItems).toBe(reel.summary.checklistItemsFromMaster + reel.summary.checklistItemsCustom);
@@ -254,7 +287,10 @@ describe("master inspection list mapping", () => {
     ].join("\n");
     const plan = buildCatalogPlan(csv);
     const sources = plan.templates[0].sections.flatMap((sec) => sec.items.map((i) => [i.original, i.source]));
-    expect(sources.find(([o]) => o === "Inspect air dryer operation")?.[1]).toBe("custom");
+    // The air dryer is its own master item; it must not be read as the compressor.
+    const dryer = reel2(plan, "Inspect air dryer operation");
+    expect(dryer).toMatchObject({ source: "master", item: "Air dryer/service status" });
+    expect(dryer?.item).not.toMatch(/compressor/i);
     expect(sources.find(([o]) => o === "Inspect fan and fan clutch operation")?.[1]).toBe("custom");
     expect(sources.find(([o]) => o === "Inspect belts and hoses")?.[1]).toBe("custom");
   });

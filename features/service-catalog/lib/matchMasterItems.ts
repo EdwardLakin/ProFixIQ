@@ -46,7 +46,16 @@ const STOP_WORDS = new Set([
 const LOW_SIGNAL_WORDS = new Set([
   "damage", "damaged", "leak", "leakage", "leaking", "chafe", "chafing", "abrasion",
   "crack", "cracked", "cracking", "wear", "worn", "travel", "play", "performance",
-  "indicator", "indicators", "warning", "warnings", "mount", "mounting", "hardware",
+  "indicator", "indicators", "warning", "warnings", "mount", "mounting", "hardware", "cooling",
+]);
+
+/**
+ * System qualifiers. A line about one system must never take the spec of a
+ * master item for a different system ("hydraulic oil" is not "engine oil").
+ */
+const SYSTEM_QUALIFIERS = new Set([
+  "engine", "hydraulic", "transmission", "fuel", "coolant", "brake", "air", "steering", "suspension",
+  "trailer", "battery", "exhaust", "axle", "def", "cab", "electrical",
 ]);
 
 const TOKEN_ALIASES: Record<string, string> = {
@@ -107,6 +116,8 @@ function normalizePhrases(text: string): string {
     .replace(/\banti[\s-]*freeze\b/g, "coolant")
     .replace(/\bantifreeze\b/g, "coolant")
     .replace(/\bshock absorbers?\b/g, "shock")
+    .replace(/\bhydraulic oil\b/g, "hydraulic fluid")
+    .replace(/\bhoses?\s*(?:and|\/|,|&)\s*fittings?\b/g, "hose fitting")
     .replace(/\blicence\b/g, "license");
 }
 
@@ -276,6 +287,13 @@ function score(csvTokens: string[], entry: MasterEntry, context: MatchContext): 
   const strongSharedTokens = shared.filter((token) => !LOW_SIGNAL_WORDS.has(token));
   if (strongSharedTokens.length === 0) return null;
 
+  // The line names a system the master item does not, while the master item
+  // names a different system the line does not: they are about different things.
+  const csvSet = new Set(csvTokens);
+  const csvOnlyQualifier = csvTokens.some((token) => SYSTEM_QUALIFIERS.has(token) && !masterSet.has(token));
+  const masterOnlyQualifier = entry.tokens.some((token) => SYSTEM_QUALIFIERS.has(token) && !csvSet.has(token));
+  if (csvOnlyQualifier && masterOnlyQualifier) return null;
+
   const sharedWeight = weightedSize(shared);
   const csvWeight = weightedSize(csvTokens);
   const masterWeight = weightedSize(entry.tokens);
@@ -413,6 +431,17 @@ function deriveContextFromSections(
   };
 }
 
+/** Share of the line's (weighted) meaning that the master item actually covers. */
+function lineCoverage(text: string, entry: MasterEntry): number {
+  const csvTokens = tokens(text);
+  if (csvTokens.length === 0) return 0;
+  const masterSet = new Set(entry.tokens);
+  const shared = csvTokens.filter((token) => masterSet.has(token));
+  return weightedSize(shared) / weightedSize(csvTokens);
+}
+
+export const WHOLE_COMPOUND_MIN_COVERAGE = 0.8;
+
 function splitCompound(text: string): string[] {
   return text
     .split(/,|;|\band\b|&/i)
@@ -450,7 +479,17 @@ export function mapSectionsToMaster(
       // collapsed to just one of the two checks.
       const parts = splitCompound(original);
       if (parts.length >= 2 && parts.length <= 4) {
-        const matches = parts.map((part) => findMasterItem(part, itemContext));
+        // "hydraulic hoses and fittings": a later part with no system of its own
+        // inherits the first part's ("fittings" -> "hydraulic fittings").
+        const lead = tokens(parts[0]).filter((token) => SYSTEM_QUALIFIERS.has(token));
+        const matches = parts.map((part, index) =>
+          findMasterItem(
+            index > 0 && lead.length > 0 && !tokens(part).some((token) => SYSTEM_QUALIFIERS.has(token))
+              ? `${lead.join(" ")} ${part}`
+              : part,
+            itemContext,
+          ),
+        );
         const keys = matches.map((match) => match?.key);
         const distinct = new Set(keys).size === keys.length;
         if (
@@ -465,7 +504,12 @@ export function mapSectionsToMaster(
       }
 
       const whole = findMasterItem(original, itemContext);
-      if (whole && !used.has(whole.key)) {
+      // A line that names several things must not collapse onto one master item
+      // that covers only some of them: that would silently drop a check. It
+      // either expands to all of its parts (above) or stays as the shop wrote it.
+      const dropsAConcept =
+        whole !== null && parts.length >= 2 && lineCoverage(original, whole) < WHOLE_COMPOUND_MIN_COVERAGE;
+      if (whole && !dropsAConcept && !used.has(whole.key)) {
         used.add(whole.key);
         return [toItem(whole, original)];
       }
