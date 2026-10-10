@@ -143,6 +143,7 @@ describe("guided onboarding v2 foundation", () => {
       "vehicle_history",
       "invoices",
       "parts",
+      "services_inspections",
       "shop_settings",
       "analysis",
     ]);
@@ -240,7 +241,7 @@ describe("guided onboarding v2 foundation", () => {
   it("keeps starting-from-scratch setup active while skipping import-only steps", () => {
     const serverSource = read("features/onboarding-v2/guided/server.ts");
 
-    expect(serverSource).toContain('const STARTING_FROM_SCRATCH_SKIP_STEPS = ["customers", "vehicles", "vehicle_history", "invoices", "parts"] as const');
+    expect(serverSource).toContain('const STARTING_FROM_SCRATCH_SKIP_STEPS = ["customers", "vehicles", "vehicle_history", "invoices", "parts", "services_inspections"] as const');
     expect(serverSource).toContain('const STARTING_FROM_SCRATCH_FIRST_STEP = "shop_settings"');
     expect(serverSource).toContain("skip_import_steps");
     expect(serverSource).toContain('.in("step_key", STARTING_FROM_SCRATCH_SKIP_STEPS)');

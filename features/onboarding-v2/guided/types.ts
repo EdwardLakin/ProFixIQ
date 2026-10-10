@@ -4,6 +4,7 @@ export type GuidedOnboardingStepKey =
   | "vehicle_history"
   | "invoices"
   | "parts"
+  | "services_inspections"
   | "shop_settings"
   | "analysis";
 

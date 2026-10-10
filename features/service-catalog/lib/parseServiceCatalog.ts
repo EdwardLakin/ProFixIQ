@@ -1,0 +1,436 @@
+// features/service-catalog/lib/parseServiceCatalog.ts
+//
+// Pure (no I/O) analysis of a service-catalog / canned-job CSV. The same plan
+// drives both the read-only preview and the confirmed import, so what the shop
+// sees before clicking "Import & activate" is exactly what gets written.
+
+import { createHash } from "node:crypto";
+
+export const SERVICE_CATALOG_HIGH_CONFIDENCE = 0.85;
+export const SERVICE_CATALOG_MAX_CSV_BYTES = 2 * 1024 * 1024;
+export const SERVICE_CATALOG_MAX_ROWS = 5000;
+
+export type CatalogChecklistSection = { title: string; items: string[] };
+
+export type CatalogTemplateCandidate = {
+  /** Stable shop-scoped identity. Never depends on the intake/upload. */
+  importKey: string;
+  templateName: string;
+  note: string | null;
+  usageContext: string | null;
+  /** Exactly the shape the inspection runtime consumes (toInspectionCategories). */
+  sections: CatalogChecklistSection[];
+  itemCount: number;
+  confidence: number;
+  needsReview: boolean;
+};
+
+export type CatalogServiceCandidate = {
+  importKey: string;
+  /** menu_items.service_key */
+  serviceKey: string;
+  serviceCode: string | null;
+  name: string;
+  description: string | null;
+  category: string | null;
+  laborHours: number | null;
+  price: number | null;
+  /** importKey of the template this service links to, when importable. */
+  templateKey: string | null;
+  templateName: string | null;
+  linkSource: "explicit" | "name_match" | null;
+  confidence: number;
+  needsReview: boolean;
+  reviewReason: string | null;
+};
+
+export type CatalogPlan = {
+  services: CatalogServiceCandidate[];
+  templates: CatalogTemplateCandidate[];
+  warnings: string[];
+  summary: {
+    rowCount: number;
+    servicesRecognized: number;
+    servicesImportable: number;
+    templatesImportable: number;
+    linksImportable: number;
+    reviewRequired: number;
+  };
+};
+
+type CsvRow = Record<string, string>;
+
+/* ------------------------------- CSV parsing ------------------------------ */
+
+export function parseCatalogCsv(csv: string): { header: string[]; rows: CsvRow[] } {
+  const text = csv.replace(/^﻿/, "");
+  const records: string[][] = [];
+  let field = "";
+  let record: string[] = [];
+  let inQuotes = false;
+
+  const endField = () => {
+    record.push(field.trim());
+    field = "";
+  };
+  const endRecord = () => {
+    endField();
+    if (record.some((cell) => cell.length > 0)) records.push(record);
+    record = [];
+  };
+
+  for (let i = 0; i < text.length; i += 1) {
+    const ch = text[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') {
+          field += '"';
+          i += 1;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        field += ch;
+      }
+      continue;
+    }
+    if (ch === '"') inQuotes = true;
+    else if (ch === ",") endField();
+    else if (ch === "\n") endRecord();
+    else if (ch !== "\r") field += ch;
+  }
+  if (field.length > 0 || record.length > 0) endRecord();
+
+  if (records.length < 2) return { header: [], rows: [] };
+
+  const header = records[0].map((h) => h.trim());
+  const keys = header.map((h, idx) =>
+    h
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "") || `col_${idx + 1}`,
+  );
+
+  const rows = records.slice(1).map((cols) => {
+    const row: CsvRow = {};
+    keys.forEach((key, idx) => {
+      row[key] = cols[idx] ?? "";
+    });
+    return row;
+  });
+  return { header, rows };
+}
+
+/* --------------------------------- helpers -------------------------------- */
+
+export function normalizeCatalogText(value: string | null | undefined): string {
+  return (value ?? "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+}
+
+function slug(value: string): string {
+  return normalizeCatalogText(value).replace(/\s+/g, "-").slice(0, 80);
+}
+
+/**
+ * Header lookup in priority order: the first pattern that matches any non-empty
+ * column wins, so an exact `service_name` beats a loose `/service/` match on
+ * `service_code`.
+ */
+function pick(row: CsvRow, patterns: RegExp[]): string | null {
+  for (const pattern of patterns) {
+    for (const [key, raw] of Object.entries(row)) {
+      if (!pattern.test(key)) continue;
+      const value = raw.trim();
+      if (value) return value;
+    }
+  }
+  return null;
+}
+
+function parseNumber(value: string | null): number | null {
+  const s = (value ?? "").trim();
+  if (!s) return null;
+  const cleaned = s.replace(/[^0-9,.\-]/g, "");
+  if (!cleaned) return null;
+  let normalized = cleaned;
+  if (cleaned.includes(",") && cleaned.includes(".")) normalized = cleaned.replace(/,/g, "");
+  else if (cleaned.includes(",")) normalized = cleaned.replace(",", ".");
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : null;
+}
+
+function parseHours(value: string | null): number | null {
+  const n = parseNumber(value);
+  return n !== null && n >= 0 && n <= 24 ? n : null;
+}
+
+function parsePrice(value: string | null): number | null {
+  const n = parseNumber(value);
+  return n !== null && n >= 0 ? Math.round(n * 100) / 100 : null;
+}
+
+function tokenSet(value: string): Set<string> {
+  return new Set(value.split(" ").filter((part) => part.length >= 3));
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0;
+  let intersection = 0;
+  for (const token of a) if (b.has(token)) intersection += 1;
+  return intersection / (a.size + b.size - intersection);
+}
+
+function namesMatch(serviceName: string, templateName: string): boolean {
+  const a = normalizeCatalogText(serviceName);
+  const b = normalizeCatalogText(templateName);
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (jaccard(tokenSet(a), tokenSet(b)) >= 0.88) return true;
+  return a.length >= 12 && b.length >= 12 && (a.includes(b) || b.includes(a));
+}
+
+function shortHash(text: string): string {
+  return createHash("sha1").update(text, "utf8").digest("hex").slice(0, 10);
+}
+
+/** menu_items.service_key. Shop-scoped identity: code first, name fallback. */
+export function buildCatalogServiceKey(serviceCode: string | null, name: string): { importKey: string; serviceKey: string } {
+  const code = serviceCode ? slug(serviceCode) : "";
+  const importKey = code ? `code:${code}` : `name:${slug(name) || shortHash(name)}`;
+  return { importKey, serviceKey: `catalog:${importKey}` };
+}
+
+/* ---------------------------------- plan ---------------------------------- */
+
+type TemplateAccumulator = {
+  templateName: string;
+  note: string | null;
+  usageContext: string | null;
+  sections: Map<string, string[]>;
+  seen: Set<string>;
+};
+
+type ServiceAccumulator = Omit<CatalogServiceCandidate, "templateKey" | "templateName" | "linkSource"> & {
+  explicitTemplateName: string | null;
+};
+
+export function buildCatalogPlan(csv: string): CatalogPlan {
+  const { rows } = parseCatalogCsv(csv);
+  const warnings: string[] = [];
+
+  const templates = new Map<string, TemplateAccumulator>();
+  const services = new Map<string, ServiceAccumulator>();
+
+  for (const row of rows) {
+    const serviceCode = pick(row, [/^service_code$/, /^operation_code$/, /^code$/, /^sku$/]);
+    const serviceName = pick(row, [/^service_name$/, /^job_name$/, /^operation_name$/, /^operation$/, /^service$/, /^name$/, /^menu_item$/]);
+    const description = pick(row, [/^description$/, /^service_description$/, /^details$/, /^op_description$/]);
+    const category = pick(row, [/^category$/, /^service_category$/, /^department$/, /^shop_department$/]);
+    const laborHours = parseHours(
+      pick(row, [/^default_labor_hours$/, /^labor_hours$/, /^labor_time$/, /^hours$/, /^flat_rate$/]),
+    );
+    const laborRate = parseNumber(pick(row, [/^default_labor_rate$/, /^labor_rate$/]));
+    const explicitPrice = parsePrice(pick(row, [/^price$/, /^menu_price$/, /^retail_price$/, /^sell_price$/, /^total_price$/]));
+    const price =
+      explicitPrice ??
+      (laborHours !== null && laborRate !== null ? Math.round(laborHours * laborRate * 100) / 100 : null);
+
+    const templateName = pick(row, [
+      /^inspection_template$/,
+      /^template_name$/,
+      /^template$/,
+      /^inspection_name$/,
+      /^inspection$/,
+      /^checklist_name$/,
+      /^checklist$/,
+      /^form_name$/,
+    ]);
+    const sectionName = pick(row, [/^section$/, /^section_name$/, /^checklist_section$/, /^group$/, /^inspection_section$/]);
+    const itemName = pick(row, [/^checklist_item$/, /^inspection_item$/, /^item$/, /^item_name$/, /^checkpoint$/, /^check_item$/, /^question$/, /^point$/]);
+    const usageContext = pick(row, [/^usage_context$/, /^vehicle_type$/, /^applies_to$/, /^usage$/]);
+    const inspectionNote = pick(row, [/^inspection_note$/, /^template_description$/]);
+
+    if (serviceName) {
+      const { importKey, serviceKey } = buildCatalogServiceKey(serviceCode, serviceName);
+      const existing = services.get(importKey);
+      if (!existing) {
+        const hasPricing = price !== null || laborHours !== null;
+        const confidence = hasPricing ? (serviceCode ? 0.92 : 0.9) : 0.68;
+        services.set(importKey, {
+          importKey,
+          serviceKey,
+          serviceCode,
+          name: serviceName,
+          description,
+          category,
+          laborHours,
+          price,
+          confidence,
+          needsReview: confidence < SERVICE_CATALOG_HIGH_CONFIDENCE,
+          reviewReason: hasPricing ? null : "No labor hours or price",
+          explicitTemplateName: templateName,
+        });
+      } else {
+        // Same service on another row (e.g. one row per checklist item): fill gaps only.
+        existing.description ??= description;
+        existing.category ??= category;
+        existing.laborHours ??= laborHours;
+        existing.price ??= price;
+        existing.explicitTemplateName ??= templateName;
+        if (templateName && existing.explicitTemplateName !== templateName) {
+          warnings.push(
+            `${serviceName}: listed with more than one inspection template; keeping "${existing.explicitTemplateName}".`,
+          );
+        }
+        if (existing.needsReview && (existing.laborHours !== null || existing.price !== null)) {
+          existing.confidence = existing.serviceCode ? 0.92 : 0.9;
+          existing.needsReview = false;
+          existing.reviewReason = null;
+        }
+      }
+    }
+
+    if (templateName && itemName) {
+      const templateKey = `tpl:${slug(templateName) || shortHash(templateName)}`;
+      const acc = templates.get(templateKey) ?? {
+        templateName,
+        note: inspectionNote,
+        usageContext,
+        sections: new Map<string, string[]>(),
+        seen: new Set<string>(),
+      };
+      acc.note ??= inspectionNote;
+      acc.usageContext ??= usageContext;
+      const section = sectionName ?? "General";
+      const dedupe = `${normalizeCatalogText(section)}|${normalizeCatalogText(itemName)}`;
+      if (!acc.seen.has(dedupe)) {
+        acc.seen.add(dedupe);
+        const items = acc.sections.get(section) ?? [];
+        items.push(itemName);
+        acc.sections.set(section, items);
+      }
+      templates.set(templateKey, acc);
+    }
+  }
+
+  const templateCandidates: CatalogTemplateCandidate[] = [];
+  for (const [importKey, acc] of templates) {
+    const sections = Array.from(acc.sections.entries()).map(([title, items]) => ({ title, items }));
+    const itemCount = sections.reduce((sum, s) => sum + s.items.length, 0);
+    const confidence = itemCount >= 8 ? 0.9 : itemCount >= 5 ? 0.82 : 0.62;
+    templateCandidates.push({
+      importKey,
+      templateName: acc.templateName,
+      note: acc.note,
+      usageContext: acc.usageContext,
+      sections,
+      itemCount,
+      confidence,
+      needsReview: confidence < SERVICE_CATALOG_HIGH_CONFIDENCE,
+    });
+  }
+
+  const importable = templateCandidates.filter((t) => !t.needsReview);
+  const byNormalizedName = new Map(importable.map((t) => [normalizeCatalogText(t.templateName), t]));
+
+  const serviceCandidates: CatalogServiceCandidate[] = [];
+  for (const svc of services.values()) {
+    const { explicitTemplateName, ...rest } = svc;
+    let link: CatalogTemplateCandidate | null = null;
+    let linkSource: CatalogServiceCandidate["linkSource"] = null;
+
+    if (!svc.needsReview) {
+      if (explicitTemplateName) {
+        link = byNormalizedName.get(normalizeCatalogText(explicitTemplateName)) ?? null;
+        if (link) linkSource = "explicit";
+      } else {
+        link = importable.find((t) => namesMatch(svc.name, t.templateName)) ?? null;
+        if (link) linkSource = "name_match";
+      }
+    }
+
+    serviceCandidates.push({
+      ...rest,
+      templateKey: link?.importKey ?? null,
+      templateName: link?.templateName ?? null,
+      linkSource,
+    });
+  }
+
+  for (const template of templateCandidates) {
+    if (template.needsReview) {
+      warnings.push(
+        `Inspection "${template.templateName}" has only ${template.itemCount} checklist item${template.itemCount === 1 ? "" : "s"}; needs review before import.`,
+      );
+    }
+  }
+
+  const servicesImportable = serviceCandidates.filter((s) => !s.needsReview).length;
+  const linksImportable = serviceCandidates.filter((s) => !s.needsReview && s.templateKey).length;
+  const reviewRequired =
+    serviceCandidates.filter((s) => s.needsReview).length + templateCandidates.filter((t) => t.needsReview).length;
+
+  return {
+    services: serviceCandidates,
+    templates: templateCandidates,
+    warnings,
+    summary: {
+      rowCount: rows.length,
+      servicesRecognized: serviceCandidates.length,
+      servicesImportable,
+      templatesImportable: importable.length,
+      linksImportable,
+      reviewRequired,
+    },
+  };
+}
+
+/** Importable subset sent to the transactional import function. */
+export function toImportPayload(plan: CatalogPlan): {
+  templates: Array<{
+    import_key: string;
+    name: string;
+    description: string | null;
+    vehicle_type: string | null;
+    sections: CatalogChecklistSection[];
+  }>;
+  services: Array<{
+    import_key: string;
+    service_key: string;
+    service_code: string | null;
+    name: string;
+    description: string | null;
+    category: string | null;
+    labor_hours: number | null;
+    price: number | null;
+    template_key: string | null;
+  }>;
+} {
+  const templates = plan.templates
+    .filter((t) => !t.needsReview)
+    .map((t) => ({
+      import_key: t.importKey,
+      name: t.templateName,
+      description: t.note,
+      vehicle_type: t.usageContext,
+      sections: t.sections,
+    }));
+  const services = plan.services
+    .filter((s) => !s.needsReview)
+    .map((s) => ({
+      import_key: s.importKey,
+      service_key: s.serviceKey,
+      service_code: s.serviceCode,
+      name: s.name,
+      description: s.description,
+      category: s.category,
+      labor_hours: s.laborHours,
+      price: s.price,
+      template_key: s.templateKey,
+    }));
+  return { templates, services };
+}

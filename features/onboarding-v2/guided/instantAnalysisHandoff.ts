@@ -139,6 +139,7 @@ const DATASET_TO_GUIDED_STEP: Partial<Record<ShopBoostUploadDatasetKey, GuidedOn
   history: "vehicle_history",
   invoices: "invoices",
   parts: "parts",
+  serviceCatalog: "services_inspections",
 };
 
 type DomainResult = {

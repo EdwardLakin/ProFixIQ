@@ -5,7 +5,7 @@ import { GUIDED_ONBOARDING_STEPS, GUIDED_ONBOARDING_STEP_KEYS } from "@/features
 const read = (path: string) => readFileSync(path, "utf8");
 
 describe("guided onboarding Shop Settings step", () => {
-  it("removes Staff from guided onboarding and places Shop Settings after Parts", () => {
+  it("removes Staff from guided onboarding and places Shop Settings after Parts and Services & Inspections", () => {
     expect(GUIDED_ONBOARDING_STEP_KEYS).not.toContain("staff");
     expect(GUIDED_ONBOARDING_STEP_KEYS).toEqual([
       "customers",
@@ -13,17 +13,18 @@ describe("guided onboarding Shop Settings step", () => {
       "vehicle_history",
       "invoices",
       "parts",
+      "services_inspections",
       "shop_settings",
       "analysis",
     ]);
   });
 
   it("keeps Shop Settings on the onboarding page instead of Owner Settings", () => {
-    const partsIndex = GUIDED_ONBOARDING_STEPS.findIndex((step) => step.key === "parts");
+    const servicesIndex = GUIDED_ONBOARDING_STEPS.findIndex((step) => step.key === "services_inspections");
     const shopSettingsIndex = GUIDED_ONBOARDING_STEPS.findIndex((step) => step.key === "shop_settings");
     const shopSettings = GUIDED_ONBOARDING_STEPS[shopSettingsIndex];
 
-    expect(shopSettingsIndex).toBe(partsIndex + 1);
+    expect(shopSettingsIndex).toBe(servicesIndex + 1);
     expect(shopSettings.destinationPath).toBe("/dashboard/onboarding-v2");
     expect(shopSettings.destinationPath).not.toBe("/dashboard/owner/settings");
   });
