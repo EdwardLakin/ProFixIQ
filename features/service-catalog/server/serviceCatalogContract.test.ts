@@ -28,7 +28,7 @@ describe("service catalog import contract", () => {
   });
 
   describe("parts (BOM) mapping", () => {
-    const partsMigration = read("supabase/migrations/20261010160000_service_catalog_parts_bom.sql");
+    const partsMigration = read("supabase/migrations/20261010045002_service_catalog_parts_bom.sql");
     const previewSource = read("app/api/service-catalog/preview/route.ts");
 
     it("is additive: new functions only, the merged importer is called not redefined", () => {
