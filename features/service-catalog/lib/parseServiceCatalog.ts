@@ -124,7 +124,7 @@ export function deriveCatalogAssetScope(
   if (!text) return "unknown";
 
   const offRoad = /\b(off highway|off road|heavy equipment|construction equipment|industrial equipment|earthmoving|mining|excavator|loader|dozer|grader|skid steer|forklift|telehandler|boom lift|scissor lift)\b/.test(text);
-  const onRoad = /\b(on road|highway|commercial vehicle|truck|trucks|tractor|tractors|trailer|trailers|bus|coach|passenger|light duty)\b/.test(text);
+  const onRoad = /\b(on road|highway vehicles?|commercial vehicle|truck|trucks|tractor|tractors|trailer|trailers|bus|coach|passenger|light duty)\b/.test(text);
 
   if (offRoad && !onRoad) return "off_road";
   if (onRoad && !offRoad) return "on_road";
