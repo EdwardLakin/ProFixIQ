@@ -33,6 +33,7 @@ const STANDALONE_PUBLIC_PREFIXES = [
   "/diesel-repair-shop-software",
   "/heavy-duty-work-order-software",
   "/heavy-duty-inspection-software",
+  "/resources",
   "/portal/auth",
   "/portal/join",
   "/portal/confirm",
