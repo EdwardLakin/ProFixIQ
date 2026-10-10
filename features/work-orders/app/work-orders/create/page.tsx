@@ -11,8 +11,8 @@ import { toast } from "sonner";
 import {
   ArrowLeft,
   Check,
-  ChevronDown,
   ClipboardPlus,
+  Lock,
   Paperclip,
   Settings2,
 } from "lucide-react";
@@ -49,6 +49,14 @@ import {
   STALE_CREATE_WORK_ORDER_MESSAGE,
 } from "@/features/work-orders/lib/client/validateMutableWorkOrder";
 import { createCustomerAccount } from "@/features/customers/lib/customerAccountCommands";
+import {
+  WorkspaceCommandBar,
+  WorkspaceShell,
+  WorkspaceStatus,
+  WORKSPACE_EYEBROW,
+  WORKSPACE_ITEM,
+  WORKSPACE_PANEL,
+} from "@/features/workspace/components";
 
 // 👇 inspection modal, client-only
 const InspectionModal = dynamic(
@@ -61,13 +69,9 @@ const InspectionModal = dynamic(
 ============================================================================= */
 const COPPER = "#C57A4A";
 
-const card =
-  "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium)] backdrop-blur-xl";
 const divider = "border-[color:var(--desktop-border)]";
 const sectionPanel =
   "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] p-4 shadow-[var(--theme-shadow-medium)] sm:p-5";
-const collapsiblePanel =
-  "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-panel-bg-soft)] shadow-[var(--theme-shadow-medium)]";
 const childPanel =
   "rounded-2xl border border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] shadow-[inset_0_1px_0_rgba(255,255,255,0.05)]";
 const subtlePanel =
@@ -88,6 +92,13 @@ type VehicleRow = DB["public"]["Tables"]["vehicles"]["Row"];
 type ProfileRow = DB["public"]["Tables"]["profiles"]["Row"];
 
 type WOType = "inspection" | "maintenance" | "diagnosis";
+type CreateSection =
+  | "customer-vehicle"
+  | "visit"
+  | "maintenance"
+  | "reusable"
+  | "manual"
+  | "notes";
 type UploadSummary = { uploaded: number; failed: number };
 
 // Allow a couple extra fields used by UI/drafts without using `any`
@@ -677,6 +688,8 @@ export default function CreateWorkOrderPage() {
   const [priority, setPriority] = useTabState<number>("priority", 3);
   // 👇 waiter flag (customer waiting on-site)
   const [isWaiter, setIsWaiter] = useTabState<boolean>("is_waiter", false);
+  const [activeSection, setActiveSection] =
+    useState<CreateSection>("customer-vehicle");
   const [expectedCompletionInput, setExpectedCompletionInput] =
     useTabState<string>("expected_completion_input", "");
 
@@ -2416,84 +2429,165 @@ export default function CreateWorkOrderPage() {
   const vehicleIdProp: string | null =
     vehicleId ?? (hasValidatedWorkOrder ? wo?.vehicle_id : null) ?? null;
 
+  const canWork = hasValidatedWorkOrder && !!wo?.id;
+  const jobLines = lines.filter((ln) => (ln.line_type ?? "job") !== "info");
+  const laborHours = jobLines.reduce(
+    (sum, ln) => sum + (typeof ln.labor_time === "number" ? ln.labor_time : 0),
+    0,
+  );
+  const priorityLabel =
+    priority === 1 ? "Urgent" : priority === 2 ? "High" : priority === 3 ? "Normal" : "Low";
+  const hasAttachmentsOrNotes =
+    photoFiles.length > 0 || docFiles.length > 0 || Boolean(notes.trim());
+
+  const railSections: Array<{
+    id: CreateSection;
+    label: string;
+    hint: string;
+    done: boolean;
+    locked: boolean;
+    icon?: React.ReactNode;
+  }> = [
+    {
+      id: "customer-vehicle",
+      label: "Customer & vehicle",
+      hint: customerLabel
+        ? [customerLabel, vehicleLabel].filter(Boolean).join(" · ")
+        : "Find or add the customer",
+      done: hasValidatedWorkOrder,
+      locked: false,
+    },
+    {
+      id: "visit",
+      label: "Visit settings",
+      hint: `${isWaiter ? "Waiter" : "Drop-off"} · ${priorityLabel}`,
+      done: false,
+      locked: false,
+    },
+    {
+      id: "maintenance",
+      label: "Maintenance due",
+      hint: "Suggested for this vehicle",
+      done: false,
+      locked: !canWork,
+    },
+    {
+      id: "reusable",
+      label: "Menu & inspections",
+      hint: "Catalog items and templates",
+      done: false,
+      locked: !canWork,
+    },
+    {
+      id: "manual",
+      label: "Custom line",
+      hint: "Complaint, cause, correction",
+      done: false,
+      locked: !canWork,
+    },
+    {
+      id: "notes",
+      label: "Attachments & notes",
+      hint: hasAttachmentsOrNotes ? "Added" : "Optional",
+      done: hasAttachmentsOrNotes,
+      locked: false,
+    },
+  ];
+
+  const sectionClass = (id: CreateSection) =>
+    activeSection === id ? "space-y-4" : "hidden";
+
+  const lockedNotice = (
+    <div
+      className={cx(
+        WORKSPACE_ITEM,
+        "flex items-center gap-2 px-4 py-5 text-sm text-[color:var(--theme-text-secondary)]",
+      )}
+    >
+      <Lock className="h-4 w-4 shrink-0" aria-hidden="true" />
+      Save the customer and vehicle first, then add work here.
+    </div>
+  );
+
+  const createActions = (
+    <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between lg:flex-col-reverse lg:items-stretch">
+      <button
+        type="button"
+        onClick={() => router.push("/work-orders")}
+        className="min-h-11 px-3 text-sm font-medium text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
+        disabled={loading}
+      >
+        Cancel
+      </button>
+      <button
+        type="submit"
+        disabled={loading || isPersistedWorkOrderPending || resumeBlocked}
+        className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[color:var(--brand-primary)] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(23,71,255,0.28)] transition hover:brightness-110 disabled:opacity-60 sm:w-auto lg:w-full"
+      >
+        <Check className="h-4 w-4" aria-hidden="true" />
+        {loading ? "Creating…" : "Create work order"}
+      </button>
+    </div>
+  );
+
   return (
     <div
-      className="min-h-screen bg-[var(--theme-gradient-page)] px-3 py-4 text-foreground sm:px-4 sm:py-6"
+      className="min-h-screen bg-[var(--theme-gradient-page)] px-3 py-4 text-foreground sm:px-4 sm:py-5"
       style={{ ["--copper" as never]: COPPER }}
     >
-      <div className="mx-auto max-w-7xl space-y-4">
+      <WorkspaceShell layout="embedded" className="mx-auto max-w-[1600px] gap-3">
         {/* Header */}
-        <div className="overflow-hidden rounded-2xl border border-[color:var(--brand-primary)]/25 bg-[color:var(--theme-surface-panel)] shadow-[var(--theme-shadow-medium)]">
+        <header className={cx(WORKSPACE_PANEL, "overflow-hidden")}>
           <div className="h-1 bg-gradient-to-r from-[color:var(--brand-primary)] via-[color:var(--brand-accent)] to-transparent" />
-          <div className="flex items-start justify-between gap-4 px-4 py-4 sm:px-5">
+          <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3 sm:px-5">
             <div className="min-w-0">
-              <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-accent-text)]">
-                <ClipboardPlus className="h-4 w-4" aria-hidden="true" />
-                Work order intake
+              <div className="flex flex-wrap items-center gap-2">
+                <p
+                  className={cx(
+                    WORKSPACE_EYEBROW,
+                    "flex items-center gap-2 text-[color:var(--theme-accent-text)]",
+                  )}
+                >
+                  <ClipboardPlus className="h-4 w-4" aria-hidden="true" />
+                  Work order workspace
+                </p>
+                <WorkspaceStatus>
+                  {hasValidatedWorkOrder && wo?.custom_id ? wo.custom_id : "Draft"}
+                </WorkspaceStatus>
               </div>
-              <h1 className="mt-1 text-2xl font-semibold tracking-tight text-[color:var(--theme-text-primary)] sm:text-3xl">
+              <h1 className="mt-1 text-2xl font-bold tracking-tight sm:text-3xl">
                 Create Work Order
               </h1>
-              <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">
-                Find the customer, confirm the vehicle, and create. Everything
+              <p className="mt-0.5 text-sm text-[color:var(--theme-text-secondary)]">
+                Find the customer, confirm the vehicle, then add work. Everything
                 else is optional.
               </p>
+            </div>
 
-              {hasValidatedWorkOrder && wo?.custom_id && (
-                <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                  Current WO:{" "}
-                  <span className="font-mono text-[color:var(--copper)]">
-                    {wo.custom_id}
+            <WorkspaceCommandBar ariaLabel="Create work order actions">
+              <button
+                type="button"
+                onClick={() => {
+                  if (returnTo?.startsWith("/")) {
+                    router.push(returnTo);
+                  } else {
+                    router.back();
+                  }
+                }}
+                className={cx("shrink-0 px-4 py-2 text-sm font-semibold", softButton)}
+              >
+                <span className="inline-flex items-center gap-2">
+                  <ArrowLeft className="h-4 w-4" aria-hidden="true" />
+                  <span className="hidden sm:inline">
+                    {returnTo ? "Appointments" : "Work orders"}
                   </span>
-                </p>
-              )}
-            </div>
-
-            <button
-              type="button"
-              onClick={() => {
-                if (returnTo?.startsWith("/")) {
-                  router.push(returnTo);
-                } else {
-                  router.back();
-                }
-              }}
-              className={cx(
-                "shrink-0 px-4 py-2 text-sm font-semibold",
-                softButton,
-              )}
-            >
-              <span className="inline-flex items-center gap-2">
-                <ArrowLeft className="h-4 w-4" aria-hidden="true" />
-                <span className="hidden sm:inline">
-                  {returnTo ? "Appointments" : "Work orders"}
                 </span>
-              </span>
-            </button>
+              </button>
+            </WorkspaceCommandBar>
           </div>
-        </div>
+        </header>
 
-        <div className="grid grid-cols-4 overflow-hidden rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] text-center text-[11px] font-semibold text-[color:var(--theme-text-muted)] shadow-[var(--theme-shadow-soft)] sm:text-xs">
-          {["Customer", "Vehicle", "Visit", "Create"].map((label, index) => (
-            <div
-              key={label}
-              className={cx(
-                "flex items-center justify-center gap-1.5 border-r border-[color:var(--theme-border-soft)] px-2 py-2.5 last:border-r-0",
-                (index === 0 && customerLabel) || (index === 1 && vehicleLabel)
-                  ? "text-[color:var(--theme-accent-text)]"
-                  : null,
-              )}
-            >
-              <span className="grid h-5 w-5 place-items-center rounded-full bg-[color:var(--theme-surface-subtle)] text-[10px]">
-                {index + 1}
-              </span>
-              <span>{label}</span>
-            </div>
-          ))}
-        </div>
-
-        {/* Body */}
-        <section className={cx(card, "px-3 py-4 sm:px-5 sm:py-5")}>
+        <div className="space-y-3">
           {error && (
             <div className="mb-4 rounded-xl border border-red-400/20 bg-red-500/10 px-4 py-3 text-sm text-red-200">
               {error}
@@ -2570,148 +2664,76 @@ export default function CreateWorkOrderPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Visit setup */}
-            <details className={cx(collapsiblePanel, "group")}>
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:content-none sm:px-5">
-                <span className="flex items-center gap-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                  <Settings2
-                    className="h-4 w-4 text-[color:var(--theme-accent-text)]"
-                    aria-hidden="true"
-                  />
-                  Visit settings
-                  <span className="font-normal text-[color:var(--theme-text-muted)]">
-                    · {isWaiter ? "Waiter" : "Drop-off"} ·{" "}
-                    {priority === 3
-                      ? "Normal"
-                      : priority === 1
-                        ? "Urgent"
-                        : priority === 2
-                          ? "High"
-                          : "Low"}
-                  </span>
-                </span>
-                <span className="flex items-center gap-2 text-xs font-medium text-[color:var(--theme-accent-text)]">
-                  Optional
-                  <ChevronDown
-                    className="h-4 w-4 transition group-open:rotate-180"
-                    aria-hidden="true"
-                  />
-                </span>
-              </summary>
 
-              <div className="grid gap-3 border-t border-[color:var(--theme-border-soft)] p-4 lg:grid-cols-2 xl:grid-cols-4 sm:p-5">
-                <div className={cx("p-4", childPanel)}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
-                        Customer waiting
-                      </div>
-                      <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                        Marks this work order as a waiter across queues and
-                        boards.
-                      </p>
-                    </div>
-
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={isWaiter}
-                      onClick={() => setIsWaiter((v) => !v)}
-                      disabled={loading}
-                      className={[
-                        "relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border transition",
-                        isWaiter
-                          ? "border-[color:var(--copper)]/70 bg-[color:var(--copper)]/20"
-                          : "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]",
-                        loading
-                          ? "opacity-60"
-                          : "hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,_var(--theme-surface-page))]",
-                      ].join(" ")}
-                    >
-                      <span
-                        className={[
-                          "inline-block h-5 w-5 rounded-full transition",
-                          isWaiter
-                            ? "translate-x-8 bg-[color:var(--copper)] shadow-[0_0_16px_rgba(197,122,74,0.55)]"
-                            : "translate-x-1 bg-[color:var(--theme-surface-subtle)]",
-                        ].join(" ")}
-                      />
-                    </button>
-                  </div>
-
-                  <div className="mt-3 flex flex-wrap items-center gap-2">
+          <form onSubmit={handleSubmit} className="grid gap-3 lg:grid-cols-[13.5rem_minmax(0,1fr)_21rem] xl:grid-cols-[15rem_minmax(0,1fr)_23rem]">
+            {/* Left rail: pick a section */}
+            <nav
+              aria-label="Work order sections"
+              className={cx(
+                WORKSPACE_PANEL,
+                "flex gap-1.5 overflow-x-auto p-2 lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)] lg:flex-col lg:overflow-y-auto lg:overflow-x-visible",
+              )}
+            >
+              <p className={cx(WORKSPACE_EYEBROW, "hidden px-2 pt-1 lg:block")}>
+                Sections
+              </p>
+              {railSections.map((section, index) => {
+                const active = activeSection === section.id;
+                return (
+                  <button
+                    key={section.id}
+                    type="button"
+                    aria-current={active ? "true" : undefined}
+                    aria-disabled={section.locked || undefined}
+                    title={
+                      section.locked
+                        ? "Save the customer and vehicle first"
+                        : undefined
+                    }
+                    onClick={() => {
+                      if (!section.locked) setActiveSection(section.id);
+                    }}
+                    className={cx(
+                      "flex min-h-11 shrink-0 items-center gap-2.5 rounded-xl border px-2.5 py-2 text-left transition lg:w-full",
+                      active
+                        ? "border-[color:var(--brand-primary)]/60 bg-[color:var(--brand-primary)]/10"
+                        : "border-transparent hover:bg-[color:var(--desktop-item-bg)]",
+                      section.locked ? "cursor-not-allowed opacity-50" : null,
+                    )}
+                  >
                     <span
-                      className={[
-                        "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]",
-                        isWaiter
-                          ? "border-amber-400/50 bg-amber-500/10 text-amber-100"
-                          : "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-[color:var(--theme-text-secondary)]",
-                      ].join(" ")}
+                      className={cx(
+                        "grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[10px] font-semibold",
+                        section.done
+                          ? "border-emerald-400/60 bg-emerald-500/20 text-emerald-200"
+                          : "border-[color:var(--desktop-border)] text-[color:var(--theme-text-muted)]",
+                      )}
+                      aria-hidden="true"
                     >
-                      {isWaiter ? "Waiter" : "Drop-off"}
+                      {section.done ? (
+                        <Check className="h-3 w-3" />
+                      ) : section.locked ? (
+                        <Lock className="h-3 w-3" />
+                      ) : (
+                        index + 1
+                      )}
                     </span>
-                  </div>
-                </div>
+                    <span className="min-w-0">
+                      <span className="block whitespace-nowrap text-sm font-semibold text-[color:var(--theme-text-primary)] lg:whitespace-normal">
+                        {section.label}
+                      </span>
+                      <span className="hidden truncate text-[11px] text-[color:var(--theme-text-muted)] lg:block">
+                        {section.hint}
+                      </span>
+                    </span>
+                  </button>
+                );
+              })}
+            </nav>
 
-                <div className={cx("p-3.5", childPanel)}>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
-                    Priority
-                  </label>
-                  <select
-                    value={priority}
-                    onChange={(e) => setPriority(Number(e.target.value))}
-                    className={formControlClass}
-                    disabled={loading}
-                  >
-                    <option value={1}>Urgent</option>
-                    <option value={2}>High</option>
-                    <option value={3}>Normal</option>
-                    <option value={4}>Low</option>
-                  </select>
-                  <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                    Used to highlight urgent jobs in queues and dashboards.
-                  </p>
-                </div>
-
-                <div className={cx("p-3.5", childPanel)}>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
-                    Default job type
-                  </label>
-                  <select
-                    value={type}
-                    onChange={(e) => setType(e.target.value as WOType)}
-                    className={formControlClass}
-                    disabled={loading}
-                  >
-                    <option value="maintenance">Maintenance</option>
-                    <option value="diagnosis">Diagnosis</option>
-                    <option value="inspection">Inspection</option>
-                  </select>
-                  <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                    Sets the default for new lines you add on this work order.
-                  </p>
-                </div>
-
-                <div className={cx("p-3.5", childPanel)}>
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
-                    Target completion
-                  </label>
-                  <input
-                    type="datetime-local"
-                    value={expectedCompletionInput}
-                    onChange={(e) => setExpectedCompletionInput(e.target.value)}
-                    className={formControlClass}
-                    disabled={loading}
-                  />
-                  <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                    Internal advisor planning target in create flow (read-only
-                    on technician work-order surfaces).
-                  </p>
-                </div>
-              </div>
-            </details>
-
+            {/* Middle: edit the selected section */}
+            <div className="min-w-0 space-y-4">
+              <div className={sectionClass("customer-vehicle")}>
             {/* Customer & Vehicle */}
             <section
               className={cx(
@@ -2778,7 +2800,10 @@ export default function CreateWorkOrderPage() {
                   type="button"
                   onClick={async () => {
                     const id = await handleSaveCustomerVehicle();
-                    if (id) await maybeOpenIntakeAfterSave(id);
+                    if (id) {
+                      setActiveSection("reusable");
+                      await maybeOpenIntakeAfterSave(id);
+                    }
                   }}
                   disabled={savingCv || loading || isPersistedWorkOrderPending || resumeBlocked}
                   className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-[color:var(--brand-primary)] px-4 py-2 text-sm font-semibold text-white shadow-[0_10px_24px_rgba(23,71,255,0.2)] transition hover:brightness-110 disabled:opacity-60"
@@ -2950,7 +2975,143 @@ export default function CreateWorkOrderPage() {
               </label>
             </section>
 
-            {/* Create-flow maintenance suggestions */}
+              </div>
+
+              <div className={sectionClass("visit")}>
+                <section className={sectionPanel}>
+                  <div
+                    className={cx(
+                      "mb-3 flex items-center justify-between border-b pb-3",
+                      divider,
+                    )}
+                  >
+                    <h2 className="flex items-center gap-2 text-sm font-semibold text-[color:var(--theme-text-primary)] sm:text-base">
+                      <Settings2
+                        className="h-4 w-4 text-[color:var(--theme-accent-text)]"
+                        aria-hidden="true"
+                      />
+                      Visit settings
+                    </h2>
+                    <span className="text-[11px] text-[color:var(--theme-text-muted)]">
+                      Optional
+                    </span>
+                  </div>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className={cx("p-4", childPanel)}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
+                        Customer waiting
+                      </div>
+                      <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
+                        Marks this work order as a waiter across queues and
+                        boards.
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      role="switch"
+                      aria-checked={isWaiter}
+                      onClick={() => setIsWaiter((v) => !v)}
+                      disabled={loading}
+                      className={[
+                        "relative inline-flex h-7 w-14 shrink-0 items-center rounded-full border transition",
+                        isWaiter
+                          ? "border-[color:var(--copper)]/70 bg-[color:var(--copper)]/20"
+                          : "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)]",
+                        loading
+                          ? "opacity-60"
+                          : "hover:bg-[color:color-mix(in_srgb,var(--desktop-item-bg)_82%,_var(--theme-surface-page))]",
+                      ].join(" ")}
+                    >
+                      <span
+                        className={[
+                          "inline-block h-5 w-5 rounded-full transition",
+                          isWaiter
+                            ? "translate-x-8 bg-[color:var(--copper)] shadow-[0_0_16px_rgba(197,122,74,0.55)]"
+                            : "translate-x-1 bg-[color:var(--theme-surface-subtle)]",
+                        ].join(" ")}
+                      />
+                    </button>
+                  </div>
+
+                  <div className="mt-3 flex flex-wrap items-center gap-2">
+                    <span
+                      className={[
+                        "inline-flex rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.14em]",
+                        isWaiter
+                          ? "border-amber-400/50 bg-amber-500/10 text-amber-100"
+                          : "border-[color:var(--desktop-border)] bg-[color:var(--desktop-item-bg)] text-[color:var(--theme-text-secondary)]",
+                      ].join(" ")}
+                    >
+                      {isWaiter ? "Waiter" : "Drop-off"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className={cx("p-3.5", childPanel)}>
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
+                    Priority
+                  </label>
+                  <select
+                    value={priority}
+                    onChange={(e) => setPriority(Number(e.target.value))}
+                    className={formControlClass}
+                    disabled={loading}
+                  >
+                    <option value={1}>Urgent</option>
+                    <option value={2}>High</option>
+                    <option value={3}>Normal</option>
+                    <option value={4}>Low</option>
+                  </select>
+                  <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
+                    Used to highlight urgent jobs in queues and dashboards.
+                  </p>
+                </div>
+
+                <div className={cx("p-3.5", childPanel)}>
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
+                    Default job type
+                  </label>
+                  <select
+                    value={type}
+                    onChange={(e) => setType(e.target.value as WOType)}
+                    className={formControlClass}
+                    disabled={loading}
+                  >
+                    <option value="maintenance">Maintenance</option>
+                    <option value="diagnosis">Diagnosis</option>
+                    <option value="inspection">Inspection</option>
+                  </select>
+                  <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
+                    Sets the default for new lines you add on this work order.
+                  </p>
+                </div>
+
+                <div className={cx("p-3.5", childPanel)}>
+                  <label className="mb-1 block text-xs uppercase tracking-wide text-[color:var(--theme-text-secondary)]">
+                    Target completion
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={expectedCompletionInput}
+                    onChange={(e) => setExpectedCompletionInput(e.target.value)}
+                    className={formControlClass}
+                    disabled={loading}
+                  />
+                  <p className="mt-1 text-[11px] text-[color:var(--theme-text-muted)]">
+                    Internal advisor planning target in create flow (read-only
+                    on technician work-order surfaces).
+                  </p>
+                </div>
+              </div>
+            
+                </section>
+              </div>
+
+              <div className={sectionClass("maintenance")}>
+                {canWork ? (
             <CreateFlowMaintenanceSelector
               workOrderId={hasValidatedWorkOrder ? (wo?.id ?? null) : null}
               vehicleId={vehicleIdProp}
@@ -2960,33 +3121,95 @@ export default function CreateWorkOrderPage() {
               onAdded={fetchLines}
             />
 
-            {/* Optional attachments and notes */}
-            <details className={cx(collapsiblePanel, "group")}>
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 marker:content-none sm:px-5">
-                <span className="flex items-center gap-2 text-sm font-semibold text-[color:var(--theme-text-primary)]">
-                  <Paperclip
-                    className="h-4 w-4 text-[color:var(--theme-accent-text)]"
-                    aria-hidden="true"
-                  />
-                  Attachments &amp; internal notes
-                  {photoFiles.length > 0 ||
-                  docFiles.length > 0 ||
-                  Boolean(notes.trim()) ? (
-                    <span className="inline-flex items-center gap-1 rounded-full bg-[color:var(--brand-primary)]/10 px-2 py-0.5 text-[11px] text-[color:var(--theme-accent-text)]">
-                      <Check className="h-3 w-3" aria-hidden="true" /> Added
-                    </span>
-                  ) : null}
-                </span>
-                <span className="flex items-center gap-2 text-xs font-medium text-[color:var(--theme-accent-text)]">
-                  Optional
-                  <ChevronDown
-                    className="h-4 w-4 transition group-open:rotate-180"
-                    aria-hidden="true"
-                  />
-                </span>
-              </summary>
+                ) : (
+                  lockedNotice
+                )}
+              </div>
 
-              <div className="grid gap-4 border-t border-[color:var(--theme-border-soft)] p-4 lg:grid-cols-2 sm:p-5">
+              <div className={sectionClass("reusable")}>
+                {canWork ? (
+                  <>
+            {hasValidatedWorkOrder && wo?.id && (
+              <section className={sectionPanel}>
+                <div
+                  className={cx(
+                    "mb-3 flex items-center justify-between border-b pb-3",
+                    divider,
+                  )}
+                >
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
+                    Reusable adds: menu items & inspection templates
+                  </h2>
+                  <span className="text-[11px] text-[color:var(--theme-text-muted)]">
+                    Catalog lane: menu_items • Template lane:
+                    inspection_templates
+                  </span>
+                </div>
+                <MenuQuickAdd workOrderId={wo.id} />
+              </section>
+            )}
+
+                  </>
+                ) : (
+                  lockedNotice
+                )}
+              </div>
+
+              <div className={sectionClass("manual")}>
+                {canWork ? (
+                  <>
+            {hasValidatedWorkOrder && wo?.id && (
+              <section className={sectionPanel}>
+                <div
+                  className={cx(
+                    "mb-3 flex items-center justify-between border-b pb-3",
+                    divider,
+                  )}
+                >
+                  <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
+                    Manual entry line
+                  </h2>
+                  <span className="text-[11px] text-[color:var(--theme-text-muted)]">
+                    Direct custom line with optional smart repair suggestion
+                  </span>
+                </div>
+                <NewWorkOrderLineForm
+                  workOrderId={wo.id}
+                  enforceCreateResumability
+                  vehicleId={vehicleIdProp}
+                  defaultJobType={type}
+                  shopId={wo.shop_id ?? null}
+                  onCreated={fetchLines}
+                />
+              </section>
+            )}
+
+                  </>
+                ) : (
+                  lockedNotice
+                )}
+              </div>
+
+              <div className={sectionClass("notes")}>
+                <section className={sectionPanel}>
+                  <div
+                    className={cx(
+                      "mb-3 flex items-center justify-between border-b pb-3",
+                      divider,
+                    )}
+                  >
+                    <h2 className="flex items-center gap-2 text-sm font-semibold text-[color:var(--theme-text-primary)] sm:text-base">
+                      <Paperclip
+                        className="h-4 w-4 text-[color:var(--theme-accent-text)]"
+                        aria-hidden="true"
+                      />
+                      Attachments &amp; internal notes
+                    </h2>
+                    <span className="text-[11px] text-[color:var(--theme-text-muted)]">
+                      Optional
+                    </span>
+                  </div>
+              <div className="grid gap-4 md:grid-cols-2">
                 <div className="space-y-3">
                   <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-[color:var(--theme-text-secondary)]">
                     Attachments
@@ -3036,230 +3259,205 @@ export default function CreateWorkOrderPage() {
                   />
                 </div>
               </div>
-            </details>
+            
+                </section>
+              </div>
+            </div>
 
-            {/* Menu quick add */}
-            {hasValidatedWorkOrder && wo?.id && (
-              <section className={sectionPanel}>
-                <div
-                  className={cx(
-                    "mb-3 flex items-center justify-between border-b pb-3",
-                    divider,
-                  )}
-                >
-                  <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
-                    Reusable adds: menu items & inspection templates
-                  </h2>
-                  <span className="text-[11px] text-[color:var(--theme-text-muted)]">
-                    Catalog lane: menu_items • Template lane:
-                    inspection_templates
+            {/* Right rail: the work order so far */}
+            <aside
+              aria-label="Work order summary"
+              className={cx(
+                WORKSPACE_PANEL,
+                "flex min-w-0 flex-col overflow-hidden lg:sticky lg:top-20 lg:max-h-[calc(100dvh-6rem)]",
+              )}
+            >
+              <div className="space-y-2 border-b border-[color:var(--theme-border-soft)] p-4">
+                <div className="flex items-center justify-between gap-2">
+                  <p className={WORKSPACE_EYEBROW}>Work order</p>
+                  <span className="font-mono text-xs text-[color:var(--copper)]">
+                    {hasValidatedWorkOrder && wo?.custom_id ? wo.custom_id : "Not created yet"}
                   </span>
                 </div>
-                <MenuQuickAdd workOrderId={wo.id} />
-              </section>
-            )}
-
-            {/* Add line */}
-            {hasValidatedWorkOrder && wo?.id && (
-              <section className={sectionPanel}>
-                <div
-                  className={cx(
-                    "mb-3 flex items-center justify-between border-b pb-3",
-                    divider,
-                  )}
-                >
-                  <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
-                    Manual entry line
-                  </h2>
-                  <span className="text-[11px] text-[color:var(--theme-text-muted)]">
-                    Direct custom line with optional smart repair suggestion
-                  </span>
+                <div className="min-w-0 text-sm">
+                  <div className="truncate font-semibold text-[color:var(--theme-text-primary)]">
+                    {customerLabel ?? "No customer yet"}
+                  </div>
+                  <div className="truncate text-xs text-[color:var(--theme-text-muted)]">
+                    {vehicleLabel ?? "No vehicle yet"}
+                  </div>
                 </div>
-                <NewWorkOrderLineForm
-                  workOrderId={wo.id}
-                  enforceCreateResumability
-                  vehicleId={vehicleIdProp}
-                  defaultJobType={type}
-                  shopId={wo.shop_id ?? null}
-                  onCreated={fetchLines}
-                />
-              </section>
-            )}
+                <div className="flex flex-wrap gap-1.5">
+                  <WorkspaceStatus>{isWaiter ? "Waiter" : "Drop-off"}</WorkspaceStatus>
+                  <WorkspaceStatus>{priorityLabel}</WorkspaceStatus>
+                  <WorkspaceStatus>{type}</WorkspaceStatus>
+                </div>
+              </div>
 
-            {/* Current lines */}
-            <section className={sectionPanel}>
-              <div
-                className={cx(
-                  "mb-3 flex flex-col gap-2 border-b pb-3 sm:flex-row sm:items-center sm:justify-between",
-                  divider,
-                )}
-              >
-                <h2 className="text-xs font-semibold uppercase tracking-[0.22em] text-[color:var(--theme-text-secondary)]">
-                  Current lines
-                </h2>
-
-                {hasValidatedWorkOrder && wo?.id && (
+              <div className="flex items-center justify-between gap-2 px-4 pt-3">
+                <h2 className={WORKSPACE_EYEBROW}>Lines ({lines.length})</h2>
+                {canWork && (
                   <button
                     type="button"
                     onClick={() => setAiSuggestOpen(true)}
-                    className="
-                      inline-flex items-center rounded-full border px-4 py-2 text-sm font-semibold
-                      border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10 text-[color:var(--copper)]
-                      hover:bg-[color:var(--copper)]/15
-                    "
+                    className="inline-flex items-center rounded-full border border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10 px-3 py-1.5 text-xs font-semibold text-[color:var(--copper)] hover:bg-[color:var(--copper)]/15"
                   >
                     AI: Suggest jobs
                   </button>
                 )}
               </div>
 
-              {!wo?.id || lines.length === 0 ? (
-                <div
-                  className={cx(
-                    "px-4 py-5 text-sm text-[color:var(--theme-text-secondary)]",
-                    subtlePanel,
-                  )}
-                >
-                  No lines yet.
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div>
-                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                      Jobs (Punchable)
-                    </div>
-                    <div className="space-y-2">
-                      {lines
-                        .filter((ln) => (ln.line_type ?? "job") !== "info")
-                        .map((ln) => (
-                          <div
-                            key={ln.id}
-                            className={cx(
-                              "flex flex-col gap-3 p-3 sm:flex-row sm:items-start sm:justify-between",
-                              subtlePanel,
-                            )}
-                          >
-                            <div className="min-w-0">
-                              <div className="truncate font-medium text-[color:var(--theme-text-primary)]">
-                                {ln.description ||
-                                  ln.complaint ||
-                                  "Untitled job"}
-                              </div>
-                              <div className="text-xs text-[color:var(--theme-text-muted)]">
-                                {String(ln.job_type ?? "job").replaceAll(
-                                  "_",
-                                  " ",
-                                )}{" "}
-                                •{" "}
-                                {typeof ln.labor_time === "number"
-                                  ? `${ln.labor_time}h`
-                                  : "—"}{" "}
-                                •{" "}
-                                {(ln.status ?? "awaiting").replaceAll("_", " ")}
-                              </div>
-                              {(ln.complaint || ln.cause || ln.correction) && (
-                                <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                                  {ln.complaint
-                                    ? `Cmpl: ${ln.complaint}  `
-                                    : ""}
-                                  {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
-                                  {ln.correction
-                                    ? `| Corr: ${ln.correction}`
-                                    : ""}
-                                </div>
-                              )}
-                            </div>
-
-                            <div className="flex gap-2">
-                              {ln.job_type === "inspection" && (
-                                <button
-                                  type="button"
-                                  onClick={() => void openInspectionForLine(ln)}
-                                  disabled={!hasValidatedWorkOrder}
-                                  className="
-                              rounded-full border px-3 py-2 text-sm font-semibold
-                              border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10 text-[color:var(--copper)]
-                              hover:bg-[color:var(--copper)]/15
-                            "
-                                >
-                                  Open inspection
-                                </button>
-                              )}
-
-                              <button
-                                type="button"
-                                onClick={() => void handleDeleteLine(ln.id)}
-                                disabled={!hasValidatedWorkOrder}
-                                className={cx(
-                                  "rounded-full border border-red-400/25 bg-[color:color-mix(in_srgb,var(--theme-card-bg,var(--theme-surface-page))_62%,transparent)] px-3 py-2 text-sm font-semibold text-red-200 hover:bg-red-500/10",
-                                )}
-                              >
-                                Delete
-                              </button>
-                            </div>
+              <div className="min-h-[8rem] flex-1 overflow-y-auto px-4 py-3">
+        {!wo?.id || lines.length === 0 ? (
+          <div
+            className={cx(
+              "px-4 py-5 text-sm text-[color:var(--theme-text-secondary)]",
+              subtlePanel,
+            )}
+          >
+            No lines yet.
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <div>
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+                Jobs (Punchable)
+              </div>
+              <div className="space-y-2">
+                {lines
+                  .filter((ln) => (ln.line_type ?? "job") !== "info")
+                  .map((ln) => (
+                    <div
+                      key={ln.id}
+                      className={cx(
+                        "flex flex-col gap-2 p-2.5",
+                        subtlePanel,
+                      )}
+                    >
+                      <div className="min-w-0">
+                        <div className="break-words font-medium text-[color:var(--theme-text-primary)]">
+                          {ln.description ||
+                            ln.complaint ||
+                            "Untitled job"}
+                        </div>
+                        <div className="text-xs text-[color:var(--theme-text-muted)]">
+                          {String(ln.job_type ?? "job").replaceAll(
+                            "_",
+                            " ",
+                          )}{" "}
+                          •{" "}
+                          {typeof ln.labor_time === "number"
+                            ? `${ln.labor_time}h`
+                            : "—"}{" "}
+                          •{" "}
+                          {(ln.status ?? "awaiting").replaceAll("_", " ")}
+                        </div>
+                        {(ln.complaint || ln.cause || ln.correction) && (
+                          <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                            {ln.complaint
+                              ? `Cmpl: ${ln.complaint}  `
+                              : ""}
+                            {ln.cause ? `| Cause: ${ln.cause}  ` : ""}
+                            {ln.correction
+                              ? `| Corr: ${ln.correction}`
+                              : ""}
                           </div>
-                        ))}
-                    </div>
-                  </div>
+                        )}
+                      </div>
 
-                  <div>
-                    <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
-                      Info / Context
-                    </div>
-                    <div className="space-y-2">
-                      {lines
-                        .filter((ln) => (ln.line_type ?? "job") === "info")
-                        .map((ln) => (
-                          <div
-                            key={ln.id}
-                            className={cx(
-                              "p-3 text-sm text-[color:var(--theme-text-secondary)]",
-                              subtlePanel,
-                            )}
+                      <div className="flex flex-wrap gap-2">
+                        {ln.job_type === "inspection" && (
+                          <button
+                            type="button"
+                            onClick={() => void openInspectionForLine(ln)}
+                            disabled={!hasValidatedWorkOrder}
+                            className="
+                        rounded-full border px-3 py-1.5 text-xs font-semibold
+                        border-[color:var(--copper)]/70 bg-[color:var(--copper)]/10 text-[color:var(--copper)]
+                        hover:bg-[color:var(--copper)]/15
+                      "
                           >
-                            <div className="font-medium text-[color:var(--theme-text-primary)]">
-                              {ln.description || ln.complaint || "Context line"}
-                            </div>
-                            {(ln.complaint || ln.notes) && (
-                              <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                                {ln.complaint ?? ln.notes}
-                              </div>
-                            )}
-                          </div>
-                        ))}
-                      {lines.every(
-                        (ln) => (ln.line_type ?? "job") !== "info",
-                      ) && (
-                        <p className="text-xs text-[color:var(--theme-text-muted)]">
-                          No info/context lines.
-                        </p>
+                            Open inspection
+                          </button>
+                        )}
+
+                        <button
+                          type="button"
+                          onClick={() => void handleDeleteLine(ln.id)}
+                          disabled={!hasValidatedWorkOrder}
+                          className={cx(
+                            "rounded-full border border-red-400/25 bg-[color:color-mix(in_srgb,var(--theme-card-bg,var(--theme-surface-page))_62%,transparent)] px-3 py-1.5 text-xs font-semibold text-red-200 hover:bg-red-500/10",
+                          )}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+
+            <div>
+              <div className="mb-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-secondary)]">
+                Info / Context
+              </div>
+              <div className="space-y-2">
+                {lines
+                  .filter((ln) => (ln.line_type ?? "job") === "info")
+                  .map((ln) => (
+                    <div
+                      key={ln.id}
+                      className={cx(
+                        "p-3 text-sm text-[color:var(--theme-text-secondary)]",
+                        subtlePanel,
+                      )}
+                    >
+                      <div className="font-medium text-[color:var(--theme-text-primary)]">
+                        {ln.description || ln.complaint || "Context line"}
+                      </div>
+                      {(ln.complaint || ln.notes) && (
+                        <div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                          {ln.complaint ?? ln.notes}
+                        </div>
                       )}
                     </div>
-                  </div>
-                </div>
-              )}
-            </section>
-
-            {/* Footer actions */}
-            <div className="sticky bottom-[calc(0.75rem+var(--safe-bottom))] z-20 rounded-2xl border border-[color:var(--brand-primary)]/25 bg-[color:var(--theme-surface-panel)]/95 p-3 shadow-[0_16px_48px_rgba(15,23,42,0.18)] backdrop-blur-xl">
-              <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <button
-                  type="button"
-                  onClick={() => router.push("/work-orders")}
-                  className="min-h-11 px-3 text-sm font-medium text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
-                  disabled={loading}
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading || isPersistedWorkOrderPending || resumeBlocked}
-                  className="inline-flex min-h-11 w-full items-center justify-center gap-2 rounded-xl bg-[color:var(--brand-primary)] px-6 py-2.5 text-sm font-semibold text-white shadow-[0_12px_28px_rgba(23,71,255,0.28)] transition hover:brightness-110 disabled:opacity-60 sm:w-auto"
-                >
-                  <Check className="h-4 w-4" aria-hidden="true" />
-                  {loading ? "Creating…" : "Create work order"}
-                </button>
+                  ))}
+                {lines.every(
+                  (ln) => (ln.line_type ?? "job") !== "info",
+                ) && (
+                  <p className="text-xs text-[color:var(--theme-text-muted)]">
+                    No info/context lines.
+                  </p>
+                )}
               </div>
+            </div>
+          </div>
+        )}
+              </div>
+
+              <dl className="grid grid-cols-3 gap-2 border-t border-[color:var(--theme-border-soft)] px-4 py-3 text-center">
+                <div>
+                  <dd className="text-lg font-bold">{jobLines.length}</dd>
+                  <dt className="text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">Jobs</dt>
+                </div>
+                <div>
+                  <dd className="text-lg font-bold">{lines.length - jobLines.length}</dd>
+                  <dt className="text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">Info</dt>
+                </div>
+                <div>
+                  <dd className="text-lg font-bold">{laborHours.toFixed(1)}h</dd>
+                  <dt className="text-[10px] uppercase tracking-wide text-[color:var(--theme-text-muted)]">Labor</dt>
+                </div>
+              </dl>
+
+              <div className="hidden border-t border-[color:var(--theme-border-soft)] p-3 lg:block">
+                {createActions}
+              </div>
+            </aside>
+
+            {/* Small screens: keep Create within reach */}
+            <div className="sticky bottom-[calc(0.75rem+var(--safe-bottom))] z-20 rounded-2xl border border-[color:var(--brand-primary)]/25 bg-[color:var(--theme-surface-panel)]/95 p-3 shadow-[0_16px_48px_rgba(15,23,42,0.18)] backdrop-blur-xl lg:hidden">
+              {createActions}
             </div>
           </form>
 
@@ -3416,11 +3614,12 @@ export default function CreateWorkOrderPage() {
               </div>
             </div>
           )}
-        </section>
-      </div>
+        </div>
+      </WorkspaceShell>
     </div>
   );
 }
+
 
 function cx(...parts: Array<string | false | null | undefined>) {
   return parts.filter(Boolean).join(" ");
