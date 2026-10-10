@@ -17,6 +17,7 @@ import {
   Plus,
   Save,
   Send,
+  WandSparkles,
 } from "lucide-react";
 import {
   slugifyBlogTitle,
@@ -28,6 +29,14 @@ type EditorArticle = BlogArticleInput & {
   createdAt?: string;
   updatedAt?: string;
   publishedAt?: string | null;
+};
+
+type OptimizedMetadata = {
+  slug: string;
+  category: string;
+  excerpt: string;
+  seoTitle: string;
+  seoDescription: string;
 };
 
 const EMPTY_ARTICLE: EditorArticle = {
@@ -64,6 +73,7 @@ export default function OpsBlogManager() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
   const [slugTouched, setSlugTouched] = useState(false);
   const [imageAlt, setImageAlt] = useState("");
   const [message, setMessage] = useState<string | null>(null);
@@ -202,6 +212,59 @@ export default function OpsBlogManager() {
     }
   }
 
+  async function optimizeMetadata() {
+    if (!editor) return;
+    if (!editor.title.trim() || editor.bodyMarkdown.trim().length < 80) {
+      setError("Add a title and more article content before using AI optimization.");
+      return;
+    }
+
+    setOptimizing(true);
+    setError(null);
+    setMessage(null);
+    try {
+      const response = await fetch("/api/ops/blog/optimize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: editor.title,
+          bodyMarkdown: editor.bodyMarkdown,
+        }),
+      });
+      const payload = (await response.json()) as {
+        metadata?: OptimizedMetadata;
+        error?: string;
+      };
+      if (!response.ok || !payload.metadata) {
+        throw new Error(payload.error ?? "Unable to optimize article metadata");
+      }
+
+      setEditor((current) =>
+        current
+          ? {
+              ...current,
+              slug: slugLocked ? current.slug : payload.metadata?.slug ?? current.slug,
+              category: payload.metadata?.category ?? current.category,
+              excerpt: payload.metadata?.excerpt ?? current.excerpt,
+              seoTitle: payload.metadata?.seoTitle ?? current.seoTitle,
+              seoDescription:
+                payload.metadata?.seoDescription ?? current.seoDescription,
+            }
+          : current,
+      );
+      if (!slugLocked) setSlugTouched(true);
+      setMessage("AI suggestions applied. Review them before saving or publishing.");
+    } catch (caught) {
+      setError(
+        caught instanceof Error
+          ? caught.message
+          : "Unable to optimize article metadata",
+      );
+    } finally {
+      setOptimizing(false);
+    }
+  }
+
   async function saveArticle(status: "draft" | "published") {
     if (!editor) return;
     const slug = editor.slug.trim() || slugifyBlogTitle(editor.title);
@@ -280,8 +343,8 @@ export default function OpsBlogManager() {
               <label className="lg:col-span-2"><span className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">Excerpt</span><textarea value={editor.excerpt} onChange={(event) => update("excerpt", event.target.value)} rows={3} className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5 text-sm" placeholder="Short summary used on resource cards and as the fallback search description." /></label>
               <label><span className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">Author</span><input value={editor.authorName} onChange={(event) => update("authorName", event.target.value)} className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5 text-sm" /></label>
               <label><span className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">Author title</span><input value={editor.authorTitle} onChange={(event) => update("authorTitle", event.target.value)} className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5 text-sm" /></label>
-              <label><span className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">SEO title</span><input value={editor.seoTitle} onChange={(event) => update("seoTitle", event.target.value)} className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5 text-sm" placeholder="Optional — article title is used by default" /></label>
-              <label><span className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">SEO description</span><input value={editor.seoDescription} onChange={(event) => update("seoDescription", event.target.value)} className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5 text-sm" placeholder="Optional — excerpt is used by default" /></label>
+              <label><span className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">SEO title</span><input value={editor.seoTitle} onChange={(event) => update("seoTitle", event.target.value)} className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5 text-sm" placeholder="Optional — article title is used by default" /><span className="mt-1 block text-[11px] text-[color:var(--theme-text-muted)]">{editor.seoTitle.length}/60 recommended</span></label>
+              <label><span className="text-xs font-semibold text-[color:var(--theme-text-secondary)]">SEO description</span><input value={editor.seoDescription} onChange={(event) => update("seoDescription", event.target.value)} className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2.5 text-sm" placeholder="Optional — excerpt is used by default" /><span className="mt-1 block text-[11px] text-[color:var(--theme-text-muted)]">{editor.seoDescription.length}/160 recommended</span></label>
               <label className="flex items-center gap-3 lg:col-span-2"><input type="checkbox" checked={editor.featured} onChange={(event) => update("featured", event.target.checked)} className="h-4 w-4 rounded" /><span className="text-sm font-semibold">Feature this article ahead of newer resources</span></label>
             </div>
 
@@ -324,8 +387,9 @@ export default function OpsBlogManager() {
               <div className="text-xs text-[color:var(--theme-text-muted)]">{storedArticle ? `Current status: ${storedArticle.status}` : "New article — not saved yet"}</div>
               <div className="flex flex-wrap gap-2">
                 {storedArticle?.status === "published" ? <Link href={`/resources/${storedArticle.slug}`} target="_blank" className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] px-4 py-2.5 text-sm font-bold"><ExternalLink className="h-4 w-4" /> Open live</Link> : null}
-                <button type="button" disabled={saving || uploading} onClick={() => void saveArticle("draft")} className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] px-4 py-2.5 text-sm font-bold disabled:opacity-50"><Save className="h-4 w-4" /> {storedArticle?.status === "published" ? "Unpublish & save draft" : "Save draft"}</button>
-                <button type="button" disabled={saving || uploading} onClick={() => void saveArticle("published")} className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"><Send className="h-4 w-4" /> Publish</button>
+                <button type="button" disabled={saving || uploading || optimizing || !editor.title.trim() || editor.bodyMarkdown.trim().length < 80} onClick={() => void optimizeMetadata()} className="inline-flex items-center gap-2 rounded-xl border border-orange-500/40 bg-orange-500/10 px-4 py-2.5 text-sm font-bold text-orange-200 disabled:opacity-50"><WandSparkles className="h-4 w-4" /> {optimizing ? "Optimizing…" : "Optimize with AI"}</button>
+                <button type="button" disabled={saving || uploading || optimizing} onClick={() => void saveArticle("draft")} className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] px-4 py-2.5 text-sm font-bold disabled:opacity-50"><Save className="h-4 w-4" /> {storedArticle?.status === "published" ? "Unpublish & save draft" : "Save draft"}</button>
+                <button type="button" disabled={saving || uploading || optimizing} onClick={() => void saveArticle("published")} className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white disabled:opacity-50"><Send className="h-4 w-4" /> Publish</button>
               </div>
             </div>
           </div>
