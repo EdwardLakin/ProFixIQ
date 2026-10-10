@@ -14,6 +14,9 @@ export type CatalogPreview = {
     reviewRequired: number;
     servicesToCreate: number;
     servicesToUpdate: number;
+    partsRecognized: number;
+    partsMatched: number;
+    partsToRequest: number;
   };
   services: Array<{
     importKey: string;
@@ -22,6 +25,7 @@ export type CatalogPreview = {
     laborHours: number | null;
     price: number | null;
     inspection: string | null;
+    parts: Array<{ partNumber: string; quantity: number; name: string | null; status: "matched" | "not_found" | "ambiguous" }>;
     status: "new" | "update" | "review";
     reviewReason: string | null;
   }>;
@@ -35,6 +39,8 @@ type ImportResult = {
   templatesCreated: number;
   templatesUpdated: number;
   linksCreated: number;
+  partsAttached: number;
+  partsRequested: number;
   reviewRequired: number;
 };
 
@@ -150,7 +156,7 @@ export function ServiceCatalogImportCard({ guided, onImported }: Props) {
             </p>
             <p>
               Useful columns: service_code, service_name, default_labor_hours, default_labor_rate or price,
-              inspection_template, section, checklist_item. Re-uploading the same codes updates your existing
+              inspection_template, section, checklist_item, plus part_number, part_qty and part_name to attach parts. Re-uploading the same codes updates your existing
               services instead of duplicating them.
             </p>
           </>
@@ -202,6 +208,12 @@ export function ServiceCatalogImportCard({ guided, onImported }: Props) {
               <p className="text-xs text-[color:var(--theme-text-secondary)]">
                 {s.servicesToCreate} new · {s.servicesToUpdate} will update existing services
               </p>
+              {s.partsRecognized > 0 ? (
+                <p className="text-xs text-[color:var(--theme-text-secondary)]" data-testid="service-catalog-parts-summary">
+                  {s.partsRecognized} parts · {s.partsMatched} matched to inventory · {s.partsToRequest} not found
+                  {s.partsToRequest > 0 ? " (will be added as requested parts for your parts team to match)" : ""}
+                </p>
+              ) : null}
 
               {preview.warnings.length > 0 ? (
                 <ul className="list-disc space-y-1 pl-5 text-xs text-amber-200">
@@ -219,6 +231,7 @@ export function ServiceCatalogImportCard({ guided, onImported }: Props) {
                       <th className="px-3 py-2">Labor</th>
                       <th className="px-3 py-2">Price</th>
                       <th className="px-3 py-2">Inspection</th>
+                      <th className="px-3 py-2">Parts</th>
                       <th className="px-3 py-2">Status</th>
                     </tr>
                   </thead>
@@ -234,6 +247,19 @@ export function ServiceCatalogImportCard({ guided, onImported }: Props) {
                         <td className="px-3 py-2 tabular-nums">{service.laborHours === null ? "—" : `${service.laborHours} h`}</td>
                         <td className="px-3 py-2 tabular-nums">{money(service.price)}</td>
                         <td className="px-3 py-2">{service.inspection ?? "—"}</td>
+                        <td className="px-3 py-2">
+                          {service.parts.length === 0 ? (
+                            "—"
+                          ) : (
+                            <span
+                              title={service.parts
+                                .map((part) => `${part.quantity} × ${part.name ?? part.partNumber} (${part.status === "matched" ? "in inventory" : part.status === "ambiguous" ? "multiple matches" : "not found"})`)
+                                .join("\n")}
+                            >
+                              {service.parts.length} · {service.parts.filter((part) => part.status === "matched").length} matched
+                            </span>
+                          )}
+                        </td>
                         <td className="px-3 py-2">
                           {service.status === "review" ? (
                             <span className="text-amber-300" title={service.reviewReason ?? undefined}>
@@ -267,6 +293,9 @@ export function ServiceCatalogImportCard({ guided, onImported }: Props) {
               <p className="text-sm font-semibold text-emerald-100">
                 Imported {result.servicesCreated} new and updated {result.servicesUpdated} services · {result.templatesCreated}{" "}
                 inspection templates created · {result.linksCreated} services linked to an inspection
+                {result.partsAttached + result.partsRequested > 0
+                  ? ` · ${result.partsAttached} parts attached, ${result.partsRequested} requested for matching`
+                  : ""}
                 {result.reviewRequired > 0 ? ` · ${result.reviewRequired} left for review` : ""}.
               </p>
               <div className="flex flex-wrap gap-2">

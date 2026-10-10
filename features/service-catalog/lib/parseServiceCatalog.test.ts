@@ -147,3 +147,64 @@ describe("shop reel service catalog (menu items + inspections)", () => {
     expect(payload.templates.find((t) => t.name === "Trailer PM Service")?.usage_context).toBe("Commercial trailers");
   });
 });
+
+describe("service catalog parts (BOM)", () => {
+  const csv = readFileSync(join(__dirname, "../__fixtures__/service-catalog-shop-reel-parts.csv"), "utf8");
+  const plan = buildCatalogPlan(csv);
+  const byCode = (code: string) => plan.services.find((s) => s.serviceCode === code);
+
+  it("keeps the catalog counts and attaches parts to the right services", () => {
+    expect(plan.summary).toMatchObject({ servicesRecognized: 24, templatesImportable: 9, linksImportable: 9, reviewRequired: 0 });
+    expect(plan.summary.partsRecognized).toBe(11);
+    expect(byCode("PM-HD")?.parts.map((p) => [p.partNumber, p.quantity])).toEqual([
+      ["OIL-FILTER-HD", 1],
+      ["FUEL-FILTER-HD", 2],
+      ["AIR-FILTER-HD", 1],
+      ["OIL-15W40", 12],
+    ]);
+    expect(byCode("PM-HD")?.templateName).toBe("Heavy-Duty PM Service");
+    expect(byCode("FUEL-FILT")?.parts).toHaveLength(1);
+  });
+
+  it("shares a part across services and normalizes part numbers for matching", () => {
+    expect(byCode("OIL-FILT")?.parts[0].partKey).toBe("OILFILTERHD");
+    expect(byCode("PM-HD")?.parts[0].partKey).toBe(byCode("OIL-FILT")?.parts[0].partKey);
+  });
+
+  it("emits parts in the import payload keyed by service_key", () => {
+    const payload = toImportPayload(plan);
+    expect(payload.parts).toHaveLength(11);
+    expect(payload.parts.filter((p) => p.service_key === "catalog:code:pm-hd")).toHaveLength(4);
+  });
+
+  it("skips bad parts with a warning instead of failing the service", () => {
+    const bad = [
+      "service_code,service_name,default_labor_hours,price,part_number,part_qty,part_name",
+      "S-1,Service One,1,100,P-1,2,Part one",
+      "S-1,Service One,1,100,P-2,0,Zero qty",
+      "S-1,Service One,1,100,P-3,abc,Bad qty",
+      "S-1,Service One,1,100,,1,No number",
+      "S-1,Service One,1,100,P-1,5,Duplicate",
+      ",,,,P-9,1,Orphan",
+      "S-1,,,,P-4,3,Part-only row",
+    ].join("\n");
+    const result = buildCatalogPlan(bad);
+    expect(result.services).toHaveLength(1);
+    expect(result.services[0].parts.map((p) => [p.partKey, p.quantity])).toEqual([
+      ["P1", 2],
+      ["P4", 3],
+    ]);
+    expect(result.warnings.length).toBe(5);
+  });
+
+  it("defaults a missing quantity to 1 and ignores parts on services that need review", () => {
+    const csv2 = [
+      "service_code,service_name,default_labor_hours,part_number",
+      "S-1,Has hours,1,P-1",
+      "S-2,No pricing,,P-2",
+    ].join("\n");
+    const result = buildCatalogPlan(csv2);
+    expect(result.services.find((s) => s.serviceCode === "S-1")?.parts[0].quantity).toBe(1);
+    expect(result.services.find((s) => s.serviceCode === "S-2")?.parts).toEqual([]);
+  });
+});

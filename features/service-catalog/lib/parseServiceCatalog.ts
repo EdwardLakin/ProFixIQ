@@ -27,6 +27,16 @@ export type CatalogTemplateCandidate = {
   needsReview: boolean;
 };
 
+export type CatalogPartCandidate = {
+  /** Part number (or SKU) as written in the CSV. */
+  partNumber: string;
+  /** Normalized identity used to match inventory (upper-case alphanumerics). */
+  partKey: string;
+  /** Free-text name, used when the part is not in inventory. */
+  name: string | null;
+  quantity: number;
+};
+
 export type CatalogServiceCandidate = {
   importKey: string;
   /** menu_items.service_key */
@@ -40,6 +50,7 @@ export type CatalogServiceCandidate = {
   /** importKey of the template this service links to, when importable. */
   templateKey: string | null;
   templateName: string | null;
+  parts: CatalogPartCandidate[];
   linkSource: "explicit" | "name_match" | null;
   confidence: number;
   needsReview: boolean;
@@ -57,6 +68,7 @@ export type CatalogPlan = {
     templatesImportable: number;
     linksImportable: number;
     reviewRequired: number;
+    partsRecognized: number;
   };
 };
 
@@ -206,6 +218,14 @@ function namesMatch(serviceName: string, templateName: string): boolean {
   return a.length >= 12 && b.length >= 12 && (a.includes(b) || b.includes(a));
 }
 
+/** Same normalization the parts matcher and the database resolver use. */
+export function normalizeCatalogPartKey(value: string | null | undefined): string {
+  return (value ?? "").trim().toUpperCase().replace(/[^A-Z0-9]+/g, "");
+}
+
+export const SERVICE_CATALOG_MAX_PARTS_PER_SERVICE = 100;
+export const SERVICE_CATALOG_MAX_PART_QTY = 10000;
+
 function shortHash(text: string): string {
   return createHash("sha1").update(text, "utf8").digest("hex").slice(0, 10);
 }
@@ -227,7 +247,7 @@ type TemplateAccumulator = {
   seen: Set<string>;
 };
 
-type ServiceAccumulator = Omit<CatalogServiceCandidate, "templateKey" | "templateName" | "linkSource"> & {
+type ServiceAccumulator = Omit<CatalogServiceCandidate, "templateKey" | "templateName" | "linkSource" | "parts"> & {
   explicitTemplateName: string | null;
 };
 
@@ -237,9 +257,15 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
 
   const templates = new Map<string, TemplateAccumulator>();
   const services = new Map<string, ServiceAccumulator>();
+  const partRows: Array<{
+    serviceImportKey: string | null;
+    serviceCode: string | null;
+    label: string;
+    part: CatalogPartCandidate;
+  }> = [];
 
   for (const row of rows) {
-    const serviceCode = pick(row, [/^service_code$/, /^operation_code$/, /^code$/, /^sku$/]);
+    const serviceCode = pick(row, [/^service_code$/, /^operation_code$/, /^code$/]);
     const serviceName = pick(row, [/^service_name$/, /^job_name$/, /^operation_name$/, /^operation$/, /^service$/, /^name$/, /^menu_item$/]);
     const description = pick(row, [/^description$/, /^service_description$/, /^details$/, /^op_description$/]);
     const category = pick(row, [/^category$/, /^service_category$/, /^department$/, /^shop_department$/]);
@@ -272,6 +298,10 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
     const itemName = pick(row, [/^checklist_item$/, /^inspection_item$/, /^item$/, /^item_name$/, /^checkpoint$/, /^check_item$/, /^question$/, /^point$/]);
     const usageContext = pick(row, [/^usage_context$/, /^vehicle_type$/, /^applies_to$/, /^usage$/]);
     const inspectionNote = pick(row, [/^inspection_note$/, /^template_description$/]);
+
+    const partNumber = pick(row, [/^part_number$/, /^part_no$/, /^part$/, /^part_sku$/, /^sku$/]);
+    const partName = pick(row, [/^part_name$/, /^part_description$/]);
+    const partQtyRaw = pick(row, [/^part_qty$/, /^part_quantity$/, /^quantity$/, /^qty$/]);
 
     const fullDescription = [description, interval].filter(Boolean).join(" • ") || null;
 
@@ -312,6 +342,24 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
           existing.needsReview = false;
           existing.reviewReason = null;
         }
+      }
+    }
+
+    if (partNumber || partName) {
+      const label = serviceName ?? serviceCode ?? "(unknown service)";
+      const qty = partQtyRaw === null ? 1 : parseNumber(partQtyRaw);
+      const partKey = normalizeCatalogPartKey(partNumber);
+      if (!partNumber || !partKey) {
+        warnings.push(`${label}: part "${partName}" has no part number; skipped.`);
+      } else if (qty === null || qty <= 0 || qty > SERVICE_CATALOG_MAX_PART_QTY) {
+        warnings.push(`${label}: part ${partNumber} has an invalid quantity (${partQtyRaw}); skipped.`);
+      } else {
+        partRows.push({
+          serviceImportKey: serviceName ? buildCatalogServiceKey(serviceCode, serviceName).importKey : null,
+          serviceCode,
+          label,
+          part: { partNumber, partKey, name: partName, quantity: qty },
+        });
       }
     }
 
@@ -359,6 +407,28 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
   const importable = templateCandidates.filter((t) => !t.needsReview);
   const byNormalizedName = new Map(importable.map((t) => [normalizeCatalogText(t.templateName), t]));
 
+  const partsByService = new Map<string, Map<string, CatalogPartCandidate>>();
+  const servicesByCode = new Map<string, string>();
+  for (const svc of services.values()) {
+    if (svc.serviceCode) servicesByCode.set(slug(svc.serviceCode), svc.importKey);
+  }
+  for (const row of partRows) {
+    const key = row.serviceImportKey ?? (row.serviceCode ? servicesByCode.get(slug(row.serviceCode)) : undefined);
+    if (!key || !services.has(key)) {
+      warnings.push(`${row.label}: part ${row.part.partNumber} does not belong to a known service; skipped.`);
+      continue;
+    }
+    const bucket = partsByService.get(key) ?? new Map<string, CatalogPartCandidate>();
+    if (bucket.has(row.part.partKey)) {
+      warnings.push(`${row.label}: part ${row.part.partNumber} is listed more than once; keeping the first.`);
+    } else if (bucket.size >= SERVICE_CATALOG_MAX_PARTS_PER_SERVICE) {
+      warnings.push(`${row.label}: more than ${SERVICE_CATALOG_MAX_PARTS_PER_SERVICE} parts; extra parts skipped.`);
+    } else {
+      bucket.set(row.part.partKey, row.part);
+    }
+    partsByService.set(key, bucket);
+  }
+
   const serviceCandidates: CatalogServiceCandidate[] = [];
   for (const svc of services.values()) {
     const { explicitTemplateName, ...rest } = svc;
@@ -379,6 +449,7 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
       ...rest,
       templateKey: link?.importKey ?? null,
       templateName: link?.templateName ?? null,
+      parts: svc.needsReview ? [] : Array.from(partsByService.get(svc.importKey)?.values() ?? []),
       linkSource,
     });
   }
@@ -407,6 +478,7 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
       templatesImportable: importable.length,
       linksImportable,
       reviewRequired,
+      partsRecognized: serviceCandidates.reduce((sum, svc) => sum + svc.parts.length, 0),
     },
   };
 }
@@ -432,6 +504,12 @@ export function toImportPayload(plan: CatalogPlan): {
     price: number | null;
     template_key: string | null;
   }>;
+  parts: Array<{
+    service_key: string;
+    part_number: string;
+    name: string | null;
+    quantity: number;
+  }>;
 } {
   const templates = plan.templates
     .filter((t) => !t.needsReview)
@@ -456,5 +534,10 @@ export function toImportPayload(plan: CatalogPlan): {
       price: s.price,
       template_key: s.templateKey,
     }));
-  return { templates, services };
+  const parts = plan.services
+    .filter((s) => !s.needsReview)
+    .flatMap((s) =>
+      s.parts.map((p) => ({ service_key: s.serviceKey, part_number: p.partNumber, name: p.name, quantity: p.quantity })),
+    );
+  return { templates, services, parts };
 }
