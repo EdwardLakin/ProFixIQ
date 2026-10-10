@@ -46,4 +46,12 @@ describe("create work order workspace layout", () => {
     expect(page).toContain("<NewWorkOrderLineForm");
     expect(page).toContain("<CreateFlowMaintenanceSelector");
   });
+
+  it("resets a stale tab-remembered draft quietly instead of showing a red error", () => {
+    expect(page).toContain("CREATE_RESUME_BLOCKED_PREFIX");
+    expect(page).toContain("STALE_TAB_DRAFT_NOTICE");
+    expect(page).toContain(
+      "!resumeWorkOrderId && message.startsWith(CREATE_RESUME_BLOCKED_PREFIX)",
+    );
+  });
 });

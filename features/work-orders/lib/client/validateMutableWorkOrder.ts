@@ -14,6 +14,9 @@ export const CREATE_WORK_ORDER_STALE_EVENT =
 export const STALE_CREATE_WORK_ORDER_MESSAGE =
   "This saved work order no longer exists. The stale draft was cleared; create a new work order before adding lines.";
 
+export const CREATE_RESUME_BLOCKED_PREFIX =
+  "This work order can’t be continued here:";
+
 export class StaleCreateWorkOrderError extends Error {
   constructor(
     readonly workOrderId: string,
@@ -148,7 +151,7 @@ export async function requireResumableCreateWorkOrder(input: {
     hasInspection: Boolean(inspections?.length),
   });
   if (blocker) {
-    const message = `This work order can’t be continued here: ${blocker}`;
+    const message = `${CREATE_RESUME_BLOCKED_PREFIX} ${blocker}`;
     signalStaleCreateWorkOrder(input.workOrderId, message);
     throw new StaleCreateWorkOrderError(input.workOrderId, message);
   }
