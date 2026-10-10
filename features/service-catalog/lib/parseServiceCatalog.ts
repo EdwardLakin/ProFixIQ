@@ -5,12 +5,27 @@
 // sees before clicking "Import & activate" is exactly what gets written.
 
 import { createHash } from "node:crypto";
+import {
+  buildSectionsFromMasterList,
+  mapSectionsToMaster,
+  type CatalogChecklistItem,
+  type MatchedChecklistItem,
+} from "./matchMasterItems";
 
 export const SERVICE_CATALOG_HIGH_CONFIDENCE = 0.85;
 export const SERVICE_CATALOG_MAX_CSV_BYTES = 2 * 1024 * 1024;
 export const SERVICE_CATALOG_MAX_ROWS = 5000;
 
-export type CatalogChecklistSection = { title: string; items: string[] };
+export type CatalogChecklistSection = { title: string; items: MatchedChecklistItem[] };
+
+export type CatalogTemplateMapping = {
+  /** Checklist lines as written in the CSV (0 when the template is built from the master list). */
+  listed: number;
+  /** Final items that came from the shop's master inspection list. */
+  fromMaster: number;
+  /** Final items kept exactly as the shop wrote them (no master equivalent). */
+  custom: number;
+};
 
 export type CatalogTemplateCandidate = {
   /** Stable shop-scoped identity. Never depends on the intake/upload. */
@@ -23,8 +38,12 @@ export type CatalogTemplateCandidate = {
   /** Exactly the shape the inspection runtime consumes (toInspectionCategories). */
   sections: CatalogChecklistSection[];
   itemCount: number;
+  /** "listed": the CSV lists the items (mapped onto the master list). "master": the CSV names the template only and it is built from the master list. */
+  source: "listed" | "master";
+  mapping: CatalogTemplateMapping;
   confidence: number;
   needsReview: boolean;
+  reviewReason: string | null;
 };
 
 export type CatalogPartCandidate = {
@@ -69,6 +88,9 @@ export type CatalogPlan = {
     linksImportable: number;
     reviewRequired: number;
     partsRecognized: number;
+    checklistItems: number;
+    checklistItemsFromMaster: number;
+    checklistItemsCustom: number;
   };
 };
 
@@ -245,6 +267,11 @@ type TemplateAccumulator = {
   usageContext: string | null;
   sections: Map<string, string[]>;
   seen: Set<string>;
+  brakeSystem: "air_brake" | "hyd_brake" | null;
+  dutyClass: "light" | "medium" | "heavy" | null;
+  targetCount: number | null;
+  /** The CSV asked for this template to be built from the master list. */
+  fromMaster: boolean;
 };
 
 type ServiceAccumulator = Omit<CatalogServiceCandidate, "templateKey" | "templateName" | "linkSource" | "parts"> & {
@@ -298,6 +325,10 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
     const itemName = pick(row, [/^checklist_item$/, /^inspection_item$/, /^item$/, /^item_name$/, /^checkpoint$/, /^check_item$/, /^question$/, /^point$/]);
     const usageContext = pick(row, [/^usage_context$/, /^vehicle_type$/, /^applies_to$/, /^usage$/]);
     const inspectionNote = pick(row, [/^inspection_note$/, /^template_description$/]);
+    const brakeSystemRaw = pick(row, [/^brake_system$/, /^brakes$/]);
+    const dutyClassRaw = pick(row, [/^duty_class$/, /^duty$/]);
+    const inspectionSourceRaw = pick(row, [/^inspection_source$/, /^build_from_master$/, /^use_master_list$/]);
+    const targetCountRaw = pick(row, [/^inspection_item_count$/, /^checklist_item_count$/, /^item_count$/]);
 
     const partNumber = pick(row, [/^part_number$/, /^part_no$/, /^part$/, /^part_sku$/, /^sku$/]);
     const partName = pick(row, [/^part_name$/, /^part_description$/]);
@@ -363,7 +394,7 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
       }
     }
 
-    if (templateName && itemName) {
+    if (templateName) {
       const templateKey = `tpl:${slug(templateName) || shortHash(templateName)}`;
       const acc = templates.get(templateKey) ?? {
         templateName,
@@ -371,16 +402,29 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
         usageContext,
         sections: new Map<string, string[]>(),
         seen: new Set<string>(),
+        brakeSystem: null,
+        dutyClass: null,
+        targetCount: null,
+        fromMaster: false,
       };
       acc.note ??= inspectionNote;
       acc.usageContext ??= usageContext;
-      const section = sectionName ?? "General";
-      const dedupe = `${normalizeCatalogText(section)}|${normalizeCatalogText(itemName)}`;
-      if (!acc.seen.has(dedupe)) {
-        acc.seen.add(dedupe);
-        const items = acc.sections.get(section) ?? [];
-        items.push(itemName);
-        acc.sections.set(section, items);
+      if (/air/i.test(brakeSystemRaw ?? "")) acc.brakeSystem ??= "air_brake";
+      else if (/hyd/i.test(brakeSystemRaw ?? "")) acc.brakeSystem ??= "hyd_brake";
+      const duty = (dutyClassRaw ?? "").toLowerCase();
+      if (duty === "light" || duty === "medium" || duty === "heavy") acc.dutyClass ??= duty;
+      if (/^(master|true|yes|1)$/i.test((inspectionSourceRaw ?? "").trim())) acc.fromMaster = true;
+      const count = parseNumber(targetCountRaw);
+      if (count !== null && count >= 5 && count <= 200) acc.targetCount ??= Math.round(count);
+      if (itemName) {
+        const section = sectionName ?? "General";
+        const dedupe = `${normalizeCatalogText(section)}|${normalizeCatalogText(itemName)}`;
+        if (!acc.seen.has(dedupe)) {
+          acc.seen.add(dedupe);
+          const items = acc.sections.get(section) ?? [];
+          items.push(itemName);
+          acc.sections.set(section, items);
+        }
       }
       templates.set(templateKey, acc);
     }
@@ -388,19 +432,71 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
 
   const templateCandidates: CatalogTemplateCandidate[] = [];
   for (const [importKey, acc] of templates) {
-    const sections = Array.from(acc.sections.entries()).map(([title, items]) => ({ title, items }));
-    const itemCount = sections.reduce((sum, s) => sum + s.items.length, 0);
-    const confidence = itemCount >= 8 ? 0.9 : itemCount >= 5 ? 0.82 : 0.62;
+    const vehicleType = deriveVehicleType(acc.usageContext);
+    const listedSections = Array.from(acc.sections.entries()).map(([title, items]) => ({ title, items }));
+    const listed = listedSections.reduce((sum, sec) => sum + sec.items.length, 0);
+
+    let sections: CatalogChecklistSection[];
+    let source: CatalogTemplateCandidate["source"] = "listed";
+    let confidence: number;
+    let reviewReason: string | null = null;
+
+    const buildFromMasterList = (): CatalogChecklistSection[] =>
+      buildSectionsFromMasterList({
+        vehicleType: vehicleType as NonNullable<typeof vehicleType>,
+        brakeSystem: acc.brakeSystem ?? (vehicleType === "car" ? "hyd_brake" : "air_brake"),
+        dutyClass: acc.dutyClass ?? undefined,
+        targetCount: acc.targetCount ?? 40,
+      });
+
+    if (acc.fromMaster && vehicleType) {
+      // The CSV asked for the master list to drive this template.
+      source = "master";
+      sections = buildFromMasterList();
+      confidence = sections.length > 0 ? 0.9 : 0.5;
+      if (sections.length === 0) reviewReason = "Nothing in the master list matches this vehicle profile";
+      if (listed > 0) {
+        warnings.push(
+          `Inspection "${acc.templateName}": built from the master inspection list as requested; its ${listed} listed item${listed === 1 ? " was" : "s were"} not used.`,
+        );
+      }
+    } else if (listed > 0) {
+      if (acc.fromMaster) {
+        warnings.push(`Inspection "${acc.templateName}": no recognizable vehicle type to build from the master list; using the listed items.`);
+      }
+      // The shop listed the items: map each onto the master inspection list.
+      sections = mapSectionsToMaster(listedSections, { vehicleType });
+      confidence = listed >= 8 ? 0.9 : listed >= 5 ? 0.82 : 0.62;
+      if (confidence < SERVICE_CATALOG_HIGH_CONFIDENCE) {
+        reviewReason = `Only ${listed} checklist item${listed === 1 ? "" : "s"}`;
+      }
+    } else if (vehicleType) {
+      // Only the template is named: build it from the master list.
+      source = "master";
+      sections = buildFromMasterList();
+      confidence = sections.length > 0 ? 0.9 : 0.5;
+      if (sections.length === 0) reviewReason = "Nothing in the master list matches this vehicle profile";
+    } else {
+      sections = [];
+      confidence = 0.5;
+      reviewReason = "No checklist items, and no vehicle type to build one from the master list";
+    }
+
+    const itemCount = sections.reduce((sum, sec) => sum + sec.items.length, 0);
+    const fromMaster = sections.reduce((sum, sec) => sum + sec.items.filter((i) => i.source === "master").length, 0);
     templateCandidates.push({
       importKey,
       templateName: acc.templateName,
       note: acc.note,
       usageContext: acc.usageContext,
-      vehicleType: deriveVehicleType(acc.usageContext),
+      vehicleType,
       sections,
       itemCount,
+      source,
+      mapping: { listed, fromMaster, custom: itemCount - fromMaster },
       confidence,
       needsReview: confidence < SERVICE_CATALOG_HIGH_CONFIDENCE,
+      reviewReason,
     });
   }
 
@@ -457,7 +553,7 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
   for (const template of templateCandidates) {
     if (template.needsReview) {
       warnings.push(
-        `Inspection "${template.templateName}" has only ${template.itemCount} checklist item${template.itemCount === 1 ? "" : "s"}; needs review before import.`,
+        `Inspection "${template.templateName}": ${template.reviewReason ?? "needs review"}; needs review before import.`,
       );
     }
   }
@@ -479,6 +575,9 @@ export function buildCatalogPlan(csv: string): CatalogPlan {
       linksImportable,
       reviewRequired,
       partsRecognized: serviceCandidates.reduce((sum, svc) => sum + svc.parts.length, 0),
+      checklistItems: importable.reduce((sum, t) => sum + t.itemCount, 0),
+      checklistItemsFromMaster: importable.reduce((sum, t) => sum + t.mapping.fromMaster, 0),
+      checklistItemsCustom: importable.reduce((sum, t) => sum + t.mapping.custom, 0),
     },
   };
 }
@@ -491,7 +590,7 @@ export function toImportPayload(plan: CatalogPlan): {
     description: string | null;
     vehicle_type: string | null;
     usage_context: string | null;
-    sections: CatalogChecklistSection[];
+    sections: Array<{ title: string; items: CatalogChecklistItem[] }>;
   }>;
   services: Array<{
     import_key: string;
@@ -519,7 +618,10 @@ export function toImportPayload(plan: CatalogPlan): {
       description: t.note,
       vehicle_type: t.vehicleType,
       usage_context: t.usageContext,
-      sections: t.sections,
+      sections: t.sections.map((sec) => ({
+        title: sec.title,
+        items: sec.items.map(({ item, unit, specCode, cvipCode }) => ({ item, unit, specCode, cvipCode })),
+      })),
     }));
   const services = plan.services
     .filter((s) => !s.needsReview)
