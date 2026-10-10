@@ -42,6 +42,14 @@ describe("guided onboarding Shop Settings step", () => {
     expect(source).toContain("body: JSON.stringify({ shopId, hours: openDays })");
   });
 
+  it("opens the Owner PIN flow directly while locked", () => {
+    const source = read("features/onboarding-v2/components/ShopSettingsSetupModal.tsx");
+
+    expect(source).toContain("onClick={isUnlocked ? save : () => setPinModalOpen(true)}");
+    expect(source).toContain("(!isUnlocked && !shopId)");
+    expect(source).toContain("(isUnlocked && !settingsReady)");
+  });
+
   it("skip completes the step without requiring Owner PIN", () => {
     const source = read("features/onboarding-v2/components/ShopSettingsSetupModal.tsx");
 
