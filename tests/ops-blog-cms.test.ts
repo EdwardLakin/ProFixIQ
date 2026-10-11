@@ -95,8 +95,8 @@ describe("Ops blog CMS", () => {
   it("provides a self-service Markdown editor with draft, preview, image, AI optimization, and publish controls", () => {
     const editor = read("features/ops/components/OpsBlogManager.tsx");
     expect(editor).toContain("<ReactMarkdown");
-    expect(editor).toContain("Live preview");
-    expect(editor).toContain("Add image to article");
+    expect(editor).toContain("Live article preview");
+    expect(editor).toContain("Add image at cursor");
     expect(editor).toContain("Optimize with AI");
     expect(editor).toContain('/api/ops/blog/optimize');
     expect(editor).toContain("AI suggestions applied. Review them before saving or publishing.");
