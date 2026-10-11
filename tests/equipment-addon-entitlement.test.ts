@@ -48,6 +48,8 @@ describe("Equipment add-on billing and entitlement contract", () => {
     expect(route).toContain(
       "resolveEquipmentAddonEntitlementForShop(\n      access.profile.shop_id",
     );
+    expect(route).toContain("{ enabled: entitlement.enabled }");
+    expect(route).not.toContain("NextResponse.json(entitlement");
     expect(route).toContain('"Cache-Control": "private, no-store"');
     expect(route).toContain("status: 503");
 
@@ -63,6 +65,9 @@ describe("Equipment add-on billing and entitlement contract", () => {
     const guard = read(
       "features/equipment/server/equipmentInspectionEntitlement.ts",
     );
+    const classifier = read(
+      "features/equipment/lib/equipmentInspectionContent.ts",
+    );
     const shopRoute = read("app/api/inspections/templates/route.ts");
     const fieldRoute = read(
       "app/api/mobile/service/inspection-templates/route.ts",
@@ -72,9 +77,11 @@ describe("Equipment add-on billing and entitlement contract", () => {
     );
 
     expect(guard).toContain("inspectionSectionsRequireEquipment");
-    expect(guard).toContain('title.startsWith("off-road —")');
-    expect(guard).toContain('item.catalogScope ?? ""');
     expect(guard).toContain("resolveEquipmentAddonEntitlementForShop(shopId)");
+    expect(classifier).toContain("OFF_ROAD_ITEM_LABELS");
+    expect(classifier).toContain('title.startsWith("off-road —")');
+    expect(classifier).toContain('item.catalogScope ?? ""');
+    expect(classifier).toContain("OFF_ROAD_ITEM_LABELS.has(label)");
 
     expect(shopRoute).toContain("shopCanMutateInspectionSections");
     expect(shopRoute).toContain("ROLE_GROUPS.billingOperators");
@@ -94,9 +101,12 @@ describe("Equipment add-on billing and entitlement contract", () => {
     expect(draft).not.toContain('.from("inspection_templates")\n          .update');
   });
 
-  it("only exposes off-road selection after entitlement succeeds and retries verification errors", () => {
+  it("gates Equipment catalog access in both builder and editable draft", () => {
     const builder = read(
       "features/inspections/app/inspection/custom-inspection/page.tsx",
+    );
+    const draft = read(
+      "features/inspections/app/inspection/custom-draft/page.tsx",
     );
 
     expect(builder).toContain('fetch("/api/equipment/entitlement"');
@@ -112,6 +122,25 @@ describe("Equipment add-on billing and entitlement contract", () => {
     );
     expect(builder).toContain(
       'equipmentAddonEnabled ? equipmentScope : "road"',
+    );
+
+    expect(draft).toContain("highwayMasterInspectionList");
+    expect(draft).toContain("availableMasterInspectionList");
+    expect(draft).toContain('fetch("/api/equipment/entitlement"');
+    expect(draft).toContain("catalogScope: it.catalogScope");
+    expect(draft).toContain("equipmentFamilies: it.equipmentFamilies");
+  });
+
+  it("re-verifies Equipment entitlement before staged or persisted inspection runs", () => {
+    const run = read("features/inspections/app/inspection/run/page.tsx");
+
+    expect(run).toContain("inspectionSectionsRequireEquipment");
+    expect(run).toContain('fetch("/api/equipment/entitlement"');
+    expect(run).toContain("await authorizeEquipment(sections)");
+    expect(run).toContain("await authorizeEquipment(rawSections)");
+    expect(run).toContain("Retry verification");
+    expect(run).toContain(
+      "An active Equipment subscription is required to run this inspection.",
     );
   });
 });
