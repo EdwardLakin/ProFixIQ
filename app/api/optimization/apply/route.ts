@@ -1,7 +1,10 @@
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import { buildExecutionPreview } from "@/features/optimization/server/buildExecutionPreview";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 import type {
   OptimizationActionType,
   OptimizationApplyPayload,
@@ -266,6 +269,7 @@ export async function POST(req: Request) {
     }
 
     if (type === "inspection") {
+      const templateAdmin = createAdminSupabase();
       const templateRaw = safePayload(payload.inspectionTemplate);
       const rawTemplateId = toNonEmptyString(templateRaw.templateId) ?? opportunity?.targetRefs?.inspectionTemplateId ?? null;
       const templateId = rawTemplateId && isUuid(rawTemplateId) ? rawTemplateId : null;
@@ -325,7 +329,7 @@ export async function POST(req: Request) {
           description: existingTemplate.description,
         };
 
-        const { error: updateError } = await supabase
+        const { error: updateError } = await templateAdmin
           .from("inspection_templates")
           .update({
             template_name: templateName,
@@ -348,7 +352,7 @@ export async function POST(req: Request) {
           tags: ["optimization_engine"],
         };
 
-        const { data: insertedTemplate, error: insertError } = await supabase
+        const { data: insertedTemplate, error: insertError } = await templateAdmin
           .from("inspection_templates")
           .insert(insert)
           .select("id")
