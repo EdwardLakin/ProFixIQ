@@ -8,7 +8,7 @@
 --   3. points the quote at the new line, and
 --   4. restores the inspection job to its pre-approval state.
 --
--- Run only AFTER migration 20261010223000_fix_inspection_quote_approval_source_line
+-- Run only AFTER migration 20261011003522_fix_inspection_quote_approval_source_line
 -- is applied (it stops the approval trigger from re-activating the inspection
 -- line when the quote is repointed). Idempotent: exits without changes once the
 -- quote no longer points at its inspection source line.

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(path, "utf8");
 const migrationPath =
-  "supabase/migrations/20261010223000_fix_inspection_quote_approval_source_line.sql";
+  "supabase/migrations/20261011003522_fix_inspection_quote_approval_source_line.sql";
 const repairPath =
   "db/sql/2026-10-10_repair_wo_000001_inspection_quote_materialization.sql";
 
@@ -79,6 +79,6 @@ describe("inspection quote approval source-line regression", () => {
   it("orders the repair after the migration it depends on", () => {
     const repair = read(repairPath);
 
-    expect(repair).toContain("20261010223000_fix_inspection_quote_approval_source_line");
+    expect(repair).toContain("20261011003522_fix_inspection_quote_approval_source_line");
   });
 });

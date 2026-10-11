@@ -3,6 +3,34 @@ begin;
 set local lock_timeout = '10s';
 set local statement_timeout = '120s';
 
+-- Regression history -------------------------------------------------------
+--
+-- Approving a quote line that was imported from an inspection used to create
+-- its own punchable repair line (last known good: 2026-07-23, EL000004). It
+-- now merges the repair into the inspection job. Two changes combined:
+--
+--   1. 2026-07-31, 20260731162625_repair_parts_quote_linkage_p0 (01c617a2f):
+--      approval was changed to reuse source_work_order_line_id instead of
+--      creating a duplicate line. Correct for quotes created from a repair
+--      job's parts request, where the source line IS the repair.
+--   2. 2026-09-09, 20260909163200_harden_deferred_work_shared_integration
+--      (07160738c): a backfill and trigger began copying
+--      metadata.source_work_order_line_id into the source column for every
+--      quote line. The inspection import writes the inspection job there, so
+--      from this point every inspection-imported quote resolved to the
+--      "reuse the source line" path in (1).
+--
+-- Reusing the inspection job as the approved line merged the repair into it:
+-- activate_source_work_order_line_from_quote overwrote its price_estimate and
+-- approval state, the Parts Request and items were relinked to it, and no
+-- separate repair line existed. It also masked a latent failure: quotes
+-- imported from inspections carry job_type 'inspection-fail' (since the
+-- 2026-08-27 data), which work_order_lines_job_type_check has never allowed,
+-- so creating a dedicated line would have failed the insert.
+--
+-- The source column stays populated (deferred-work lineage depends on it);
+-- only what approval does with it changes.
+--
 -- A quote line imported from an inspection records the inspection job as its
 -- source_work_order_line_id. That line is the inspection itself, not the repair
 -- the customer is approving. Customer approval used to reuse the source line as
