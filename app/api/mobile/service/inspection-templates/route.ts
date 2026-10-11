@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 
+import { shopCanMutateInspectionSections } from "@/features/equipment/server/equipmentInspectionEntitlement";
 import { normalizeInspectionFormContext } from "@/features/inspections/lib/form-import";
 import {
   isInspectionTemplateId,
@@ -65,6 +66,26 @@ function hasOwnField(body: unknown, field: string) {
   );
 }
 
+async function equipmentMutationFailure(shopId: string, sections: unknown) {
+  try {
+    const allowed = await shopCanMutateInspectionSections(shopId, sections);
+    if (allowed) return null;
+    return NextResponse.json(
+      { error: "An active Equipment subscription is required for this inspection template." },
+      { status: 403 },
+    );
+  } catch (error) {
+    console.error("[field-inspection-templates] Equipment entitlement failed", {
+      shopId,
+      error,
+    });
+    return NextResponse.json(
+      { error: "Equipment entitlement could not be verified. Try again." },
+      { status: 503 },
+    );
+  }
+}
+
 export async function POST(request: Request) {
   const access = await requireManager();
   if (!access.ok) return access.response;
@@ -75,6 +96,12 @@ export async function POST(request: Request) {
   }
 
   const input = validation.value;
+  const equipmentFailure = await equipmentMutationFailure(
+    access.profile.shop_id,
+    input.sections,
+  );
+  if (equipmentFailure) return equipmentFailure;
+
   const payload: TemplateInsert = {
     template_name: input.templateName,
     sections: input.sections,
@@ -124,6 +151,12 @@ export async function PATCH(request: Request) {
   }
 
   const input = validation.value;
+  const equipmentFailure = await equipmentMutationFailure(
+    access.profile.shop_id,
+    input.sections,
+  );
+  if (equipmentFailure) return equipmentFailure;
+
   const payload: TemplateUpdate = {
     template_name: input.templateName,
     sections: input.sections,

@@ -38,6 +38,11 @@ type GridMode = "hyd" | "air" | "none";
 type EngineType = "gas" | "diesel";
 type BuildMethod = "template" | "prompt" | "manual";
 type EquipmentScope = "road" | "off_road";
+type EquipmentEntitlementStatus = "loading" | "verified" | "error";
+
+type EquipmentEntitlementResponse = {
+  enabled?: boolean;
+};
 
 /** ✅ Upgraded item shape so we don't lose CVIP/spec metadata */
 type SectionItem = {
@@ -513,6 +518,10 @@ export default function CustomBuilderPage({
   const navigation = getInspectionBuilderNavigation(surface);
 
   const [title, setTitle] = useState(sp.get("template") || "Custom Inspection");
+  const [equipmentAddonEnabled, setEquipmentAddonEnabled] = useState(false);
+  const [equipmentEntitlementStatus, setEquipmentEntitlementStatus] =
+    useState<EquipmentEntitlementStatus>("loading");
+  const [equipmentEntitlementAttempt, setEquipmentEntitlementAttempt] = useState(0);
   const [equipmentScope, setEquipmentScope] = useState<EquipmentScope>("road");
   const [offRoadProfileValue, setOffRoadProfileValue] = useState("crawler_excavator");
   const [dutyClass, setDutyClass] = useState<DutyClass>("heavy");
@@ -557,6 +566,51 @@ export default function CustomBuilderPage({
   const triggerTimerRef = useRef<number | null>(null);
 
   useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+    setEquipmentEntitlementStatus("loading");
+
+    void fetch("/api/equipment/entitlement", {
+      credentials: "include",
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error(`Equipment entitlement verification failed (${response.status})`);
+        }
+        return (await response.json()) as EquipmentEntitlementResponse;
+      })
+      .then((payload) => {
+        if (!active) return;
+        setEquipmentAddonEnabled(payload.enabled === true);
+        setEquipmentEntitlementStatus("verified");
+      })
+      .catch((error) => {
+        if (!active || (error instanceof DOMException && error.name === "AbortError")) {
+          return;
+        }
+        setEquipmentAddonEnabled(false);
+        setEquipmentEntitlementStatus("error");
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [equipmentEntitlementAttempt]);
+
+  useEffect(() => {
+    if (equipmentAddonEnabled || equipmentScope === "road") return;
+    setEquipmentScope("road");
+    setSelections({});
+    setSectionQuery("");
+    setItemQuery("");
+    setGridTouched(false);
+    setQuickTouched(false);
+  }, [equipmentAddonEnabled, equipmentScope]);
+
+  useEffect(() => {
     if (gridTouched) return;
     setGridMode(dutyClass === "heavy" ? "air" : "hyd");
   }, [dutyClass, gridTouched]);
@@ -579,10 +633,10 @@ export default function CustomBuilderPage({
 
   const catalogSections = useMemo(
     () =>
-      equipmentScope === "off_road" && offRoadProfile
+      equipmentAddonEnabled && equipmentScope === "off_road" && offRoadProfile
         ? offRoadCategoriesForProfile(offRoadProfile)
         : highwayMasterInspectionList,
-    [equipmentScope, offRoadProfile],
+    [equipmentAddonEnabled, equipmentScope, offRoadProfile],
   );
 
   useEffect(() => {
@@ -648,7 +702,7 @@ export default function CustomBuilderPage({
     const base = Array.isArray(sections) ? (sections as Section[]) : [];
 
     let finalSections =
-      equipmentScope === "off_road"
+      equipmentAddonEnabled && equipmentScope === "off_road"
         ? base
         : prepareSections(
             base,
@@ -689,7 +743,7 @@ export default function CustomBuilderPage({
     if (laborHours.trim()) qs.set("hours", laborHours.trim());
 
     // Off-road runs must not inherit a stale road vehicle type from an earlier run.
-    if (equipmentScope === "off_road") {
+    if (equipmentAddonEnabled && equipmentScope === "off_road") {
       sessionStorage.removeItem("inspection:vehicleType");
     }
     sessionStorage.removeItem("customInspection:sections");
@@ -697,6 +751,9 @@ export default function CustomBuilderPage({
     sessionStorage.removeItem("customInspection:gridMode");
     sessionStorage.removeItem("customInspection:includeOil");
     sessionStorage.removeItem("customInspection:includeBatteryGrid");
+
+    const entitledEquipmentScope: EquipmentScope =
+      equipmentAddonEnabled ? equipmentScope : "road";
 
     sessionStorage.setItem(
       "inspection:params",
@@ -712,12 +769,12 @@ export default function CustomBuilderPage({
         greaseChassis: includeGreaseChassis,
         oil: includeOil ? oilEngineType : null,
         laborHours: laborHours.trim() || null,
-        vehicleType: equipmentScope === "road" ? vehicleType : null,
-        brakeSystem: equipmentScope === "road" ? brakeSystem : null,
-        cvipGroup: equipmentScope === "road" ? cvipGroup ?? null : null,
-        equipmentScope,
+        vehicleType: entitledEquipmentScope === "road" ? vehicleType : null,
+        brakeSystem: entitledEquipmentScope === "road" ? brakeSystem : null,
+        cvipGroup: entitledEquipmentScope === "road" ? cvipGroup ?? null : null,
+        equipmentScope: entitledEquipmentScope,
         equipmentProfile:
-          equipmentScope === "off_road" ? offRoadProfileValue : null,
+          entitledEquipmentScope === "off_road" ? offRoadProfileValue : null,
         targetCount,
       }),
     );
@@ -727,7 +784,7 @@ export default function CustomBuilderPage({
 
   function startQuickFromMaster() {
     const built =
-      equipmentScope === "off_road"
+      equipmentAddonEnabled && equipmentScope === "off_road"
         ? (buildOffRoadFromMaster({
             profileValue: offRoadProfileValue,
             targetCount,
@@ -1020,6 +1077,31 @@ export default function CustomBuilderPage({
         className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-80 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.11),transparent_55%)]"
       />
       <div className="mx-auto w-full max-w-7xl space-y-5">
+        {equipmentEntitlementStatus === "error" ? (
+          <div
+            role="alert"
+            className="flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div>
+              <div className="font-semibold">
+                Equipment subscription could not be verified
+              </div>
+              <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
+                Equipment remains locked until verification succeeds. Road inspection building is still available.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setEquipmentEntitlementAttempt((current) => current + 1)
+              }
+              className="min-h-9 shrink-0 rounded-lg border border-amber-500/40 px-3 text-xs font-semibold transition hover:bg-amber-500/10"
+            >
+              Retry verification
+            </button>
+          </div>
+        ) : null}
+
         <header className={cx(panelClass, "p-5 sm:p-6")}>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
@@ -1070,7 +1152,14 @@ export default function CustomBuilderPage({
             </div>
           </div>
 
-          <div className="grid gap-4 p-5 md:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_minmax(180px,0.7fr)_minmax(240px,0.9fr)_minmax(150px,0.5fr)]">
+          <div
+            className={cx(
+              "grid gap-4 p-5 md:grid-cols-2",
+              equipmentAddonEnabled
+                ? "xl:grid-cols-[minmax(0,1.4fr)_minmax(180px,0.7fr)_minmax(240px,0.9fr)_minmax(150px,0.5fr)]"
+                : "xl:grid-cols-[minmax(0,1.5fr)_minmax(240px,0.9fr)_minmax(150px,0.5fr)]",
+            )}
+          >
             <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
               Inspection name
               <input
@@ -1080,36 +1169,38 @@ export default function CustomBuilderPage({
                 className={cx(inputClass, "mt-1.5")}
               />
             </label>
-            <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
-              Equipment class
-              <select
-                value={equipmentScope}
-                onChange={(event) => {
-                  const next = event.target.value as EquipmentScope;
-                  setEquipmentScope(next);
-                  setSelections({});
-                  setSectionQuery("");
-                  setItemQuery("");
-                  if (next === "off_road") {
-                    // The AI prompt builder only knows highway vehicles.
-                    if (buildMethod === "prompt") setBuildMethod("template");
-                    if (![30, 60, 80, 120].includes(targetCount)) {
-                      setTargetCount(80);
+            {equipmentAddonEnabled ? (
+              <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                Equipment class
+                <select
+                  value={equipmentScope}
+                  onChange={(event) => {
+                    const next = event.target.value as EquipmentScope;
+                    setEquipmentScope(next);
+                    setSelections({});
+                    setSectionQuery("");
+                    setItemQuery("");
+                    if (next === "off_road") {
+                      // The AI prompt builder only knows highway vehicles.
+                      if (buildMethod === "prompt") setBuildMethod("template");
+                      if (![30, 60, 80, 120].includes(targetCount)) {
+                        setTargetCount(80);
+                      }
+                      setGridTouched(true);
+                      setGridMode("none");
+                      setIncludeTireGrid(false);
+                    } else {
+                      setGridTouched(false);
+                      setQuickTouched(false);
                     }
-                    setGridTouched(true);
-                    setGridMode("none");
-                    setIncludeTireGrid(false);
-                  } else {
-                    setGridTouched(false);
-                    setQuickTouched(false);
-                  }
-                }}
-                className={cx(inputClass, "mt-1.5")}
-              >
-                <option value="road">Road vehicle</option>
-                <option value="off_road">Off-road equipment</option>
-              </select>
-            </label>
+                  }}
+                  className={cx(inputClass, "mt-1.5")}
+                >
+                  <option value="road">Road vehicle</option>
+                  <option value="off_road">Off-road equipment</option>
+                </select>
+              </label>
+            ) : null}
             {equipmentScope === "road" ? (
               <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
                 Duty class
@@ -1166,117 +1257,117 @@ export default function CustomBuilderPage({
           </div>
 
           {equipmentScope === "road" ? (
-          <details className="border-t border-[color:var(--theme-border-soft)]">
-            <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3.5 text-sm font-medium text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-subtle)] [&::-webkit-details-marker]:hidden">
-              <span className="flex min-w-0 items-center gap-2">
-                <Settings2 className="h-4 w-4" aria-hidden />
-                <span className="truncate">
-                  Measurement grids and included services
+            <details className="border-t border-[color:var(--theme-border-soft)]">
+              <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-5 py-3.5 text-sm font-medium text-[color:var(--theme-text-secondary)] hover:bg-[color:var(--theme-surface-subtle)] [&::-webkit-details-marker]:hidden">
+                <span className="flex min-w-0 items-center gap-2">
+                  <Settings2 className="h-4 w-4" aria-hidden />
+                  <span className="truncate">
+                    Measurement grids and included services
+                  </span>
                 </span>
-              </span>
-              <span className="hidden shrink-0 text-xs text-[color:var(--theme-text-muted)] sm:inline">
-                {compactGridLabel(gridMode)} brakes · {optionalFeatureCount}{" "}
-                included
-              </span>
-            </summary>
-            <div className="grid gap-5 border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-5 lg:grid-cols-2">
-              <div>
-                <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">
-                  Corner measurement grid
+                <span className="hidden shrink-0 text-xs text-[color:var(--theme-text-muted)] sm:inline">
+                  {compactGridLabel(gridMode)} brakes · {optionalFeatureCount}{" "}
+                  included
+                </span>
+              </summary>
+              <div className="grid gap-5 border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-5 lg:grid-cols-2">
+                <div>
+                  <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">
+                    Corner measurement grid
+                  </div>
+                  <div className="mt-2 grid grid-cols-3 rounded-xl bg-[color:var(--theme-surface-page)] p-1">
+                    {gridModeButtons.map((option) => (
+                      <button
+                        key={option.value}
+                        type="button"
+                        aria-pressed={gridMode === option.value}
+                        onClick={() => {
+                          setGridTouched(true);
+                          setGridMode(option.value);
+                        }}
+                        className={cx(
+                          "min-h-9 rounded-lg text-xs font-medium transition",
+                          gridMode === option.value
+                            ? "bg-blue-500/10 text-blue-500 shadow-sm ring-1 ring-blue-500/25"
+                            : "text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]",
+                        )}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-                <div className="mt-2 grid grid-cols-3 rounded-xl bg-[color:var(--theme-surface-page)] p-1">
-                  {gridModeButtons.map((option) => (
-                    <button
-                      key={option.value}
-                      type="button"
-                      aria-pressed={gridMode === option.value}
-                      onClick={() => {
-                        setGridTouched(true);
-                        setGridMode(option.value);
-                      }}
-                      className={cx(
-                        "min-h-9 rounded-lg text-xs font-medium transition",
-                        gridMode === option.value
-                          ? "bg-blue-500/10 text-blue-500 shadow-sm ring-1 ring-blue-500/25"
-                          : "text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]",
-                      )}
-                    >
-                      {option.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
 
-              <div>
-                <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">
-                  Included services
-                </div>
-                <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    aria-pressed={includeOil}
-                    onClick={() => setIncludeOil((current) => !current)}
-                    className={selectionButtonClasses(includeOil)}
-                  >
-                    Oil service
-                    {includeOil ? (
-                      <Check className="h-4 w-4 text-current" aria-hidden />
-                    ) : null}
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={includeTireGrid}
-                    onClick={() => setIncludeTireGrid((current) => !current)}
-                    className={selectionButtonClasses(includeTireGrid)}
-                  >
-                    Tire measurements
-                    {includeTireGrid ? (
-                      <Check className="h-4 w-4 text-current" aria-hidden />
-                    ) : null}
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={includeBatteryGrid}
-                    onClick={() => setIncludeBatteryGrid((current) => !current)}
-                    className={selectionButtonClasses(includeBatteryGrid)}
-                  >
-                    Battery measurements
-                    {includeBatteryGrid ? (
-                      <Check className="h-4 w-4 text-current" aria-hidden />
-                    ) : null}
-                  </button>
-                  <button
-                    type="button"
-                    aria-pressed={includeGreaseChassis}
-                    onClick={() =>
-                      setIncludeGreaseChassis((current) => !current)
-                    }
-                    className={selectionButtonClasses(includeGreaseChassis)}
-                  >
-                    Grease chassis
-                    {includeGreaseChassis ? (
-                      <Check className="h-4 w-4 text-current" aria-hidden />
-                    ) : null}
-                  </button>
-                </div>
-                {includeOil ? (
-                  <label className="mt-3 block text-xs font-medium text-[color:var(--theme-text-secondary)]">
-                    Oil service engine
-                    <select
-                      value={oilEngineType}
-                      onChange={(event) =>
-                        setOilEngineType(event.target.value as EngineType)
-                      }
-                      className={cx(inputClass, "mt-1.5")}
+                <div>
+                  <div className="text-xs font-semibold text-[color:var(--theme-text-primary)]">
+                    Included services
+                  </div>
+                  <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <button
+                      type="button"
+                      aria-pressed={includeOil}
+                      onClick={() => setIncludeOil((current) => !current)}
+                      className={selectionButtonClasses(includeOil)}
                     >
-                      <option value="gas">Gas</option>
-                      <option value="diesel">Diesel</option>
-                    </select>
-                  </label>
-                ) : null}
+                      Oil service
+                      {includeOil ? (
+                        <Check className="h-4 w-4 text-current" aria-hidden />
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={includeTireGrid}
+                      onClick={() => setIncludeTireGrid((current) => !current)}
+                      className={selectionButtonClasses(includeTireGrid)}
+                    >
+                      Tire measurements
+                      {includeTireGrid ? (
+                        <Check className="h-4 w-4 text-current" aria-hidden />
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={includeBatteryGrid}
+                      onClick={() => setIncludeBatteryGrid((current) => !current)}
+                      className={selectionButtonClasses(includeBatteryGrid)}
+                    >
+                      Battery measurements
+                      {includeBatteryGrid ? (
+                        <Check className="h-4 w-4 text-current" aria-hidden />
+                      ) : null}
+                    </button>
+                    <button
+                      type="button"
+                      aria-pressed={includeGreaseChassis}
+                      onClick={() =>
+                        setIncludeGreaseChassis((current) => !current)
+                      }
+                      className={selectionButtonClasses(includeGreaseChassis)}
+                    >
+                      Grease chassis
+                      {includeGreaseChassis ? (
+                        <Check className="h-4 w-4 text-current" aria-hidden />
+                      ) : null}
+                    </button>
+                  </div>
+                  {includeOil ? (
+                    <label className="mt-3 block text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                      Oil service engine
+                      <select
+                        value={oilEngineType}
+                        onChange={(event) =>
+                          setOilEngineType(event.target.value as EngineType)
+                        }
+                        className={cx(inputClass, "mt-1.5")}
+                      >
+                        <option value="gas">Gas</option>
+                        <option value="diesel">Diesel</option>
+                      </select>
+                    </label>
+                  ) : null}
+                </div>
               </div>
-            </div>
-          </details>
+            </details>
           ) : (
             <div className="border-t border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] px-5 py-3 text-xs text-[color:var(--theme-text-secondary)]">
               Off-road mode uses equipment-specific checks from the shared master library. Road brake/tire corner grids are intentionally disabled.
@@ -1359,54 +1450,54 @@ export default function CustomBuilderPage({
                     </p>
                   </div>
                   {equipmentScope === "road" ? (
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
-                      Vehicle
-                      <select
-                        value={vehicleType}
-                        onChange={(event) => {
-                          setQuickTouched(true);
-                          setVehicleType(event.target.value as VehicleType);
-                        }}
-                        className={cx(inputClass, "mt-1.5")}
-                      >
-                        <option value="car">Car</option>
-                        <option value="truck">Truck</option>
-                        <option value="bus">Bus</option>
-                        <option value="trailer">Trailer</option>
-                      </select>
-                    </label>
-                    <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
-                      Brake system
-                      <select
-                        value={brakeSystem}
-                        onChange={(event) => {
-                          setQuickTouched(true);
-                          setBrakeSystem(event.target.value as BrakeSystem);
-                        }}
-                        className={cx(inputClass, "mt-1.5")}
-                      >
-                        <option value="hyd_brake">Hydraulic</option>
-                        <option value="air_brake">Air</option>
-                      </select>
-                    </label>
-                    <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
-                      Inspection size
-                      <select
-                        value={String(targetCount)}
-                        onChange={(event) => {
-                          setQuickTouched(true);
-                          setTargetCount(Number(event.target.value));
-                        }}
-                        className={cx(inputClass, "mt-1.5")}
-                      >
-                        <option value="30">Focused · 30 checks</option>
-                        <option value="60">Standard · 60 checks</option>
-                        <option value="80">Detailed · 80 checks</option>
-                        <option value="120">Comprehensive · 120 checks</option>
-                      </select>
-                    </label>
-                  </div>
+                    <div className="grid gap-4 md:grid-cols-3">
+                      <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                        Vehicle
+                        <select
+                          value={vehicleType}
+                          onChange={(event) => {
+                            setQuickTouched(true);
+                            setVehicleType(event.target.value as VehicleType);
+                          }}
+                          className={cx(inputClass, "mt-1.5")}
+                        >
+                          <option value="car">Car</option>
+                          <option value="truck">Truck</option>
+                          <option value="bus">Bus</option>
+                          <option value="trailer">Trailer</option>
+                        </select>
+                      </label>
+                      <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                        Brake system
+                        <select
+                          value={brakeSystem}
+                          onChange={(event) => {
+                            setQuickTouched(true);
+                            setBrakeSystem(event.target.value as BrakeSystem);
+                          }}
+                          className={cx(inputClass, "mt-1.5")}
+                        >
+                          <option value="hyd_brake">Hydraulic</option>
+                          <option value="air_brake">Air</option>
+                        </select>
+                      </label>
+                      <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">
+                        Inspection size
+                        <select
+                          value={String(targetCount)}
+                          onChange={(event) => {
+                            setQuickTouched(true);
+                            setTargetCount(Number(event.target.value));
+                          }}
+                          className={cx(inputClass, "mt-1.5")}
+                        >
+                          <option value="30">Focused · 30 checks</option>
+                          <option value="60">Standard · 60 checks</option>
+                          <option value="80">Detailed · 80 checks</option>
+                          <option value="120">Comprehensive · 120 checks</option>
+                        </select>
+                      </label>
+                    </div>
                   ) : (
                     <div className="grid gap-4 md:grid-cols-2">
                       <label className="text-xs font-medium text-[color:var(--theme-text-secondary)]">

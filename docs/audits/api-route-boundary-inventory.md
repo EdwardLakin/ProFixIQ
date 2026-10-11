@@ -1,16 +1,16 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-10-10T17:15:34.258Z
+Generated: 2026-10-11T21:24:42.377Z
 
 ## Summary
-- Total route count: **546**
-- Routes exporting GET: **200**
-- Routes exporting POST: **370**
+- Total route count: **552**
+- Routes exporting GET: **203**
+- Routes exporting POST: **374**
 - Routes exporting PUT: **12**
-- Routes exporting PATCH: **34**
-- Routes exporting DELETE: **15**
+- Routes exporting PATCH: **35**
+- Routes exporting DELETE: **16**
 - Routes with service-role pattern: **27**
-- Routes using requireShopScopedApiAccess: **220**
+- Routes using requireShopScopedApiAccess: **222**
 - Routes with auth.getUser references: **122**
 
 ## High-Risk Routes
@@ -68,6 +68,7 @@ Generated: 2026-10-10T17:15:34.258Z
 - `app/api/onboarding-v2/guided/sessions/[sessionId]/steps/[stepKey]/skip/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/onboarding-v2/guided/sessions/[sessionId]/steps/[stepKey]/status/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/onboarding-v2/guided/sessions/route.ts` | methods: GET, POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/ops/blog/articles/route.ts` | methods: GET, POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/ops/demo-access/create/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/ops/demo-access/extend/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/ops/demo-access/requests/[id]/approve/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
@@ -221,6 +222,7 @@ Generated: 2026-10-10T17:15:34.258Z
 - `app/api/onboarding-v2/guided/sessions/[sessionId]/steps/[stepKey]/skip/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/onboarding-v2/guided/sessions/[sessionId]/steps/[stepKey]/status/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/onboarding-v2/guided/sessions/route.ts` | methods: GET, POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/ops/blog/articles/route.ts` | methods: GET, POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/ops/demo-access/create/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/ops/demo-access/extend/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/ops/demo-access/requests/[id]/approve/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
@@ -245,6 +247,7 @@ Generated: 2026-10-10T17:15:34.258Z
 - `app/api/payroll-time/periods/route.ts` | methods: GET | riskFlags: none
 - `app/api/payroll-time/rebuild/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/payroll-time/settings/route.ts` | methods: GET, PUT | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/resources/latest/route.ts` | methods: GET | riskFlags: none
 - `app/api/scheduling/shifts/[id]/route.ts` | methods: PATCH, DELETE | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/settings/update/shop/owner-pin/set/route.ts` | methods: none | riskFlags: none
 - `app/api/shop-assistant/actions/[actionId]/cancel/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker

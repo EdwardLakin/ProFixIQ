@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import EquipmentExecutionGate from "@/features/equipment/components/EquipmentExecutionGate";
 import GenericInspectionScreen from "@/features/inspections/screens/GenericInspectionScreen";
 import { mergeInspectionRuntimeParams } from "@inspections/lib/inspection/runtimeParams";
 
@@ -83,7 +84,9 @@ export default function InspectionFillPage() {
       <div className={cardBase}>
         <div className={`${cardInner} p-0 sm:p-0`}>
           {/* The actual screen is selected by InspectionHost via ?template=... */}
-          <GenericInspectionScreen />
+          <EquipmentExecutionGate>
+            <GenericInspectionScreen />
+          </EquipmentExecutionGate>
         </div>
       </div>
     </div>

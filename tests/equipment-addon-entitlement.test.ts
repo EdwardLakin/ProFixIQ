@@ -1,0 +1,146 @@
+import { readFileSync } from "node:fs";
+import { describe, expect, it } from "vitest";
+
+function read(path: string) {
+  return readFileSync(path, "utf8");
+}
+
+describe("Equipment add-on billing and entitlement contract", () => {
+  it("keeps Equipment as a priced add-on outside the base package catalog", () => {
+    const billing = read("features/stripe/lib/stripe/product-packages.ts");
+
+    expect(billing).toContain(
+      'EQUIPMENT_ADDON_LOOKUP_KEY =\n  "profixiq_equipment_addon_monthly_usd_v1"',
+    );
+    expect(billing).toContain("EQUIPMENT_ADDON_MONTHLY_CENTS = 14_900");
+    expect(billing).toContain(
+      'LIVE_EQUIPMENT_ADDON_PRICE_ID =\n  "price_1UPOWZITYwJQigUIfhQ2LgGg"',
+    );
+    expect(billing).not.toContain('"equipment_addon",\n] as const');
+  });
+
+  it("requires an actual Complete base item plus the Equipment subscription item", () => {
+    const entitlement = read(
+      "features/equipment/server/equipmentAddonEntitlement.ts",
+    );
+
+    expect(entitlement).toContain("subscriptionHasCompleteBaseItem");
+    expect(entitlement).toContain(
+      "PRODUCT_PACKAGE_LOOKUP_KEYS.complete_operations",
+    );
+    expect(entitlement).toContain(
+      "LEGACY_PRODUCT_PACKAGE_LOOKUP_KEYS.complete_operations",
+    );
+    expect(entitlement).toContain("hasCompleteBaseItem &&");
+    expect(entitlement).toContain("isProductSubscriptionEntitled");
+    expect(entitlement).toContain("hasAddonItem");
+    expect(entitlement).toContain("EQUIPMENT_ADDON_LOOKUP_KEY");
+    expect(entitlement).toContain("EQUIPMENT_ADDON_PRODUCT_KEY");
+  });
+
+  it("resolves billing linkage through an exact-shop privileged read after authentication", () => {
+    const entitlement = read(
+      "features/equipment/server/equipmentAddonEntitlement.ts",
+    );
+    const route = read("app/api/equipment/entitlement/route.ts");
+
+    expect(route).toContain("requireShopScopedApiAccess()");
+    expect(route).toContain(
+      "resolveEquipmentAddonEntitlementForShop(\n      access.profile.shop_id",
+    );
+    expect(route).toContain("{ enabled: entitlement.enabled }");
+    expect(route).not.toContain("NextResponse.json(entitlement");
+    expect(route).toContain('"Cache-Control": "private, no-store"');
+    expect(route).toContain("status: 503");
+
+    expect(entitlement).toContain("createAdminSupabase()");
+    expect(entitlement).toContain('.from("shops")');
+    expect(entitlement).toContain('.eq("id", shopId)');
+    expect(entitlement).toContain('createStripeClient(mustEnv("STRIPE_SECRET_KEY"))');
+    expect(entitlement).toContain("stripe.subscriptions.retrieve(subscriptionId)");
+    expect(entitlement).toContain("Canonical Stripe linkage mismatch");
+  });
+
+  it("enforces Equipment content on both Shop and Field template mutations", () => {
+    const guard = read(
+      "features/equipment/server/equipmentInspectionEntitlement.ts",
+    );
+    const classifier = read(
+      "features/equipment/lib/equipmentInspectionContent.ts",
+    );
+    const shopRoute = read("app/api/inspections/templates/route.ts");
+    const fieldRoute = read(
+      "app/api/mobile/service/inspection-templates/route.ts",
+    );
+    const draft = read(
+      "features/inspections/app/inspection/custom-draft/page.tsx",
+    );
+
+    expect(guard).toContain("inspectionSectionsRequireEquipment");
+    expect(guard).toContain("resolveEquipmentAddonEntitlementForShop(shopId)");
+    expect(classifier).toContain("OFF_ROAD_ITEM_LABELS");
+    expect(classifier).toContain('title.startsWith("off-road —")');
+    expect(classifier).toContain('item.catalogScope ?? ""');
+    expect(classifier).toContain("OFF_ROAD_ITEM_LABELS.has(label)");
+
+    expect(shopRoute).toContain("shopCanMutateInspectionSections");
+    expect(shopRoute).toContain("ROLE_GROUPS.billingOperators");
+    expect(shopRoute).toContain("access.profile.shop_id");
+    expect(shopRoute).toContain("status: 403");
+    expect(shopRoute).toContain("status: 503");
+
+    expect(fieldRoute).toContain("shopCanMutateInspectionSections");
+    expect(fieldRoute).toContain("access.profile.shop_id");
+    expect(fieldRoute).toContain("status: 403");
+    expect(fieldRoute).toContain("status: 503");
+
+    expect(draft).toContain('"/api/inspections/templates"');
+    expect(draft).toContain("saveInspectionTemplate(\"POST\"");
+    expect(draft).toContain("saveInspectionTemplate(\"PATCH\"");
+    expect(draft).not.toContain('.from("inspection_templates")\n          .insert');
+    expect(draft).not.toContain('.from("inspection_templates")\n          .update');
+  });
+
+  it("gates Equipment catalog access in both builder and editable draft", () => {
+    const builder = read(
+      "features/inspections/app/inspection/custom-inspection/page.tsx",
+    );
+    const draft = read(
+      "features/inspections/app/inspection/custom-draft/page.tsx",
+    );
+
+    expect(builder).toContain('fetch("/api/equipment/entitlement"');
+    expect(builder).toContain("setEquipmentAddonEnabled(payload.enabled === true)");
+    expect(builder).toContain('setEquipmentEntitlementStatus("verified")');
+    expect(builder).toContain('setEquipmentEntitlementStatus("error")');
+    expect(builder).toContain("setEquipmentEntitlementAttempt((current) => current + 1)");
+    expect(builder).toContain("Retry verification");
+    expect(builder).toContain("equipmentAddonEnabled ? (");
+    expect(builder).toContain('<option value="off_road">Off-road equipment</option>');
+    expect(builder).toContain(
+      'equipmentAddonEnabled && equipmentScope === "off_road"',
+    );
+    expect(builder).toContain(
+      'equipmentAddonEnabled ? equipmentScope : "road"',
+    );
+
+    expect(draft).toContain("highwayMasterInspectionList");
+    expect(draft).toContain("availableMasterInspectionList");
+    expect(draft).toContain('fetch("/api/equipment/entitlement"');
+    expect(draft).toContain("catalogScope: it.catalogScope");
+    expect(draft).toContain("equipmentFamilies: it.equipmentFamilies");
+  });
+
+  it("re-verifies Equipment entitlement before staged or persisted inspection runs", () => {
+    const run = read("features/inspections/app/inspection/run/page.tsx");
+
+    expect(run).toContain("inspectionSectionsRequireEquipment");
+    expect(run).toContain('fetch("/api/equipment/entitlement"');
+    expect(run).toContain("await authorizeEquipment(sections)");
+    expect(run).toContain("await authorizeEquipment(rawSections)");
+    expect(run).toContain("Retry verification");
+    expect(run).toContain(
+      "An active Equipment subscription is required to run this inspection.",
+    );
+  });
+});

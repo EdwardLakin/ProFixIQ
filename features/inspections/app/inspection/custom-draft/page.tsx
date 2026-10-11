@@ -9,7 +9,10 @@ import type {
   InspectionItem,
 } from "@inspections/lib/inspection/types";
 import { computeDefaultLaborHours } from "@inspections/lib/inspection/computeLabor";
-import { masterInspectionList } from "@inspections/lib/inspection/masterInspectionList";
+import {
+  highwayMasterInspectionList,
+  masterInspectionList,
+} from "@inspections/lib/inspection/masterInspectionList";
 import {
   getInspectionBuilderNavigation,
   type InspectionBuilderSurface,
@@ -23,8 +26,24 @@ type DutyClass = "light" | "medium" | "heavy";
 type GridMode = "hyd" | "air" | "none";
 
 /** UI-only keys so inputs don't remount on every keystroke (fixes focus loss) */
-type DraftItem = InspectionItem & { _key: string };
+type DraftItem = InspectionItem & {
+  _key: string;
+  catalogScope?: "on_road" | "off_road";
+  equipmentFamilies?: string[];
+};
 type DraftSection = { title: string; items: DraftItem[] };
+
+type NormalizedDraftItem = {
+  item: string;
+  unit: InspectionItem["unit"];
+  status: InspectionItem["status"] | undefined;
+  notes: InspectionItem["notes"] | undefined;
+  value?: InspectionItem["value"];
+  laborHours?: InspectionItem["laborHours"];
+  parts?: InspectionItem["parts"];
+  catalogScope?: "on_road" | "off_road";
+  equipmentFamilies?: string[];
+};
 
 /* ---------------------------- safe type helpers ---------------------------- */
 
@@ -40,15 +59,7 @@ function asNullableString(v: unknown): string | null {
   return typeof v === "string" ? v : null;
 }
 
-function normalizeItemLike(i: unknown): {
-  item: string;
-  unit: InspectionItem["unit"];
-  status: InspectionItem["status"] | undefined;
-  notes: InspectionItem["notes"] | undefined;
-  value?: InspectionItem["value"];
-  laborHours?: InspectionItem["laborHours"];
-  parts?: InspectionItem["parts"];
-} {
+function normalizeItemLike(i: unknown): NormalizedDraftItem {
   if (!isRecord(i)) {
     return { item: "", unit: null, status: "na", notes: "" };
   }
@@ -87,7 +98,27 @@ function normalizeItemLike(i: unknown): {
     ? (i.parts as InspectionItem["parts"])
     : undefined;
 
-  return { item: label, unit, status, notes, value, laborHours, parts };
+  const catalogScope =
+    i.catalogScope === "off_road" || i.catalogScope === "on_road"
+      ? i.catalogScope
+      : undefined;
+  const equipmentFamilies = Array.isArray(i.equipmentFamilies)
+    ? i.equipmentFamilies.filter(
+        (family): family is string => typeof family === "string" && family.length > 0,
+      )
+    : undefined;
+
+  return {
+    item: label,
+    unit,
+    status,
+    notes,
+    value,
+    laborHours,
+    parts,
+    catalogScope,
+    equipmentFamilies,
+  };
 }
 
 /** Merge sections by title & dedupe items by label (case-insensitive) */
@@ -202,6 +233,11 @@ export default function CustomDraftPage({
   const [dutyClass, setDutyClass] = useState<DutyClass | null>(
     (sp.get("dutyClass") as DutyClass | null) || null,
   );
+  const [equipmentAddonEnabled, setEquipmentAddonEnabled] = useState(false);
+  const [equipmentEntitlementError, setEquipmentEntitlementError] =
+    useState(false);
+  const [equipmentEntitlementAttempt, setEquipmentEntitlementAttempt] =
+    useState(0);
 
   // track grid mode explicitly (builder can set air/hyd/none)
   const [gridMode, setGridMode] = useState<GridMode | null>(() => {
@@ -282,14 +318,23 @@ export default function CustomDraftPage({
     [sections],
   );
 
+  const availableMasterInspectionList = useMemo(
+    () =>
+      equipmentAddonEnabled ? masterInspectionList : highwayMasterInspectionList,
+    [equipmentAddonEnabled],
+  );
+
   // master lookups
   const masterByTitle = useMemo(() => {
-    const out = new Map<string, { item: string; unit?: string | null }[]>();
-    for (const sec of masterInspectionList) {
+    const out = new Map<
+      string,
+      (typeof masterInspectionList)[number]["items"]
+    >();
+    for (const sec of availableMasterInspectionList) {
       out.set(sec.title.trim().toLowerCase(), sec.items);
     }
     return out;
-  }, []);
+  }, [availableMasterInspectionList]);
 
   function getMasterItemsForSection(titleStr: string) {
     const key = (titleStr || "").trim().toLowerCase();
@@ -318,6 +363,40 @@ export default function CustomDraftPage({
     }
     return set;
   }
+
+  useEffect(() => {
+    let active = true;
+    const controller = new AbortController();
+
+    setEquipmentEntitlementError(false);
+
+    void fetch("/api/equipment/entitlement", {
+      credentials: "include",
+      cache: "no-store",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Equipment entitlement unavailable");
+        return (await response.json()) as { enabled?: boolean };
+      })
+      .then((payload) => {
+        if (!active) return;
+        setEquipmentAddonEnabled(payload.enabled === true);
+      })
+      .catch((error) => {
+        if (!active || (error instanceof DOMException && error.name === "AbortError")) {
+          return;
+        }
+        // Fail closed, but distinguish an outage from a valid non-entitled shop.
+        setEquipmentAddonEnabled(false);
+        setEquipmentEntitlementError(true);
+      });
+
+    return () => {
+      active = false;
+      controller.abort();
+    };
+  }, [equipmentEntitlementAttempt]);
 
   /* ----------------------------- load shop_id ----------------------------- */
 
@@ -500,7 +579,7 @@ export default function CustomDraftPage({
   }
 
   function addSectionFromMaster(sectionTitle: string) {
-    const found = masterInspectionList.find(
+    const found = availableMasterInspectionList.find(
       (s) => s.title.trim().toLowerCase() === sectionTitle.trim().toLowerCase(),
     );
     if (!found) return;
@@ -509,6 +588,8 @@ export default function CustomDraftPage({
       item: it.item,
       unit: it.unit ?? null,
       status: "na",
+      catalogScope: it.catalogScope,
+      equipmentFamilies: it.equipmentFamilies,
       _key: mkKey(),
     }));
 
@@ -561,6 +642,8 @@ export default function CustomDraftPage({
     secIdx: number,
     label: string,
     unit?: string | null,
+    catalogScope?: "on_road" | "off_road",
+    equipmentFamilies?: string[],
   ): boolean {
     const trimmed = (label || "").trim();
     if (!trimmed) return false;
@@ -584,6 +667,8 @@ export default function CustomDraftPage({
             item: trimmed,
             unit: unit ?? null,
             status: "na",
+            catalogScope,
+            equipmentFamilies,
             _key: mkKey(),
           } as DraftItem,
         ],
@@ -899,9 +984,9 @@ export default function CustomDraftPage({
   /* ------------------------------ derived pickers ------------------------------ */
 
   const masterSectionTitles = useMemo(() => {
-    const titles = masterInspectionList.map((s) => s.title);
+    const titles = availableMasterInspectionList.map((s) => s.title);
     return titles.sort((a, b) => a.localeCompare(b));
-  }, []);
+  }, [availableMasterInspectionList]);
 
   const filteredMasterSectionTitles = useMemo(() => {
     const q = sectionSearch.trim().toLowerCase();
@@ -941,6 +1026,31 @@ export default function CustomDraftPage({
             ← Back
           </button>
         </div>
+
+        {equipmentEntitlementError ? (
+          <div
+            role="alert"
+            className="mb-4 flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div>
+              <div className="font-semibold">
+                Equipment subscription could not be verified
+              </div>
+              <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
+                Equipment sections stay hidden until verification succeeds. Road inspection editing is still available.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setEquipmentEntitlementAttempt((current) => current + 1)
+              }
+              className="min-h-9 shrink-0 rounded-lg border border-amber-500/40 px-3 text-xs font-semibold transition hover:bg-amber-500/10"
+            >
+              Retry verification
+            </button>
+          </div>
+        ) : null}
 
         {/* Summary strip */}
         <div className="mb-5 rounded-2xl border border-[var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-page)] px-3 py-3 text-xs text-[color:var(--theme-text-primary)] md:flex md:items-center md:justify-between md:px-4">
@@ -1366,6 +1476,8 @@ export default function CustomDraftPage({
                                       i,
                                       mi.item,
                                       mi.unit ?? null,
+                                      mi.catalogScope,
+                                      mi.equipmentFamilies,
                                     );
                                     if (added) setItemSearch("");
                                   }}

@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 
+import { shopCanMutateInspectionSections } from "@/features/equipment/server/equipmentInspectionEntitlement";
+
 import {
   canAdministerFleetForActor,
   resolveFleetActorContext,
@@ -313,6 +315,28 @@ export async function POST(request: Request) {
 
     if (existingError) throw new Error(existingError.message);
     if (existing) return replayResponse(existing);
+
+    try {
+      const allowed = await shopCanMutateInspectionSections(shopId, sections);
+      if (!allowed) {
+        return NextResponse.json(
+          {
+            error:
+              "An active Equipment subscription is required for this inspection template.",
+          },
+          { status: 403 },
+        );
+      }
+    } catch (entitlementError) {
+      console.error(
+        "[fleet/inspection-templates] Equipment entitlement failed",
+        entitlementError,
+      );
+      return NextResponse.json(
+        { error: "Equipment entitlement could not be verified. Try again." },
+        { status: 503 },
+      );
+    }
 
     const insert: TemplateInsert = {
       id: templateId,
