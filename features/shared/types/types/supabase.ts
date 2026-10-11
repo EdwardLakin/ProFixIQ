@@ -31659,6 +31659,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      quote_line_source_line_is_reusable: {
+        Args: { p_metadata: Json; p_shop_id: string; p_source_line_id: string }
+        Returns: boolean
+      }
       realtime_conversation_id: { Args: { topic: string }; Returns: string }
       rearm_expired_early_access_acquisition_intent: {
         Args: {
