@@ -38,6 +38,7 @@ type GridMode = "hyd" | "air" | "none";
 type EngineType = "gas" | "diesel";
 type BuildMethod = "template" | "prompt" | "manual";
 type EquipmentScope = "road" | "off_road";
+type EquipmentEntitlementStatus = "loading" | "verified" | "error";
 
 type EquipmentEntitlementResponse = {
   enabled?: boolean;
@@ -518,6 +519,9 @@ export default function CustomBuilderPage({
 
   const [title, setTitle] = useState(sp.get("template") || "Custom Inspection");
   const [equipmentAddonEnabled, setEquipmentAddonEnabled] = useState(false);
+  const [equipmentEntitlementStatus, setEquipmentEntitlementStatus] =
+    useState<EquipmentEntitlementStatus>("loading");
+  const [equipmentEntitlementAttempt, setEquipmentEntitlementAttempt] = useState(0);
   const [equipmentScope, setEquipmentScope] = useState<EquipmentScope>("road");
   const [offRoadProfileValue, setOffRoadProfileValue] = useState("crawler_excavator");
   const [dutyClass, setDutyClass] = useState<DutyClass>("heavy");
@@ -563,26 +567,38 @@ export default function CustomBuilderPage({
 
   useEffect(() => {
     let active = true;
+    const controller = new AbortController();
+    setEquipmentEntitlementStatus("loading");
 
     void fetch("/api/equipment/entitlement", {
       credentials: "include",
       cache: "no-store",
+      signal: controller.signal,
     })
       .then(async (response) => {
-        if (!response.ok) return { enabled: false };
+        if (!response.ok) {
+          throw new Error(`Equipment entitlement verification failed (${response.status})`);
+        }
         return (await response.json()) as EquipmentEntitlementResponse;
       })
       .then((payload) => {
-        if (active) setEquipmentAddonEnabled(payload.enabled === true);
+        if (!active) return;
+        setEquipmentAddonEnabled(payload.enabled === true);
+        setEquipmentEntitlementStatus("verified");
       })
-      .catch(() => {
-        if (active) setEquipmentAddonEnabled(false);
+      .catch((error) => {
+        if (!active || (error instanceof DOMException && error.name === "AbortError")) {
+          return;
+        }
+        setEquipmentAddonEnabled(false);
+        setEquipmentEntitlementStatus("error");
       });
 
     return () => {
       active = false;
+      controller.abort();
     };
-  }, []);
+  }, [equipmentEntitlementAttempt]);
 
   useEffect(() => {
     if (equipmentAddonEnabled || equipmentScope === "road") return;
@@ -1061,6 +1077,31 @@ export default function CustomBuilderPage({
         className="pointer-events-none absolute inset-x-0 top-0 -z-10 h-80 bg-[radial-gradient(circle_at_top_left,rgba(37,99,235,0.11),transparent_55%)]"
       />
       <div className="mx-auto w-full max-w-7xl space-y-5">
+        {equipmentEntitlementStatus === "error" ? (
+          <div
+            role="alert"
+            className="flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div>
+              <div className="font-semibold">
+                Equipment subscription could not be verified
+              </div>
+              <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
+                Equipment remains locked until verification succeeds. Road inspection building is still available.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setEquipmentEntitlementAttempt((current) => current + 1)
+              }
+              className="min-h-9 shrink-0 rounded-lg border border-amber-500/40 px-3 text-xs font-semibold transition hover:bg-amber-500/10"
+            >
+              Retry verification
+            </button>
+          </div>
+        ) : null}
+
         <header className={cx(panelClass, "p-5 sm:p-6")}>
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div>
