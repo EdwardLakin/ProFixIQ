@@ -67,6 +67,9 @@ describe("Equipment add-on billing and entitlement contract", () => {
     const fieldRoute = read(
       "app/api/mobile/service/inspection-templates/route.ts",
     );
+    const draft = read(
+      "features/inspections/app/inspection/custom-draft/page.tsx",
+    );
 
     expect(guard).toContain("inspectionSectionsRequireEquipment");
     expect(guard).toContain('title.startsWith("off-road —")');
@@ -74,6 +77,7 @@ describe("Equipment add-on billing and entitlement contract", () => {
     expect(guard).toContain("resolveEquipmentAddonEntitlementForShop(shopId)");
 
     expect(shopRoute).toContain("shopCanMutateInspectionSections");
+    expect(shopRoute).toContain("ROLE_GROUPS.billingOperators");
     expect(shopRoute).toContain("access.profile.shop_id");
     expect(shopRoute).toContain("status: 403");
     expect(shopRoute).toContain("status: 503");
@@ -82,15 +86,25 @@ describe("Equipment add-on billing and entitlement contract", () => {
     expect(fieldRoute).toContain("access.profile.shop_id");
     expect(fieldRoute).toContain("status: 403");
     expect(fieldRoute).toContain("status: 503");
+
+    expect(draft).toContain('"/api/inspections/templates"');
+    expect(draft).toContain("saveInspectionTemplate(\"POST\"");
+    expect(draft).toContain("saveInspectionTemplate(\"PATCH\"");
+    expect(draft).not.toContain('.from("inspection_templates")\n          .insert');
+    expect(draft).not.toContain('.from("inspection_templates")\n          .update');
   });
 
-  it("only exposes off-road equipment selection after entitlement succeeds", () => {
+  it("only exposes off-road selection after entitlement succeeds and retries verification errors", () => {
     const builder = read(
       "features/inspections/app/inspection/custom-inspection/page.tsx",
     );
 
     expect(builder).toContain('fetch("/api/equipment/entitlement"');
     expect(builder).toContain("setEquipmentAddonEnabled(payload.enabled === true)");
+    expect(builder).toContain('setEquipmentEntitlementStatus("verified")');
+    expect(builder).toContain('setEquipmentEntitlementStatus("error")');
+    expect(builder).toContain("setEquipmentEntitlementAttempt((current) => current + 1)");
+    expect(builder).toContain("Retry verification");
     expect(builder).toContain("equipmentAddonEnabled ? (");
     expect(builder).toContain('<option value="off_road">Off-road equipment</option>');
     expect(builder).toContain(
