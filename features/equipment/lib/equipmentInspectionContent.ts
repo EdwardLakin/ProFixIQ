@@ -21,9 +21,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
  * that metadata was preserved by the editor.
  */
 export function inspectionSectionsRequireEquipment(sections: unknown): boolean {
-  if (!Array.isArray(sections)) return false;
+  // Templates are normally section arrays, but some writers persist a keyed
+  // object of sections; classify both shapes.
+  const list = Array.isArray(sections)
+    ? sections
+    : isRecord(sections)
+      ? Object.values(sections)
+      : null;
+  if (!list) return false;
 
-  return sections.some((section) => {
+  return list.some((section) => {
     if (!isRecord(section)) return false;
 
     const title =

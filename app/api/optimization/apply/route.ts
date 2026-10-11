@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { shopCanMutateInspectionSections } from "@/features/equipment/server/equipmentInspectionEntitlement";
 import type { Database } from "@shared/types/types/supabase";
 import { buildExecutionPreview } from "@/features/optimization/server/buildExecutionPreview";
 import {
@@ -303,6 +304,21 @@ export async function POST(req: Request) {
                 items: opportunity?.reasoning?.map((reason, idx) => ({ id: `reason_${idx + 1}`, label: reason })) ?? [],
               },
             } as DB["public"]["Tables"]["inspection_templates"]["Insert"]["sections"]);
+
+      try {
+        if (!(await shopCanMutateInspectionSections(profile.shop_id, sections))) {
+          return NextResponse.json(
+            { error: "An active Equipment subscription is required for this inspection template." },
+            { status: 403 },
+          );
+        }
+      } catch (entitlementError) {
+        console.error("[optimization/apply] Equipment entitlement failed", entitlementError);
+        return NextResponse.json(
+          { error: "Equipment entitlement could not be verified. Try again." },
+          { status: 503 },
+        );
+      }
 
       let resolvedTemplateId: string | null = templateId;
       let previousTemplateSnapshot: {

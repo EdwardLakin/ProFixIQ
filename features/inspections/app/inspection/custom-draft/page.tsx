@@ -234,6 +234,10 @@ export default function CustomDraftPage({
     (sp.get("dutyClass") as DutyClass | null) || null,
   );
   const [equipmentAddonEnabled, setEquipmentAddonEnabled] = useState(false);
+  const [equipmentEntitlementError, setEquipmentEntitlementError] =
+    useState(false);
+  const [equipmentEntitlementAttempt, setEquipmentEntitlementAttempt] =
+    useState(0);
 
   // track grid mode explicitly (builder can set air/hyd/none)
   const [gridMode, setGridMode] = useState<GridMode | null>(() => {
@@ -364,13 +368,15 @@ export default function CustomDraftPage({
     let active = true;
     const controller = new AbortController();
 
+    setEquipmentEntitlementError(false);
+
     void fetch("/api/equipment/entitlement", {
       credentials: "include",
       cache: "no-store",
       signal: controller.signal,
     })
       .then(async (response) => {
-        if (!response.ok) return { enabled: false };
+        if (!response.ok) throw new Error("Equipment entitlement unavailable");
         return (await response.json()) as { enabled?: boolean };
       })
       .then((payload) => {
@@ -381,14 +387,16 @@ export default function CustomDraftPage({
         if (!active || (error instanceof DOMException && error.name === "AbortError")) {
           return;
         }
+        // Fail closed, but distinguish an outage from a valid non-entitled shop.
         setEquipmentAddonEnabled(false);
+        setEquipmentEntitlementError(true);
       });
 
     return () => {
       active = false;
       controller.abort();
     };
-  }, []);
+  }, [equipmentEntitlementAttempt]);
 
   /* ----------------------------- load shop_id ----------------------------- */
 
@@ -1018,6 +1026,31 @@ export default function CustomDraftPage({
             ← Back
           </button>
         </div>
+
+        {equipmentEntitlementError ? (
+          <div
+            role="alert"
+            className="mb-4 flex flex-col gap-3 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between"
+          >
+            <div>
+              <div className="font-semibold">
+                Equipment subscription could not be verified
+              </div>
+              <div className="mt-0.5 text-xs text-[color:var(--theme-text-secondary)]">
+                Equipment sections stay hidden until verification succeeds. Road inspection editing is still available.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() =>
+                setEquipmentEntitlementAttempt((current) => current + 1)
+              }
+              className="min-h-9 shrink-0 rounded-lg border border-amber-500/40 px-3 text-xs font-semibold transition hover:bg-amber-500/10"
+            >
+              Retry verification
+            </button>
+          </div>
+        ) : null}
 
         {/* Summary strip */}
         <div className="mb-5 rounded-2xl border border-[var(--metal-border-soft,var(--theme-border-soft))] bg-[color:var(--theme-surface-page)] px-3 py-3 text-xs text-[color:var(--theme-text-primary)] md:flex md:items-center md:justify-between md:px-4">

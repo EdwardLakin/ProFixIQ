@@ -1747,6 +1747,24 @@
     "riskLevel": "low"
   },
   {
+    "path": "app/api/equipment/entitlement/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "isMutating": false,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": false,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "has_stronger_boundary_signal"
+    ],
+    "riskLevel": "low"
+  },
+  {
     "path": "app/api/estimates/[id]/parts-complete/route.ts",
     "methods": [
       "POST"
@@ -2739,6 +2757,26 @@
     "hasShopReference": true,
     "hasRoleOrCapabilityReference": true,
     "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "has_stronger_boundary_signal"
+    ],
+    "riskLevel": "low"
+  },
+  {
+    "path": "app/api/inspections/templates/route.ts",
+    "methods": [
+      "POST",
+      "PATCH",
+      "DELETE"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "public_or_token",
     "riskFlags": [
       "has_stronger_boundary_signal"
     ],
@@ -4540,6 +4578,57 @@
     "riskLevel": "low"
   },
   {
+    "path": "app/api/ops/blog/articles/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": false,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": false,
+    "hasRoleOrCapabilityReference": false,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "mutating_without_obvious_auth_marker"
+    ],
+    "riskLevel": "high"
+  },
+  {
+    "path": "app/api/ops/blog/media/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": false,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": false,
+    "hasRoleOrCapabilityReference": false,
+    "routeClassGuess": "public_or_token",
+    "riskFlags": [],
+    "riskLevel": "low"
+  },
+  {
+    "path": "app/api/ops/blog/optimize/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": false,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "customer_or_portal",
+    "riskFlags": [],
+    "riskLevel": "low"
+  },
+  {
     "path": "app/api/ops/demo-access/create/route.ts",
     "methods": [
       "POST"
@@ -4692,7 +4781,7 @@
     "hasAuthGetUser": true,
     "hasServiceRolePattern": false,
     "hasShopReference": true,
-    "hasRoleOrCapabilityReference": false,
+    "hasRoleOrCapabilityReference": true,
     "routeClassGuess": "public_or_token",
     "riskFlags": [],
     "riskLevel": "low"
@@ -4740,7 +4829,7 @@
     "hasAuthGetUser": true,
     "hasServiceRolePattern": false,
     "hasShopReference": true,
-    "hasRoleOrCapabilityReference": false,
+    "hasRoleOrCapabilityReference": true,
     "routeClassGuess": "staff_or_admin",
     "riskFlags": [],
     "riskLevel": "low"
@@ -6481,6 +6570,22 @@
     "riskFlags": [
       "has_stronger_boundary_signal"
     ],
+    "riskLevel": "low"
+  },
+  {
+    "path": "app/api/resources/latest/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "isMutating": false,
+    "hasRequireShopScopedApiAccess": false,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": false,
+    "hasRoleOrCapabilityReference": false,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [],
     "riskLevel": "low"
   },
   {

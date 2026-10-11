@@ -42,3 +42,18 @@ describe("Equipment inspection content classification", () => {
     ).toBe(false);
   });
 });
+
+describe("Equipment classification of keyed section objects", () => {
+  it("detects off-road content in an object-shaped sections payload", () => {
+    expect(
+      inspectionSectionsRequireEquipment({
+        renamed: { title: "Misc", items: [{ item: "Hydraulic pumps" }] },
+      }),
+    ).toBe(true);
+    expect(
+      inspectionSectionsRequireEquipment({
+        brakes: { title: "Brakes", items: [{ item: "Inspect brake hoses" }] },
+      }),
+    ).toBe(false);
+  });
+});

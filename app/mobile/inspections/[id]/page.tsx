@@ -4,6 +4,7 @@ import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 
+import EquipmentExecutionGate from "@/features/equipment/components/EquipmentExecutionGate";
 import GenericInspectionScreen from "@/features/inspections/screens/GenericInspectionScreen";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
@@ -344,7 +345,9 @@ export default function MobileInspectionRunnerPage() {
 
       <main className="mobile-body-gradient flex-1 overflow-y-auto px-3 py-3">
         <div className="mx-auto max-w-4xl text-[color:var(--theme-text-primary)]">
-          <GenericInspectionScreen />
+          <EquipmentExecutionGate>
+            <GenericInspectionScreen />
+          </EquipmentExecutionGate>
         </div>
       </main>
     </div>
