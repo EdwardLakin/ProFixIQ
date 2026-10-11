@@ -6,6 +6,24 @@ function read(path: string) {
 }
 
 describe("inspection template server-authoritative write boundary", () => {
+  it("revokes direct authenticated content writes without changing direct reads or delete", () => {
+    const migration = read(
+      "supabase/migrations/20261011185000_inspection_template_server_write_boundary.sql",
+    );
+
+    expect(migration).toContain(
+      "revoke insert, update\n  on table public.inspection_templates\n  from authenticated;",
+    );
+    expect(migration).toContain(
+      "grant select, delete\n  on table public.inspection_templates\n  to authenticated;",
+    );
+    expect(migration).not.toContain("revoke select");
+    expect(migration).not.toContain("revoke delete");
+    expect(migration).toContain(
+      "grant insert, update on table public.inspection_templates to authenticated;",
+    );
+  });
+
   it("keeps Shop template mutations behind the existing billing-operator boundary", () => {
     const route = read("app/api/inspections/templates/route.ts");
 
