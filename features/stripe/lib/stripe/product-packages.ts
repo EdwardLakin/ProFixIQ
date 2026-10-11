@@ -69,6 +69,14 @@ export const TECHNICIAN_COPILOT_LOOKUP_KEY =
   "profixiq_technician_copilot_monthly_usd_v1";
 export const TECHNICIAN_COPILOT_MONTHLY_CENTS = 19_900;
 
+// Equipment is intentionally not a ProductPackageKey. It is a permanent
+// location-level premium add-on that can only grant access when the canonical
+// base subscription resolves to Complete Operations.
+export const EQUIPMENT_ADDON_PRODUCT_KEY = "equipment_addon" as const;
+export const EQUIPMENT_ADDON_LOOKUP_KEY =
+  "profixiq_equipment_addon_monthly_usd_v1";
+export const EQUIPMENT_ADDON_MONTHLY_CENTS = 14_900;
+
 // Snapshot of the currently provisioned live USD Stripe catalog. Runtime
 // checkout still resolves by lookup key so test/sandbox catalogs and future
 // Stripe rotations remain possible without coupling application logic to one
@@ -87,6 +95,8 @@ export const LIVE_ADDITIONAL_SERVICE_TRUCK_PRICE_ID =
   "price_1UIgbzITYwJQigUIF9So4ngq";
 export const LIVE_ADDITIONAL_FLEET_ASSET_PRICE_ID =
   "price_1UIgc1ITYwJQigUIxUo1aZga";
+export const LIVE_EQUIPMENT_ADDON_PRICE_ID =
+  "price_1UPOWZITYwJQigUIfhQ2LgGg";
 
 export const LEGACY_ADDITIONAL_SERVICE_TRUCK_LOOKUP_KEY =
   "profixiq_additional_service_truck_monthly_v1";
@@ -121,6 +131,7 @@ export const PRODUCT_PACKAGE_PRICING = {
   additionalUserCents: PRODUCT_PACKAGE_ADDITIONAL_USER_CENTS,
   additionalServiceTruckCents: 4_900,
   additionalFleetAssetCents: 250,
+  equipmentAddonCents: EQUIPMENT_ADDON_MONTHLY_CENTS,
 } as const;
 
 export const PRODUCT_PACKAGE_CATALOG: Record<
