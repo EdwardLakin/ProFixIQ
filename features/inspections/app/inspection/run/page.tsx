@@ -1,11 +1,12 @@
 // features/inspections/app/inspection/run/page.tsx
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 import type { Database } from "@shared/types/types/supabase";
+import { inspectionSectionsRequireEquipment } from "@/features/equipment/lib/equipmentInspectionContent";
 import {
   isInspectionFormContextEmpty,
   normalizeInspectionFormContext,
@@ -24,121 +25,171 @@ type SectionItem = {
 };
 type Section = { title: string; items: SectionItem[] };
 
+type EquipmentPreparationError = {
+  message: string;
+  retryable: boolean;
+};
+
 function isImportedFleetForm(sections: Section[]): boolean {
   return sections.some((section) =>
     (section.items ?? []).some((item) => Boolean(item.fieldType)),
   );
 }
 
+async function verifyEquipmentAccess(sections: Section[]): Promise<"allowed" | "denied" | "error"> {
+  if (!inspectionSectionsRequireEquipment(sections)) return "allowed";
+
+  try {
+    const response = await fetch("/api/equipment/entitlement", {
+      credentials: "include",
+      cache: "no-store",
+    });
+    if (!response.ok) return "error";
+    const payload = (await response.json()) as { enabled?: boolean };
+    return payload.enabled === true ? "allowed" : "denied";
+  } catch {
+    return "error";
+  }
+}
+
 export default function RunInspectionPage() {
   const sp = useSearchParams();
   const router = useRouter();
   const supabase = createBrowserSupabase();
+  const [equipmentPreparationError, setEquipmentPreparationError] =
+    useState<EquipmentPreparationError | null>(null);
+  const [equipmentVerificationAttempt, setEquipmentVerificationAttempt] = useState(0);
 
   useEffect(() => {
-    const templateId = sp.get("templateId");
-    const gridOverride = sp.get("grid"); // 'air' | 'hyd' | 'none' | null
+    let active = true;
+    setEquipmentPreparationError(null);
 
-    // ------------------- MODE 1: Staged (no templateId) -------------------
-    if (!templateId) {
-      if (typeof window === "undefined") {
-        router.replace("/inspections/templates");
-        return;
+    const authorizeEquipment = async (sections: Section[]) => {
+      const result = await verifyEquipmentAccess(sections);
+      if (!active) return false;
+      if (result === "allowed") return true;
+      if (result === "denied") {
+        setEquipmentPreparationError({
+          message:
+            "An active Equipment subscription is required to run this inspection.",
+          retryable: false,
+        });
+        return false;
       }
-
-      const stagedSectionsRaw =
-        sessionStorage.getItem("inspection:sections") ??
-        sessionStorage.getItem("customInspection:sections");
-      const stagedTitle =
-        sessionStorage.getItem("inspection:title") ??
-        sessionStorage.getItem("customInspection:title");
-
-      if (!stagedSectionsRaw || !stagedTitle) {
-        router.replace("/inspections/templates");
-        return;
-      }
-
-      let sections: Section[] = [];
-      try {
-        sections = JSON.parse(stagedSectionsRaw) as Section[];
-      } catch {
-        router.replace("/inspections/templates");
-        return;
-      }
-
-      const title = stagedTitle || "Inspection";
-      const importedFleetForm = isImportedFleetForm(sections);
-
-      const currentParams: Record<string, string> = {};
-      sp.forEach((value, key) => {
-        currentParams[key] = value;
+      setEquipmentPreparationError({
+        message:
+          "Equipment access could not be verified. Retry before starting this inspection.",
+        retryable: true,
       });
+      return false;
+    };
 
-      const stagedParamsRaw = sessionStorage.getItem("inspection:params");
-      const stagedParams: Record<string, string> = stagedParamsRaw
-        ? (JSON.parse(stagedParamsRaw) as Record<string, string>)
-        : {};
+    const prepare = async () => {
+      const templateId = sp.get("templateId");
+      const gridOverride = sp.get("grid"); // 'air' | 'hyd' | 'none' | null
 
-      const mergedParams: Record<string, string> = {
-        ...stagedParams,
-        ...currentParams,
-      };
+      // ------------------- MODE 1: Staged (no templateId) -------------------
+      if (!templateId) {
+        if (typeof window === "undefined") {
+          router.replace("/inspections/templates");
+          return;
+        }
 
-      mergedParams.template = mergedParams.template || "generic";
-      mergedParams.mode = mergedParams.mode || "run";
+        const stagedSectionsRaw =
+          sessionStorage.getItem("inspection:sections") ??
+          sessionStorage.getItem("customInspection:sections");
+        const stagedTitle =
+          sessionStorage.getItem("inspection:title") ??
+          sessionStorage.getItem("customInspection:title");
 
-      const vt =
-        mergedParams.vehicleType ||
-        sessionStorage.getItem("inspection:vehicleType") ||
-        "";
+        if (!stagedSectionsRaw || !stagedTitle) {
+          router.replace("/inspections/templates");
+          return;
+        }
 
-      const grid = importedFleetForm
-        ? "none"
-        : mergedParams.grid ||
-          gridOverride ||
-          sessionStorage.getItem("customInspection:gridMode");
+        let sections: Section[] = [];
+        try {
+          sections = JSON.parse(stagedSectionsRaw) as Section[];
+        } catch {
+          router.replace("/inspections/templates");
+          return;
+        }
 
-      if (importedFleetForm) {
-        // Fleet form imports describe the customer's source form. Never inject
-        // ProFixIQ's generic brake/corner grid unless it was actually imported.
-        mergedParams.grid = "none";
+        if (!(await authorizeEquipment(sections))) return;
+
+        const title = stagedTitle || "Inspection";
+        const importedFleetForm = isImportedFleetForm(sections);
+
+        const currentParams: Record<string, string> = {};
+        sp.forEach((value, key) => {
+          currentParams[key] = value;
+        });
+
+        const stagedParamsRaw = sessionStorage.getItem("inspection:params");
+        const stagedParams: Record<string, string> = stagedParamsRaw
+          ? (JSON.parse(stagedParamsRaw) as Record<string, string>)
+          : {};
+
+        const mergedParams: Record<string, string> = {
+          ...stagedParams,
+          ...currentParams,
+        };
+
+        mergedParams.template = mergedParams.template || "generic";
+        mergedParams.mode = mergedParams.mode || "run";
+
+        const vt =
+          mergedParams.vehicleType ||
+          sessionStorage.getItem("inspection:vehicleType") ||
+          "";
+
+        const grid = importedFleetForm
+          ? "none"
+          : mergedParams.grid ||
+            gridOverride ||
+            sessionStorage.getItem("customInspection:gridMode");
+
+        if (importedFleetForm) {
+          // Fleet form imports describe the customer's source form. Never inject
+          // ProFixIQ's generic brake/corner grid unless it was actually imported.
+          mergedParams.grid = "none";
+        }
+
+        // ✅ Single canonical normalizer (shared with other flows)
+        const normalizedSections = prepareSectionsWithCornerGrid(
+          sections,
+          vt,
+          grid || null,
+        ) as unknown as Section[];
+
+        sessionStorage.setItem(
+          "inspection:sections",
+          JSON.stringify(normalizedSections),
+        );
+        sessionStorage.setItem("inspection:title", title);
+        sessionStorage.setItem("inspection:template", mergedParams.template);
+        sessionStorage.setItem("inspection:params", JSON.stringify(mergedParams));
+
+        // Legacy keys
+        sessionStorage.setItem(
+          "customInspection:sections",
+          JSON.stringify(normalizedSections),
+        );
+        sessionStorage.setItem("customInspection:title", title);
+
+        const next = new URLSearchParams(mergedParams);
+        router.replace(`/inspections/fill?${next.toString()}`);
+        return;
       }
 
-      // ✅ Single canonical normalizer (shared with other flows)
-      const normalizedSections = prepareSectionsWithCornerGrid(
-        sections,
-        vt,
-        grid || null,
-      ) as unknown as Section[];
-
-      sessionStorage.setItem(
-        "inspection:sections",
-        JSON.stringify(normalizedSections),
-      );
-      sessionStorage.setItem("inspection:title", title);
-      sessionStorage.setItem("inspection:template", mergedParams.template);
-      sessionStorage.setItem("inspection:params", JSON.stringify(mergedParams));
-
-      // Legacy keys
-      sessionStorage.setItem(
-        "customInspection:sections",
-        JSON.stringify(normalizedSections),
-      );
-      sessionStorage.setItem("customInspection:title", title);
-
-      const next = new URLSearchParams(mergedParams);
-      router.replace(`/inspections/fill?${next.toString()}`);
-      return;
-    }
-
-    // ------------------- MODE 2: DB template (with templateId) -------------------
-    (async () => {
+      // ------------------- MODE 2: DB template (with templateId) -------------------
       const { data, error } = await supabase
         .from("inspection_templates")
         .select("id, template_name, sections, vehicle_type, form_context")
         .eq("id", templateId)
         .maybeSingle<TemplateRow>();
 
+      if (!active) return;
       if (error || !data) {
         // eslint-disable-next-line no-console
         console.error("Failed to load inspection template:", error);
@@ -147,6 +198,8 @@ export default function RunInspectionPage() {
       }
 
       const rawSections = (data.sections ?? []) as Section[];
+      if (!(await authorizeEquipment(rawSections))) return;
+
       const title = data.template_name ?? "Inspection";
       const vehicleType = String(data.vehicle_type ?? "");
       const importedFleetForm = isImportedFleetForm(rawSections);
@@ -207,8 +260,13 @@ export default function RunInspectionPage() {
         next.delete("templateId");
         router.replace(`/inspections/fill?${next.toString()}`);
       }
-    })();
-  }, [sp, router, supabase]);
+    };
+
+    void prepare();
+    return () => {
+      active = false;
+    };
+  }, [sp, router, supabase, equipmentVerificationAttempt]);
 
   return (
     <PageShell
@@ -217,7 +275,33 @@ export default function RunInspectionPage() {
       description="Normalizing template sections and launching run mode."
     >
       <Card className="mx-auto w-full max-w-3xl px-4 py-4 text-sm text-[var(--theme-text-secondary,var(--theme-text-muted))]">
-        Preparing inspection…
+        {equipmentPreparationError ? (
+          <div className="space-y-3">
+            <p>{equipmentPreparationError.message}</p>
+            <div className="flex flex-wrap gap-2">
+              {equipmentPreparationError.retryable ? (
+                <button
+                  type="button"
+                  onClick={() =>
+                    setEquipmentVerificationAttempt((current) => current + 1)
+                  }
+                  className="rounded-full border border-[var(--theme-border-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--theme-text-primary)]"
+                >
+                  Retry verification
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={() => router.replace("/inspections/templates")}
+                className="rounded-full border border-[var(--theme-border-soft)] px-3 py-1.5 text-xs font-semibold text-[var(--theme-text-primary)]"
+              >
+                Return to templates
+              </button>
+            </div>
+          </div>
+        ) : (
+          "Preparing inspection…"
+        )}
       </Card>
     </PageShell>
   );
