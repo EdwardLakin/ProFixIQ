@@ -15,9 +15,12 @@ export async function GET() {
       access.profile.shop_id,
     );
 
-    return NextResponse.json(entitlement, {
-      headers: { "Cache-Control": "private, no-store" },
-    });
+    return NextResponse.json(
+      { enabled: entitlement.enabled },
+      {
+        headers: { "Cache-Control": "private, no-store" },
+      },
+    );
   } catch (error) {
     console.error("[equipment/entitlement] error", error);
     return NextResponse.json(
