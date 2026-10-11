@@ -204,6 +204,42 @@ describe("abandoned work-order creation recovery", () => {
       },
     },
     {
+      label: "estimate sent to the customer",
+      input: {
+        workOrder: {
+          status: "awaiting_approval",
+          approval_state: "pending",
+          estimate_sent_at: "2026-10-11T10:00:00Z",
+        },
+      },
+    },
+    {
+      label: "quote delivered to the customer",
+      input: {
+        workOrder: { status: "awaiting_approval", approval_state: "pending" },
+        hasDeliveredQuote: true,
+      },
+    },
+    {
+      label: "fleet-converted",
+      input: {
+        workOrder: {
+          status: "awaiting_approval",
+          approval_state: "pending",
+          source_fleet_service_request_id: "fleet-request-1",
+        },
+      },
+    },
+    {
+      label: "fleet-sourced line",
+      input: {
+        workOrder: { status: "awaiting_approval" },
+        lines: [
+          { status: "awaiting", source_fleet_service_request_line_id: "fleet-line-1" },
+        ],
+      },
+    },
+    {
       label: "in progress lifecycle",
       input: { workOrder: { status: "in_progress" } },
     },

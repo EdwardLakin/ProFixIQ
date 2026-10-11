@@ -1,6 +1,8 @@
 export type CreateResumeWorkOrder = {
   status?: string | null;
   approval_state?: string | null;
+  estimate_sent_at?: string | null;
+  source_fleet_service_request_id?: string | null;
   archived_at?: string | null;
   inspection_id?: string | null;
 };
@@ -9,6 +11,7 @@ export type CreateResumeLine = {
   status?: string | null;
   line_status?: string | null;
   approval_state?: string | null;
+  source_fleet_service_request_line_id?: string | null;
   assigned_tech_id?: string | null;
   assigned_to?: string | null;
   punched_in_at?: string | null;
@@ -51,12 +54,14 @@ export function getCreateResumeBlocker(input: {
   lines?: CreateResumeLine[];
   hasBridgeAssignment?: boolean;
   hasInspection?: boolean;
+  hasDeliveredQuote?: boolean;
 }): string | null {
   const {
     workOrder,
     lines = [],
     hasBridgeAssignment = false,
     hasInspection = false,
+    hasDeliveredQuote = false,
   } = input;
   const activeLines = lines.filter((line) => !line.voided_at);
 
@@ -65,6 +70,15 @@ export function getCreateResumeBlocker(input: {
   }
   if (!RESUMABLE_WORK_ORDER_STATUSES.has(normalizeStatus(workOrder.status))) {
     return "Only work orders still awaiting setup can be continued.";
+  }
+  if (
+    workOrder.source_fleet_service_request_id ||
+    activeLines.some((line) => line.source_fleet_service_request_line_id)
+  ) {
+    return "This work order came from a Fleet service request and must be edited through the Fleet handoff.";
+  }
+  if (workOrder.estimate_sent_at || hasDeliveredQuote) {
+    return "An estimate has already been sent to the customer.";
   }
   if (
     DECIDED_APPROVAL_STATES.has(normalizeStatus(workOrder.approval_state)) ||
@@ -109,6 +123,7 @@ export function canResumeWorkOrderCreation(input: {
   lines?: CreateResumeLine[];
   hasBridgeAssignment?: boolean;
   hasInspection?: boolean;
+  hasDeliveredQuote?: boolean;
 }): boolean {
   return getCreateResumeBlocker(input) === null;
 }

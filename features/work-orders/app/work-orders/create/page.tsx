@@ -1773,6 +1773,23 @@ export default function CreateWorkOrderPage() {
       });
 
       if (wo?.id) {
+        // Lines keep the vehicle they were added for. Switching the work order
+        // to another vehicle would leave header and lines disagreeing.
+        if (wo.vehicle_id && wo.vehicle_id !== veh.id) {
+          const { count: activeLineCount, error: lineCountErr } = await supabase
+            .from("work_order_lines")
+            .select("id", { count: "exact", head: true })
+            .eq("work_order_id", wo.id)
+            .eq("shop_id", shopId)
+            .is("voided_at", null);
+          if (lineCountErr) throw lineCountErr;
+          if ((activeLineCount ?? 0) > 0) {
+            throw new Error(
+              "This work order already has lines for its current vehicle. Remove them before switching to a different vehicle.",
+            );
+          }
+        }
+
         const { data: updated, error: updErr } = await supabase
           .from("work_orders")
           .update({

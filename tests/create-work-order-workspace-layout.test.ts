@@ -58,4 +58,11 @@ describe("create work order workspace layout", () => {
     expect(handler).not.toContain("STALE_TAB_DRAFT_NOTICE");
     expect(handler).toContain("toast.error(message)");
   });
+
+  it("refuses to move a work order that already has lines to another vehicle", () => {
+    expect(page).toContain("wo.vehicle_id !== veh.id");
+    expect(page).toContain(
+      "Remove them before switching to a different vehicle.",
+    );
+  });
 });
