@@ -1423,26 +1423,6 @@
       "expiresOn": "2026-10-28"
     },
     {
-      "fingerprint": "10761bd7a22cb47df160",
-      "rule": "dynamic-mutation-payload",
-      "severity": "warning",
-      "domain": "inspections",
-      "file": "features/inspections/app/inspection/custom-draft/page.tsx",
-      "subject": "inspection_templates",
-      "message": "insert payload for inspection_templates cannot be checked statically",
-      "expiresOn": "2026-10-28"
-    },
-    {
-      "fingerprint": "10a4338547832545ce16",
-      "rule": "dynamic-mutation-payload",
-      "severity": "warning",
-      "domain": "inspections",
-      "file": "features/inspections/app/inspection/custom-draft/page.tsx",
-      "subject": "inspection_templates",
-      "message": "update payload for inspection_templates cannot be checked statically",
-      "expiresOn": "2026-10-28"
-    },
-    {
       "fingerprint": "9eb79e8b68f3e4c46a14",
       "rule": "dynamic-mutation-payload",
       "severity": "warning",
