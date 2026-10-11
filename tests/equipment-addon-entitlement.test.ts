@@ -19,14 +19,19 @@ describe("Equipment add-on billing and entitlement contract", () => {
     expect(billing).not.toContain('"equipment_addon",\n] as const');
   });
 
-  it("requires Complete plus the Equipment subscription item", () => {
+  it("requires an actual Complete base item plus the Equipment subscription item", () => {
     const entitlement = read(
       "features/equipment/server/equipmentAddonEntitlement.ts",
     );
 
+    expect(entitlement).toContain("subscriptionHasCompleteBaseItem");
     expect(entitlement).toContain(
-      'packageKey === "complete_operations"',
+      "PRODUCT_PACKAGE_LOOKUP_KEYS.complete_operations",
     );
+    expect(entitlement).toContain(
+      "LEGACY_PRODUCT_PACKAGE_LOOKUP_KEYS.complete_operations",
+    );
+    expect(entitlement).toContain("hasCompleteBaseItem &&");
     expect(entitlement).toContain("isProductSubscriptionEntitled");
     expect(entitlement).toContain("hasAddonItem");
     expect(entitlement).toContain("EQUIPMENT_ADDON_LOOKUP_KEY");
