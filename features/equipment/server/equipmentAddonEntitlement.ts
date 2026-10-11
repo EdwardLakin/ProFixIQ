@@ -2,7 +2,9 @@ import "server-only";
 
 import type Stripe from "stripe";
 
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { resolveProductPackageFromSubscription } from "@/features/stripe/lib/server/canonical-shop-billing";
+import { createStripeClient } from "@/features/stripe/lib/stripe/client";
 import {
   EQUIPMENT_ADDON_LOOKUP_KEY,
   EQUIPMENT_ADDON_PRODUCT_KEY,
@@ -18,6 +20,28 @@ export type EquipmentAddonEntitlement = {
   packageKey: string | null;
   subscriptionStatus: string | null;
 };
+
+type EquipmentBillingLink = {
+  id: string;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+};
+
+function mustEnv(name: string): string {
+  const value = process.env[name];
+  if (!value || !value.trim()) throw new Error(`Missing required env: ${name}`);
+  return value;
+}
+
+function disabledEntitlement(): EquipmentAddonEntitlement {
+  return {
+    enabled: false,
+    hasAddonItem: false,
+    hasCompleteBaseItem: false,
+    packageKey: null,
+    subscriptionStatus: null,
+  };
+}
 
 function positiveQuantity(item: Stripe.SubscriptionItem): boolean {
   const quantity = Number(item.quantity ?? 0);
@@ -85,4 +109,47 @@ export function resolveEquipmentAddonEntitlement(
     packageKey,
     subscriptionStatus,
   };
+}
+
+/**
+ * Resolve Equipment access from the authenticated shop boundary without
+ * depending on whether the caller can read financial columns on `shops` via
+ * RLS. Callers must authenticate/authorize first and pass only that canonical
+ * shop id; service-role access here is then constrained to that exact row.
+ */
+export async function resolveEquipmentAddonEntitlementForShop(
+  shopId: string,
+): Promise<EquipmentAddonEntitlement> {
+  const admin = createAdminSupabase();
+  const { data: shop, error: shopError } = await admin
+    .from("shops")
+    .select("id,stripe_customer_id,stripe_subscription_id")
+    .eq("id", shopId)
+    .maybeSingle<EquipmentBillingLink>();
+
+  if (shopError) throw new Error(shopError.message);
+  if (!shop || shop.id !== shopId) {
+    throw new Error("Equipment billing shop could not be resolved.");
+  }
+
+  const subscriptionId = String(shop.stripe_subscription_id ?? "").trim();
+  if (!subscriptionId) return disabledEntitlement();
+
+  const stripe = createStripeClient(mustEnv("STRIPE_SECRET_KEY"));
+  const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+  const subscriptionCustomerId =
+    typeof subscription.customer === "string"
+      ? subscription.customer
+      : subscription.customer?.id ?? null;
+  const canonicalCustomerId = String(shop.stripe_customer_id ?? "").trim();
+  const metadataShopId = String(subscription.metadata?.shop_id ?? "").trim();
+
+  if (
+    (canonicalCustomerId && subscriptionCustomerId !== canonicalCustomerId) ||
+    (metadataShopId && metadataShopId !== shopId)
+  ) {
+    throw new Error("Canonical Stripe linkage mismatch for Equipment entitlement.");
+  }
+
+  return resolveEquipmentAddonEntitlement(subscription);
 }
