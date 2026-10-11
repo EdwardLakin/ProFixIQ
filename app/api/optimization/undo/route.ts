@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 import type { OptimizationActionType } from "@/features/optimization/types";
 
 type UndoBody = {
@@ -72,9 +75,10 @@ export async function POST(req: Request) {
       createdTemplate?: boolean;
       previousTemplateSnapshot?: { template_name?: string | null; sections?: unknown; description?: string | null } | null;
     };
+    const admin = createAdminSupabase();
 
     if (inspectionUndo.createdTemplate && templateId) {
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await admin
         .from("inspection_templates")
         .delete()
         .eq("id", templateId)
@@ -84,7 +88,7 @@ export async function POST(req: Request) {
 
     if (!inspectionUndo.createdTemplate && templateId && inspectionUndo.previousTemplateSnapshot) {
       const snapshot = inspectionUndo.previousTemplateSnapshot;
-      const { error: revertTemplateError } = await supabase
+      const { error: revertTemplateError } = await admin
         .from("inspection_templates")
         .update({
           template_name: snapshot.template_name ?? "Optimization Inspection Template",
