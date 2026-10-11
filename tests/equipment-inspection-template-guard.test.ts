@@ -19,6 +19,10 @@ vi.mock("@/features/shared/lib/server/admin-access", () => ({
   requireShopScopedApiAccess: mocks.requireShopAccess,
 }));
 
+vi.mock("@/features/shared/lib/supabase/server", () => ({
+  createAdminSupabase: () => ({ from: mocks.from }),
+}));
+
 import { PATCH, POST } from "../app/api/inspections/templates/route";
 
 const SHOP_ID = "00000000-0000-4000-8000-000000000111";
@@ -72,7 +76,7 @@ beforeEach(() => {
     ok: true,
     authUserId: USER_ID,
     profile: { id: USER_ID, shop_id: SHOP_ID, role: "owner" },
-    supabase: { from: mocks.from },
+    supabase: { from: vi.fn() },
   });
 });
 

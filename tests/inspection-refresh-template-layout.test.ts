@@ -164,20 +164,26 @@ describe("review hardening", () => {
 describe("refresh persistence wiring", () => {
   const read = (path: string) => readFileSync(join(process.cwd(), path), "utf8");
 
-  it("sends the refreshed context only when it changed, on both save paths", () => {
+  it("sends the refreshed context only when it changed, through both server save paths", () => {
     const editor = read("features/inspections/components/InspectionTemplateEditRouter.tsx");
     expect(editor).toContain("...(formContextDirty ? { formContext } : {})");
-    expect(editor).toContain("...(formContextDirty ? { form_context: formContext } : {})");
+    expect(editor).toContain('"/api/mobile/service/inspection-templates"');
+    expect(editor).toContain('"/api/inspections/templates"');
     expect(editor).toContain("...(tagsDirty ? { tags } : {})");
     // grid markers must survive an ordinary save
     expect(editor).toContain("generatedGrid: section.generatedGrid");
   });
 
-  it("lets the field-app save path store the preserved form context, normalised and bounded", () => {
-    const route = read("app/api/mobile/service/inspection-templates/route.ts");
-    expect(route).toContain('hasOwnField(body, "formContext")');
-    expect(route).toContain("normalizeInspectionFormContext");
-    expect(route).toContain("200_000");
+  it("lets both server save paths store the preserved form context, normalised and bounded", () => {
+    for (const routePath of [
+      "app/api/mobile/service/inspection-templates/route.ts",
+      "app/api/inspections/templates/route.ts",
+    ]) {
+      const route = read(routePath);
+      expect(route).toContain('hasOwnField(body, "formContext")');
+      expect(route).toContain("normalizeInspectionFormContext");
+      expect(route).toContain("200_000");
+    }
   });
 });
 

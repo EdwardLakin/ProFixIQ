@@ -121,6 +121,26 @@ describe("abandoned work-order creation recovery", () => {
     ).toBe(true);
   });
 
+  it("keeps a work order resumable after setup lines flip its derived status", () => {
+    // The line status trigger moves an untouched work order to "queued" (first
+    // line) or "awaiting_approval" (lines pending approval) while it is still
+    // being built on the create page.
+    expect(
+      canResumeWorkOrderCreation({
+        workOrder: { status: "queued", approval_state: null },
+        lines: [{ status: "awaiting", line_status: null, approval_state: null }],
+      }),
+    ).toBe(true);
+    expect(
+      canResumeWorkOrderCreation({
+        workOrder: { status: "awaiting_approval", approval_state: "pending" },
+        lines: [
+          { status: "awaiting_approval", line_status: null, approval_state: "pending" },
+        ],
+      }),
+    ).toBe(true);
+  });
+
   it.each([
     {
       label: "archived",
@@ -164,6 +184,64 @@ describe("abandoned work-order creation recovery", () => {
         workOrder: { status: "awaiting" },
         lines: [{ status: "in_progress", line_status: "in_progress" }],
       },
+    },
+    {
+      label: "customer approved",
+      input: { workOrder: { status: "queued", approval_state: "approved" } },
+    },
+    {
+      label: "line approved",
+      input: {
+        workOrder: { status: "queued" },
+        lines: [{ status: "awaiting", approval_state: "approved" }],
+      },
+    },
+    {
+      label: "line authorized",
+      input: {
+        workOrder: { status: "queued" },
+        lines: [{ status: "awaiting", line_status: "authorized" }],
+      },
+    },
+    {
+      label: "estimate sent to the customer",
+      input: {
+        workOrder: {
+          status: "awaiting_approval",
+          approval_state: "pending",
+          estimate_sent_at: "2026-10-11T10:00:00Z",
+        },
+      },
+    },
+    {
+      label: "quote delivered to the customer",
+      input: {
+        workOrder: { status: "awaiting_approval", approval_state: "pending" },
+        hasDeliveredQuote: true,
+      },
+    },
+    {
+      label: "fleet-converted",
+      input: {
+        workOrder: {
+          status: "awaiting_approval",
+          approval_state: "pending",
+          source_fleet_service_request_id: "fleet-request-1",
+        },
+      },
+    },
+    {
+      label: "fleet-sourced line",
+      input: {
+        workOrder: { status: "awaiting_approval" },
+        lines: [
+          { status: "awaiting", source_fleet_service_request_line_id: "fleet-line-1" },
+        ],
+      },
+    },
+    {
+      label: "in progress lifecycle",
+      input: { workOrder: { status: "in_progress" } },
     },
     {
       label: "closed lifecycle",

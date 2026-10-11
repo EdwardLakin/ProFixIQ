@@ -8,8 +8,7 @@ import {
 
 type DB = Database;
 
-export const CREATE_WORK_ORDER_STALE_EVENT =
-  "profixiq:create-work-order-stale";
+export const CREATE_WORK_ORDER_STALE_EVENT = "profixiq:create-work-order-stale";
 
 export const STALE_CREATE_WORK_ORDER_MESSAGE =
   "This saved work order no longer exists. The stale draft was cleared; create a new work order before adding lines.";
@@ -80,10 +79,10 @@ export async function requireMutableWorkOrder(input: {
   return data;
 }
 
-type ResumableWorkOrder =
-  DB["public"]["Tables"]["work_orders"]["Row"] & CreateResumeWorkOrder;
-type ResumableLine =
-  DB["public"]["Tables"]["work_order_lines"]["Row"] & CreateResumeLine;
+type ResumableWorkOrder = DB["public"]["Tables"]["work_orders"]["Row"] &
+  CreateResumeWorkOrder;
+type ResumableLine = DB["public"]["Tables"]["work_order_lines"]["Row"] &
+  CreateResumeLine;
 
 export async function requireResumableCreateWorkOrder(input: {
   supabase: SupabaseClient<DB>;
@@ -144,11 +143,22 @@ export async function requireResumableCreateWorkOrder(input: {
       : { data: [], error: null };
   if (assignmentError) throw assignmentError;
 
+  const { data: deliveredQuotes, error: deliveredQuoteError } =
+    await input.supabase
+      .from("work_order_quote_lines")
+      .select("id")
+      .eq("work_order_id", input.workOrderId)
+      .eq("shop_id", workOrder.shop_id)
+      .not("sent_to_customer_at", "is", null)
+      .limit(1);
+  if (deliveredQuoteError) throw deliveredQuoteError;
+
   const blocker = getCreateResumeBlocker({
     workOrder,
     lines,
     hasBridgeAssignment: Boolean(assignments?.length),
     hasInspection: Boolean(inspections?.length),
+    hasDeliveredQuote: Boolean(deliveredQuotes?.length),
   });
   if (blocker) {
     const message = `${CREATE_RESUME_BLOCKED_PREFIX} ${blocker}`;

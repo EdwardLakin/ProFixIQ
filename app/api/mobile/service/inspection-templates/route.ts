@@ -8,6 +8,7 @@ import {
   validateInspectionTemplateMutation,
 } from "@/features/inspections/server/inspectionTemplateMutation";
 import { requireMobileServiceOperatorApiAccess } from "@/features/mobile/service/server/access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type TemplateInsert =
   Database["public"]["Tables"]["inspection_templates"]["Insert"];
@@ -112,7 +113,8 @@ export async function POST(request: Request) {
     shop_id: access.profile.shop_id,
     user_id: access.authUserId,
   };
-  const { data, error } = await access.supabase
+  const admin = createAdminSupabase();
+  const { data, error } = await admin
     .from("inspection_templates")
     .insert(payload)
     .select("id")
@@ -179,7 +181,8 @@ export async function PATCH(request: Request) {
     }
     payload.form_context = formContext as unknown as TemplateUpdate["form_context"];
   }
-  const { data, error } = await access.supabase
+  const admin = createAdminSupabase();
+  const { data, error } = await admin
     .from("inspection_templates")
     .update(payload)
     .eq("id", templateId.trim())
@@ -211,7 +214,8 @@ export async function DELETE(request: Request) {
     );
   }
 
-  const { data, error } = await access.supabase
+  const admin = createAdminSupabase();
+  const { data, error } = await admin
     .from("inspection_templates")
     .delete()
     .eq("id", templateId.trim())

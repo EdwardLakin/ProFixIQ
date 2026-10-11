@@ -38,10 +38,6 @@ vi.mock("@/features/shared/lib/supabase/client", () => ({
       select: () => ({
         eq: () => ({ maybeSingle: async () => ({ data: template, error: null }) }),
       }),
-      update: (payload: unknown) => {
-        updates.push(payload);
-        return { eq: async () => ({ error: null }) };
-      },
     }),
   }),
 }));
@@ -50,6 +46,16 @@ import InspectionTemplateEditRouter from "@/features/inspections/components/Insp
 
 beforeEach(() => {
   updates.length = 0;
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      updates.push(JSON.parse(String(init?.body ?? "{}")) as unknown);
+      return new Response(JSON.stringify({ id: "tpl-1" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }),
+  );
 });
 
 const original = JSON.stringify(template);
@@ -78,16 +84,16 @@ describe("refresh layout on a saved imported template", () => {
 
     const saved = updates[0] as {
       sections: Array<{ title: string; generatedGrid?: { kind: string; brakeMode: string } }>;
-      form_context: { completion: Array<{ items: Array<{ item: string }> }>; header: unknown[] };
+      formContext: { completion: Array<{ items: Array<{ item: string }> }>; header: unknown[] };
     };
     expect(saved.sections.filter((s) => s.generatedGrid).map((s) => s.generatedGrid)).toEqual([
       { kind: "brake", brakeMode: "air" },
       { kind: "tire", brakeMode: "air" },
     ]);
-    expect(saved.form_context.completion[0].items.map((i) => i.item)).toEqual([
+    expect(saved.formContext.completion[0].items.map((i) => i.item)).toEqual([
       "Date of Inspection", "License#",
     ]);
-    expect(JSON.stringify(saved.form_context)).not.toContain("Page 1 of 2");
+    expect(JSON.stringify(saved.formContext)).not.toContain("Page 1 of 2");
   });
 
   it("does not rewrite the stored form context on an ordinary save", async () => {
@@ -95,7 +101,7 @@ describe("refresh layout on a saved imported template", () => {
     await screen.findByText("Refresh layout");
     fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
     await waitFor(() => expect(updates).toHaveLength(1));
-    expect(updates[0]).not.toHaveProperty("form_context");
+    expect(updates[0]).not.toHaveProperty("formContext");
   });
 });
 
@@ -110,13 +116,13 @@ describe("an explicit no-grid choice survives save and reopen", () => {
     await waitFor(() => expect(updates).toHaveLength(1));
 
     const saved = updates[0] as {
-      sections: unknown[]; tags: string[]; form_context: unknown;
+      sections: unknown[]; tags: string[]; formContext: unknown;
     };
     expect(saved.tags).toEqual(["customer-form", "layout:no-tire-grid", "layout:no-brake-grid"]);
 
     // reopen the template as saved
     first.unmount();
-    template = { ...template, sections: saved.sections as never, tags: saved.tags, form_context: saved.form_context as never };
+    template = { ...template, sections: saved.sections as never, tags: saved.tags, form_context: saved.formContext as never };
     render(<InspectionTemplateEditRouter surface="shop" />);
     await screen.findByText("Refresh layout");
     expect(screen.getByText(/already matches the current layout/i)).toBeTruthy();
