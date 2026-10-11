@@ -1,6 +1,7 @@
 import { unstable_noStore as noStore } from "next/cache";
 import { notFound } from "next/navigation";
 
+import EquipmentAssetProfilePanel from "@/features/equipment/components/EquipmentAssetProfilePanel";
 import VehicleWorkspace from "@/features/vehicles/components/VehicleWorkspace";
 import {
   VEHICLE_WORKSPACE_READER_ROLES,
@@ -56,6 +57,7 @@ export default async function VehicleWorkspacePage({
       bookAppointmentHref={actionHrefs.bookAppointment}
       createEstimateHref={actionHrefs.createEstimate}
       messageCustomerHref={actionHrefs.messageCustomer}
+      equipmentSlot={<EquipmentAssetProfilePanel assetId={snapshot.identity.id} />}
     />
   );
 }

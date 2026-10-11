@@ -4544,6 +4544,104 @@ export type Database = {
           },
         ]
       }
+      equipment_asset_profiles: {
+        Row: {
+          attributes: Json
+          created_at: string
+          created_by: string | null
+          current_cycles: number | null
+          engine_make: string | null
+          engine_model: string | null
+          engine_serial: string | null
+          equipment_class: string
+          equipment_family: string
+          meters_updated_at: string | null
+          mounted_on_vehicle_id: string | null
+          operating_status: string
+          pin: string | null
+          primary_meter: string
+          serial_number: string | null
+          shop_id: string
+          site_name: string | null
+          updated_at: string
+          updated_by: string | null
+          vehicle_id: string
+        }
+        Insert: {
+          attributes?: Json
+          created_at?: string
+          created_by?: string | null
+          current_cycles?: number | null
+          engine_make?: string | null
+          engine_model?: string | null
+          engine_serial?: string | null
+          equipment_class: string
+          equipment_family: string
+          meters_updated_at?: string | null
+          mounted_on_vehicle_id?: string | null
+          operating_status?: string
+          pin?: string | null
+          primary_meter?: string
+          serial_number?: string | null
+          shop_id: string
+          site_name?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          vehicle_id: string
+        }
+        Update: {
+          attributes?: Json
+          created_at?: string
+          created_by?: string | null
+          current_cycles?: number | null
+          engine_make?: string | null
+          engine_model?: string | null
+          engine_serial?: string | null
+          equipment_class?: string
+          equipment_family?: string
+          meters_updated_at?: string | null
+          mounted_on_vehicle_id?: string | null
+          operating_status?: string
+          pin?: string | null
+          primary_meter?: string
+          serial_number?: string | null
+          shop_id?: string
+          site_name?: string | null
+          updated_at?: string
+          updated_by?: string | null
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_asset_profiles_mounted_on_vehicle_id_fkey"
+            columns: ["mounted_on_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_asset_profiles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_asset_profiles_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_asset_profiles_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: true
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       estimate_events: {
         Row: {
           actor_profile_id: string | null
