@@ -36,8 +36,19 @@ export async function POST(request: Request) {
   const payload = await request.json().catch(() => null);
   const parsed = BlogArticleInputSchema.safeParse(payload);
   if (!parsed.success) {
+    const issues = parsed.error.flatten();
+    const validationError = issues.fieldErrors.title?.length
+      ? "Add a title before saving this article"
+      : issues.fieldErrors.slug?.length
+        ? "Add a valid URL slug before saving this article"
+        : issues.fieldErrors.authorName?.length
+          ? "Add an author before saving this article"
+          : issues.fieldErrors.category?.length
+            ? "Add a category before saving this article"
+            : "Check the article fields and try again";
+
     return NextResponse.json(
-      { error: "Invalid article", issues: parsed.error.flatten() },
+      { error: validationError, issues },
       { status: 400 },
     );
   }
