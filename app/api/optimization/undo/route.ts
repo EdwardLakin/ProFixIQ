@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 import type { OptimizationActionType } from "@/features/optimization/types";
+import {
+  canonicalizeRole,
+  ROLE_GROUPS,
+} from "@/features/shared/lib/rbac";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 
 type UndoBody = {
   opportunityId?: string;
@@ -13,6 +20,12 @@ function toNonEmptyString(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const v = value.trim();
   return v.length > 0 ? v : null;
+}
+
+function canWriteInspectionTemplates(role: string | null | undefined) {
+  return new Set<string>(ROLE_GROUPS.billingOperators).has(
+    canonicalizeRole(role),
+  );
 }
 
 export async function POST(req: Request) {
@@ -29,7 +42,7 @@ export async function POST(req: Request) {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("shop_id")
+    .select("shop_id,role")
     .or(`id.eq.${user.id},user_id.eq.${user.id}`)
     .limit(1)
     .maybeSingle();
@@ -66,25 +79,31 @@ export async function POST(req: Request) {
   }
 
   if (type === "inspection") {
+    if (!canWriteInspectionTemplates(profile.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const templateId = toNonEmptyString(affected.inspectionTemplateId);
     const menuItemId = toNonEmptyString(affected.menuItemId);
     const inspectionUndo = (undoData.inspection ?? {}) as {
       createdTemplate?: boolean;
       previousTemplateSnapshot?: { template_name?: string | null; sections?: unknown; description?: string | null } | null;
     };
+    const admin = createAdminSupabase();
 
     if (inspectionUndo.createdTemplate && templateId) {
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await admin
         .from("inspection_templates")
         .delete()
         .eq("id", templateId)
-        .eq("shop_id", profile.shop_id);
+        .eq("shop_id", profile.shop_id)
+        .eq("user_id", user.id);
       if (deleteError) return NextResponse.json({ error: deleteError.message }, { status: 500 });
     }
 
     if (!inspectionUndo.createdTemplate && templateId && inspectionUndo.previousTemplateSnapshot) {
       const snapshot = inspectionUndo.previousTemplateSnapshot;
-      const { error: revertTemplateError } = await supabase
+      const { error: revertTemplateError } = await admin
         .from("inspection_templates")
         .update({
           template_name: snapshot.template_name ?? "Optimization Inspection Template",
@@ -92,7 +111,8 @@ export async function POST(req: Request) {
           description: snapshot.description ?? null,
         })
         .eq("id", templateId)
-        .eq("shop_id", profile.shop_id);
+        .eq("shop_id", profile.shop_id)
+        .eq("user_id", user.id);
       if (revertTemplateError) return NextResponse.json({ error: revertTemplateError.message }, { status: 500 });
     }
 

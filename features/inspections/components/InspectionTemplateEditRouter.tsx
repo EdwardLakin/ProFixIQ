@@ -148,7 +148,6 @@ function ImportedFleetTemplateEditor({
   surface: InspectionBuilderSurface;
 }) {
   const router = useRouter();
-  const supabase = useMemo(() => createBrowserSupabase(), []);
   const navigation = getInspectionBuilderNavigation(surface);
   const [title, setTitle] = useState(
     initial.template_name ?? "Imported fleet form",
@@ -267,42 +266,28 @@ function ImportedFleetTemplateEditor({
 
     setSaving(true);
     try {
-      if (navigation.surface === "field") {
-        const response = await fetch(
-          "/api/mobile/service/inspection-templates",
-          {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              templateId,
-              templateName: title.trim(),
-              sections: cleaned,
-              vehicleType: vehicleType.trim() || null,
-              laborHours: parsedLabor,
-              ...(formContextDirty ? { formContext } : {}),
-              ...(tagsDirty ? { tags } : {}),
-            }),
-          },
-        );
-        const body = (await response.json().catch(() => null)) as {
-          error?: string;
-        } | null;
-        if (!response.ok) {
-          throw new Error(body?.error || "Unable to save imported template.");
-        }
-      } else {
-        const { error } = await supabase
-          .from("inspection_templates")
-          .update({
-            template_name: title.trim(),
-            sections: cleaned,
-            vehicle_type: vehicleType.trim() || null,
-            labor_hours: parsedLabor,
-            ...(formContextDirty ? { form_context: formContext } : {}),
-            ...(tagsDirty ? { tags } : {}),
-          } as never)
-          .eq("id", templateId);
-        if (error) throw error;
+      const endpoint =
+        navigation.surface === "field"
+          ? "/api/mobile/service/inspection-templates"
+          : "/api/inspections/templates";
+      const response = await fetch(endpoint, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          templateId,
+          templateName: title.trim(),
+          sections: cleaned,
+          vehicleType: vehicleType.trim() || null,
+          laborHours: parsedLabor,
+          ...(formContextDirty ? { formContext } : {}),
+          ...(tagsDirty ? { tags } : {}),
+        }),
+      });
+      const body = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      if (!response.ok) {
+        throw new Error(body?.error || "Unable to save imported template.");
       }
       toast.success("Imported fleet template saved.");
       setSections(cleaned);

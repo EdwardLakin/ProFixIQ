@@ -1,7 +1,14 @@
 import { NextResponse } from "next/server";
 import type { Database } from "@shared/types/types/supabase";
 import { buildExecutionPreview } from "@/features/optimization/server/buildExecutionPreview";
-import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import {
+  canonicalizeRole,
+  ROLE_GROUPS,
+} from "@/features/shared/lib/rbac";
+import {
+  createAdminSupabase,
+  createServerSupabaseRoute,
+} from "@/features/shared/lib/supabase/server";
 import type {
   OptimizationActionType,
   OptimizationApplyPayload,
@@ -90,6 +97,12 @@ function checkGuardrails(opportunity: OptimizationOpportunity | null): string | 
   return null;
 }
 
+function canWriteInspectionTemplates(role: string | null | undefined) {
+  return new Set<string>(ROLE_GROUPS.billingOperators).has(
+    canonicalizeRole(role),
+  );
+}
+
 export async function POST(req: Request) {
   const supabase = createServerSupabaseRoute();
   const dryRun = new URL(req.url).searchParams.get("dryRun") === "true";
@@ -105,7 +118,7 @@ export async function POST(req: Request) {
 
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
-    .select("shop_id")
+    .select("shop_id,role")
     .or(`id.eq.${user.id},user_id.eq.${user.id}`)
     .limit(1)
     .maybeSingle();
@@ -266,6 +279,11 @@ export async function POST(req: Request) {
     }
 
     if (type === "inspection") {
+      if (!canWriteInspectionTemplates(profile.role)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+
+      const templateAdmin = createAdminSupabase();
       const templateRaw = safePayload(payload.inspectionTemplate);
       const rawTemplateId = toNonEmptyString(templateRaw.templateId) ?? opportunity?.targetRefs?.inspectionTemplateId ?? null;
       const templateId = rawTemplateId && isUuid(rawTemplateId) ? rawTemplateId : null;
@@ -299,6 +317,7 @@ export async function POST(req: Request) {
           .select("id,template_name,sections,description,updated_at")
           .eq("id", templateId)
           .eq("shop_id", profile.shop_id)
+          .eq("user_id", user.id)
           .single();
         if (existingTemplateError || !existingTemplate) {
           return NextResponse.json({ error: "Inspection template not found in shop context" }, { status: 404 });
@@ -325,7 +344,7 @@ export async function POST(req: Request) {
           description: existingTemplate.description,
         };
 
-        const { error: updateError } = await supabase
+        const { error: updateError } = await templateAdmin
           .from("inspection_templates")
           .update({
             template_name: templateName,
@@ -333,7 +352,8 @@ export async function POST(req: Request) {
             updated_at: new Date().toISOString(),
           })
           .eq("id", templateId)
-          .eq("shop_id", profile.shop_id);
+          .eq("shop_id", profile.shop_id)
+          .eq("user_id", user.id);
 
         if (updateError) {
           return NextResponse.json({ error: updateError.message }, { status: 500 });
@@ -348,7 +368,7 @@ export async function POST(req: Request) {
           tags: ["optimization_engine"],
         };
 
-        const { data: insertedTemplate, error: insertError } = await supabase
+        const { data: insertedTemplate, error: insertError } = await templateAdmin
           .from("inspection_templates")
           .insert(insert)
           .select("id")

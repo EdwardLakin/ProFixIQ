@@ -4,7 +4,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
-import type { Database } from "@shared/types/types/supabase";
 import type {
   InspectionSection,
   InspectionItem,
@@ -22,17 +21,6 @@ const UNIT_OPTIONS = ["", "mm", "psi", "kPa", "in", "ft·lb"] as const;
 type VehicleType = "car" | "truck" | "bus" | "trailer";
 type DutyClass = "light" | "medium" | "heavy";
 type GridMode = "hyd" | "air" | "none";
-
-/** Narrow Insert type to include labor_hours until your generated types include it */
-type InsertTemplate =
-  Database["public"]["Tables"]["inspection_templates"]["Insert"] & {
-    labor_hours?: number | null;
-  };
-
-type UpdateTemplate =
-  Database["public"]["Tables"]["inspection_templates"]["Update"] & {
-    labor_hours?: number | null;
-  };
 
 /** UI-only keys so inputs don't remount on every keystroke (fixes focus loss) */
 type DraftItem = InspectionItem & { _key: string };
@@ -659,7 +647,7 @@ export default function CustomDraftPage({
     });
   }
 
-  async function saveFieldTemplate(
+  async function saveInspectionTemplate(
     method: "POST" | "PATCH",
     input: {
       templateId?: string;
@@ -671,7 +659,11 @@ export default function CustomDraftPage({
       laborHours?: number | null;
     },
   ): Promise<string> {
-    const response = await fetch("/api/mobile/service/inspection-templates", {
+    const endpoint =
+      navigation.surface === "field"
+        ? "/api/mobile/service/inspection-templates"
+        : "/api/inspections/templates";
+    const response = await fetch(endpoint, {
       method,
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(input),
@@ -704,47 +696,16 @@ export default function CustomDraftPage({
       }
 
       const hours = coerceNumberOrNull(laborHoursInput);
-
       const templateName = (title || "").trim() || "Custom Template";
-      if (navigation.surface === "field") {
-        await saveFieldTemplate("POST", {
-          templateName,
-          sections: cleaned,
-          description: "Created from Custom Draft",
-          vehicleType,
-          tags: ["custom", "draft"],
-          laborHours: hours,
-        });
-      } else {
-        if (!shopId) {
-          toast.error("Shop scope is still loading. Try again in a moment.");
-          return;
-        }
-        const payload: InsertTemplate = {
-          template_name: templateName,
-          sections:
-            cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
-          description: "Created from Custom Draft",
-          vehicle_type: vehicleType || undefined,
-          tags: ["custom", "draft"],
-          is_public: false,
-          labor_hours: hours,
-          shop_id: shopId,
-          user_id: u.user.id,
-        };
 
-        const { error, data } = await supabase
-          .from("inspection_templates")
-          .insert(payload)
-          .select("id")
-          .maybeSingle();
-
-        if (error || !data?.id) {
-          console.error(error);
-          toast.error("Failed to save template.");
-          return;
-        }
-      }
+      await saveInspectionTemplate("POST", {
+        templateName,
+        sections: cleaned,
+        description: "Created from Custom Draft",
+        vehicleType,
+        tags: ["custom", "draft"],
+        laborHours: hours,
+      });
 
       toast.success("Template saved as new.");
       router.replace(navigation.templatesHref);
@@ -778,38 +739,15 @@ export default function CustomDraftPage({
       }
 
       const hours = coerceNumberOrNull(laborHoursInput);
-
       const templateName = (title || "").trim() || "Custom Template";
-      if (navigation.surface === "field") {
-        await saveFieldTemplate("PATCH", {
-          templateId,
-          templateName,
-          sections: cleaned,
-          vehicleType,
-          laborHours: hours,
-        });
-      } else {
-        const payload: UpdateTemplate = {
-          template_name: templateName,
-          sections:
-            cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Update"]["sections"],
-          vehicle_type: vehicleType || undefined,
-          labor_hours: hours,
-        };
 
-        const { error, data } = await supabase
-          .from("inspection_templates")
-          .update(payload)
-          .eq("id", templateId)
-          .select("id")
-          .maybeSingle();
-
-        if (error || !data?.id) {
-          console.error(error);
-          toast.error("Failed to update template.");
-          return;
-        }
-      }
+      await saveInspectionTemplate("PATCH", {
+        templateId,
+        templateName,
+        sections: cleaned,
+        vehicleType,
+        laborHours: hours,
+      });
 
       toast.success("Template changes saved.");
     } catch (error) {
@@ -865,56 +803,23 @@ export default function CustomDraftPage({
     }
 
     const hours = coerceNumberOrNull(laborHoursInput);
-
     const templateName = (title || "").trim() || "Custom Template";
-    if (navigation.surface === "field") {
-      try {
-        return await saveFieldTemplate("POST", {
-          templateName,
-          sections: cleaned,
-          description: "Created from Custom Draft",
-          vehicleType,
-          tags: ["custom", "draft"],
-          laborHours: hours,
-        });
-      } catch (error) {
-        toast.error(
-          error instanceof Error ? error.message : "Failed to save template.",
-        );
-        return null;
-      }
-    }
 
-    if (!shopId) {
-      toast.error("Shop scope is still loading. Try again in a moment.");
+    try {
+      return await saveInspectionTemplate("POST", {
+        templateName,
+        sections: cleaned,
+        description: "Created from Custom Draft",
+        vehicleType,
+        tags: ["custom", "draft"],
+        laborHours: hours,
+      });
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to save template.",
+      );
       return null;
     }
-    const payload: InsertTemplate = {
-      template_name: templateName,
-      sections:
-        cleaned as unknown as Database["public"]["Tables"]["inspection_templates"]["Insert"]["sections"],
-      description: "Created from Custom Draft",
-      vehicle_type: vehicleType || undefined,
-      tags: ["custom", "draft"],
-      is_public: false,
-      labor_hours: hours,
-      shop_id: shopId,
-      user_id: u.user.id,
-    };
-
-    const { error, data } = await supabase
-      .from("inspection_templates")
-      .insert(payload)
-      .select("id")
-      .maybeSingle();
-
-    if (error || !data?.id) {
-      console.error(error);
-      toast.error("Failed to save template.");
-      return null;
-    }
-
-    return data.id;
   }
 
   async function createMenuItemFromDraft() {
@@ -1661,7 +1566,7 @@ export default function CustomDraftPage({
           <button
             type="button"
             onClick={saveTemplate}
-            disabled={savingNew || (navigation.surface === "shop" && !shopId)}
+            disabled={savingNew}
             className="rounded-full bg-[linear-gradient(to_right,rgba(191,141,99,0.82),rgba(160,116,82,0.76))] px-4 py-2 text-xs font-semibold uppercase tracking-[0.16em] text-[color:var(--theme-text-on-accent)] hover:brightness-110 disabled:opacity-60"
           >
             {savingNew ? "Saving…" : "Save as New Template"}
