@@ -7,6 +7,7 @@ import {
   validateInspectionTemplateMutation,
 } from "@/features/inspections/server/inspectionTemplateMutation";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
+import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
 
 type TemplateInsert =
   Database["public"]["Tables"]["inspection_templates"]["Insert"];
@@ -54,8 +55,14 @@ async function equipmentMutationFailure(shopId: string, sections: unknown) {
   }
 }
 
+async function requireTemplateManager() {
+  return requireShopScopedApiAccess({
+    allowRoles: ROLE_GROUPS.billingOperators,
+  });
+}
+
 export async function POST(request: Request) {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireTemplateManager();
   if (!access.ok) return access.response;
 
   const { validation } = await readMutation(request);
@@ -100,7 +107,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const access = await requireShopScopedApiAccess();
+  const access = await requireTemplateManager();
   if (!access.ok) return access.response;
 
   const { body, validation } = await readMutation(request);
