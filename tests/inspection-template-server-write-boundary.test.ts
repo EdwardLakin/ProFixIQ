@@ -69,16 +69,22 @@ describe("inspection template server-authoritative write boundary", () => {
     expect(fieldRoute).toContain('.eq("user_id", access.authUserId)');
   });
 
-  it("preserves optimization authorization while moving only template DML to admin", () => {
+  it("preserves optimization role, tenant, and owner checks around admin template DML", () => {
     const apply = read("app/api/optimization/apply/route.ts");
     const undo = read("app/api/optimization/undo/route.ts");
 
+    for (const source of [apply, undo]) {
+      expect(source).toContain("ROLE_GROUPS.billingOperators");
+      expect(source).toContain("canonicalizeRole");
+      expect(source).toContain('.select("shop_id,role")');
+      expect(source).toContain('.eq("shop_id", profile.shop_id)');
+      expect(source).toContain('.eq("user_id", user.id)');
+    }
+
     expect(apply).toContain("const templateAdmin = createAdminSupabase();");
     expect(apply).toContain("await templateAdmin\n          .from(\"inspection_templates\")");
-    expect(apply).toContain('.eq("shop_id", profile.shop_id)');
 
     expect(undo).toContain("const admin = createAdminSupabase();");
     expect(undo).toContain("await admin\n        .from(\"inspection_templates\")");
-    expect(undo).toContain('.eq("shop_id", profile.shop_id)');
   });
 });
