@@ -8,7 +8,7 @@ describe("Equipment inspection content classification", () => {
       inspectionSectionsRequireEquipment([
         {
           title: "Hydraulics",
-          items: [{ item: "Hydraulic pump condition" }],
+          items: [{ item: "Hydraulic pumps" }],
         },
       ]),
     ).toBe(true);
