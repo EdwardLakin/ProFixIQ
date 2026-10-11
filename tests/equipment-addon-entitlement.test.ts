@@ -38,16 +38,50 @@ describe("Equipment add-on billing and entitlement contract", () => {
     expect(entitlement).toContain("EQUIPMENT_ADDON_PRODUCT_KEY");
   });
 
-  it("derives access from the canonical live Stripe subscription and fails closed", () => {
+  it("resolves billing linkage through an exact-shop privileged read after authentication", () => {
+    const entitlement = read(
+      "features/equipment/server/equipmentAddonEntitlement.ts",
+    );
     const route = read("app/api/equipment/entitlement/route.ts");
 
     expect(route).toContain("requireShopScopedApiAccess()");
-    expect(route).toContain('createStripeClient(mustEnv("STRIPE_SECRET_KEY"))');
-    expect(route).toContain("stripe.subscriptions.retrieve");
-    expect(route).toContain("canonical Stripe linkage mismatch");
-    expect(route).toContain("resolveEquipmentAddonEntitlement(subscription)");
+    expect(route).toContain(
+      "resolveEquipmentAddonEntitlementForShop(\n      access.profile.shop_id",
+    );
     expect(route).toContain('"Cache-Control": "private, no-store"');
-    expect(route).toContain("{ status: 503 }");
+    expect(route).toContain("status: 503");
+
+    expect(entitlement).toContain("createAdminSupabase()");
+    expect(entitlement).toContain('.from("shops")');
+    expect(entitlement).toContain('.eq("id", shopId)');
+    expect(entitlement).toContain('createStripeClient(mustEnv("STRIPE_SECRET_KEY"))');
+    expect(entitlement).toContain("stripe.subscriptions.retrieve(subscriptionId)");
+    expect(entitlement).toContain("Canonical Stripe linkage mismatch");
+  });
+
+  it("enforces Equipment content on both Shop and Field template mutations", () => {
+    const guard = read(
+      "features/equipment/server/equipmentInspectionEntitlement.ts",
+    );
+    const shopRoute = read("app/api/inspections/templates/route.ts");
+    const fieldRoute = read(
+      "app/api/mobile/service/inspection-templates/route.ts",
+    );
+
+    expect(guard).toContain("inspectionSectionsRequireEquipment");
+    expect(guard).toContain('title.startsWith("off-road —")');
+    expect(guard).toContain('item.catalogScope ?? ""');
+    expect(guard).toContain("resolveEquipmentAddonEntitlementForShop(shopId)");
+
+    expect(shopRoute).toContain("shopCanMutateInspectionSections");
+    expect(shopRoute).toContain("access.profile.shop_id");
+    expect(shopRoute).toContain("status: 403");
+    expect(shopRoute).toContain("status: 503");
+
+    expect(fieldRoute).toContain("shopCanMutateInspectionSections");
+    expect(fieldRoute).toContain("access.profile.shop_id");
+    expect(fieldRoute).toContain("status: 403");
+    expect(fieldRoute).toContain("status: 503");
   });
 
   it("only exposes off-road equipment selection after entitlement succeeds", () => {
