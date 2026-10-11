@@ -18,6 +18,10 @@ vi.mock("@/features/mobile/service/server/access", () => ({
   requireMobileServiceOperatorApiAccess: mocks.requireAccess,
 }));
 
+vi.mock("@/features/shared/lib/supabase/server", () => ({
+  createAdminSupabase: () => ({ from: mocks.from }),
+}));
+
 import {
   DELETE,
   PATCH,
