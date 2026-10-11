@@ -751,12 +751,6 @@ export default function CreateWorkOrderPage() {
       setWo(null);
       setLines([]);
       setValidatedWorkOrderId(null);
-      if (!resumeWorkOrderId && message.startsWith(CREATE_RESUME_BLOCKED_PREFIX)) {
-        setResumeNotice(STALE_TAB_DRAFT_NOTICE);
-        setResumeBlocked(false);
-        setError("");
-        return;
-      }
       setResumeNotice(null);
       setResumeBlocked(Boolean(resumeWorkOrderId));
       setError(message);

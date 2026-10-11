@@ -1,5 +1,6 @@
 export type CreateResumeWorkOrder = {
   status?: string | null;
+  approval_state?: string | null;
   archived_at?: string | null;
   inspection_id?: string | null;
 };
@@ -7,6 +8,7 @@ export type CreateResumeWorkOrder = {
 export type CreateResumeLine = {
   status?: string | null;
   line_status?: string | null;
+  approval_state?: string | null;
   assigned_tech_id?: string | null;
   assigned_to?: string | null;
   punched_in_at?: string | null;
@@ -14,7 +16,20 @@ export type CreateResumeLine = {
   voided_at?: string | null;
 };
 
-const RESUMABLE_WORK_ORDER_STATUSES = new Set(["awaiting", "new", "draft"]);
+// A work order is created as "awaiting", but the work_order_lines status
+// trigger (private.reconcile_work_order_state) derives work_orders.status from
+// its lines: the first line added during setup makes it "queued", and lines
+// that are pending approval make it "awaiting_approval". Both are still setup
+// while no technician, inspection, punch, line progress or customer decision
+// exists, and those are checked below.
+const RESUMABLE_WORK_ORDER_STATUSES = new Set([
+  "awaiting",
+  "new",
+  "draft",
+  "queued",
+  "awaiting_approval",
+]);
+const DECIDED_APPROVAL_STATES = new Set(["approved", "partial", "declined"]);
 const SETUP_LINE_STATUSES = new Set([
   "",
   "awaiting",
@@ -50,6 +65,14 @@ export function getCreateResumeBlocker(input: {
   }
   if (!RESUMABLE_WORK_ORDER_STATUSES.has(normalizeStatus(workOrder.status))) {
     return "Only work orders still awaiting setup can be continued.";
+  }
+  if (
+    DECIDED_APPROVAL_STATES.has(normalizeStatus(workOrder.approval_state)) ||
+    activeLines.some((line) =>
+      DECIDED_APPROVAL_STATES.has(normalizeStatus(line.approval_state)),
+    )
+  ) {
+    return "A customer approval decision has already been recorded on this work order.";
   }
   if (workOrder.inspection_id || hasInspection) {
     return "This work order already has an inspection in progress.";

@@ -47,11 +47,15 @@ describe("create work order workspace layout", () => {
     expect(page).toContain("<CreateFlowMaintenanceSelector");
   });
 
-  it("resets a stale tab-remembered draft quietly instead of showing a red error", () => {
+  it("resets a stale tab-remembered draft quietly only when the page loads", () => {
     expect(page).toContain("CREATE_RESUME_BLOCKED_PREFIX");
     expect(page).toContain("STALE_TAB_DRAFT_NOTICE");
-    expect(page).toContain(
-      "!resumeWorkOrderId && message.startsWith(CREATE_RESUME_BLOCKED_PREFIX)",
+    const handler = page.slice(
+      page.indexOf("const handleStaleDraft"),
+      page.indexOf("window.addEventListener(CREATE_WORK_ORDER_STALE_EVENT"),
     );
+    // A blocker raised while the advisor is adding lines is a real error.
+    expect(handler).not.toContain("STALE_TAB_DRAFT_NOTICE");
+    expect(handler).toContain("toast.error(message)");
   });
 });
