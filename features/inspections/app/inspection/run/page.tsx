@@ -1,7 +1,7 @@
 // features/inspections/app/inspection/run/page.tsx
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
@@ -36,7 +36,9 @@ function isImportedFleetForm(sections: Section[]): boolean {
   );
 }
 
-async function verifyEquipmentAccess(sections: Section[]): Promise<"allowed" | "denied" | "error"> {
+async function verifyEquipmentAccess(
+  sections: Section[],
+): Promise<"allowed" | "denied" | "error"> {
   if (!inspectionSectionsRequireEquipment(sections)) return "allowed";
 
   try {
@@ -55,10 +57,11 @@ async function verifyEquipmentAccess(sections: Section[]): Promise<"allowed" | "
 export default function RunInspectionPage() {
   const sp = useSearchParams();
   const router = useRouter();
-  const supabase = createBrowserSupabase();
+  const supabase = useMemo(() => createBrowserSupabase(), []);
   const [equipmentPreparationError, setEquipmentPreparationError] =
     useState<EquipmentPreparationError | null>(null);
-  const [equipmentVerificationAttempt, setEquipmentVerificationAttempt] = useState(0);
+  const [equipmentVerificationAttempt, setEquipmentVerificationAttempt] =
+    useState(0);
 
   useEffect(() => {
     let active = true;
@@ -252,9 +255,15 @@ export default function RunInspectionPage() {
         sessionStorage.setItem("inspection:params", JSON.stringify(params));
 
         // Legacy keys
-        sessionStorage.setItem("customInspection:sections", JSON.stringify(sections));
+        sessionStorage.setItem(
+          "customInspection:sections",
+          JSON.stringify(sections),
+        );
         sessionStorage.setItem("customInspection:title", title);
-        sessionStorage.setItem("customInspection:includeOil", JSON.stringify(false));
+        sessionStorage.setItem(
+          "customInspection:includeOil",
+          JSON.stringify(false),
+        );
 
         const next = new URLSearchParams(params);
         next.delete("templateId");
