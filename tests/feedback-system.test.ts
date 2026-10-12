@@ -74,13 +74,52 @@ describe("premier feedback system", () => {
     expect(launcher).toContain('aria-label="Send feedback"');
   });
 
-  it("supports owner attention emails and requester completion emails", () => {
+  it("supports profile-less portal customers through the verified portal identity helper", () => {
+    const route = read("app/api/feedback/route.ts");
+    expect(route).toContain("requirePortalCustomerAccess");
+    expect(route).toContain('role: "customer"');
+    expect(route).toContain("portal.customer.shop_id");
+  });
+
+  it("bounds user-controlled feedback before AI and persistence", () => {
+    const route = read("app/api/feedback/route.ts");
+    const modal = read("features/feedback/components/FeedbackModal.tsx");
+    expect(route).toContain("MAX_DESCRIPTION_LENGTH = 12_000");
+    expect(route).toContain("description.length > MAX_DESCRIPTION_LENGTH");
+    expect(route).toContain("MAX_ATTACHMENTS = 20");
+    expect(modal).toContain("maxLength={MAX_DESCRIPTION_LENGTH}");
+    expect(modal).toContain("maxLength={MAX_CONTEXT_LENGTH}");
+  });
+
+  it("does not match new feedback into terminal clusters and promotes active historical matches", () => {
+    const route = read("app/api/feedback/route.ts");
+    expect(route).toContain("isTerminalRow(row)");
+    expect(route).toContain('metadata?.status === "completed"');
+    expect(route).toContain('metadata?.status === "declined"');
+    expect(route).toContain("historicalMetadata(canonicalRow");
+    expect(route).toContain("feedbackStatusFromLegacy(row.status)");
+  });
+
+  it("claims owner alert events before sending to prevent concurrent duplicate alerts", () => {
+    const route = read("app/api/feedback/route.ts");
+    expect(route).toContain("claimOwnerNotification");
+    expect(route).toContain("ownerNotificationClaimKeys");
+    expect(route.indexOf("claimOwnerNotification(admin")).toBeLessThan(
+      route.indexOf("sendFeedbackAttentionEmail({"),
+    );
+  });
+
+  it("keeps requester completion messaging tenant-neutral and claims delivery per reporter", () => {
     const notifications = read("features/feedback/server/notifications.ts");
     const controlRoute = read("app/api/feedback/[id]/route.ts");
 
-    expect(notifications).toContain("A feedback item needs your attention.");
-    expect(notifications).toContain("You asked, we shipped it:");
+    expect(notifications).toContain("A ProFixIQ improvement you requested is now available");
+    expect(notifications).not.toContain("input.title");
+    expect(notifications).not.toContain("input.summary");
     expect(notifications).toContain("functions.invoke(\"send-email\"");
+    expect(controlRoute).toContain("claimRequesterNotification");
+    expect(controlRoute).toContain("requesterNotificationClaimedReporterIds");
+    expect(controlRoute).not.toContain("&& !deliveryMetadata.requesterNotifiedAt");
     expect(controlRoute).toContain("sendFeedbackCompletedEmails");
     expect(controlRoute).toContain("notifyRequesters");
   });
