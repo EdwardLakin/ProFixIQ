@@ -63,6 +63,17 @@ describe("premier feedback system", () => {
     expect(inferFeedbackSurface("/portal/work-orders/1")).toBe("customer_portal");
   });
 
+  it("mounts feedback on authenticated routes outside the desktop AppShell", () => {
+    const rootBoundary = read("app/RootShellBoundary.tsx");
+    const launcher = read("features/feedback/components/FeedbackLauncher.tsx");
+
+    expect(rootBoundary).toContain("FeedbackLauncher");
+    expect(rootBoundary).toContain("outsideDesktopShell && initialSession?.user?.id");
+    expect(rootBoundary).toContain("showStandaloneFeedback ? <FeedbackLauncher /> : null");
+    expect(launcher).toContain("FeedbackModal");
+    expect(launcher).toContain('aria-label="Send feedback"');
+  });
+
   it("supports owner attention emails and requester completion emails", () => {
     const notifications = read("features/feedback/server/notifications.ts");
     const controlRoute = read("app/api/feedback/[id]/route.ts");
