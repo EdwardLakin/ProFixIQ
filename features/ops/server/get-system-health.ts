@@ -1,6 +1,7 @@
 import "server-only";
 
 import { requireOpsOperatorPageAccess } from "@/features/ops/server/operator-access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 export type OpsHealthState = "healthy" | "degraded" | "down";
 
@@ -63,6 +64,8 @@ function applicationHealth(): OpsHealthService {
 }
 
 export async function getOpsSystemHealth(): Promise<OpsSystemHealthSnapshot> {
+  // Authorization remains user-scoped; only after the owner boundary succeeds do
+  // we use the same privileged ledger path as Feedback Control itself.
   const access = await requireOpsOperatorPageAccess();
   const application = applicationHealth();
   const projectRef = projectRefFromUrl(text(process.env.NEXT_PUBLIC_SUPABASE_URL));
@@ -97,7 +100,7 @@ export async function getOpsSystemHealth(): Promise<OpsSystemHealthSnapshot> {
       };
 
   const feedbackStarted = Date.now();
-  const feedbackRead = await access.supabase
+  const feedbackRead = await createAdminSupabase()
     .from("agent_requests")
     .select("id", { count: "exact", head: true });
   const feedbackLatency = Date.now() - feedbackStarted;
@@ -106,7 +109,7 @@ export async function getOpsSystemHealth(): Promise<OpsSystemHealthSnapshot> {
         key: "feedback",
         label: "Feedback intake",
         state: "down",
-        summary: `Feedback ledger read failed: ${feedbackRead.error.message}`,
+        summary: `Privileged feedback ledger read failed: ${feedbackRead.error.message}`,
         latencyMs: feedbackLatency,
         details: [{ label: "Feedback ledger", value: "Unavailable" }],
       }
@@ -114,10 +117,11 @@ export async function getOpsSystemHealth(): Promise<OpsSystemHealthSnapshot> {
         key: "feedback",
         label: "Feedback intake",
         state: "healthy",
-        summary: "The shared feedback ledger is available to Ops.",
+        summary: "The privileged shared feedback ledger is available to Ops.",
         latencyMs: feedbackLatency,
         details: [
           { label: "Feedback records", value: String(feedbackRead.count ?? 0) },
+          { label: "Privileged ledger read", value: "Passed" },
           { label: "Autonomous coding", value: "Disabled" },
         ],
       };
