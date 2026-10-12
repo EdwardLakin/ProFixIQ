@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Clock3, MessageSquareText, RefreshCw, Users } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Clock3,
+  ImageIcon,
+  MessageSquareText,
+  RefreshCw,
+  Users,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@shared/components/ui/Button";
@@ -43,6 +51,11 @@ type FeedbackItem = {
   submissions: FeedbackSubmission[];
 };
 
+type SignedAttachment = {
+  path: string;
+  url: string;
+};
+
 const STATUS_LABELS: Record<FeedbackStatus, string> = {
   new: "New",
   reviewing: "Reviewing",
@@ -53,7 +66,9 @@ const STATUS_LABELS: Record<FeedbackStatus, string> = {
 };
 
 function pretty(value: string): string {
-  return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+  return value
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 function formatDate(value: string): string {
@@ -61,14 +76,30 @@ function formatDate(value: string): string {
   return Number.isFinite(date.getTime()) ? date.toLocaleString() : value;
 }
 
+function attachmentPaths(context: Record<string, unknown>): string[] {
+  const raw = context.attachmentIds;
+  return Array.isArray(raw)
+    ? raw.filter(
+        (value): value is string =>
+          typeof value === "string" && value.trim().length > 0,
+      )
+    : [];
+}
+
 function statusClasses(status: FeedbackStatus): string {
   switch (status) {
-    case "new": return "border-sky-500/40 bg-sky-500/10 text-sky-300";
-    case "reviewing": return "border-amber-500/40 bg-amber-500/10 text-amber-300";
-    case "planned": return "border-violet-500/40 bg-violet-500/10 text-violet-300";
-    case "in_progress": return "border-orange-500/40 bg-orange-500/10 text-orange-300";
-    case "completed": return "border-emerald-500/40 bg-emerald-500/10 text-emerald-300";
-    case "declined": return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-muted)]";
+    case "new":
+      return "border-sky-500/40 bg-sky-500/10 text-sky-300";
+    case "reviewing":
+      return "border-amber-500/40 bg-amber-500/10 text-amber-300";
+    case "planned":
+      return "border-violet-500/40 bg-violet-500/10 text-violet-300";
+    case "in_progress":
+      return "border-orange-500/40 bg-orange-500/10 text-orange-300";
+    case "completed":
+      return "border-emerald-500/40 bg-emerald-500/10 text-emerald-300";
+    case "declined":
+      return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-muted)]";
   }
 }
 
@@ -82,6 +113,9 @@ export default function FeedbackConsole() {
   const [search, setSearch] = useState("");
   const [internalNotes, setInternalNotes] = useState("");
   const [notifyRequesters, setNotifyRequesters] = useState(true);
+  const [attachmentUrls, setAttachmentUrls] = useState<Record<string, string>>(
+    {},
+  );
 
   const selected = items.find((item) => item.id === selectedId) ?? null;
 
@@ -92,10 +126,16 @@ export default function FeedbackConsole() {
       if (!response.ok) throw new Error("Could not load feedback");
       const payload = (await response.json()) as { items: FeedbackItem[] };
       setItems(payload.items ?? []);
-      const requested = new URLSearchParams(window.location.search).get("feedback");
+      const requested = new URLSearchParams(window.location.search).get(
+        "feedback",
+      );
       setSelectedId((current) => {
-        if (current && payload.items.some((item) => item.id === current)) return current;
-        if (requested && payload.items.some((item) => item.id === requested)) return requested;
+        if (current && payload.items.some((item) => item.id === current)) {
+          return current;
+        }
+        if (requested && payload.items.some((item) => item.id === requested)) {
+          return requested;
+        }
         return payload.items[0]?.id ?? null;
       });
     } catch (error) {
@@ -115,6 +155,52 @@ export default function FeedbackConsole() {
     setNotifyRequesters(true);
   }, [selected?.id, selected?.internalNotes]);
 
+  useEffect(() => {
+    const paths = selected
+      ? [
+          ...new Set(
+            selected.submissions.flatMap((submission) =>
+              attachmentPaths(submission.context),
+            ),
+          ),
+        ]
+      : [];
+
+    if (paths.length === 0) {
+      setAttachmentUrls({});
+      return;
+    }
+
+    let cancelled = false;
+    void fetch("/api/feedback/attachments", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ paths }),
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Could not load attachments");
+        return (await response.json()) as { attachments?: SignedAttachment[] };
+      })
+      .then((payload) => {
+        if (cancelled) return;
+        const next: Record<string, string> = {};
+        for (const attachment of payload.attachments ?? []) {
+          if (attachment.path && attachment.url) {
+            next[attachment.path] = attachment.url;
+          }
+        }
+        setAttachmentUrls(next);
+      })
+      .catch((error) => {
+        console.warn("feedback attachment load failed", error);
+        if (!cancelled) setAttachmentUrls({});
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selected]);
+
   const surfaces = useMemo(
     () => [...new Set(items.map((item) => item.surface))].sort(),
     [items],
@@ -124,21 +210,51 @@ export default function FeedbackConsole() {
     const query = search.trim().toLowerCase();
     return items.filter((item) => {
       if (surfaceFilter !== "all" && item.surface !== surfaceFilter) return false;
-      if (statusFilter === "active" && ["completed", "declined"].includes(item.status)) return false;
+      if (
+        statusFilter === "active" &&
+        ["completed", "declined"].includes(item.status)
+      ) {
+        return false;
+      }
       if (statusFilter === "attention" && !item.needsAttention) return false;
-      if (statusFilter !== "all" && statusFilter !== "active" && statusFilter !== "attention" && item.status !== statusFilter) return false;
+      if (
+        statusFilter !== "all" &&
+        statusFilter !== "active" &&
+        statusFilter !== "attention" &&
+        item.status !== statusFilter
+      ) {
+        return false;
+      }
       if (!query) return true;
-      return [item.title, item.summary, item.recommendation, item.surface, item.kind]
-        .some((value) => value.toLowerCase().includes(query));
+      return [
+        item.title,
+        item.summary,
+        item.recommendation,
+        item.surface,
+        item.kind,
+      ].some((value) => value.toLowerCase().includes(query));
     });
   }, [items, search, statusFilter, surfaceFilter]);
 
-  const metrics = useMemo(() => ({
-    newCount: items.filter((item) => item.status === "new").length,
-    attention: items.filter((item) => item.needsAttention && item.status !== "completed" && item.status !== "declined").length,
-    repeated: items.filter((item) => item.submissionCount >= 3 && item.status !== "completed" && item.status !== "declined").length,
-    completed: items.filter((item) => item.status === "completed").length,
-  }), [items]);
+  const metrics = useMemo(
+    () => ({
+      newCount: items.filter((item) => item.status === "new").length,
+      attention: items.filter(
+        (item) =>
+          item.needsAttention &&
+          item.status !== "completed" &&
+          item.status !== "declined",
+      ).length,
+      repeated: items.filter(
+        (item) =>
+          item.submissionCount >= 3 &&
+          item.status !== "completed" &&
+          item.status !== "declined",
+      ).length,
+      completed: items.filter((item) => item.status === "completed").length,
+    }),
+    [items],
+  );
 
   async function updateItem(input: {
     status?: FeedbackStatus;
@@ -155,20 +271,29 @@ export default function FeedbackConsole() {
           status: input.status,
           needsAttention: input.needsAttention,
           internalNotes: input.saveNotes ? internalNotes : undefined,
-          notifyRequesters: input.status === "completed" ? notifyRequesters : false,
+          notifyRequesters:
+            input.status === "completed" ? notifyRequesters : false,
         }),
       });
-      const payload = (await response.json().catch(() => null)) as { notified?: number; error?: string } | null;
-      if (!response.ok) throw new Error(payload?.error ?? "Update failed");
+      const payload = (await response.json().catch(() => null)) as
+        | { notified?: number; error?: string }
+        | null;
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Update failed");
+      }
       toast.success(
         input.status === "completed" && payload?.notified
-          ? `Completed and notified ${payload.notified} requester${payload.notified === 1 ? "" : "s"}.`
+          ? `Completed and notified ${payload.notified} requester${
+              payload.notified === 1 ? "" : "s"
+            }.`
           : "Feedback updated",
       );
       await load();
     } catch (error) {
       console.error(error);
-      toast.error(error instanceof Error ? error.message : "Could not update feedback");
+      toast.error(
+        error instanceof Error ? error.message : "Could not update feedback",
+      );
     } finally {
       setSaving(false);
     }
@@ -180,24 +305,53 @@ export default function FeedbackConsole() {
         <div>
           <div className="flex items-center gap-2 text-orange-300">
             <MessageSquareText className="h-5 w-5" />
-            <span className="text-xs font-bold uppercase tracking-[0.18em]">Product Intelligence</span>
+            <span className="text-xs font-bold uppercase tracking-[0.18em]">
+              Product Intelligence
+            </span>
           </div>
-          <h1 className="mt-2 text-3xl font-bold tracking-tight">Feedback & Requests</h1>
+          <h1 className="mt-2 text-3xl font-bold tracking-tight">
+            Feedback & Requests
+          </h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-[color:var(--theme-text-secondary)]">
-            Customer feedback from every ProFixIQ surface, automatically grouped and prioritized by frequency and impact. AI organizes the queue; product decisions and implementation stay human-controlled.
+            Customer feedback from every ProFixIQ surface, automatically grouped
+            and prioritized by frequency and impact. AI organizes the queue;
+            product decisions and implementation stay human-controlled.
           </p>
         </div>
-        <Button variant="outline" onClick={() => void load()} disabled={loading} className="gap-2">
-          <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
+        <Button
+          variant="outline"
+          onClick={() => void load()}
+          disabled={loading}
+          className="gap-2"
+        >
+          <RefreshCw
+            className={cn("h-4 w-4", loading && "animate-spin")}
+          />
           Refresh
         </Button>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Metric label="New" value={metrics.newCount} icon={<Clock3 className="h-4 w-4" />} />
-        <Metric label="Needs attention" value={metrics.attention} icon={<AlertTriangle className="h-4 w-4" />} />
-        <Metric label="Repeated requests" value={metrics.repeated} icon={<Users className="h-4 w-4" />} />
-        <Metric label="Completed" value={metrics.completed} icon={<CheckCircle2 className="h-4 w-4" />} />
+        <Metric
+          label="New"
+          value={metrics.newCount}
+          icon={<Clock3 className="h-4 w-4" />}
+        />
+        <Metric
+          label="Needs attention"
+          value={metrics.attention}
+          icon={<AlertTriangle className="h-4 w-4" />}
+        />
+        <Metric
+          label="Repeated requests"
+          value={metrics.repeated}
+          icon={<Users className="h-4 w-4" />}
+        />
+        <Metric
+          label="Completed"
+          value={metrics.completed}
+          icon={<CheckCircle2 className="h-4 w-4" />}
+        />
       </div>
 
       <Card className="p-4">
@@ -208,15 +362,31 @@ export default function FeedbackConsole() {
             placeholder="Search feedback, summaries, or recommendations…"
             className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm"
           />
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm">
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+            className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm"
+          >
             <option value="active">Active</option>
             <option value="attention">Needs Attention</option>
             <option value="all">All Statuses</option>
-            {FEEDBACK_STATUSES.map((status) => <option key={status} value={status}>{STATUS_LABELS[status]}</option>)}
+            {FEEDBACK_STATUSES.map((status) => (
+              <option key={status} value={status}>
+                {STATUS_LABELS[status]}
+              </option>
+            ))}
           </select>
-          <select value={surfaceFilter} onChange={(event) => setSurfaceFilter(event.target.value)} className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm">
+          <select
+            value={surfaceFilter}
+            onChange={(event) => setSurfaceFilter(event.target.value)}
+            className="rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm"
+          >
             <option value="all">All Surfaces</option>
-            {surfaces.map((surface) => <option key={surface} value={surface}>{pretty(surface)}</option>)}
+            {surfaces.map((surface) => (
+              <option key={surface} value={surface}>
+                {pretty(surface)}
+              </option>
+            ))}
           </select>
         </div>
       </Card>
@@ -240,22 +410,45 @@ export default function FeedbackConsole() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
-                      {item.needsAttention ? <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" /> : null}
-                      <span className="font-semibold text-[color:var(--theme-text-primary)]">{item.title}</span>
+                      {item.needsAttention ? (
+                        <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+                      ) : null}
+                      <span className="font-semibold text-[color:var(--theme-text-primary)]">
+                        {item.title}
+                      </span>
                     </div>
-                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-[color:var(--theme-text-muted)]">{item.summary}</p>
+                    <p className="mt-1 line-clamp-2 text-xs leading-5 text-[color:var(--theme-text-muted)]">
+                      {item.summary}
+                    </p>
                   </div>
-                  <span className={cn("shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold uppercase", statusClasses(item.status))}>{STATUS_LABELS[item.status]}</span>
+                  <span
+                    className={cn(
+                      "shrink-0 rounded-full border px-2 py-1 text-[10px] font-bold uppercase",
+                      statusClasses(item.status),
+                    )}
+                  >
+                    {STATUS_LABELS[item.status]}
+                  </span>
                 </div>
                 <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-[color:var(--theme-text-muted)]">
                   <span>{pretty(item.surface)}</span>
                   <span>{pretty(item.kind)}</span>
-                  <span>{item.submissionCount} report{item.submissionCount === 1 ? "" : "s"}</span>
-                  <span>{item.uniqueShopCount} shop{item.uniqueShopCount === 1 ? "" : "s"}</span>
+                  <span>
+                    {item.submissionCount} report
+                    {item.submissionCount === 1 ? "" : "s"}
+                  </span>
+                  <span>
+                    {item.uniqueShopCount} shop
+                    {item.uniqueShopCount === 1 ? "" : "s"}
+                  </span>
                 </div>
               </button>
             ))}
-            {!loading && filtered.length === 0 ? <p className="p-6 text-sm text-[color:var(--theme-text-muted)]">No feedback matches these filters.</p> : null}
+            {!loading && filtered.length === 0 ? (
+              <p className="p-6 text-sm text-[color:var(--theme-text-muted)]">
+                No feedback matches these filters.
+              </p>
+            ) : null}
           </div>
         </Card>
 
@@ -264,13 +457,28 @@ export default function FeedbackConsole() {
             <div className="space-y-6">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className={cn("rounded-full border px-2 py-1 text-[10px] font-bold uppercase", statusClasses(selected.status))}>{STATUS_LABELS[selected.status]}</span>
-                  <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-1 text-[10px] font-bold uppercase text-[color:var(--theme-text-secondary)]">{pretty(selected.surface)}</span>
-                  <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-1 text-[10px] font-bold uppercase text-[color:var(--theme-text-secondary)]">{pretty(selected.kind)}</span>
-                  <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-1 text-[10px] font-bold uppercase text-[color:var(--theme-text-secondary)]">{pretty(selected.severity)}</span>
+                  <span
+                    className={cn(
+                      "rounded-full border px-2 py-1 text-[10px] font-bold uppercase",
+                      statusClasses(selected.status),
+                    )}
+                  >
+                    {STATUS_LABELS[selected.status]}
+                  </span>
+                  <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-1 text-[10px] font-bold uppercase text-[color:var(--theme-text-secondary)]">
+                    {pretty(selected.surface)}
+                  </span>
+                  <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-1 text-[10px] font-bold uppercase text-[color:var(--theme-text-secondary)]">
+                    {pretty(selected.kind)}
+                  </span>
+                  <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2 py-1 text-[10px] font-bold uppercase text-[color:var(--theme-text-secondary)]">
+                    {pretty(selected.severity)}
+                  </span>
                 </div>
                 <h2 className="mt-3 text-2xl font-bold">{selected.title}</h2>
-                <p className="mt-2 text-sm leading-6 text-[color:var(--theme-text-secondary)]">{selected.summary}</p>
+                <p className="mt-2 text-sm leading-6 text-[color:var(--theme-text-secondary)]">
+                  {selected.summary}
+                </p>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-3">
@@ -280,23 +488,44 @@ export default function FeedbackConsole() {
               </div>
 
               <section className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-4">
-                <p className="text-xs font-bold uppercase tracking-wider text-sky-300">AI recommendation</p>
-                <p className="mt-2 text-sm leading-6 text-[color:var(--theme-text-secondary)]">{selected.recommendation}</p>
-                <p className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">Triage mode: {selected.aiMode}. Frequency and shop counts above are measured from actual submissions.</p>
+                <p className="text-xs font-bold uppercase tracking-wider text-sky-300">
+                  AI recommendation
+                </p>
+                <p className="mt-2 text-sm leading-6 text-[color:var(--theme-text-secondary)]">
+                  {selected.recommendation}
+                </p>
+                <p className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
+                  Triage mode: {selected.aiMode}. Frequency and shop counts above
+                  are measured from actual submissions.
+                </p>
               </section>
 
               <section>
-                <p className="mb-2 text-xs font-bold uppercase tracking-wider text-[color:var(--theme-text-muted)]">Product decision</p>
+                <p className="mb-2 text-xs font-bold uppercase tracking-wider text-[color:var(--theme-text-muted)]">
+                  Product decision
+                </p>
                 <div className="flex flex-wrap gap-2">
                   {FEEDBACK_STATUSES.map((status) => (
-                    <Button key={status} type="button" variant={selected.status === status ? "default" : "outline"} disabled={saving || selected.status === status} onClick={() => void updateItem({ status })}>
+                    <Button
+                      key={status}
+                      type="button"
+                      variant={selected.status === status ? "default" : "outline"}
+                      disabled={saving || selected.status === status}
+                      onClick={() => void updateItem({ status })}
+                    >
                       {STATUS_LABELS[status]}
                     </Button>
                   ))}
                 </div>
                 {selected.status !== "completed" ? (
                   <label className="mt-3 flex items-center gap-2 text-sm text-[color:var(--theme-text-secondary)]">
-                    <input type="checkbox" checked={notifyRequesters} onChange={(event) => setNotifyRequesters(event.target.checked)} />
+                    <input
+                      type="checkbox"
+                      checked={notifyRequesters}
+                      onChange={(event) =>
+                        setNotifyRequesters(event.target.checked)
+                      }
+                    />
                     Notify requesters automatically when I mark this Completed
                   </label>
                 ) : null}
@@ -304,38 +533,116 @@ export default function FeedbackConsole() {
 
               <section>
                 <div className="mb-2 flex items-center justify-between gap-3">
-                  <p className="text-xs font-bold uppercase tracking-wider text-[color:var(--theme-text-muted)]">Internal notes</p>
-                  <Button variant="outline" size="sm" disabled={saving} onClick={() => void updateItem({ saveNotes: true })}>Save Notes</Button>
+                  <p className="text-xs font-bold uppercase tracking-wider text-[color:var(--theme-text-muted)]">
+                    Internal notes
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={saving}
+                    onClick={() => void updateItem({ saveNotes: true })}
+                  >
+                    Save Notes
+                  </Button>
                 </div>
-                <textarea value={internalNotes} onChange={(event) => setInternalNotes(event.target.value)} rows={4} placeholder="Decision, implementation notes, PR number, reason for declining, etc." className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-3 text-sm" />
+                <textarea
+                  value={internalNotes}
+                  onChange={(event) => setInternalNotes(event.target.value)}
+                  rows={4}
+                  placeholder="Decision, implementation notes, PR number, reason for declining, etc."
+                  className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-3 text-sm"
+                />
               </section>
 
               <section>
                 <div className="mb-3 flex items-center justify-between gap-3">
-                  <p className="text-xs font-bold uppercase tracking-wider text-[color:var(--theme-text-muted)]">Original submissions</p>
-                  <Button variant="outline" size="sm" disabled={saving} onClick={() => void updateItem({ needsAttention: !selected.needsAttention })}>
-                    {selected.needsAttention ? "Clear Attention Flag" : "Flag for Attention"}
+                  <p className="text-xs font-bold uppercase tracking-wider text-[color:var(--theme-text-muted)]">
+                    Original submissions
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={saving}
+                    onClick={() =>
+                      void updateItem({
+                        needsAttention: !selected.needsAttention,
+                      })
+                    }
+                  >
+                    {selected.needsAttention
+                      ? "Clear Attention Flag"
+                      : "Flag for Attention"}
                   </Button>
                 </div>
                 <div className="space-y-3">
-                  {[...selected.submissions].reverse().map((submission) => (
-                    <div key={submission.id} className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4">
-                      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[color:var(--theme-text-muted)]">
-                        <span>{formatDate(submission.createdAt)}</span>
-                        {submission.reporterRole ? <span>{pretty(submission.reporterRole)}</span> : null}
-                        {submission.shopId ? <span>Shop {submission.shopId.slice(0, 8)}…</span> : null}
+                  {[...selected.submissions].reverse().map((submission) => {
+                    const paths = attachmentPaths(submission.context);
+                    return (
+                      <div
+                        key={submission.id}
+                        className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-4"
+                      >
+                        <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-[color:var(--theme-text-muted)]">
+                          <span>{formatDate(submission.createdAt)}</span>
+                          {submission.reporterRole ? (
+                            <span>{pretty(submission.reporterRole)}</span>
+                          ) : null}
+                          {submission.shopId ? (
+                            <span>
+                              Shop {submission.shopId.slice(0, 8)}…
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
+                          {submission.description}
+                        </p>
+                        {typeof submission.context.location === "string" ? (
+                          <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">
+                            Location: {submission.context.location}
+                          </p>
+                        ) : null}
+                        {paths.length > 0 ? (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {paths.map((path, index) => {
+                              const url = attachmentUrls[path];
+                              return url ? (
+                                <a
+                                  key={path}
+                                  href={url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-xs font-semibold transition hover:border-orange-500/40"
+                                >
+                                  <ImageIcon className="h-4 w-4" />
+                                  Screenshot {index + 1}
+                                </a>
+                              ) : (
+                                <span
+                                  key={path}
+                                  className="inline-flex items-center gap-2 rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs text-[color:var(--theme-text-muted)]"
+                                >
+                                  <ImageIcon className="h-4 w-4" />
+                                  Loading screenshot…
+                                </span>
+                              );
+                            })}
+                          </div>
+                        ) : null}
                       </div>
-                      <p className="mt-2 whitespace-pre-wrap text-sm leading-6">{submission.description}</p>
-                      {typeof submission.context.location === "string" ? <p className="mt-2 text-xs text-[color:var(--theme-text-muted)]">Location: {submission.context.location}</p> : null}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
 
-              <p className="text-xs text-[color:var(--theme-text-muted)]">First reported {formatDate(selected.firstSeenAt)} · Last activity {formatDate(selected.lastSeenAt)}</p>
+              <p className="text-xs text-[color:var(--theme-text-muted)]">
+                First reported {formatDate(selected.firstSeenAt)} · Last activity{" "}
+                {formatDate(selected.lastSeenAt)}
+              </p>
             </div>
           ) : (
-            <div className="flex min-h-[420px] items-center justify-center text-sm text-[color:var(--theme-text-muted)]">Select a feedback item to review it.</div>
+            <div className="flex min-h-[420px] items-center justify-center text-sm text-[color:var(--theme-text-muted)]">
+              Select a feedback item to review it.
+            </div>
           )}
         </Card>
       </div>
@@ -343,10 +650,21 @@ export default function FeedbackConsole() {
   );
 }
 
-function Metric({ label, value, icon }: { label: string; value: number; icon: React.ReactNode }) {
+function Metric({
+  label,
+  value,
+  icon,
+}: {
+  label: string;
+  value: number;
+  icon: React.ReactNode;
+}) {
   return (
     <Card className="p-4">
-      <div className="flex items-center justify-between text-[color:var(--theme-text-muted)]"><span className="text-xs font-bold uppercase tracking-wider">{label}</span>{icon}</div>
+      <div className="flex items-center justify-between text-[color:var(--theme-text-muted)]">
+        <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
+        {icon}
+      </div>
       <p className="mt-2 text-3xl font-bold">{value}</p>
     </Card>
   );
@@ -355,7 +673,9 @@ function Metric({ label, value, icon }: { label: string; value: number; icon: Re
 function MiniMetric({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3">
-      <p className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--theme-text-muted)]">{label}</p>
+      <p className="text-[10px] font-bold uppercase tracking-wider text-[color:var(--theme-text-muted)]">
+        {label}
+      </p>
       <p className="mt-1 text-xl font-bold">{value}</p>
     </div>
   );
