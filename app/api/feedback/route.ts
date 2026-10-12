@@ -9,6 +9,7 @@ import {
   isRecord,
   readFeedbackMetadata,
   type FeedbackKind,
+  type FeedbackMetadata,
 } from "@/features/feedback/lib/feedback";
 import { sendFeedbackAttentionEmail } from "@/features/feedback/server/notifications";
 import { triageFeedback, type FeedbackCandidate } from "@/features/feedback/server/triageFeedback";
@@ -19,9 +20,30 @@ import {
 } from "@/features/feedback/server/ledger";
 import { requireOpsOperatorApiAccess } from "@/features/ops/server/operator-access";
 import {
+  PortalAccessError,
+  requirePortalCustomerAccess,
+} from "@/features/portal/server/portalAuth";
+import {
   createAdminSupabase,
   createServerSupabaseRoute,
 } from "@/features/shared/lib/supabase/server";
+
+const MAX_DESCRIPTION_LENGTH = 12_000;
+const MAX_CONTEXT_LENGTH = 4_000;
+const MAX_LOCATION_LENGTH = 500;
+const MAX_DEVICE_LENGTH = 1_000;
+const MAX_ATTACHMENTS = 20;
+const MAX_ATTACHMENT_PATH_LENGTH = 500;
+
+const REPORT_MILESTONES = new Set([3, 5, 10, 25, 50, 100]);
+const SHOP_MILESTONES = new Set([2, 3, 5, 10, 25, 50]);
+
+const SEVERITY_RANK: Record<string, number> = {
+  low: 0,
+  normal: 1,
+  high: 2,
+  critical: 3,
+};
 
 type FeedbackContext = {
   location: string | null;
@@ -47,9 +69,15 @@ type CreateFeedbackBody = {
   submissionKey?: string;
 };
 
-function nullableText(value: unknown): string | null {
+type ReporterIdentity = {
+  id: string;
+  shopId: string | null;
+  role: string | null;
+};
+
+function boundedText(value: unknown, maxLength: number): string | null {
   const text = typeof value === "string" ? value.trim() : "";
-  return text || null;
+  return text ? text.slice(0, maxLength) : null;
 }
 
 function normalizeKind(value: unknown): FeedbackKind {
@@ -59,21 +87,46 @@ function normalizeKind(value: unknown): FeedbackKind {
 }
 
 function contextFromBody(body: CreateFeedbackBody): FeedbackContext {
+  const attachmentIds = Array.isArray(body.attachmentIds)
+    ? [...new Set(
+        body.attachmentIds
+          .filter((value): value is string => typeof value === "string")
+          .map((value) => value.trim())
+          .filter(Boolean),
+      )]
+        .slice(0, MAX_ATTACHMENTS)
+        .map((value) => value.slice(0, MAX_ATTACHMENT_PATH_LENGTH))
+    : [];
+
   return {
-    location: nullableText(body.location),
-    pathname: nullableText(body.pathname),
-    steps: nullableText(body.steps),
-    expected: nullableText(body.expected),
-    actual: nullableText(body.actual),
-    device: nullableText(body.device),
-    attachmentIds: Array.isArray(body.attachmentIds)
-      ? body.attachmentIds.filter(
-          (value): value is string =>
-            typeof value === "string" && value.trim().length > 0,
-        )
-      : [],
-    submissionKey: nullableText(body.submissionKey)?.slice(0, 100) ?? null,
+    location: boundedText(body.location, MAX_LOCATION_LENGTH),
+    pathname: boundedText(body.pathname, MAX_LOCATION_LENGTH),
+    steps: boundedText(body.steps, MAX_CONTEXT_LENGTH),
+    expected: boundedText(body.expected, MAX_CONTEXT_LENGTH),
+    actual: boundedText(body.actual, MAX_CONTEXT_LENGTH),
+    device: boundedText(body.device, MAX_DEVICE_LENGTH),
+    attachmentIds,
+    submissionKey: boundedText(body.submissionKey, 100),
   };
+}
+
+function clusterIdFor(row: AgentRequestRow): string {
+  return readFeedbackMetadata(row.normalized_json)?.clusterId ?? row.id;
+}
+
+function rowContext(row: AgentRequestRow): Record<string, unknown> {
+  return isRecord(row.normalized_json) ? row.normalized_json : {};
+}
+
+function isTerminalRow(row: AgentRequestRow): boolean {
+  const metadata = readFeedbackMetadata(row.normalized_json);
+  const legacyStatus = feedbackStatusFromLegacy(row.status);
+  return (
+    metadata?.status === "completed" ||
+    metadata?.status === "declined" ||
+    legacyStatus === "completed" ||
+    legacyStatus === "declined"
+  );
 }
 
 function fallbackCandidate(row: AgentRequestRow): FeedbackCandidate {
@@ -100,6 +153,8 @@ function fallbackCandidate(row: AgentRequestRow): FeedbackCandidate {
 function buildCandidates(rows: AgentRequestRow[]): FeedbackCandidate[] {
   const grouped = new Map<string, FeedbackCandidate>();
   for (const row of rows) {
+    // Completed and declined work must not silently absorb new customer demand.
+    if (isTerminalRow(row)) continue;
     const candidate = fallbackCandidate(row);
     const existing = grouped.get(candidate.id);
     if (existing) {
@@ -112,21 +167,6 @@ function buildCandidates(rows: AgentRequestRow[]): FeedbackCandidate[] {
     .sort((left, right) => right.submissionCount - left.submissionCount)
     .slice(0, 18);
 }
-
-function clusterIdFor(row: AgentRequestRow): string {
-  return readFeedbackMetadata(row.normalized_json)?.clusterId ?? row.id;
-}
-
-function rowContext(row: AgentRequestRow): Record<string, unknown> {
-  return isRecord(row.normalized_json) ? row.normalized_json : {};
-}
-
-const SEVERITY_RANK: Record<string, number> = {
-  low: 0,
-  normal: 1,
-  high: 2,
-  critical: 3,
-};
 
 function replayResponse(row: Pick<AgentRequestRow, "id" | "normalized_json">) {
   const existingMeta = readFeedbackMetadata(row.normalized_json);
@@ -157,11 +197,121 @@ async function findReplay(
   return data as Pick<AgentRequestRow, "id" | "normalized_json"> | null;
 }
 
-async function markOwnerNotified(
+async function resolveReporterIdentity(
+  supabase: ReturnType<typeof createServerSupabaseRoute>,
+  user: { id: string; email?: string | null },
+): Promise<ReporterIdentity | NextResponse> {
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, shop_id, role")
+    .eq("id", user.id)
+    .maybeSingle();
+
+  if (profileError) {
+    console.error("feedback profile lookup failed", profileError);
+    return NextResponse.json({ error: "Could not resolve feedback identity" }, { status: 500 });
+  }
+
+  if (profile) {
+    return {
+      id: profile.id,
+      shopId: profile.shop_id,
+      role: profile.role,
+    };
+  }
+
+  const email = user.email?.trim().toLowerCase() ?? "";
+  if (!email) {
+    return NextResponse.json({ error: "Feedback identity not found" }, { status: 403 });
+  }
+
+  try {
+    const portal = await requirePortalCustomerAccess(user.id, email);
+    return {
+      id: user.id,
+      shopId: portal.customer.shop_id,
+      role: "customer",
+    };
+  } catch (error) {
+    if (error instanceof PortalAccessError) {
+      return NextResponse.json({ error: "Feedback identity not found" }, { status: error.status });
+    }
+    console.error("feedback portal identity lookup failed", error);
+    return NextResponse.json({ error: "Could not resolve feedback identity" }, { status: 500 });
+  }
+}
+
+function historicalMetadata(
+  row: AgentRequestRow,
+  input: {
+    now: string;
+    kind: FeedbackKind;
+    surface: FeedbackMetadata["surface"];
+    severity: FeedbackMetadata["severity"];
+    needsAttention: boolean;
+    recommendation: string;
+  },
+): FeedbackMetadata {
+  const legacyStatus = feedbackStatusFromLegacy(row.status);
+  const context = rowContext(row);
+  return {
+    version: 1,
+    clusterId: row.id,
+    isCanonical: true,
+    status: legacyStatus,
+    kind: row.intent === "bug_report" ? "bug" : input.kind,
+    surface: inferFeedbackSurface(
+      typeof context.location === "string" ? context.location : null,
+    ) === "other"
+      ? input.surface
+      : inferFeedbackSurface(
+          typeof context.location === "string" ? context.location : null,
+        ),
+    title: row.description.slice(0, 100),
+    summary: row.description.slice(0, 500),
+    severity: input.severity,
+    needsAttention: row.status === "failed" || input.needsAttention,
+    recommendation: row.llm_notes ?? input.recommendation,
+    aiMode: "fallback",
+    aiModel: row.llm_model,
+    duplicateConfidence: null,
+    internalNotes: null,
+    firstSeenAt: row.created_at,
+    lastSeenAt: input.now,
+    ownerNotifiedAt: null,
+    ownerNotificationKeys: [],
+    ownerNotificationClaimKeys: [],
+    completedAt: legacyStatus === "completed" ? row.updated_at : null,
+    requesterNotifiedAt: null,
+    requesterNotifiedReporterIds: [],
+    requesterNotificationSkippedReporterIds: [],
+    requesterNotificationClaimedReporterIds: [],
+  };
+}
+
+function ownerNotificationKey(input: {
+  isNew: boolean;
+  attentionEscalated: boolean;
+  submissionCount: number;
+  uniqueShopCount: number;
+  addedNewShop: boolean;
+}): string | null {
+  if (input.isNew) return "created";
+  if (input.attentionEscalated) return "attention";
+  if (REPORT_MILESTONES.has(input.submissionCount)) {
+    return `reports:${input.submissionCount}`;
+  }
+  if (input.addedNewShop && SHOP_MILESTONES.has(input.uniqueShopCount)) {
+    return `shops:${input.uniqueShopCount}`;
+  }
+  return null;
+}
+
+async function claimOwnerNotification(
   admin: ReturnType<typeof createAdminSupabase>,
   canonicalId: string,
-  notifiedAt: string,
-): Promise<void> {
+  key: string,
+): Promise<boolean> {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const { data, error } = await admin
       .from("agent_requests")
@@ -169,19 +319,26 @@ async function markOwnerNotified(
       .eq("id", canonicalId)
       .maybeSingle();
     if (error || !data) {
-      console.warn("feedback owner notification metadata reload failed", error);
-      return;
+      console.warn("feedback owner notification claim reload failed", error);
+      return false;
     }
     const row = data as AgentRequestRow;
     const metadata = readFeedbackMetadata(row.normalized_json);
-    if (!metadata || metadata.ownerNotifiedAt) return;
+    if (!metadata) return false;
+    const delivered = new Set(metadata.ownerNotificationKeys ?? []);
+    const claims = new Set(metadata.ownerNotificationClaimKeys ?? []);
+    if (delivered.has(key) || claims.has(key)) return false;
+    claims.add(key);
     const updatedAt = new Date().toISOString();
     const { data: updated, error: updateError } = await admin
       .from("agent_requests")
       .update({
         normalized_json: {
           ...rowContext(row),
-          feedback: { ...metadata, ownerNotifiedAt: notifiedAt },
+          feedback: {
+            ...metadata,
+            ownerNotificationClaimKeys: [...claims],
+          },
         } as Json,
         updated_at: updatedAt,
       })
@@ -190,25 +347,62 @@ async function markOwnerNotified(
       .select("id")
       .maybeSingle();
     if (updateError) {
-      console.warn("feedback owner notification metadata update failed", updateError);
+      console.warn("feedback owner notification claim failed", updateError);
+      return false;
+    }
+    if (updated) return true;
+  }
+  return false;
+}
+
+async function settleOwnerNotification(
+  admin: ReturnType<typeof createAdminSupabase>,
+  canonicalId: string,
+  key: string,
+  delivered: boolean,
+): Promise<void> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const { data, error } = await admin
+      .from("agent_requests")
+      .select("*")
+      .eq("id", canonicalId)
+      .maybeSingle();
+    if (error || !data) {
+      console.warn("feedback owner notification settlement reload failed", error);
+      return;
+    }
+    const row = data as AgentRequestRow;
+    const metadata = readFeedbackMetadata(row.normalized_json);
+    if (!metadata) return;
+    const claims = new Set(metadata.ownerNotificationClaimKeys ?? []);
+    claims.delete(key);
+    const sent = new Set(metadata.ownerNotificationKeys ?? []);
+    if (delivered) sent.add(key);
+    const updatedAt = new Date().toISOString();
+    const { data: updated, error: updateError } = await admin
+      .from("agent_requests")
+      .update({
+        normalized_json: {
+          ...rowContext(row),
+          feedback: {
+            ...metadata,
+            ownerNotificationClaimKeys: [...claims],
+            ownerNotificationKeys: [...sent],
+            ownerNotifiedAt: delivered ? updatedAt : metadata.ownerNotifiedAt ?? null,
+          },
+        } as Json,
+        updated_at: updatedAt,
+      })
+      .eq("id", canonicalId)
+      .eq("updated_at", row.updated_at)
+      .select("id")
+      .maybeSingle();
+    if (updateError) {
+      console.warn("feedback owner notification settlement failed", updateError);
       return;
     }
     if (updated) return;
   }
-}
-
-/** True only when this submission crosses a configured frequency milestone. */
-function frequencyMilestone(input: {
-  submissionCount: number;
-  uniqueShopCount: number;
-  addedNewShop: boolean;
-}): boolean {
-  const reportMilestones = new Set([3, 5, 10, 25, 50, 100]);
-  const shopMilestones = new Set([2, 3, 5, 10, 25, 50]);
-  return (
-    reportMilestones.has(input.submissionCount) ||
-    (input.addedNewShop && shopMilestones.has(input.uniqueShopCount))
-  );
 }
 
 export async function POST(req: NextRequest) {
@@ -219,27 +413,26 @@ export async function POST(req: NextRequest) {
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const body = (await req.json().catch(() => null)) as CreateFeedbackBody | null;
-  const description = body?.description?.trim() ?? "";
+  const description = typeof body?.description === "string" ? body.description.trim() : "";
   if (!description) {
     return NextResponse.json({ error: "description is required" }, { status: 400 });
   }
-
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("id, shop_id, role")
-    .eq("id", user.id)
-    .single();
-  if (profileError || !profile) {
-    console.error("feedback profile lookup failed", profileError);
-    return NextResponse.json({ error: "Profile not found" }, { status: 400 });
+  if (description.length > MAX_DESCRIPTION_LENGTH) {
+    return NextResponse.json(
+      { error: `description must be ${MAX_DESCRIPTION_LENGTH} characters or fewer` },
+      { status: 400 },
+    );
   }
+
+  const identity = await resolveReporterIdentity(supabase, user);
+  if (identity instanceof NextResponse) return identity;
 
   const requestedKind = normalizeKind(body?.kind);
   const context = contextFromBody(body ?? {});
   const admin = createAdminSupabase();
 
   if (context.submissionKey) {
-    const existing = await findReplay(admin, profile.id, context.submissionKey);
+    const existing = await findReplay(admin, identity.id, context.submissionKey);
     if (existing) return replayResponse(existing);
   }
 
@@ -257,19 +450,19 @@ export async function POST(req: NextRequest) {
     description,
     requestedKind,
     pathname: context.pathname ?? context.location,
-    role: profile.role,
+    role: identity.role,
     candidates: buildCandidates(rows),
-    shopId: profile.shop_id,
-    userId: profile.id,
+    shopId: identity.shopId,
+    userId: identity.id,
   });
 
   const now = new Date().toISOString();
   const duplicateId = triage.output.duplicateOf;
-  const initialFeedback = {
-    version: 1 as const,
+  const initialFeedback: FeedbackMetadata = {
+    version: 1,
     clusterId: duplicateId,
     isCanonical: duplicateId === null,
-    status: "new" as const,
+    status: "new",
     kind: triage.output.kind,
     surface: triage.output.surface,
     title: triage.output.title,
@@ -283,10 +476,13 @@ export async function POST(req: NextRequest) {
     firstSeenAt: now,
     lastSeenAt: now,
     ownerNotifiedAt: null,
+    ownerNotificationKeys: [],
+    ownerNotificationClaimKeys: [],
     completedAt: null,
     requesterNotifiedAt: null,
-    requesterNotifiedReporterIds: [] as string[],
-    requesterNotificationSkippedReporterIds: [] as string[],
+    requesterNotifiedReporterIds: [],
+    requesterNotificationSkippedReporterIds: [],
+    requesterNotificationClaimedReporterIds: [],
   };
 
   const normalizedJson: Json = {
@@ -297,9 +493,9 @@ export async function POST(req: NextRequest) {
   const { data: inserted, error: insertError } = await admin
     .from("agent_requests")
     .insert({
-      shop_id: profile.shop_id,
-      reporter_id: profile.id,
-      reporter_role: profile.role,
+      shop_id: identity.shopId,
+      reporter_id: identity.id,
+      reporter_role: identity.role,
       description,
       intent: feedbackKindToAgentIntent(triage.output.kind),
       normalized_json: normalizedJson,
@@ -312,11 +508,8 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (insertError || !inserted) {
-    // A simultaneous retry can pass the preflight with the winning request and
-    // then lose on the unique reporter/submissionKey index. Return the winner's
-    // normal receipt instead of telling the user that a saved submission failed.
     if (insertError?.code === "23505" && context.submissionKey) {
-      const winner = await findReplay(admin, profile.id, context.submissionKey);
+      const winner = await findReplay(admin, identity.id, context.submissionKey);
       if (winner) return replayResponse(winner);
     }
     console.error("feedback insert failed", insertError);
@@ -345,7 +538,7 @@ export async function POST(req: NextRequest) {
     : null;
 
   if (!duplicateId) {
-    const selfMetadata = {
+    const selfMetadata: FeedbackMetadata = {
       ...initialFeedback,
       clusterId: inserted.id,
       isCanonical: true,
@@ -364,23 +557,27 @@ export async function POST(req: NextRequest) {
     if (error) console.warn("feedback canonical self-link update failed", error);
     if (updated) canonicalRow = updated as AgentRequestRow;
   } else if (canonicalRow) {
-    // Whole-row version CAS. Lifecycle edits and notification receipt writes
-    // also advance updated_at, so this aggregation path can never restore an
-    // older status, notes, or delivery state while raising severity/frequency.
     for (let attempt = 0; attempt < 5 && canonicalRow; attempt += 1) {
-      const canonicalMeta = readFeedbackMetadata(canonicalRow.normalized_json);
-      if (!canonicalMeta) break;
+      const existingMeta = readFeedbackMetadata(canonicalRow.normalized_json);
+      const canonicalMeta = existingMeta ?? historicalMetadata(canonicalRow, {
+        now,
+        kind: triage.output.kind,
+        surface: triage.output.surface,
+        severity: triage.output.severity,
+        needsAttention: triage.output.needsAttention,
+        recommendation: triage.output.recommendation,
+      });
       const severity =
         (SEVERITY_RANK[triage.output.severity] ?? 0) >
         (SEVERITY_RANK[canonicalMeta.severity] ?? 0)
           ? triage.output.severity
           : canonicalMeta.severity;
-      const needsAttention =
-        canonicalMeta.needsAttention || triage.output.needsAttention;
-      const nextMeta = {
+      const nextMeta: FeedbackMetadata = {
         ...canonicalMeta,
+        clusterId: canonicalId,
+        isCanonical: true,
         lastSeenAt: now > canonicalMeta.lastSeenAt ? now : canonicalMeta.lastSeenAt,
-        needsAttention,
+        needsAttention: canonicalMeta.needsAttention || triage.output.needsAttention,
         severity,
       };
       const aggregateUpdatedAt = new Date().toISOString();
@@ -395,12 +592,6 @@ export async function POST(req: NextRequest) {
         })
         .eq("id", canonicalId)
         .eq("updated_at", canonicalRow.updated_at)
-        .eq("normalized_json->feedback->>lastSeenAt", canonicalMeta.lastSeenAt)
-        .eq("normalized_json->feedback->>severity", canonicalMeta.severity)
-        .eq(
-          "normalized_json->feedback->>needsAttention",
-          String(canonicalMeta.needsAttention),
-        )
         .select("*")
         .maybeSingle();
       if (error) {
@@ -432,29 +623,28 @@ export async function POST(req: NextRequest) {
   ].filter(
     (row, index, all) => all.findIndex((candidate) => candidate.id === row.id) === index,
   );
-  const uniqueShops = new Set(
-    groupRows.map((row) => row.shop_id).filter(Boolean),
-  );
+  const uniqueShops = new Set(groupRows.map((row) => row.shop_id).filter(Boolean));
   const priorShops = new Set(
     groupRows
       .filter((row) => row.id !== inserted.id)
       .map((row) => row.shop_id)
       .filter(Boolean),
   );
-  const addedNewShop =
-    inserted.shop_id !== null && !priorShops.has(inserted.shop_id);
+  const addedNewShop = inserted.shop_id !== null && !priorShops.has(inserted.shop_id);
   const attentionEscalated =
     triage.output.needsAttention && previousCanonicalMeta?.needsAttention !== true;
-  const shouldNotify =
-    duplicateId === null ||
-    attentionEscalated ||
-    frequencyMilestone({
-      submissionCount: groupRows.length,
-      uniqueShopCount: uniqueShops.size,
-      addedNewShop,
-    });
+  const notificationKey = ownerNotificationKey({
+    isNew: duplicateId === null,
+    attentionEscalated,
+    submissionCount: groupRows.length,
+    uniqueShopCount: uniqueShops.size,
+    addedNewShop,
+  });
 
-  if (shouldNotify) {
+  if (
+    notificationKey &&
+    (await claimOwnerNotification(admin, canonicalId, notificationKey))
+  ) {
     const delivered = await sendFeedbackAttentionEmail({
       title: triage.output.title,
       summary: triage.output.summary,
@@ -466,13 +656,14 @@ export async function POST(req: NextRequest) {
       recommendation: triage.output.recommendation,
       feedbackId: canonicalId,
     });
-    if (delivered) {
-      await markOwnerNotified(admin, canonicalId, now);
-    }
+    await settleOwnerNotification(
+      admin,
+      canonicalId,
+      notificationKey,
+      delivered,
+    );
   }
 
-  // Deliberately minimal: the reporter must never receive model output or
-  // identifiers from the cross-tenant clustering context.
   return NextResponse.json({
     ok: true,
     submissionId: inserted.id,
