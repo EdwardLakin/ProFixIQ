@@ -53,14 +53,26 @@ export type FeedbackMetadata = {
   firstSeenAt: string;
   lastSeenAt: string;
   ownerNotifiedAt?: string | null;
+  ownerNotificationKeys?: string[];
+  ownerNotificationClaimKeys?: string[];
   completedAt?: string | null;
   requesterNotifiedAt?: string | null;
   requesterNotifiedReporterIds?: string[];
   requesterNotificationSkippedReporterIds?: string[];
+  requesterNotificationClaimedReporterIds?: string[];
 };
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter(
+        (item): item is string =>
+          typeof item === "string" && item.trim().length > 0,
+      )
+    : [];
 }
 
 export function readFeedbackMetadata(value: unknown): FeedbackMetadata | null {
@@ -93,20 +105,17 @@ export function readFeedbackMetadata(value: unknown): FeedbackMetadata | null {
     firstSeenAt: typeof feedback.firstSeenAt === "string" ? feedback.firstSeenAt : new Date(0).toISOString(),
     lastSeenAt: typeof feedback.lastSeenAt === "string" ? feedback.lastSeenAt : new Date(0).toISOString(),
     ownerNotifiedAt: typeof feedback.ownerNotifiedAt === "string" ? feedback.ownerNotifiedAt : null,
+    ownerNotificationKeys: readStringArray(feedback.ownerNotificationKeys),
+    ownerNotificationClaimKeys: readStringArray(feedback.ownerNotificationClaimKeys),
     completedAt: typeof feedback.completedAt === "string" ? feedback.completedAt : null,
     requesterNotifiedAt: typeof feedback.requesterNotifiedAt === "string" ? feedback.requesterNotifiedAt : null,
-    requesterNotifiedReporterIds: Array.isArray(feedback.requesterNotifiedReporterIds)
-      ? feedback.requesterNotifiedReporterIds.filter(
-          (value): value is string => typeof value === "string" && value.trim().length > 0,
-        )
-      : [],
-    requesterNotificationSkippedReporterIds: Array.isArray(
+    requesterNotifiedReporterIds: readStringArray(feedback.requesterNotifiedReporterIds),
+    requesterNotificationSkippedReporterIds: readStringArray(
       feedback.requesterNotificationSkippedReporterIds,
-    )
-      ? feedback.requesterNotificationSkippedReporterIds.filter(
-          (value): value is string => typeof value === "string" && value.trim().length > 0,
-        )
-      : [],
+    ),
+    requesterNotificationClaimedReporterIds: readStringArray(
+      feedback.requesterNotificationClaimedReporterIds,
+    ),
   };
 }
 
