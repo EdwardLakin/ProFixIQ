@@ -13,9 +13,10 @@ describe("Ops System Health", () => {
     expect(page).toContain("<OpsSystemHealth snapshot={snapshot} />");
   });
 
-  it("uses the authenticated Ops Supabase path instead of a service-role health bypass", () => {
+  it("authorizes with the owner session and probes the feedback ledger through the privileged Ops path", () => {
     const server = source("features/ops/server/get-system-health.ts");
     expect(server).toContain("requireOpsOperatorPageAccess");
+    expect(server).toContain("createAdminSupabase()");
     expect(server).toContain('.from("agent_requests")');
     expect(server).toContain('{ count: "exact", head: true }');
     expect(server).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
@@ -29,6 +30,7 @@ describe("Ops System Health", () => {
     expect(server).toContain('key: "feedback"');
     expect(server).toContain('state: "down"');
     expect(server).toContain('"degraded"');
+    expect(server).toContain("Privileged feedback ledger read");
     expect(server).not.toContain("readAgentTeamReadiness");
     expect(server).not.toContain("PROFIXIQ_AGENT_URL");
     expect(server).not.toContain("AGENT_API_SECRET");
