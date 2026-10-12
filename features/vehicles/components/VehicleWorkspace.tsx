@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 
 import { InspectionReportAttachments } from "@/features/inspections/components/InspectionReportAttachments";
 import type {
@@ -33,6 +34,8 @@ type VehicleWorkspaceProps = {
   bookAppointmentHref: string | null;
   createEstimateHref: string | null;
   messageCustomerHref: string | null;
+  /** Optional product panel (e.g. the Equipment asset profile) shown after active work. */
+  equipmentSlot?: ReactNode;
 };
 
 function textOrDash(value: string | number | null | undefined): string {
@@ -347,6 +350,7 @@ export function VehicleWorkspace({
   bookAppointmentHref,
   createEstimateHref,
   messageCustomerHref,
+  equipmentSlot,
 }: VehicleWorkspaceProps) {
   const { identity, currentAccount } = snapshot;
   const visibleTimeline = snapshot.recentTimeline.slice(0, 8);
@@ -552,6 +556,8 @@ export function VehicleWorkspace({
           </div>
         )}
       </WorkspaceSection>
+
+      {equipmentSlot ?? null}
 
       <WorkspaceSection
         headingId="attention-heading"

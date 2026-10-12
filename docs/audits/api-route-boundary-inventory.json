@@ -1747,6 +1747,25 @@
     "riskLevel": "low"
   },
   {
+    "path": "app/api/equipment/assets/[assetId]/profile/route.ts",
+    "methods": [
+      "GET",
+      "PUT"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "has_stronger_boundary_signal"
+    ],
+    "riskLevel": "low"
+  },
+  {
     "path": "app/api/equipment/entitlement/route.ts",
     "methods": [
       "GET"
