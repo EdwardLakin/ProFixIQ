@@ -65,7 +65,8 @@ export default function OpsDeploymentHealth({ snapshot }: { snapshot: Deployment
         <article className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 shadow-card">
           <div className="flex items-start justify-between gap-3"><span className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-violet-500/10 text-violet-500"><Workflow className="h-5 w-5" /></span><Pill state={snapshot.ci.state} /></div>
           <h2 className="mt-4 text-sm font-bold">CI checks</h2>
-          <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">{snapshot.ci.total} checks · {snapshot.ci.failing} failing · {snapshot.ci.pending} pending.</p>
+          <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">{snapshot.ci.total} checks · {snapshot.ci.failing} failing · {snapshot.ci.pending} pending · {snapshot.ci.skipped} skipped.</p>
+          {snapshot.ci.missingRequired.length > 0 ? <p className="mt-2 text-xs font-semibold text-amber-700 dark:text-amber-300">Missing required evidence: {snapshot.ci.missingRequired.join(", ")}</p> : null}
           <div className="mt-4 max-h-44 space-y-2 overflow-y-auto">{snapshot.ci.checks.slice(0, 12).map((check) => <div key={`${check.name}-${check.detailsUrl ?? ""}`} className="flex items-center justify-between gap-2 rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs"><span className="truncate">{check.name}</span><span className="shrink-0 text-[color:var(--theme-text-muted)]">{check.conclusion ?? check.status}</span></div>)}</div>
         </article>
 
