@@ -3,9 +3,11 @@ import { NextRequest, NextResponse } from "next/server";
 import type { Json } from "@shared/types/types/supabase";
 import {
   FEEDBACK_STATUSES,
+  feedbackStatusFromLegacy,
   isRecord,
   legacyStatusForFeedback,
   readFeedbackMetadata,
+  type FeedbackMetadata,
   type FeedbackStatus,
 } from "@/features/feedback/lib/feedback";
 import { sendFeedbackCompletedEmails } from "@/features/feedback/server/notifications";
@@ -23,6 +25,11 @@ type UpdateFeedbackBody = {
   notifyRequesters?: boolean;
 };
 
+type StatusWrite = {
+  id: string;
+  updated_at: string;
+};
+
 function rowContext(row: AgentRequestRow): Record<string, unknown> {
   return isRecord(row.normalized_json) ? row.normalized_json : {};
 }
@@ -32,6 +39,60 @@ function normalizeStatus(value: unknown): FeedbackStatus | null {
       FEEDBACK_STATUSES.includes(value as FeedbackStatus)
     ? (value as FeedbackStatus)
     : null;
+}
+
+function fallbackMetadata(
+  canonical: AgentRequestRow,
+  status: FeedbackStatus,
+): FeedbackMetadata {
+  return {
+    version: 1,
+    clusterId: canonical.id,
+    isCanonical: true,
+    status,
+    kind:
+      canonical.intent === "bug_report"
+        ? "bug"
+        : "feature_request",
+    surface: "other",
+    title: canonical.description.slice(0, 100),
+    summary: canonical.description,
+    severity: "normal",
+    needsAttention: canonical.status === "failed",
+    recommendation:
+      canonical.llm_notes ?? "Review alongside similar feedback.",
+    aiMode: "fallback",
+    aiModel: canonical.llm_model,
+    duplicateConfidence: null,
+    internalNotes: null,
+    firstSeenAt: canonical.created_at,
+    lastSeenAt: canonical.updated_at,
+    ownerNotifiedAt: null,
+    completedAt: status === "completed" ? canonical.updated_at : null,
+    requesterNotifiedAt: null,
+    requesterNotifiedReporterIds: [],
+    requesterNotificationSkippedReporterIds: [],
+  };
+}
+
+async function rollbackLegacyStatuses(
+  admin: ReturnType<typeof createAdminSupabase>,
+  group: AgentRequestRow[],
+  writes: StatusWrite[],
+  nextLegacyStatus: string,
+): Promise<void> {
+  const originalStatus = new Map(group.map((row) => [row.id, row.status]));
+  for (const write of writes) {
+    const status = originalStatus.get(write.id);
+    if (!status) continue;
+    const { error } = await admin
+      .from("agent_requests")
+      .update({ status })
+      .eq("id", write.id)
+      .eq("status", nextLegacyStatus)
+      .eq("updated_at", write.updated_at);
+    if (error) console.error("feedback status rollback failed", error);
+  }
 }
 
 export async function PATCH(
@@ -48,9 +109,6 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid request" }, { status: 400 });
   }
 
-  // Owner authorization is checked above. Use the admin client for the actual
-  // feedback control operation so clusters spanning multiple tenant shops are
-  // managed as one product-feedback item rather than being truncated by RLS.
   const { rows: group, error } = await fetchClusterRows(admin, id);
   if (error) {
     console.error("feedback group load failed", error);
@@ -68,54 +126,19 @@ export async function PATCH(
     );
   }
 
-  const metadata = readFeedbackMetadata(canonical.normalized_json);
-  const currentStatus: FeedbackStatus = metadata?.status ?? "new";
+  const originalMetadata = readFeedbackMetadata(canonical.normalized_json);
+  const currentStatus: FeedbackStatus =
+    originalMetadata?.status ?? feedbackStatusFromLegacy(canonical.status);
   const nextStatus = normalizeStatus(body.status) ?? currentStatus;
-  const now = new Date().toISOString();
-  const nextMetadata = {
-    version: 1 as const,
-    clusterId: id,
-    isCanonical: true,
-    status: nextStatus,
-    kind:
-      metadata?.kind ??
-      (canonical.intent === "bug_report"
-        ? ("bug" as const)
-        : ("feature_request" as const)),
-    surface: metadata?.surface ?? ("other" as const),
-    title: metadata?.title ?? canonical.description.slice(0, 100),
-    summary: metadata?.summary ?? canonical.description,
-    severity: metadata?.severity ?? ("normal" as const),
-    needsAttention:
-      typeof body.needsAttention === "boolean"
-        ? body.needsAttention
-        : (metadata?.needsAttention ?? false),
-    recommendation:
-      metadata?.recommendation ??
-      canonical.llm_notes ??
-      "Review alongside similar feedback.",
-    aiMode: metadata?.aiMode ?? ("fallback" as const),
-    aiModel: metadata?.aiModel ?? canonical.llm_model,
-    duplicateConfidence: metadata?.duplicateConfidence ?? null,
-    internalNotes:
-      body.internalNotes === undefined
-        ? (metadata?.internalNotes ?? null)
-        : body.internalNotes?.trim() || null,
-    firstSeenAt: metadata?.firstSeenAt ?? canonical.created_at,
-    lastSeenAt: metadata?.lastSeenAt ?? canonical.updated_at,
-    ownerNotifiedAt: metadata?.ownerNotifiedAt ?? null,
-    completedAt:
-      nextStatus === "completed" ? (metadata?.completedAt ?? now) : null,
-    requesterNotifiedAt: metadata?.requesterNotifiedAt ?? null,
-  };
-
-  // Two persisted sources of truth (legacy row status and canonical metadata)
-  // are updated together: if the second write fails, restore the first.
   const nextLegacyStatus = legacyStatusForFeedback(nextStatus);
-  const { error: statusError } = await admin
+
+  // First align the compatibility status rows, retaining the returned write
+  // versions so a rollback cannot overwrite a newer concurrent edit.
+  const { data: statusWrites, error: statusError } = await admin
     .from("agent_requests")
     .update({ status: nextLegacyStatus })
-    .in("id", group.map((row) => row.id));
+    .in("id", group.map((row) => row.id))
+    .select("id, updated_at");
   if (statusError) {
     console.error("feedback group status update failed", statusError);
     return NextResponse.json(
@@ -124,43 +147,64 @@ export async function PATCH(
     );
   }
 
-  // Guard on requesterNotifiedAt so a concurrent request's notification claim
-  // is never overwritten by this request's stale copy of the metadata.
-  const canonicalUpdate = admin
+  const writes = (statusWrites ?? []) as StatusWrite[];
+  const { data: freshCanonical, error: refreshError } = await admin
+    .from("agent_requests")
+    .select("*")
+    .eq("id", canonical.id)
+    .maybeSingle();
+  if (refreshError || !freshCanonical) {
+    await rollbackLegacyStatuses(admin, group, writes, nextLegacyStatus);
+    console.error("feedback canonical refresh failed", refreshError);
+    return NextResponse.json(
+      { error: "Failed to update feedback" },
+      { status: 500 },
+    );
+  }
+
+  const refreshed = freshCanonical as AgentRequestRow;
+  const latestMetadata =
+    readFeedbackMetadata(refreshed.normalized_json) ??
+    originalMetadata ??
+    fallbackMetadata(canonical, currentStatus);
+  const now = new Date().toISOString();
+  const nextMetadata: FeedbackMetadata = {
+    ...latestMetadata,
+    clusterId: id,
+    isCanonical: true,
+    status: nextStatus,
+    needsAttention:
+      typeof body.needsAttention === "boolean"
+        ? body.needsAttention
+        : latestMetadata.needsAttention,
+    internalNotes:
+      body.internalNotes === undefined
+        ? (latestMetadata.internalNotes ?? null)
+        : body.internalNotes?.trim() || null,
+    completedAt:
+      nextStatus === "completed" ? (latestMetadata.completedAt ?? now) : null,
+  };
+
+  // Whole-row version CAS: duplicate aggregation and lifecycle edits both move
+  // updated_at, so neither path can write a stale feedback document over the
+  // other. The loser reloads/retries instead of silently reverting metadata.
+  const { data: updatedCanonical, error: canonicalError } = await admin
     .from("agent_requests")
     .update({
       normalized_json: {
-        ...rowContext(canonical),
+        ...rowContext(refreshed),
         feedback: nextMetadata,
       } as Json,
       updated_at: now,
     })
-    .eq("id", canonical.id);
-  const { data: updatedCanonical, error: canonicalError } = await (
-    nextMetadata.requesterNotifiedAt
-      ? canonicalUpdate.eq(
-          "normalized_json->feedback->>requesterNotifiedAt",
-          nextMetadata.requesterNotifiedAt,
-        )
-      : canonicalUpdate.is("normalized_json->feedback->>requesterNotifiedAt", null)
-  )
+    .eq("id", canonical.id)
+    .eq("updated_at", refreshed.updated_at)
     .select("*")
     .maybeSingle();
+
   if (canonicalError || !updatedCanonical) {
+    await rollbackLegacyStatuses(admin, group, writes, nextLegacyStatus);
     console.error("feedback canonical update failed", canonicalError);
-    const byStatus = new Map<string, string[]>();
-    for (const row of group) {
-      byStatus.set(row.status, [...(byStatus.get(row.status) ?? []), row.id]);
-    }
-    for (const [status, ids] of byStatus) {
-      const { error: rollbackError } = await admin
-        .from("agent_requests")
-        .update({ status })
-        .in("id", ids);
-      if (rollbackError) {
-        console.error("feedback status rollback failed", rollbackError);
-      }
-    }
     return NextResponse.json(
       {
         error: canonicalError
@@ -172,52 +216,106 @@ export async function PATCH(
   }
 
   let notified = 0;
-  if (
-    nextStatus === "completed" &&
-    body.notifyRequesters === true &&
-    !nextMetadata.requesterNotifiedAt
-  ) {
-    // Atomic claim: only the request that flips requesterNotifiedAt from unset
-    // to a claim timestamp may send. Concurrent requests match zero rows.
-    const claimedAt = new Date().toISOString();
-    const { data: claimed, error: claimError } = await admin
-      .from("agent_requests")
-      .update({
-        normalized_json: {
-          ...rowContext(updatedCanonical as AgentRequestRow),
-          feedback: { ...nextMetadata, requesterNotifiedAt: claimedAt },
-        } as Json,
-      })
-      .eq("id", canonical.id)
-      .is("normalized_json->feedback->>requesterNotifiedAt", null)
-      .select("id")
-      .maybeSingle();
-    if (claimError) {
-      console.error("feedback requester notification claim failed", claimError);
-    }
-
-    if (claimed) {
-      notified = await sendFeedbackCompletedEmails({
-        reporterIds: group
+  if (nextStatus === "completed" && body.notifyRequesters === true) {
+    const currentRow = updatedCanonical as AgentRequestRow;
+    const deliveryMetadata = readFeedbackMetadata(currentRow.normalized_json);
+    if (deliveryMetadata && !deliveryMetadata.requesterNotifiedAt) {
+      const deliveredBefore = new Set(
+        deliveryMetadata.requesterNotifiedReporterIds ?? [],
+      );
+      const skippedBefore = new Set(
+        deliveryMetadata.requesterNotificationSkippedReporterIds ?? [],
+      );
+      const pendingReporterIds = [...new Set(
+        group
           .map((row) => row.reporter_id)
           .filter((value): value is string => Boolean(value)),
-        title: nextMetadata.title,
-        summary: nextMetadata.summary,
-      });
+      )].filter(
+        (reporterId) =>
+          !deliveredBefore.has(reporterId) && !skippedBefore.has(reporterId),
+      );
 
-      if (notified === 0) {
-        // Nothing was delivered: release the claim so a retry can send.
-        const { error: releaseError } = await admin
+      if (pendingReporterIds.length > 0) {
+        const claimedAt = new Date().toISOString();
+        const { data: claimed, error: claimError } = await admin
           .from("agent_requests")
           .update({
             normalized_json: {
-              ...rowContext(updatedCanonical as AgentRequestRow),
-              feedback: { ...nextMetadata, requesterNotifiedAt: null },
+              ...rowContext(currentRow),
+              feedback: {
+                ...deliveryMetadata,
+                requesterNotifiedAt: claimedAt,
+              },
             } as Json,
+            updated_at: claimedAt,
           })
-          .eq("id", canonical.id);
-        if (releaseError) {
-          console.error("feedback notification claim release failed", releaseError);
+          .eq("id", canonical.id)
+          .eq("updated_at", currentRow.updated_at)
+          .is("normalized_json->feedback->>requesterNotifiedAt", null)
+          .select("*")
+          .maybeSingle();
+        if (claimError) {
+          console.error("feedback requester notification claim failed", claimError);
+        }
+
+        if (claimed) {
+          const delivery = await sendFeedbackCompletedEmails({
+            reporterIds: pendingReporterIds,
+            title: deliveryMetadata.title,
+            summary: deliveryMetadata.summary,
+          });
+          notified = delivery.deliveredReporterIds.length;
+
+          // Merge delivery receipts into whatever lifecycle metadata is newest.
+          // If a lifecycle edit raced the send, reload and retry this metadata
+          // merge rather than reverting the lifecycle fields.
+          for (let attempt = 0; attempt < 5; attempt += 1) {
+            const { data: latestRow, error: latestError } = await admin
+              .from("agent_requests")
+              .select("*")
+              .eq("id", canonical.id)
+              .maybeSingle();
+            if (latestError || !latestRow) {
+              console.error("feedback requester receipt reload failed", latestError);
+              break;
+            }
+            const latest = latestRow as AgentRequestRow;
+            const latestMeta = readFeedbackMetadata(latest.normalized_json);
+            if (!latestMeta) break;
+            const deliveredIds = [...new Set([
+              ...(latestMeta.requesterNotifiedReporterIds ?? []),
+              ...delivery.deliveredReporterIds,
+            ])];
+            const skippedIds = [...new Set([
+              ...(latestMeta.requesterNotificationSkippedReporterIds ?? []),
+              ...delivery.unreachableReporterIds,
+            ])];
+            const receiptUpdatedAt = new Date().toISOString();
+            const { data: receiptRow, error: receiptError } = await admin
+              .from("agent_requests")
+              .update({
+                normalized_json: {
+                  ...rowContext(latest),
+                  feedback: {
+                    ...latestMeta,
+                    requesterNotifiedAt:
+                      delivery.retryReporterIds.length === 0 ? claimedAt : null,
+                    requesterNotifiedReporterIds: deliveredIds,
+                    requesterNotificationSkippedReporterIds: skippedIds,
+                  },
+                } as Json,
+                updated_at: receiptUpdatedAt,
+              })
+              .eq("id", canonical.id)
+              .eq("updated_at", latest.updated_at)
+              .select("id")
+              .maybeSingle();
+            if (receiptError) {
+              console.error("feedback requester receipt update failed", receiptError);
+              break;
+            }
+            if (receiptRow) break;
+          }
         }
       }
     }
