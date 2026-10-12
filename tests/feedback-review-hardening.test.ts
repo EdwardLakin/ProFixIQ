@@ -15,8 +15,10 @@ describe("feedback intake hardening", () => {
   });
 
   it("replays duplicate submissions by a durable per-reporter key", () => {
-    expect(create).toContain('.eq("normalized_json->>submissionKey", context.submissionKey)');
-    expect(create).toContain(".eq(\"reporter_id\", profile.id)");
+    expect(create).toContain('.eq("normalized_json->>submissionKey", submissionKey)');
+    expect(create).toContain('.eq("reporter_id", reporterId)');
+    expect(create).toContain("findReplay(admin, profile.id, context.submissionKey)");
+    expect(create).toContain('insertError?.code === "23505"');
     expect(source("features/feedback/components/FeedbackModal.tsx")).toContain("submissionKey: submissionKeyRef.current");
 
     const migration = source(
