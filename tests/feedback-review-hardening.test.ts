@@ -18,6 +18,16 @@ describe("feedback intake hardening", () => {
     expect(create).toContain('.eq("normalized_json->>submissionKey", context.submissionKey)');
     expect(create).toContain(".eq(\"reporter_id\", profile.id)");
     expect(source("features/feedback/components/FeedbackModal.tsx")).toContain("submissionKey: submissionKeyRef.current");
+
+    const migration = source(
+      "supabase/migrations/20261012201500_feedback_submission_idempotency.sql",
+    );
+    expect(migration).toContain(
+      "create unique index if not exists agent_requests_feedback_submission_key_uidx",
+    );
+    expect(migration).toContain("reporter_id");
+    expect(migration).toContain("normalized_json ->> 'submissionKey'");
+    expect(migration).toContain("where nullif(btrim(normalized_json ->> 'submissionKey'), '') is not null");
   });
 
   it("pages the ledger instead of truncating history", () => {
