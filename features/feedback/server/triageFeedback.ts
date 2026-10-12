@@ -38,7 +38,11 @@ function clampText(value: unknown, fallback: string, maxLength: number): string 
   return text ? text.slice(0, maxLength) : fallback;
 }
 
-function enumValue<T extends readonly string[]>(values: T, value: unknown, fallback: T[number]): T[number] {
+function enumValue<T extends readonly string[]>(
+  values: T,
+  value: unknown,
+  fallback: T[number],
+): T[number] {
   return typeof value === "string" && values.includes(value as T[number])
     ? (value as T[number])
     : fallback;
@@ -51,8 +55,11 @@ function fallbackTriage(input: {
 }): FeedbackTriage {
   const lower = input.description.toLowerCase();
   const looksUrgent = /(cannot|can't|unable|blocked|crash|wrong total|incorrect total|data loss|payment|invoice)/i.test(lower);
-  const severity: FeedbackSeverity = input.requestedKind === "bug" && looksUrgent ? "high" : "normal";
-  const title = input.description.split(/[.!?\n]/)[0]?.trim().slice(0, 88) || "Product feedback";
+  const severity: FeedbackSeverity =
+    input.requestedKind === "bug" && looksUrgent ? "high" : "normal";
+  const title =
+    input.description.split(/[.!?\n]/)[0]?.trim().slice(0, 88) ||
+    "Product feedback";
   return {
     title,
     summary: input.description.slice(0, 320),
@@ -60,7 +67,10 @@ function fallbackTriage(input: {
     surface: inferFeedbackSurface(input.pathname),
     severity,
     needsAttention: input.requestedKind === "bug" && looksUrgent,
-    recommendation: severity === "high" ? "Review promptly and confirm whether the workflow is blocked." : "Review alongside similar feedback and prioritize by frequency and workflow impact.",
+    recommendation:
+      severity === "high"
+        ? "Review promptly and confirm whether the workflow is blocked."
+        : "Review alongside similar feedback and prioritize by frequency and workflow impact.",
     duplicateOf: null,
     duplicateConfidence: null,
   };
@@ -83,6 +93,7 @@ export async function triageFeedback(input: {
     feature: "feedback_triage",
     schemaName: "profixiq_feedback_triage",
     maxOutputTokens: 350,
+    timeoutMs: 10_000,
     telemetry: {
       endpoint: "/api/feedback",
       shopId: input.shopId,
@@ -105,24 +116,38 @@ export async function triageFeedback(input: {
     },
     fallback: () => fallback,
     validate: (candidate) => {
-      const record = candidate && typeof candidate === "object" && !Array.isArray(candidate)
-        ? (candidate as Record<string, unknown>)
-        : {};
-      const duplicateOf = typeof record.duplicateOf === "string" && candidateIds.has(record.duplicateOf)
-        ? record.duplicateOf
-        : null;
-      const rawConfidence = typeof record.duplicateConfidence === "number" && Number.isFinite(record.duplicateConfidence)
-        ? Math.max(0, Math.min(1, record.duplicateConfidence))
-        : null;
+      const record =
+        candidate && typeof candidate === "object" && !Array.isArray(candidate)
+          ? (candidate as Record<string, unknown>)
+          : {};
+      const duplicateOf =
+        typeof record.duplicateOf === "string" &&
+        candidateIds.has(record.duplicateOf)
+          ? record.duplicateOf
+          : null;
+      const rawConfidence =
+        typeof record.duplicateConfidence === "number" &&
+        Number.isFinite(record.duplicateConfidence)
+          ? Math.max(0, Math.min(1, record.duplicateConfidence))
+          : null;
       return {
         title: clampText(record.title, fallback.title, 100),
         summary: clampText(record.summary, fallback.summary, 500),
         kind: enumValue(FEEDBACK_KINDS, record.kind, fallback.kind),
         surface: enumValue(FEEDBACK_SURFACES, record.surface, fallback.surface),
-        severity: enumValue(FEEDBACK_SEVERITIES, record.severity, fallback.severity),
+        severity: enumValue(
+          FEEDBACK_SEVERITIES,
+          record.severity,
+          fallback.severity,
+        ),
         needsAttention: record.needsAttention === true,
-        recommendation: clampText(record.recommendation, fallback.recommendation, 500),
-        duplicateOf: rawConfidence !== null && rawConfidence >= 0.72 ? duplicateOf : null,
+        recommendation: clampText(
+          record.recommendation,
+          fallback.recommendation,
+          500,
+        ),
+        duplicateOf:
+          rawConfidence !== null && rawConfidence >= 0.72 ? duplicateOf : null,
         duplicateConfidence: duplicateOf ? rawConfidence : null,
       };
     },
