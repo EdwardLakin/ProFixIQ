@@ -4642,6 +4642,467 @@ export type Database = {
           },
         ]
       }
+      equipment_component_events: {
+        Row: {
+          asset_hours: number | null
+          component_hours: number | null
+          component_id: string
+          created_at: string
+          details: Json | null
+          event_type: string
+          id: string
+          notes: string | null
+          occurred_at: string
+          recorded_by: string | null
+          sequence: number
+          shop_id: string
+          vehicle_id: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          asset_hours?: number | null
+          component_hours?: number | null
+          component_id: string
+          created_at?: string
+          details?: Json | null
+          event_type: string
+          id?: string
+          notes?: string | null
+          occurred_at?: string
+          recorded_by?: string | null
+          sequence?: never
+          shop_id: string
+          vehicle_id?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          asset_hours?: number | null
+          component_hours?: number | null
+          component_id?: string
+          created_at?: string
+          details?: Json | null
+          event_type?: string
+          id?: string
+          notes?: string | null
+          occurred_at?: string
+          recorded_by?: string | null
+          sequence?: never
+          shop_id?: string
+          vehicle_id?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_component_events_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "equipment_components"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_component_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_component_events_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_component_events_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_component_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "equipment_component_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "equipment_component_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "equipment_component_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "equipment_component_events_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipment_component_operations: {
+        Row: {
+          action: string
+          component_id: string
+          created_at: string
+          operation_key: string
+          shop_id: string
+        }
+        Insert: {
+          action: string
+          component_id: string
+          created_at?: string
+          operation_key: string
+          shop_id: string
+        }
+        Update: {
+          action?: string
+          component_id?: string
+          created_at?: string
+          operation_key?: string
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_component_operations_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "equipment_components"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_component_operations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_component_operations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipment_components: {
+        Row: {
+          attributes: Json
+          component_hours_at_install: number | null
+          component_type: string
+          created_at: string
+          created_by: string | null
+          id: string
+          installed_asset_hours: number | null
+          installed_at: string | null
+          installed_vehicle_id: string | null
+          label: string
+          manufacturer: string | null
+          model: string | null
+          parent_component_id: string | null
+          part_number: string | null
+          position: string | null
+          serial_number: string | null
+          shop_id: string
+          status: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          attributes?: Json
+          component_hours_at_install?: number | null
+          component_type: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          installed_asset_hours?: number | null
+          installed_at?: string | null
+          installed_vehicle_id?: string | null
+          label: string
+          manufacturer?: string | null
+          model?: string | null
+          parent_component_id?: string | null
+          part_number?: string | null
+          position?: string | null
+          serial_number?: string | null
+          shop_id: string
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          attributes?: Json
+          component_hours_at_install?: number | null
+          component_type?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          installed_asset_hours?: number | null
+          installed_at?: string | null
+          installed_vehicle_id?: string | null
+          label?: string
+          manufacturer?: string | null
+          model?: string | null
+          parent_component_id?: string | null
+          part_number?: string | null
+          position?: string | null
+          serial_number?: string | null
+          shop_id?: string
+          status?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_components_installed_vehicle_id_fkey"
+            columns: ["installed_vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_components_parent_component_id_fkey"
+            columns: ["parent_component_id"]
+            isOneToOne: false
+            referencedRelation: "equipment_components"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_components_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_components_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipment_measurement_operations: {
+        Row: {
+          created_at: string
+          kind: string
+          operation_key: string
+          request_hash: string
+          result: Json | null
+          shop_id: string
+          vehicle_id: string
+        }
+        Insert: {
+          created_at?: string
+          kind: string
+          operation_key: string
+          request_hash: string
+          result?: Json | null
+          shop_id: string
+          vehicle_id: string
+        }
+        Update: {
+          created_at?: string
+          kind?: string
+          operation_key?: string
+          request_hash?: string
+          result?: Json | null
+          shop_id?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_measurement_operations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_measurement_operations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_measurement_operations_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipment_measurements: {
+        Row: {
+          asset_hours: number | null
+          component_id: string | null
+          correction_reason: string | null
+          corrects_measurement_id: string | null
+          created_at: string
+          entered_unit: string
+          entered_value: number
+          id: string
+          inspection_id: string | null
+          measured_at: string
+          measurement_type: string
+          notes: string | null
+          position: string | null
+          recorded_by: string | null
+          sequence: number
+          shop_id: string
+          unit: string
+          value: number
+          vehicle_id: string
+          voided: boolean
+          work_order_id: string | null
+        }
+        Insert: {
+          asset_hours?: number | null
+          component_id?: string | null
+          correction_reason?: string | null
+          corrects_measurement_id?: string | null
+          created_at?: string
+          entered_unit: string
+          entered_value: number
+          id?: string
+          inspection_id?: string | null
+          measured_at?: string
+          measurement_type: string
+          notes?: string | null
+          position?: string | null
+          recorded_by?: string | null
+          sequence?: never
+          shop_id: string
+          unit: string
+          value: number
+          vehicle_id: string
+          voided?: boolean
+          work_order_id?: string | null
+        }
+        Update: {
+          asset_hours?: number | null
+          component_id?: string | null
+          correction_reason?: string | null
+          corrects_measurement_id?: string | null
+          created_at?: string
+          entered_unit?: string
+          entered_value?: number
+          id?: string
+          inspection_id?: string | null
+          measured_at?: string
+          measurement_type?: string
+          notes?: string | null
+          position?: string | null
+          recorded_by?: string | null
+          sequence?: never
+          shop_id?: string
+          unit?: string
+          value?: number
+          vehicle_id?: string
+          voided?: boolean
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_measurements_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "equipment_components"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_measurements_corrects_measurement_id_fkey"
+            columns: ["corrects_measurement_id"]
+            isOneToOne: false
+            referencedRelation: "equipment_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_measurements_inspection_id_fkey"
+            columns: ["inspection_id"]
+            isOneToOne: false
+            referencedRelation: "inspections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_measurements_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_measurements_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_measurements_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_measurements_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "equipment_measurements_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "equipment_measurements_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "equipment_measurements_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "equipment_measurements_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       estimate_events: {
         Row: {
           actor_profile_id: string | null
@@ -30360,6 +30821,95 @@ export type Database = {
         Returns: Json
       }
       dispatch_visit_snapshot: { Args: { p_visit_id: string }; Returns: Json }
+      equipment_component_claim_operation: {
+        Args: {
+          p_action: string
+          p_component_id: string
+          p_operation_key: string
+          p_shop_id: string
+        }
+        Returns: string
+      }
+      equipment_component_life: {
+        Args: {
+          p_current_asset_hours: number
+          p_hours_at_install: number
+          p_installed_asset_hours: number
+          p_status: string
+        }
+        Returns: number
+      }
+      equipment_component_move: {
+        Args: {
+          p_action: string
+          p_actor_user_id: string
+          p_asset_hours?: number
+          p_component_id: string
+          p_notes?: string
+          p_occurred_at?: string
+          p_operation_key?: string
+          p_parent_component_id?: string
+          p_position?: string
+          p_shop_id: string
+          p_source_asset_hours?: number
+          p_target_status?: string
+          p_vehicle_id?: string
+          p_work_order_id?: string
+        }
+        Returns: undefined
+      }
+      equipment_component_save: {
+        Args: {
+          p_actor_user_id: string
+          p_asset_hours?: number
+          p_component_id: string
+          p_fields: Json
+          p_install_vehicle_id?: string
+          p_operation_key?: string
+          p_parent_component_id?: string
+          p_shop_id: string
+        }
+        Returns: string
+      }
+      equipment_component_seed: {
+        Args: {
+          p_actor_user_id: string
+          p_asset_hours?: number
+          p_items: Json
+          p_shop_id: string
+          p_vehicle_id: string
+        }
+        Returns: number
+      }
+      equipment_measurement_correct: {
+        Args: {
+          p_actor_user_id: string
+          p_entered_unit: string
+          p_entered_value: number
+          p_measurement_id: string
+          p_operation_key: string
+          p_reason: string
+          p_shop_id: string
+          p_unit: string
+          p_value: number
+          p_void: boolean
+        }
+        Returns: string
+      }
+      equipment_measurement_record: {
+        Args: {
+          p_actor_user_id: string
+          p_asset_hours?: number
+          p_inspection_id?: string
+          p_items: Json
+          p_measured_at?: string
+          p_operation_key?: string
+          p_shop_id: string
+          p_vehicle_id: string
+          p_work_order_id?: string
+        }
+        Returns: Json
+      }
       estimate_actor_for_shop: {
         Args: { p_allowed_roles: string[]; p_shop_id: string }
         Returns: {

@@ -211,6 +211,22 @@ export const ROUTE_META: Record<string, RouteMeta> = {
       "foreman",
     ],
   },
+  "/equipment/components/[componentId]": {
+    title: (href) =>
+      `Component · ${href.split("/").pop()?.slice(0, 8) ?? "…"}`,
+    icon: "🚜",
+    persist: { keyParams: ["componentId"] },
+    roles: [
+      "owner",
+      "admin",
+      "manager",
+      "advisor",
+      "service",
+      "parts",
+      "lead_hand",
+      "foreman",
+    ],
+  },
   "/vehicles": {
     title: () => "Vehicle Files",
     icon: "🚗",

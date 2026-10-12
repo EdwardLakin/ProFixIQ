@@ -1,6 +1,8 @@
 import Link from "next/link";
 
 import EquipmentAssetProfilePanel from "@/features/equipment/components/EquipmentAssetProfilePanel";
+import EquipmentComponentPanel from "@/features/equipment/components/EquipmentComponentPanel";
+import EquipmentMeasurementPanel from "@/features/equipment/components/EquipmentMeasurementPanel";
 import { ASSET_OPERATING_STATUS_LABELS } from "@/features/equipment/lib/assetProfile";
 import type { AssetHealth } from "@/features/equipment/server/loadAssetHealth";
 import {
@@ -61,7 +63,14 @@ function ComingNext({ children }: { children: React.ReactNode }) {
  * machine. Facts only — it surfaces recorded evidence; the technician makes
  * the diagnosis and repair decision.
  */
-export default function AssetHealthView({ health }: { health: AssetHealth }) {
+export default function AssetHealthView({
+  health,
+  canOpenComponentHistory = false,
+}: {
+  health: AssetHealth;
+  /** Shop-wide (directory) roles may open a component's cross-machine history. */
+  canOpenComponentHistory?: boolean;
+}) {
   const { snapshot, equipment, evidence, attachments, host } = health;
   const { identity, permissions } = snapshot;
   const profile = equipment.profile;
@@ -330,24 +339,16 @@ export default function AssetHealthView({ health }: { health: AssetHealth }) {
         </ComingNext>
       </WorkspaceSection>
 
-      {/* 6–8. Upcoming Equipment capabilities */}
-      <div className="grid gap-4 lg:grid-cols-3">
-        <WorkspaceSection headingId="asset-components" eyebrow="Components" title="Component condition">
-          <ComingNext>
-            Engine, hydraulics, final drives, undercarriage and attachments — each with its
-            own identity and rebuild/swap history — arrive with the component hierarchy.
-          </ComingNext>
-        </WorkspaceSection>
-        <WorkspaceSection headingId="asset-measurements" eyebrow="Measurements" title="Measurement trends">
-          <ComingNext>
-            Recorded measurements (track shoe height, pressures, blow-by, temperatures)
-            with factual change and trend arrive with first-class measurements.
-          </ComingNext>
-        </WorkspaceSection>
-        <WorkspaceSection headingId="asset-fluids" eyebrow="Fluids" title="Fluid / sample history">
-          <ComingNext>Oil and fluid sample history arrives in a later Equipment release.</ComingNext>
-        </WorkspaceSection>
-      </div>
+      {/* 6. Component hierarchy */}
+      <EquipmentComponentPanel assetId={identity.id} canOpenHistory={canOpenComponentHistory} />
+
+      {/* 7. Measurements */}
+      <EquipmentMeasurementPanel assetId={identity.id} />
+
+      {/* 8. Upcoming Equipment capabilities */}
+      <WorkspaceSection headingId="asset-fluids" eyebrow="Fluids" title="Fluid / sample history">
+        <ComingNext>Oil and fluid sample history arrives in a later Equipment release.</ComingNext>
+      </WorkspaceSection>
 
       {/* 9. Service history */}
       <WorkspaceSection
