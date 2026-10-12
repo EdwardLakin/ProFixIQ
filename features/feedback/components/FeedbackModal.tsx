@@ -21,6 +21,11 @@ type Props = {
   onOpenChange: (value: boolean) => void;
 };
 
+const MAX_DESCRIPTION_LENGTH = 12_000;
+const MAX_CONTEXT_LENGTH = 4_000;
+const MAX_LOCATION_LENGTH = 500;
+const MAX_ATTACHMENTS = 20;
+
 const KIND_OPTIONS: Array<{ value: FeedbackKind; label: string }> = [
   { value: "bug", label: "Something is not working" },
   { value: "feature_request", label: "Feature request" },
@@ -41,17 +46,22 @@ export default function FeedbackModal({ open, onOpenChange }: Props) {
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [device, setDevice] = useState("");
-  // One key per user action: retries of the same submission replay server-side.
   const submissionKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
-    setLocation(pathname ?? "");
-    setDevice(typeof navigator === "undefined" ? "" : navigator.userAgent);
+    setLocation((pathname ?? "").slice(0, MAX_LOCATION_LENGTH));
+    setDevice(
+      (typeof navigator === "undefined" ? "" : navigator.userAgent).slice(0, 1_000),
+    );
   }, [open, pathname]);
 
   function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
-    setFiles(Array.from(event.target.files ?? []));
+    const selected = Array.from(event.target.files ?? []);
+    if (selected.length > MAX_ATTACHMENTS) {
+      toast.error(`Attach up to ${MAX_ATTACHMENTS} screenshots at a time.`);
+    }
+    setFiles(selected.slice(0, MAX_ATTACHMENTS));
   }
 
   async function uploadScreenshots(): Promise<string[]> {
@@ -66,8 +76,6 @@ export default function FeedbackModal({ open, onOpenChange }: Props) {
     for (const file of files) {
       const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
       const path = `${owner}/${Date.now()}-${safeName}`;
-      // Keep the established private bucket while the legacy agent storage name
-      // is retired separately from its production data.
       const { error } = await supabase.storage
         .from("agent_uploads")
         .upload(path, file, { cacheControl: "3600", upsert: false });
@@ -108,8 +116,8 @@ export default function FeedbackModal({ open, onOpenChange }: Props) {
         body: JSON.stringify({
           description: message,
           kind,
-          pathname,
-          location: location.trim() || pathname,
+          pathname: pathname?.slice(0, MAX_LOCATION_LENGTH),
+          location: (location.trim() || pathname)?.slice(0, MAX_LOCATION_LENGTH),
           steps: steps.trim() || undefined,
           expected: expected.trim() || undefined,
           actual: actual.trim() || undefined,
@@ -170,16 +178,19 @@ export default function FeedbackModal({ open, onOpenChange }: Props) {
             <span className="text-xs font-semibold uppercase tracking-wider text-[color:var(--theme-text-secondary)]">Tell us about it</span>
             <Textarea
               value={description}
+              maxLength={MAX_DESCRIPTION_LENGTH}
               onChange={(event) => setDescription(event.target.value)}
               placeholder="What were you trying to do, what felt slow or confusing, or what would you like ProFixIQ to do differently?"
               className="min-h-32 bg-[color:var(--theme-surface-panel)]"
             />
+            <span className="text-[11px] text-[color:var(--theme-text-muted)]">{description.length.toLocaleString()} / {MAX_DESCRIPTION_LENGTH.toLocaleString()}</span>
           </label>
 
           <label className="block space-y-1">
             <span className="text-xs font-semibold uppercase tracking-wider text-[color:var(--theme-text-secondary)]">Where in ProFixIQ?</span>
             <input
               value={location}
+              maxLength={MAX_LOCATION_LENGTH}
               onChange={(event) => setLocation(event.target.value)}
               placeholder="Current page is captured automatically"
               className="w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] px-3 py-2 text-sm"
@@ -189,10 +200,10 @@ export default function FeedbackModal({ open, onOpenChange }: Props) {
           {showBugFields ? (
             <div className="space-y-3 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] p-3">
               <p className="text-xs font-semibold uppercase tracking-wider text-[color:var(--theme-text-secondary)]">Bug details <span className="normal-case font-normal text-[color:var(--theme-text-muted)]">(optional, but useful)</span></p>
-              <Textarea value={steps} onChange={(event) => setSteps(event.target.value)} placeholder="Steps to reproduce" className="min-h-20 bg-[color:var(--theme-surface-panel)]" />
+              <Textarea value={steps} maxLength={MAX_CONTEXT_LENGTH} onChange={(event) => setSteps(event.target.value)} placeholder="Steps to reproduce" className="min-h-20 bg-[color:var(--theme-surface-panel)]" />
               <div className="grid gap-3 sm:grid-cols-2">
-                <Textarea value={expected} onChange={(event) => setExpected(event.target.value)} placeholder="What you expected" className="min-h-20 bg-[color:var(--theme-surface-panel)]" />
-                <Textarea value={actual} onChange={(event) => setActual(event.target.value)} placeholder="What actually happened" className="min-h-20 bg-[color:var(--theme-surface-panel)]" />
+                <Textarea value={expected} maxLength={MAX_CONTEXT_LENGTH} onChange={(event) => setExpected(event.target.value)} placeholder="What you expected" className="min-h-20 bg-[color:var(--theme-surface-panel)]" />
+                <Textarea value={actual} maxLength={MAX_CONTEXT_LENGTH} onChange={(event) => setActual(event.target.value)} placeholder="What actually happened" className="min-h-20 bg-[color:var(--theme-surface-panel)]" />
               </div>
             </div>
           ) : null}
