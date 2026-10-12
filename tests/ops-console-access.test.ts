@@ -10,19 +10,15 @@ const read = (path: string) => readFileSync(path, "utf8");
 
 const opsPage = read("app/ops/page.tsx");
 const opsLayout = read("app/ops/layout.tsx");
-const opsAgentControlPage = read("app/ops/agent-control/page.tsx");
-const agentConsolePage = read(
-  "features/agent/agent-console/app/agent/page.tsx",
-);
+const opsFeedbackPage = read("app/ops/feedback/page.tsx");
+const feedbackConsole = read("features/feedback/components/FeedbackConsole.tsx");
+const legacyOpsAgentPage = read("app/ops/agent-control/page.tsx");
 const legacyAgentPage = read("app/agent/page.tsx");
 const operatorBoundary = read("features/ops/server/operator-access.ts");
 const signIn = read("features/auth/components/SignIn.tsx");
 const protectedRoutes = [
-  read("app/api/agent/requests/route.ts"),
-  read("app/api/agent/requests/[id]/route.ts"),
-  read("app/api/agent/requests/[id]/retry/route.ts"),
-  read("app/api/agent/requests/[id]/reply/route.ts"),
-  read("app/api/agent/requests/[id]/notify-discord/route.ts"),
+  read("app/api/feedback/route.ts"),
+  read("app/api/feedback/[id]/route.ts"),
 ];
 
 describe("ops console access boundary", () => {
@@ -38,19 +34,18 @@ describe("ops console access boundary", () => {
     expect(isDefaultOpsOperatorEmail(null)).toBe(false);
   });
 
-  it("keeps the ops surface outside the tenant dashboard shell", () => {
+  it("keeps the ops surface outside the tenant dashboard shell and routes retired agent pages to feedback", () => {
     expect(isOutsideDesktopAppShell("/ops")).toBe(true);
-    expect(isOutsideDesktopAppShell("/ops/cases")).toBe(true);
+    expect(isOutsideDesktopAppShell("/ops/feedback")).toBe(true);
     expect(opsLayout).toContain("requireOpsOperatorPageAccess");
     expect(opsPage).toContain("getOpsDashboardRequests");
-    expect(opsAgentControlPage).toContain("AgentConsolePage");
-    expect(legacyAgentPage).toContain('redirect("/ops/agent-control")');
-    expect(agentConsolePage).toContain(
-      "new URLSearchParams(window.location.search).get(",
-    );
+    expect(opsFeedbackPage).toContain("FeedbackConsole");
+    expect(feedbackConsole).toContain('fetch("/api/feedback")');
+    expect(legacyOpsAgentPage).toContain('redirect("/ops/feedback")');
+    expect(legacyAgentPage).toContain('redirect("/ops/feedback")');
   });
 
-  it("authorizes server access from the verified auth email", () => {
+  it("authorizes feedback control APIs through the verified ops identity", () => {
     expect(operatorBoundary).toContain("normalizeOpsOperatorEmail(user.email)");
     expect(operatorBoundary).not.toContain("user.email ?? profile?.email");
     for (const route of protectedRoutes) {
