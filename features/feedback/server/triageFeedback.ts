@@ -39,7 +39,9 @@ function clampText(value: unknown, fallback: string, maxLength: number): string 
 }
 
 function enumValue<T extends readonly string[]>(values: T, value: unknown, fallback: T[number]): T[number] {
-  return typeof value === "string" && values.includes(value) ? (value as T[number]) : fallback;
+  return typeof value === "string" && values.includes(value as T[number])
+    ? (value as T[number])
+    : fallback;
 }
 
 function fallbackTriage(input: {
