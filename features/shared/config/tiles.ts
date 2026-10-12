@@ -185,6 +185,14 @@ export const TILES: Tile[] = [
     section: "Operations",
   },
   {
+    href: "/equipment",
+    title: "Equipment",
+    subtitle: "Asset Health for Equipment add-on shops",
+    roles: ["advisor", "manager", "owner", "admin"],
+    scopes: ["work_orders", "all"],
+    section: "Operations",
+  },
+  {
     href: "/billing",
     title: "Billing",
     subtitle: "Ready to invoice",

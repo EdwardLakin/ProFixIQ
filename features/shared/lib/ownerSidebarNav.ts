@@ -27,6 +27,7 @@ const OWNER_SECTION_OVERRIDES_BY_HREF: Record<string, string> = {
   "/customers/search": "Operations",
   "/customers/directory": "Operations",
   "/vehicles": "Operations",
+  "/equipment": "Operations",
   "/billing": "Operations",
   "/work-orders/history": "Operations",
   "/parts": "Parts",

@@ -27,6 +27,8 @@ describe("protected Shop middleware matcher", () => {
     "/copilot/technician",
     "/customers",
     "/customers/search",
+    "/equipment",
+    "/equipment/asset-1",
     "/estimates",
     "/estimates/new",
     "/inspection-reports/inspection-1",

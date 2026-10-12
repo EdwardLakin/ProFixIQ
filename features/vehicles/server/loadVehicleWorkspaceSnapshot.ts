@@ -45,7 +45,7 @@ type PaymentRow = DB["public"]["Tables"]["payments"]["Row"];
 type PartRequestRow = DB["public"]["Tables"]["part_requests"]["Row"];
 type VehicleMediaRow = DB["public"]["Tables"]["vehicle_media"]["Row"];
 type WorkOrderMediaRow = DB["public"]["Tables"]["work_order_media"]["Row"];
-type MaintenanceSuggestionRow =
+export type MaintenanceSuggestionRow =
   DB["public"]["Tables"]["maintenance_suggestions"]["Row"];
 
 type WorkspaceVehicleRow = Pick<
@@ -82,7 +82,7 @@ type WorkspaceCustomerRow = Pick<
   | "merged_into_customer_id"
 >;
 
-type WorkspaceWorkOrderRow = Pick<
+export type WorkspaceWorkOrderRow = Pick<
   WorkOrderRow,
   | "id"
   | "customer_id"
@@ -99,7 +99,7 @@ type WorkspaceWorkOrderRow = Pick<
   | "updated_at"
 >;
 
-type WorkspaceWorkOrderLineRow = Pick<
+export type WorkspaceWorkOrderLineRow = Pick<
   WorkOrderLineRow,
   | "id"
   | "work_order_id"
@@ -628,7 +628,7 @@ function isMaintenanceSuggestionItem(value: unknown): value is MaintenanceSugges
   );
 }
 
-function maintenanceItems(row: MaintenanceSuggestionRow): MaintenanceSuggestionItem[] {
+export function maintenanceItems(row: MaintenanceSuggestionRow): MaintenanceSuggestionItem[] {
   return Array.isArray(row.suggestions)
     ? row.suggestions.filter(isMaintenanceSuggestionItem)
     : [];
@@ -1174,7 +1174,7 @@ function buildConflicts(input: {
   return conflicts;
 }
 
-function latestCanonicalServiceWorkOrder(
+export function latestCanonicalServiceWorkOrder(
   workOrders: WorkspaceWorkOrderRow[],
 ): WorkspaceWorkOrderRow | null {
   return (
@@ -1193,7 +1193,7 @@ function latestCanonicalServiceWorkOrder(
   );
 }
 
-function maintenanceCacheIsFresh(input: {
+export function maintenanceCacheIsFresh(input: {
   cache: MaintenanceSuggestionRow;
   workOrder: WorkspaceWorkOrderRow;
   lines: WorkspaceWorkOrderLineRow[];
