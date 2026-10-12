@@ -11,12 +11,13 @@ export async function POST(req: NextRequest) {
   const access = await requireOpsOperatorApiAccess();
   if (!access.ok) return access.response;
 
-  const paths = Array.isArray((await req.json().catch(() => null) as Body | null)?.paths)
+  const body = (await req.json().catch(() => null)) as Body | null;
+  const paths = Array.isArray(body?.paths)
     ? [...new Set(
-        ((await req.clone().json().catch(() => null)) as Body | null)?.paths?.filter(
+        body.paths.filter(
           (path): path is string =>
             typeof path === "string" && path.trim().length > 0,
-        ) ?? [],
+        ),
       )]
     : [];
 
