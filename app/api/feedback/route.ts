@@ -121,12 +121,83 @@ function rowContext(row: AgentRequestRow): Record<string, unknown> {
   return isRecord(row.normalized_json) ? row.normalized_json : {};
 }
 
-const SEVERITY_RANK: Record<string, number> = { normal: 0, high: 1, critical: 2 };
+const SEVERITY_RANK: Record<string, number> = {
+  low: 0,
+  normal: 1,
+  high: 2,
+  critical: 3,
+};
 
-/**
- * True only when this submission crossed a milestone: the report count reached
- * one, or it added a previously unseen shop that reached one.
- */
+function replayResponse(row: Pick<AgentRequestRow, "id" | "normalized_json">) {
+  const existingMeta = readFeedbackMetadata(row.normalized_json);
+  return NextResponse.json({
+    ok: true,
+    submissionId: row.id,
+    matchedExisting: existingMeta ? existingMeta.clusterId !== row.id : false,
+    replayed: true,
+  });
+}
+
+async function findReplay(
+  admin: ReturnType<typeof createAdminSupabase>,
+  reporterId: string,
+  submissionKey: string,
+): Promise<Pick<AgentRequestRow, "id" | "normalized_json"> | null> {
+  const { data, error } = await admin
+    .from("agent_requests")
+    .select("id, normalized_json")
+    .eq("reporter_id", reporterId)
+    .eq("normalized_json->>submissionKey", submissionKey)
+    .limit(1)
+    .maybeSingle();
+  if (error) {
+    console.warn("feedback replay lookup failed", error);
+    return null;
+  }
+  return data as Pick<AgentRequestRow, "id" | "normalized_json"> | null;
+}
+
+async function markOwnerNotified(
+  admin: ReturnType<typeof createAdminSupabase>,
+  canonicalId: string,
+  notifiedAt: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const { data, error } = await admin
+      .from("agent_requests")
+      .select("*")
+      .eq("id", canonicalId)
+      .maybeSingle();
+    if (error || !data) {
+      console.warn("feedback owner notification metadata reload failed", error);
+      return;
+    }
+    const row = data as AgentRequestRow;
+    const metadata = readFeedbackMetadata(row.normalized_json);
+    if (!metadata || metadata.ownerNotifiedAt) return;
+    const updatedAt = new Date().toISOString();
+    const { data: updated, error: updateError } = await admin
+      .from("agent_requests")
+      .update({
+        normalized_json: {
+          ...rowContext(row),
+          feedback: { ...metadata, ownerNotifiedAt: notifiedAt },
+        } as Json,
+        updated_at: updatedAt,
+      })
+      .eq("id", canonicalId)
+      .eq("updated_at", row.updated_at)
+      .select("id")
+      .maybeSingle();
+    if (updateError) {
+      console.warn("feedback owner notification metadata update failed", updateError);
+      return;
+    }
+    if (updated) return;
+  }
+}
+
+/** True only when this submission crosses a configured frequency milestone. */
 function frequencyMilestone(input: {
   submissionCount: number;
   uniqueShopCount: number;
@@ -167,25 +238,9 @@ export async function POST(req: NextRequest) {
   const context = contextFromBody(body ?? {});
   const admin = createAdminSupabase();
 
-  // Replay guard: a retry of the same user action returns the original receipt
-  // instead of inserting another submission.
   if (context.submissionKey) {
-    const { data: existing } = await admin
-      .from("agent_requests")
-      .select("id, normalized_json")
-      .eq("reporter_id", profile.id)
-      .eq("normalized_json->>submissionKey", context.submissionKey)
-      .limit(1)
-      .maybeSingle();
-    if (existing) {
-      const existingMeta = readFeedbackMetadata(existing.normalized_json);
-      return NextResponse.json({
-        ok: true,
-        submissionId: existing.id,
-        matchedExisting: existingMeta ? existingMeta.clusterId !== existing.id : false,
-        replayed: true,
-      });
-    }
+    const existing = await findReplay(admin, profile.id, context.submissionKey);
+    if (existing) return replayResponse(existing);
   }
 
   const { data: recentRows, error: recentError } = await admin
@@ -230,6 +285,8 @@ export async function POST(req: NextRequest) {
     ownerNotifiedAt: null,
     completedAt: null,
     requesterNotifiedAt: null,
+    requesterNotifiedReporterIds: [] as string[],
+    requesterNotificationSkippedReporterIds: [] as string[],
   };
 
   const normalizedJson: Json = {
@@ -255,6 +312,13 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (insertError || !inserted) {
+    // A simultaneous retry can pass the preflight with the winning request and
+    // then lose on the unique reporter/submissionKey index. Return the winner's
+    // normal receipt instead of telling the user that a saved submission failed.
+    if (insertError?.code === "23505" && context.submissionKey) {
+      const winner = await findReplay(admin, profile.id, context.submissionKey);
+      if (winner) return replayResponse(winner);
+    }
     console.error("feedback insert failed", insertError);
     return NextResponse.json({ error: "Failed to save feedback" }, { status: 500 });
   }
@@ -265,7 +329,6 @@ export async function POST(req: NextRequest) {
     : (inserted as AgentRequestRow);
 
   if (duplicateId) {
-    // Always re-read the canonical row; the candidate snapshot may be stale.
     const { data: canonicalLookup, error: canonicalLookupError } = await admin
       .from("agent_requests")
       .select("*")
@@ -301,8 +364,9 @@ export async function POST(req: NextRequest) {
     if (error) console.warn("feedback canonical self-link update failed", error);
     if (updated) canonicalRow = updated as AgentRequestRow;
   } else if (canonicalRow) {
-    // Compare-and-set merge: severity only ever rises and needsAttention only
-    // ever turns on, even when duplicates arrive concurrently.
+    // Whole-row version CAS. Lifecycle edits and notification receipt writes
+    // also advance updated_at, so this aggregation path can never restore an
+    // older status, notes, or delivery state while raising severity/frequency.
     for (let attempt = 0; attempt < 5 && canonicalRow; attempt += 1) {
       const canonicalMeta = readFeedbackMetadata(canonicalRow.normalized_json);
       if (!canonicalMeta) break;
@@ -319,6 +383,7 @@ export async function POST(req: NextRequest) {
         needsAttention,
         severity,
       };
+      const aggregateUpdatedAt = new Date().toISOString();
       const { data: updated, error } = await admin
         .from("agent_requests")
         .update({
@@ -326,8 +391,10 @@ export async function POST(req: NextRequest) {
             ...rowContext(canonicalRow),
             feedback: nextMeta,
           } as Json,
+          updated_at: aggregateUpdatedAt,
         })
         .eq("id", canonicalId)
+        .eq("updated_at", canonicalRow.updated_at)
         .eq("normalized_json->feedback->>lastSeenAt", canonicalMeta.lastSeenAt)
         .eq("normalized_json->feedback->>severity", canonicalMeta.severity)
         .eq(
@@ -344,7 +411,6 @@ export async function POST(req: NextRequest) {
         canonicalRow = updated as AgentRequestRow;
         break;
       }
-      // Lost the race: reload the latest canonical row and merge again.
       const { data: latest } = await admin
         .from("agent_requests")
         .select("*")
@@ -400,24 +466,13 @@ export async function POST(req: NextRequest) {
       recommendation: triage.output.recommendation,
       feedbackId: canonicalId,
     });
-    if (delivered && canonicalRow) {
-      const metadata = readFeedbackMetadata(canonicalRow.normalized_json);
-      if (metadata) {
-        await admin
-          .from("agent_requests")
-          .update({
-            normalized_json: {
-              ...rowContext(canonicalRow),
-              feedback: { ...metadata, ownerNotifiedAt: now },
-            } as Json,
-          })
-          .eq("id", canonicalId);
-      }
+    if (delivered) {
+      await markOwnerNotified(admin, canonicalId, now);
     }
   }
 
   // Deliberately minimal: the reporter must never receive model output or
-  // identifiers from the (cross-tenant) clustering context.
+  // identifiers from the cross-tenant clustering context.
   return NextResponse.json({
     ok: true,
     submissionId: inserted.id,
