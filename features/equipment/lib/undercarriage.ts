@@ -70,9 +70,18 @@ function round1(value: number): number {
  * (pitch elongation). Not clamped: past-limit readings report above 100 %.
  */
 export function percentWorn(measured: number, limit: Pick<WearLimit, "newValue" | "limitValue">): number | null {
+  const exact = exactPercentWorn(measured, limit);
+  return exact === null ? null : round1(exact);
+}
+
+function exactPercentWorn(measured: number, limit: Pick<WearLimit, "newValue" | "limitValue">): number | null {
   const span = limit.limitValue - limit.newValue;
   if (!Number.isFinite(measured) || span === 0) return null;
-  return round1(((measured - limit.newValue) / span) * 100);
+  return ((measured - limit.newValue) / span) * 100;
+}
+
+function round2(value: number): number {
+  return Math.round(value * 100) / 100 + 0;
 }
 
 export type WearReading = {
@@ -96,18 +105,22 @@ export type WearReading = {
 export function wearReading(series: MeasurementSeries, limit: WearLimit | null): WearReading {
   const latest = series.latest;
   const previous = series.previous;
-  const wornPercent = limit ? percentWorn(latest.value, limit) : null;
-  let wornPer100Hours: number | null = null;
+  // Rate and hours-to-limit use the unrounded percentages; only the
+  // displayed figures are rounded.
+  const worn = limit ? exactPercentWorn(latest.value, limit) : null;
+  let rate: number | null = null;
   if (limit && previous && latest.assetHours !== null && previous.assetHours !== null) {
     const hours = latest.assetHours - previous.assetHours;
-    const before = percentWorn(previous.value, limit);
-    if (hours > 0 && before !== null && wornPercent !== null) {
-      wornPer100Hours = round1(((wornPercent - before) / hours) * 100);
+    const before = exactPercentWorn(previous.value, limit);
+    if (hours > 0 && before !== null && worn !== null) {
+      rate = ((worn - before) / hours) * 100;
     }
   }
+  const wornPercent = worn === null ? null : round1(worn);
+  const wornPer100Hours = rate === null ? null : round2(rate);
   const hoursToLimitAtRate =
-    wornPercent !== null && wornPer100Hours !== null && wornPer100Hours > 0 && wornPercent < 100
-      ? Math.round(((100 - wornPercent) / wornPer100Hours) * 100)
+    worn !== null && rate !== null && rate > 0 && worn < 100
+      ? Math.round(((100 - worn) / rate) * 100)
       : null;
   return {
     measurementType: series.measurementType,

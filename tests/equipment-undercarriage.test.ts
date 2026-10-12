@@ -11,7 +11,7 @@ vi.mock("@/features/equipment/server/equipmentAssetProfileService", () => ({
   EquipmentAssetProfileError: class extends Error {},
 }));
 vi.mock("@/features/equipment/server/equipmentMeasurementService", () => ({
-  loadAssetMeasurements: mocks.loadMeasurements,
+  loadAssetComponentMeasurements: mocks.loadMeasurements,
   EquipmentMeasurementError: class extends Error {},
 }));
 
@@ -117,6 +117,20 @@ describe("wear arithmetic", () => {
     );
     expect(notWearing.hoursToLimitAtRate).toBeNull();
   });
+
+  it("derives the rate from unrounded percentages so slow wear is not lost", () => {
+    // 104 → 103.99 over 200 h: 0.0833 % worn, 0.0417 % per 100 h.
+    const reading = wearReading(
+      series([
+        { value: 103.99, hours: 1200, at: "2026-10-01T12:00:00Z" },
+        { value: 104, hours: 1000, at: "2026-07-01T12:00:00Z" },
+      ]),
+      linkLimit,
+    );
+    expect(reading.wornPercent).toBe(0.1);
+    expect(reading.wornPer100Hours).toBe(0.04);
+    expect(reading.hoursToLimitAtRate).toBe(239800);
+  });
 });
 
 describe("wear limit validation", () => {
@@ -141,6 +155,7 @@ function fakeAdmin(tables: Tables, rpcs: Array<{ name: string; args: Record<stri
   return {
     from(table: string) {
       const filters: Array<(row: Record<string, unknown>) => boolean> = [];
+      let slice: [number, number] | null = null;
       const builder = {
         select: () => builder,
         eq: (column: string, value: unknown) => {
@@ -153,12 +168,21 @@ function fakeAdmin(tables: Tables, rpcs: Array<{ name: string; args: Record<stri
         },
         order: () => builder,
         limit: () => builder,
+        range: (from: number, to: number) => {
+          slice = [from, to + 1];
+          return builder;
+        },
         maybeSingle: async () => ({
           data: (tables[table] ?? []).find((row) => filters.every((filter) => filter(row))) ?? null,
           error: null,
         }),
         then: (resolve: (value: unknown) => void) =>
-          resolve({ data: (tables[table] ?? []).filter((row) => filters.every((filter) => filter(row))), error: null }),
+          resolve({
+            data: (tables[table] ?? [])
+              .filter((row) => filters.every((filter) => filter(row)))
+              .slice(...(slice ?? [0, undefined])),
+            error: null,
+          }),
       };
       return builder;
     },
@@ -183,16 +207,13 @@ describe("undercarriage service", () => {
   });
 
   it("groups parts under their side with readings and current limits", async () => {
-    mocks.loadMeasurements.mockResolvedValue({
-      assetHours: 2000,
-      components: [],
-      series: [
-        series([
-          { value: 98, hours: 2000, at: "2026-10-01T12:00:00Z" },
-          { value: 101, hours: 1500, at: "2026-07-01T12:00:00Z" },
-        ]),
-      ],
-    });
+    mocks.authorize.mockResolvedValue({ id: ASSET, engineHours: 2000 });
+    mocks.loadMeasurements.mockResolvedValue([
+      series([
+        { value: 98, hours: 2000, at: "2026-10-01T12:00:00Z" },
+        { value: 101, hours: 1500, at: "2026-07-01T12:00:00Z" },
+      ]),
+    ]);
     const result = await loadUndercarriage({
       supabase: {} as never,
       admin: fakeAdmin({
@@ -205,6 +226,11 @@ describe("undercarriage service", () => {
       role: "mechanic",
       assetId: ASSET,
     });
+    expect(result?.assetHours).toBe(2000);
+    // Only the undercarriage components' measurements are loaded.
+    expect(mocks.loadMeasurements).toHaveBeenCalledWith(
+      expect.objectContaining({ assetId: ASSET, componentIds: [SIDE, SHOES, CHAIN] }),
+    );
     expect(result?.sides).toHaveLength(1);
     const side = result!.sides[0];
     expect(side.sideComponentId).toBe(SIDE);
@@ -218,8 +244,46 @@ describe("undercarriage service", () => {
     expect(chain.readings[1]).toMatchObject({ measurementType: "track_pitch", reading: null, limit: null });
   });
 
+  it("skips measurement reads for assets without undercarriage components", async () => {
+    mocks.authorize.mockResolvedValue({ id: ASSET, engineHours: 10 });
+    const result = await loadUndercarriage({
+      supabase: {} as never,
+      admin: fakeAdmin({ equipment_components: [components[3]] }) as never,
+      shopId: SHOP,
+      role: "mechanic",
+      assetId: ASSET,
+    });
+    expect(result).toEqual({ assetHours: 10, sides: [] });
+    expect(mocks.loadMeasurements).not.toHaveBeenCalled();
+  });
+
+  it("reads every wear limit version page so current limits are never cut off", async () => {
+    mocks.authorize.mockResolvedValue({ id: ASSET, engineHours: 2000 });
+    mocks.loadMeasurements.mockResolvedValue([]);
+    // 1,000 newer versions of the shoe limit precede the only chain limit.
+    const shoeVersions = Array.from({ length: 1_000 }, (_, index) => ({
+      id: `s${index}`, shop_id: SHOP, component_id: SHOES, measurement_type: "track_shoe_height",
+      unit: "mm", new_value: 30, limit_value: 20, reference: null, created_at: "2026-10-02T00:00:00Z",
+    }));
+    const result = await loadUndercarriage({
+      supabase: {} as never,
+      admin: fakeAdmin({
+        equipment_components: components,
+        equipment_wear_limits: [
+          ...shoeVersions,
+          { id: "l1", shop_id: SHOP, component_id: CHAIN, measurement_type: "track_link_height", unit: "mm", new_value: 104, limit_value: 92, reference: null, created_at: "2026-10-01T00:00:00Z" },
+        ],
+      }) as never,
+      shopId: SHOP,
+      role: "mechanic",
+      assetId: ASSET,
+    });
+    const chain = result!.sides[0].parts.find((part) => part.componentId === CHAIN)!;
+    expect(chain.readings[0].limit).toMatchObject({ id: "l1" });
+  });
+
   it("returns null for an asset the caller cannot see", async () => {
-    mocks.loadMeasurements.mockResolvedValue(null);
+    mocks.authorize.mockResolvedValue(null);
     const result = await loadUndercarriage({
       supabase: {} as never,
       admin: fakeAdmin({}) as never,

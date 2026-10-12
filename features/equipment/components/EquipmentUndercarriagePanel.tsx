@@ -45,9 +45,11 @@ async function readError(response: Response): Promise<string> {
   return payload?.error ?? "The request could not be completed.";
 }
 
+/** The component's own label (distinguishes duplicate parts), falling back to its type. */
 function partName(part: UndercarriagePart): string {
   return (
-    COMPONENT_TYPE_LABELS[part.componentType as keyof typeof COMPONENT_TYPE_LABELS] ?? part.label
+    part.label.trim() ||
+    (COMPONENT_TYPE_LABELS[part.componentType as keyof typeof COMPONENT_TYPE_LABELS] ?? part.componentType)
   );
 }
 
@@ -333,7 +335,14 @@ export default function EquipmentUndercarriagePanel({ assetId }: { assetId: stri
                         <li key={key} className="border-t border-[color:var(--theme-border-soft)] pt-2 text-sm">
                           <div className="flex flex-wrap items-start justify-between gap-2">
                             <div className="min-w-0">
-                              <p className="font-semibold">{partName(part)}</p>
+                              <p className="font-semibold">
+                                {partName(part)}
+                                {part.serialNumber ? (
+                                  <span className="font-normal text-[color:var(--theme-text-muted)]">
+                                    {` · S/N ${part.serialNumber}`}
+                                  </span>
+                                ) : null}
+                              </p>
                               <p className="text-xs text-[color:var(--theme-text-muted)]">
                                 {measurementName(entry.measurementType)}
                                 {entry.limit

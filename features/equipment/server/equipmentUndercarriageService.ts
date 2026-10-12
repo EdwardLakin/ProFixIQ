@@ -17,7 +17,7 @@ import {
   type WearLimit,
 } from "@/features/equipment/lib/undercarriage";
 import { authorizeEquipmentAsset } from "@/features/equipment/server/equipmentAssetProfileService";
-import { loadAssetMeasurements } from "@/features/equipment/server/equipmentMeasurementService";
+import { loadAssetComponentMeasurements } from "@/features/equipment/server/equipmentMeasurementService";
 import type { CanonicalRole } from "@/features/shared/lib/rbac";
 
 type DB = Database;
@@ -35,6 +35,8 @@ export class EquipmentUndercarriageError extends Error {
     super(message);
   }
 }
+
+const LIMIT_PAGE = 1_000;
 
 function mapLimit(row: LimitRow): WearLimit {
   return {
@@ -57,17 +59,22 @@ async function currentLimits(
 ): Promise<Map<string, WearLimit>> {
   const limits = new Map<string, WearLimit>();
   for (let offset = 0; offset < componentIds.length; offset += 100) {
-    const { data, error } = await admin
-      .from("equipment_wear_limits")
-      .select("id,shop_id,sequence,component_id,measurement_type,unit,new_value,limit_value,reference,created_by,created_at")
-      .eq("shop_id", shopId)
-      .in("component_id", componentIds.slice(offset, offset + 100))
-      .order("sequence", { ascending: false })
-      .limit(1_000);
-    if (error) throw new EquipmentUndercarriageError("Unable to load wear limits.", 500);
-    for (const row of (data ?? []) as LimitRow[]) {
-      const key = `${row.component_id}|${row.measurement_type}`;
-      if (!limits.has(key)) limits.set(key, mapLimit(row));
+    const chunk = componentIds.slice(offset, offset + 100);
+    // Every version is read (newest first) so no current limit is cut off.
+    for (let page = 0; ; page += 1) {
+      const { data, error } = await admin
+        .from("equipment_wear_limits")
+        .select("id,shop_id,sequence,component_id,measurement_type,unit,new_value,limit_value,reference,created_by,created_at")
+        .eq("shop_id", shopId)
+        .in("component_id", chunk)
+        .order("sequence", { ascending: false })
+        .range(page * LIMIT_PAGE, page * LIMIT_PAGE + LIMIT_PAGE - 1);
+      if (error) throw new EquipmentUndercarriageError("Unable to load wear limits.", 500);
+      for (const row of (data ?? []) as LimitRow[]) {
+        const key = `${row.component_id}|${row.measurement_type}`;
+        if (!limits.has(key)) limits.set(key, mapLimit(row));
+      }
+      if (!data || data.length < LIMIT_PAGE) break;
     }
   }
   return limits;
@@ -75,9 +82,10 @@ async function currentLimits(
 
 /**
  * The asset's undercarriage: each side with its parts, their latest readings,
- * wear limits and the resulting percent worn. Authorization (shop scope,
- * mechanic assignment) happens in loadAssetMeasurements before any privileged
- * read. Returns null when the asset is not visible.
+ * wear limits and the resulting percent worn. The asset is authorized (shop
+ * scope, mechanic assignment) before any privileged read, and only the
+ * undercarriage components' measurements are loaded. Returns null when the
+ * asset is not visible.
  */
 export async function loadUndercarriage(input: {
   supabase: SupabaseClient<DB>;
@@ -86,8 +94,8 @@ export async function loadUndercarriage(input: {
   role: CanonicalRole;
   assetId: string;
 }): Promise<Undercarriage | null> {
-  const measurements = await loadAssetMeasurements(input);
-  if (!measurements) return null;
+  const asset = await authorizeEquipmentAsset(input);
+  if (!asset) return null;
 
   const { data, error } = await input.admin
     .from("equipment_components")
@@ -99,13 +107,13 @@ export async function loadUndercarriage(input: {
   const components = ((data ?? []) as ComponentRow[]).filter((row) =>
     isUndercarriagePart(row.component_type),
   );
-  if (!components.length) return { assetHours: measurements.assetHours, sides: [] };
+  if (!components.length) return { assetHours: asset.engineHours, sides: [] };
 
-  const limits = await currentLimits(
-    input.admin,
-    input.shopId,
-    components.map((row) => row.id),
-  );
+  const componentIds = components.map((row) => row.id);
+  const [limits, allSeries] = await Promise.all([
+    currentLimits(input.admin, input.shopId, componentIds),
+    loadAssetComponentMeasurements({ ...input, componentIds }),
+  ]);
 
   const part = (row: ComponentRow): UndercarriagePart => ({
     componentId: row.id,
@@ -116,7 +124,7 @@ export async function loadUndercarriage(input: {
       const limit = limits.get(`${row.id}|${measurementType}`) ?? null;
       // Readings recorded against this component (any position); newest wins.
       const series =
-        measurements.series
+        allSeries
           .filter(
             (candidate) =>
               candidate.componentId === row.id && candidate.measurementType === measurementType,
@@ -162,7 +170,7 @@ export async function loadUndercarriage(input: {
   const sideOrder = (position: string | null) =>
     position === "left" ? 0 : position === "right" ? 1 : 2;
   sides.sort((a, b) => sideOrder(a.position) - sideOrder(b.position));
-  return { assetHours: measurements.assetHours, sides };
+  return { assetHours: asset.engineHours, sides };
 }
 
 /**
