@@ -61,7 +61,7 @@ function analyzeRoute(relativePath, content) {
   const hasAuthGetUser = /auth\.getUser\s*\(/.test(content);
   const hasShopReference = /\bshop_id\b|\bshopId\b/.test(content);
   const hasRoleOrCapabilityReference = detectCapability(content);
-  const hasServiceRolePattern = /SUPABASE_SERVICE_ROLE_KEY|createSupabaseAdminClient|service role|service-role|createClient\([^\n]{0,140}(SERVICE|service)[^\n]{0,140}KEY/.test(content);
+  const hasServiceRolePattern = /SUPABASE_SERVICE_ROLE_KEY|createSupabaseAdminClient|createAdminSupabase|service role|service-role|createClient\([^\n]{0,140}(SERVICE|service)[^\n]{0,140}KEY/.test(content);
   const routeClassGuess = classifyRoute(relativePath, content);
 
   const riskFlags = [];
