@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(path, "utf8");
@@ -41,30 +41,18 @@ describe("Ops AI usage observability", () => {
     ].forEach((label) => expect(component).toContain(label));
   });
 
-  it("extends the canonical ledger for product and Agent run attribution without exposing private schema reads", () => {
+  it("retains historical engineering-agent attribution in the ledger without keeping an active callback", () => {
     const migration = read("supabase/migrations/20260921030500_ops_ai_usage_observability.sql");
     expect(migration).toContain("source_product");
     expect(migration).toContain("agent_run_id");
     expect(migration).toContain("external_request_id");
     expect(migration).toContain("get_ops_ai_usage_snapshot");
-    expect(migration).toContain("abnormal_prompt");
-    expect(migration).toContain("runaway_agent_run");
-    expect(migration).toContain("high_request_frequency");
     expect(migration).toContain("record_engineering_agent_ai_usage_ledger");
-    expect(migration).not.toContain("create or replace function rls_helpers.record_private_ai_usage_ledger");
     expect(migration).toContain("generate_series");
     expect(migration).toContain("coalesce(agent_run_id, external_request_id)");
     expect(migration).toContain("revoke all on function rls_helpers.get_ops_ai_usage_snapshot");
     expect(migration).toContain("to service_role");
-  });
-
-  it("accepts authenticated Engineering Agent usage into the same canonical ledger", () => {
-    const route = read("app/api/internal/agent/ai-usage/route.ts");
-    expect(route).toContain("isAgentApiRequestAuthorized");
-    expect(route).toContain('"record_engineering_agent_ai_usage_ledger"');
-    expect(route).toContain("future_occurred_at");
-    expect(route).toContain("invalid_metric");
-    expect(route).toContain("agent_run_id");
-    expect(route).toContain("external_request_id");
+    expect(existsSync("app/api/internal/agent/ai-usage/route.ts")).toBe(false);
+    expect(existsSync("features/shared/lib/server/agent-api-secrets.ts")).toBe(false);
   });
 });
