@@ -84,11 +84,16 @@ describe("premier feedback system", () => {
   it("bounds user-controlled feedback before AI and persistence", () => {
     const route = read("app/api/feedback/route.ts");
     const modal = read("features/feedback/components/FeedbackModal.tsx");
+    const triage = read("features/feedback/server/triageFeedback.ts");
     expect(route).toContain("MAX_DESCRIPTION_LENGTH = 12_000");
     expect(route).toContain("description.length > MAX_DESCRIPTION_LENGTH");
     expect(route).toContain("MAX_ATTACHMENTS = 20");
     expect(modal).toContain("maxLength={MAX_DESCRIPTION_LENGTH}");
     expect(modal).toContain("maxLength={MAX_CONTEXT_LENGTH}");
+    expect(triage).toContain("MAX_TRIAGE_DESCRIPTION_LENGTH = 12_000");
+    expect(triage).toContain(
+      "input.description.slice(0, MAX_TRIAGE_DESCRIPTION_LENGTH)",
+    );
   });
 
   it("does not match new feedback into terminal clusters and promotes active historical matches", () => {
@@ -113,9 +118,15 @@ describe("premier feedback system", () => {
     const notifications = read("features/feedback/server/notifications.ts");
     const controlRoute = read("app/api/feedback/[id]/route.ts");
 
-    expect(notifications).toContain("A ProFixIQ improvement you requested is now available");
-    expect(notifications).not.toContain("input.title");
-    expect(notifications).not.toContain("input.summary");
+    expect(notifications).toContain(
+      "A ProFixIQ improvement you requested is now available",
+    );
+    expect(notifications).not.toContain(
+      "You previously sent feedback about: ${input.title}",
+    );
+    expect(notifications).not.toContain(
+      "You asked, we shipped it: ${input.title}",
+    );
     expect(notifications).toContain("functions.invoke(\"send-email\"");
     expect(controlRoute).toContain("claimRequesterNotification");
     expect(controlRoute).toContain("requesterNotificationClaimedReporterIds");
