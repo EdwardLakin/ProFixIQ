@@ -1832,6 +1832,24 @@
     "riskLevel": "medium"
   },
   {
+    "path": "app/api/equipment/assets/[assetId]/undercarriage/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "isMutating": false,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
+  },
+  {
     "path": "app/api/equipment/components/[componentId]/actions/route.ts",
     "methods": [
       "POST"
@@ -1854,6 +1872,24 @@
     "methods": [
       "GET",
       "PATCH"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
+  },
+  {
+    "path": "app/api/equipment/components/[componentId]/wear-limits/route.ts",
+    "methods": [
+      "PUT"
     ],
     "isMutating": true,
     "hasRequireShopScopedApiAccess": true,

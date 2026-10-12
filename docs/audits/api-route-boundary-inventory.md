@@ -1,16 +1,16 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-10-12T15:59:18.655Z
+Generated: 2026-10-12T20:28:08.049Z
 
 ## Summary
-- Total route count: **558**
-- Routes exporting GET: **207**
+- Total route count: **560**
+- Routes exporting GET: **208**
 - Routes exporting POST: **378**
-- Routes exporting PUT: **13**
+- Routes exporting PUT: **14**
 - Routes exporting PATCH: **36**
 - Routes exporting DELETE: **16**
-- Routes with service-role pattern: **206**
-- Routes using requireShopScopedApiAccess: **228**
+- Routes with service-role pattern: **208**
+- Routes using requireShopScopedApiAccess: **230**
 - Routes with auth.getUser references: **122**
 
 ## High-Risk Routes
@@ -165,8 +165,10 @@ Generated: 2026-10-12T15:59:18.655Z
 - `app/api/equipment/assets/[assetId]/components/route.ts` | methods: GET, POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/assets/[assetId]/measurements/route.ts` | methods: GET, POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/assets/[assetId]/profile/route.ts` | methods: GET, PUT | riskFlags: service_role_with_shop_identifier_input_or_reference
+- `app/api/equipment/assets/[assetId]/undercarriage/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/components/[componentId]/actions/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/components/[componentId]/route.ts` | methods: GET, PATCH | riskFlags: service_role_with_shop_identifier_input_or_reference
+- `app/api/equipment/components/[componentId]/wear-limits/route.ts` | methods: PUT | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/measurements/[measurementId]/correct/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/fleet/billing/checkout/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/fleet/calendar/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
@@ -333,8 +335,10 @@ Generated: 2026-10-12T15:59:18.655Z
 - `app/api/equipment/assets/[assetId]/components/route.ts` | methods: GET, POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/assets/[assetId]/measurements/route.ts` | methods: GET, POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/assets/[assetId]/profile/route.ts` | methods: GET, PUT | riskFlags: service_role_with_shop_identifier_input_or_reference
+- `app/api/equipment/assets/[assetId]/undercarriage/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/components/[componentId]/actions/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/components/[componentId]/route.ts` | methods: GET, PATCH | riskFlags: service_role_with_shop_identifier_input_or_reference
+- `app/api/equipment/components/[componentId]/wear-limits/route.ts` | methods: PUT | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/measurements/[measurementId]/correct/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/fleet/ai-summary/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_with_shop_identifier_input_or_reference
 - `app/api/fleet/billing/checkout/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
