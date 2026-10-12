@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import AssetHealthView from "@/features/equipment/components/AssetHealthView";
 import EquipmentAccessState from "@/features/equipment/components/EquipmentAccessState";
 import { isAssetId } from "@/features/equipment/lib/assetProfile";
+import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDirectory";
 import { loadAssetHealth } from "@/features/equipment/server/loadAssetHealth";
 import { resolveEquipmentPageEntitlement } from "@/features/equipment/server/pageEntitlement";
 import { VEHICLE_WORKSPACE_READER_ROLES } from "@/features/vehicles/lib/vehicleWorkspace";
@@ -46,5 +47,12 @@ export default async function AssetHealthPage({ params }: AssetHealthPageProps) 
   });
   if (!health) notFound();
 
-  return <AssetHealthView health={health} />;
+  return (
+    <AssetHealthView
+      health={health}
+      canOpenComponentHistory={(EQUIPMENT_DIRECTORY_ROLES as readonly string[]).includes(
+        canonicalRole,
+      )}
+    />
+  );
 }
