@@ -1,16 +1,16 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-10-12T00:10:31.767Z
+Generated: 2026-10-12T03:17:16.082Z
 
 ## Summary
-- Total route count: **552**
-- Routes exporting GET: **203**
+- Total route count: **553**
+- Routes exporting GET: **204**
 - Routes exporting POST: **374**
-- Routes exporting PUT: **12**
+- Routes exporting PUT: **13**
 - Routes exporting PATCH: **35**
 - Routes exporting DELETE: **16**
-- Routes with service-role pattern: **200**
-- Routes using requireShopScopedApiAccess: **222**
+- Routes with service-role pattern: **201**
+- Routes using requireShopScopedApiAccess: **223**
 - Routes with auth.getUser references: **122**
 
 ## High-Risk Routes
@@ -162,6 +162,7 @@ Generated: 2026-10-12T00:10:31.767Z
 - `app/api/chat/users/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/demo/shop-boost/activate/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/dtc-suggest/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
+- `app/api/equipment/assets/[assetId]/profile/route.ts` | methods: GET, PUT | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/fleet/billing/checkout/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/fleet/calendar/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/fleet/driver/dashboard/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
@@ -324,6 +325,7 @@ Generated: 2026-10-12T00:10:31.767Z
 - `app/api/demo/shop-boost/share/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary
 - `app/api/demo/shop-boost/uploads/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary
 - `app/api/dtc-suggest/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
+- `app/api/equipment/assets/[assetId]/profile/route.ts` | methods: GET, PUT | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/fleet/ai-summary/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_with_shop_identifier_input_or_reference
 - `app/api/fleet/billing/checkout/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/fleet/billing/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_with_shop_identifier_input_or_reference
