@@ -14,6 +14,9 @@ import {
   type ComponentStatus,
   type EquipmentComponent,
   type EquipmentComponentDetail,
+  type EquipmentComponentEvent,
+  canManageComponents,
+  isComponentWorkAction,
   type EquipmentComponentNode,
 } from "@/features/equipment/lib/components";
 import { authorizeEquipmentAsset } from "@/features/equipment/server/equipmentAssetProfileService";
@@ -26,13 +29,27 @@ type EventRow = DB["public"]["Tables"]["equipment_component_events"]["Row"];
 const COMPONENT_COLUMNS =
   "id,shop_id,component_type,position,label,manufacturer,model,serial_number,part_number,status,installed_vehicle_id,parent_component_id,installed_at,installed_asset_hours,component_hours_at_install,attributes,created_at,updated_at,created_by,updated_by";
 const EVENT_COLUMNS =
-  "id,shop_id,component_id,event_type,vehicle_id,asset_hours,component_hours,occurred_at,work_order_id,notes,recorded_by,created_at";
+  "id,shop_id,component_id,sequence,event_type,vehicle_id,asset_hours,component_hours,occurred_at,work_order_id,notes,details,recorded_by,created_at";
 const PAGE = 1_000;
+/** Events that are not lifecycle/service evidence for "last event". */
+const LIFECYCLE_EXCLUDED = new Set(["created", "updated"]);
+
+function detailsOf(value: unknown): EquipmentComponentEvent["details"] {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const out: NonNullable<EquipmentComponentEvent["details"]> = {};
+  for (const [field, change] of Object.entries(value as Record<string, unknown>)) {
+    if (change && typeof change === "object" && !Array.isArray(change)) {
+      const { from, to } = change as { from?: unknown; to?: unknown };
+      out[field] = { from: from ?? null, to: to ?? null };
+    }
+  }
+  return out;
+}
 
 export class EquipmentComponentError extends Error {
   constructor(
     message: string,
-    readonly status: 400 | 404 | 409 | 500,
+    readonly status: 400 | 403 | 404 | 409 | 500,
   ) {
     super(message);
   }
@@ -116,7 +133,9 @@ function rpcFailure(error: { code?: string | null; message: string }): never {
             ? "A component cannot be placed inside itself."
             : /scrapped/i.test(error.message)
               ? "Scrapped components cannot change."
-              : "That component, asset or work order is not in this shop.",
+              : /work order must be for/i.test(error.message)
+                ? "That work order is for a different asset."
+                : "That component, asset or work order is not in this shop.",
         409,
       );
     case "22023":
@@ -145,9 +164,9 @@ async function latestEvents(
         .select(EVENT_COLUMNS)
         .eq("shop_id", shopId)
         .in("component_id", chunk)
-        .neq("event_type", "created")
+        .not("event_type", "in", "(created,updated)")
         .order("occurred_at", { ascending: false })
-        .order("id", { ascending: false })
+        .order("sequence", { ascending: false })
         .range(page * PAGE, page * PAGE + PAGE - 1);
       if (error) throw new EquipmentComponentError("Unable to load component history.", 500);
       for (const row of (data ?? []) as EventRow[]) {
@@ -233,7 +252,7 @@ export async function loadComponentDetail(input: {
       .eq("shop_id", input.shopId)
       .eq("component_id", input.componentId)
       .order("occurred_at", { ascending: false })
-      .order("id", { ascending: false })
+      .order("sequence", { ascending: false })
       .range(page * PAGE, page * PAGE + PAGE - 1);
     if (eventError) throw new EquipmentComponentError("Unable to load component history.", 500);
     history.push(...((data ?? []) as EventRow[]));
@@ -266,7 +285,7 @@ export async function loadComponentDetail(input: {
     ? assets.get(component.installed_vehicle_id)
     : undefined;
   return {
-    component: mapComponentRow(component, current?.engineHours ?? null, history.find((event) => event.event_type !== "created") ?? null),
+    component: mapComponentRow(component, current?.engineHours ?? null, history.find((event) => !LIFECYCLE_EXCLUDED.has(event.event_type)) ?? null),
     asset: assetRef(component.installed_vehicle_id),
     history: history.map((event) => ({
       id: event.id,
@@ -277,6 +296,7 @@ export async function loadComponentDetail(input: {
       notes: event.notes,
       asset: assetRef(event.vehicle_id),
       workOrderId: event.work_order_id,
+      details: detailsOf(event.details),
     })),
   };
 }
@@ -328,57 +348,26 @@ export async function createComponent(
   context: WriteContext & {
     fields: ComponentFields;
     install: { assetId: string; parentComponentId: string | null } | null;
+    operationKey: string;
   },
 ): Promise<string> {
-  if (context.install) {
-    await requireAsset(context, context.install.assetId);
-    // Check the parent up front so a rejected install cannot leave an
-    // orphaned in-stock component behind.
-    if (context.install.parentComponentId) {
-      const parent = await loadOwnedComponent(
-        context.admin,
-        context.shopId,
-        context.install.parentComponentId,
-      ).catch((error: unknown) => {
-        if (error instanceof EquipmentComponentError && error.status === 404) return null;
-        throw error;
-      });
-      if (!parent || parent.installed_vehicle_id !== context.install.assetId) {
-        throw new EquipmentComponentError(
-          "The parent component must be installed on the same asset.",
-          409,
-        );
-      }
-    }
-  }
+  const asset = context.install ? await requireAsset(context, context.install.assetId) : null;
 
+  // Create and install in one transaction; a retry with the same key returns
+  // the original component.
   const { data: id, error } = await context.admin.rpc("equipment_component_save", {
     p_shop_id: context.shopId,
     p_actor_user_id: context.actorUserId,
     // Positional SQL parameter: null means create (generated types omit nullability).
     p_component_id: null as unknown as string,
     p_fields: fieldsPayload(context.fields),
+    p_install_vehicle_id: context.install?.assetId ?? undefined,
+    p_parent_component_id: context.install?.parentComponentId ?? undefined,
+    p_asset_hours: asset?.engineHours ?? undefined,
+    p_operation_key: context.operationKey,
   });
   if (error) rpcFailure(error);
-  const componentId = id as string;
-
-  if (context.install) {
-    await applyComponentAction({
-      ...context,
-      componentId,
-      input: {
-        action: "install",
-        assetId: context.install.assetId,
-        parentComponentId: context.install.parentComponentId,
-        position: context.fields.position,
-        occurredAt: null,
-        workOrderId: null,
-        notes: null,
-        targetStatus: "in_stock",
-      },
-    });
-  }
-  return componentId;
+  return id as string;
 }
 
 export async function updateComponent(
@@ -399,13 +388,24 @@ export async function updateComponent(
  * Install / remove / rebuild / repair / inspect / scrap a component.
  * Every asset touched (current and target) is authorized through the
  * caller's RLS client first; meters come from those authorized assets.
+ * Assigned technicians may record work (rebuild/repair/inspect) on a
+ * component installed on an asset they can see; moving and retiring
+ * components stays with component managers.
  */
 export async function applyComponentAction(
   context: WriteContext & { componentId: string; input: ComponentActionInput },
 ): Promise<void> {
   const { input } = context;
-  const component = await loadOwnedComponent(context.admin, context.shopId, context.componentId);
+  const manager = canManageComponents(context.role);
+  if (!manager && !isComponentWorkAction(input.action)) {
+    throw new EquipmentComponentError("Your role cannot move or retire components.", 403);
+  }
 
+  const component = await loadOwnedComponent(context.admin, context.shopId, context.componentId);
+  if (!manager && component.status !== "installed") {
+    // Work on a component off the machine has no assigned asset to authorize.
+    throw new EquipmentComponentError("Component not found.", 404);
+  }
   if (input.action === "remove" && component.status !== "installed") {
     throw new EquipmentComponentError("This component is not installed on an asset.", 409);
   }
@@ -415,16 +415,21 @@ export async function applyComponentAction(
     : null;
   const targetAsset =
     input.action === "install" && input.assetId ? await requireAsset(context, input.assetId) : null;
+  // The asset the event is recorded on.
+  const eventAsset = input.action === "install" ? targetAsset : currentAsset;
 
   if (input.workOrderId) {
     const { data: workOrder, error } = await context.supabase
       .from("work_orders")
-      .select("id")
+      .select("id,vehicle_id")
       .eq("shop_id", context.shopId)
       .eq("id", input.workOrderId)
       .maybeSingle();
     if (error) throw new EquipmentComponentError("Unable to load work order.", 500);
     if (!workOrder) throw new EquipmentComponentError("Work order not found.", 400);
+    if (eventAsset && workOrder.vehicle_id !== eventAsset.id) {
+      throw new EquipmentComponentError("That work order is for a different asset.", 400);
+    }
   }
 
   const movingAssets =
@@ -432,15 +437,6 @@ export async function applyComponentAction(
     currentAsset !== null &&
     targetAsset !== null &&
     currentAsset.id !== targetAsset.id;
-  // Life accrued on the old asset, measured with the old asset's own meter.
-  const componentHoursOnLeave = movingAssets
-    ? componentHours(component, currentAsset!.engineHours)
-    : null;
-
-  const assetHours =
-    input.action === "install"
-      ? targetAsset?.engineHours ?? null
-      : currentAsset?.engineHours ?? null;
 
   const { error } = await context.admin.rpc("equipment_component_move", {
     p_shop_id: context.shopId,
@@ -450,12 +446,14 @@ export async function applyComponentAction(
     p_vehicle_id: input.action === "install" ? input.assetId ?? undefined : undefined,
     p_parent_component_id: input.parentComponentId ?? undefined,
     p_position: input.position ?? undefined,
-    p_asset_hours: assetHours ?? undefined,
-    p_component_hours: componentHoursOnLeave ?? undefined,
+    p_asset_hours: eventAsset?.engineHours ?? undefined,
+    // Life accrued on the old asset is measured with the old asset's meter.
+    p_source_asset_hours: movingAssets ? currentAsset!.engineHours ?? undefined : undefined,
     p_occurred_at: input.occurredAt ?? undefined,
     p_work_order_id: input.workOrderId ?? undefined,
     p_notes: input.notes ?? undefined,
     p_target_status: input.action === "remove" ? input.targetStatus : undefined,
+    p_operation_key: input.operationKey,
   });
   if (error) rpcFailure(error);
 }

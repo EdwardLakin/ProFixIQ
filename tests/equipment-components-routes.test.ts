@@ -53,6 +53,7 @@ const SHOP_ID = "00000000-0000-4000-8000-000000000111";
 const USER_ID = "00000000-0000-4000-8000-000000000222";
 const ASSET_ID = "00000000-0000-4000-8000-000000000333";
 const COMPONENT_ID = "00000000-0000-4000-8000-000000000444";
+const KEY = "00000000-0000-4000-8000-0000000000aa";
 
 const assetContext = (assetId = ASSET_ID) => ({ params: Promise.resolve({ assetId }) });
 const componentContext = (componentId = COMPONENT_ID) => ({ params: Promise.resolve({ componentId }) });
@@ -95,7 +96,13 @@ describe("Equipment component routes", () => {
     const response = await getAssetComponents(new Request("http://localhost"), assetContext());
     expect(allowedRoles()).toContain("mechanic");
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ entitled: true, canEdit: false, assetHours: 1200, tree: [] });
+    expect(await response.json()).toEqual({
+      entitled: true,
+      canEdit: false,
+      canRecordWork: true,
+      assetHours: 1200,
+      tree: [],
+    });
     expect(mocks.loadAsset).toHaveBeenCalledWith({
       supabase: { scoped: true },
       admin: { admin: true },
@@ -127,15 +134,26 @@ describe("Equipment component routes", () => {
     expect(response.status).toBe(503);
   });
 
-  it("keeps mechanics out of every write and shop-wide history", async () => {
+  it("keeps mechanics out of component management and shop-wide history", async () => {
     await postAssetComponents(request("POST", { seed: true }), assetContext());
     expect(allowedRoles()).not.toContain("mechanic");
     await patchComponent(request("PATCH", { componentType: "engine" }), componentContext());
     expect(allowedRoles()).not.toContain("mechanic");
-    await postAction(request("POST", { action: "repaired" }), componentContext());
-    expect(allowedRoles()).not.toContain("mechanic");
     await getComponent(new Request("http://localhost"), componentContext());
     expect(allowedRoles()).not.toContain("mechanic");
+  });
+
+  it("admits mechanics to the action route so the service can apply the assignment rule", async () => {
+    mocks.requireShopAccess.mockResolvedValue(access("mechanic"));
+    const response = await postAction(
+      request("POST", { action: "repaired", operationKey: KEY }),
+      componentContext(),
+    );
+    expect(allowedRoles()).toContain("mechanic");
+    expect(response.status).toBe(200);
+    expect(mocks.apply).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "mechanic", input: expect.objectContaining({ operationKey: KEY }) }),
+    );
   });
 
   it("seeds the standard hierarchy", async () => {
@@ -149,7 +167,12 @@ describe("Equipment component routes", () => {
 
   it("creates and installs a validated component on the route's asset", async () => {
     const response = await postAssetComponents(
-      request("POST", { componentType: "turbocharger", parentComponentId: COMPONENT_ID, shopId: "ignored" }),
+      request("POST", {
+        componentType: "turbocharger",
+        parentComponentId: COMPONENT_ID,
+        shopId: "ignored",
+        operationKey: KEY,
+      }),
       assetContext(),
     );
     expect(response.status).toBe(201);
@@ -158,6 +181,7 @@ describe("Equipment component routes", () => {
         shopId: SHOP_ID,
         fields: expect.objectContaining({ componentType: "turbocharger" }),
         install: { assetId: ASSET_ID, parentComponentId: COMPONENT_ID },
+        operationKey: KEY,
       }),
     );
   });
@@ -169,13 +193,18 @@ describe("Equipment component routes", () => {
         .status,
     ).toBe(400);
     expect((await postAction(request("POST", { action: "install" }), componentContext())).status).toBe(400);
+    expect((await postAction(request("POST", { action: "repaired" }), componentContext())).status).toBe(400);
+    expect((await postAssetComponents(request("POST", { componentType: "engine" }), assetContext())).status).toBe(400);
     expect((await getComponent(new Request("http://localhost"), componentContext("bad"))).status).toBe(404);
     expect(mocks.resolveEntitlement).not.toHaveBeenCalled();
   });
 
   it("surfaces service status codes", async () => {
     mocks.apply.mockRejectedValue(new EquipmentComponentError("Scrapped components cannot change.", 409));
-    const response = await postAction(request("POST", { action: "repaired" }), componentContext());
+    const response = await postAction(
+      request("POST", { action: "repaired", operationKey: KEY }),
+      componentContext(),
+    );
     expect(response.status).toBe(409);
     expect(await response.json()).toEqual({ error: "Scrapped components cannot change." });
   });

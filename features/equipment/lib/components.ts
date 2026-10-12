@@ -1,3 +1,4 @@
+import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
 import {
   offRoadProfileByValue,
   type OffRoadEquipmentFamily,
@@ -51,6 +52,8 @@ export const COMPONENT_TYPE_LABELS = {
   hydraulic_cylinder: "Hydraulic cylinder",
   drum: "Drum",
   electrical_system: "Electrical system",
+  battery_pack: "Battery pack",
+  traction_motor: "Drive / traction motor",
   alternator: "Alternator",
   starter: "Starter",
   cab_rops: "Cab / ROPS",
@@ -89,6 +92,7 @@ export const COMPONENT_STATUS_LABELS: Record<ComponentStatus, string> = {
 
 export const COMPONENT_EVENT_LABELS = {
   created: "Created",
+  updated: "Details edited",
   installed: "Installed",
   removed: "Removed",
   rebuilt: "Rebuilt",
@@ -107,6 +111,25 @@ export const COMPONENT_ACTIONS = [
   "scrapped",
 ] as const;
 export type ComponentAction = (typeof COMPONENT_ACTIONS)[number];
+
+/** Recording work done on a component (not moving or retiring it). */
+export const COMPONENT_WORK_ACTIONS = ["rebuilt", "repaired", "inspected"] as const;
+export function isComponentWorkAction(action: string): boolean {
+  return (COMPONENT_WORK_ACTIONS as readonly string[]).includes(action);
+}
+
+/** Roles that add, edit, install, remove, scrap or seed components. */
+export const COMPONENT_MANAGER_ROLES = ROLE_GROUPS.workOrderManagers;
+/** Roles that may record work on a component. Assigned-only technicians
+ * (mechanics) additionally need the asset to be visible to them. */
+export const COMPONENT_WORK_RECORDER_ROLES = [...ROLE_GROUPS.workOrderManagers, "mechanic"] as const;
+
+export function canManageComponents(role: string): boolean {
+  return (COMPONENT_MANAGER_ROLES as readonly string[]).includes(role);
+}
+export function canRecordComponentWork(role: string): boolean {
+  return (COMPONENT_WORK_RECORDER_ROLES as readonly string[]).includes(role);
+}
 
 export function componentLabel(type: string, position: string | null): string {
   const base = COMPONENT_TYPE_LABELS[type as ComponentType] ?? type;
@@ -221,6 +244,15 @@ const FAMILY_TEMPLATES: Partial<Record<OffRoadEquipmentFamily, TemplateNode[]>> 
   ],
 };
 
+/** Machines with no combustion engine (mirrors the inspection catalog). */
+const ELECTRIC_CLASSES = new Set(["scissor_lift", "vertical_mast_lift", "electric_rope_shovel"]);
+const ELECTRIC_LIFT_TEMPLATE: TemplateNode[] = [
+  ["battery_pack", null],
+  ["traction_motor", null],
+  ["hydraulic_system", null, [["main_hydraulic_pump", null]]],
+  ["electrical_system", null],
+];
+
 const DEFAULT_TEMPLATE: TemplateNode[] = [
   ENGINE,
   ["hydraulic_system", null, [["main_hydraulic_pump", null]]],
@@ -236,6 +268,12 @@ export function componentTemplateForClass(equipmentClass: string | null): Compon
     ? ["crawler_excavator", "mini_excavator", "compact_track_loader", "crawler_dozer"].includes(profile.value)
     : false;
   let nodes = (family && FAMILY_TEMPLATES[family]) || DEFAULT_TEMPLATE;
+  if (profile && ELECTRIC_CLASSES.has(profile.value)) {
+    nodes =
+      profile.family === "aerial_access"
+        ? ELECTRIC_LIFT_TEMPLATE
+        : nodes.filter(([type]) => type !== "engine").concat([["traction_motor", null]]);
+  }
   // Wheeled machines in tracked families do not get undercarriage.
   if (!tracked && family && (family === "excavation" || family === "dozing_grading")) {
     nodes = nodes.filter(([type]) => type !== "undercarriage");
@@ -257,6 +295,8 @@ export type EquipmentComponentEvent = {
   /** Asset at the time, when the viewer may see it. */
   asset: { id: string; label: string; href: string } | null;
   workOrderId: string | null;
+  /** For 'updated' events: changed identity fields. */
+  details: Record<string, { from: unknown; to: unknown }> | null;
 };
 
 export type EquipmentComponent = {
@@ -415,7 +455,29 @@ export type ComponentActionInput = {
   workOrderId: string | null;
   notes: string | null;
   targetStatus: "in_stock" | "in_repair";
+  /** Client-generated key; a retried request with the same key is a no-op. */
+  operationKey: string;
 };
+
+/**
+ * A date-only value (from a date input) is the user's calendar day; store it
+ * at 12:00 UTC so it renders as the same day across time zones.
+ */
+export function parseEventDate(value: unknown): Validation<string | null> {
+  if (value === undefined || value === null || value === "") return { ok: true, value: null };
+  if (typeof value !== "string") return { ok: false, error: "Date is invalid." };
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(value);
+  const parsed = Date.parse(dateOnly ? `${value}T12:00:00Z` : value);
+  if (!Number.isFinite(parsed)) return { ok: false, error: "Date is invalid." };
+  if (parsed > Date.now() + 24 * 60 * 60 * 1000) {
+    return { ok: false, error: "Date cannot be in the future." };
+  }
+  return { ok: true, value: new Date(parsed).toISOString() };
+}
+
+export function isOperationKey(value: unknown): value is string {
+  return isComponentId(value);
+}
 
 export function validateComponentAction(body: unknown): Validation<ComponentActionInput> {
   if (typeof body !== "object" || body === null || Array.isArray(body)) {
@@ -449,14 +511,10 @@ export function validateComponentAction(body: unknown): Validation<ComponentActi
     position = input.position as ComponentPosition;
   }
 
-  let occurredAt: string | null = null;
-  if (input.occurredAt !== undefined && input.occurredAt !== null && input.occurredAt !== "") {
-    const parsed = typeof input.occurredAt === "string" ? Date.parse(input.occurredAt) : NaN;
-    if (!Number.isFinite(parsed)) return { ok: false, error: "Date is invalid." };
-    if (parsed > Date.now() + 24 * 60 * 60 * 1000) {
-      return { ok: false, error: "Date cannot be in the future." };
-    }
-    occurredAt = new Date(parsed).toISOString();
+  const occurredAt = parseEventDate(input.occurredAt);
+  if (!occurredAt.ok) return occurredAt;
+  if (!isOperationKey(input.operationKey)) {
+    return { ok: false, error: "An operation key is required." };
   }
 
   const notes = text(input.notes, "Notes", 2000);
@@ -469,10 +527,11 @@ export function validateComponentAction(body: unknown): Validation<ComponentActi
       assetId: assetId.value,
       parentComponentId: parentComponentId.value,
       position,
-      occurredAt,
+      occurredAt: occurredAt.value,
       workOrderId: workOrderId.value,
       notes: notes.value,
       targetStatus: input.targetStatus === "in_repair" ? "in_repair" : "in_stock",
+      operationKey: input.operationKey,
     },
   };
 }

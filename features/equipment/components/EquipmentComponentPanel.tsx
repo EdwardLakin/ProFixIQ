@@ -20,7 +20,7 @@ type LoadState =
   | { kind: "loading" }
   | { kind: "hidden" }
   | { kind: "error"; message: string }
-  | { kind: "ready"; tree: EquipmentComponentNode[]; canEdit: boolean };
+  | { kind: "ready"; tree: EquipmentComponentNode[]; canEdit: boolean; canRecordWork: boolean };
 
 type RecordAction = "rebuilt" | "repaired" | "inspected" | "remove";
 
@@ -31,6 +31,11 @@ const BUTTON =
   "min-h-9 rounded-lg border border-[color:var(--theme-border-soft)] px-3 text-xs font-semibold transition hover:bg-[color:var(--theme-surface-overlay)] disabled:opacity-50";
 const PRIMARY_BUTTON =
   "min-h-9 rounded-lg bg-[color:var(--accent-copper)] px-3 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-50";
+
+/** A fresh idempotency key per submission attempt-set (kept across retries). */
+function newOperationKey(): string {
+  return crypto.randomUUID();
+}
 
 const ACTION_LABELS: Record<RecordAction, string> = {
   rebuilt: "Record rebuild",
@@ -70,6 +75,8 @@ function ActionForm({
   const [targetStatus, setTargetStatus] = useState<"in_stock" | "in_repair">("in_stock");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Same key for retries of this form, so a lost response cannot double-record.
+  const [operationKey] = useState(newOperationKey);
 
   const submit = async () => {
     setBusy(true);
@@ -83,6 +90,7 @@ function ActionForm({
         notes: notes || null,
         occurredAt: occurredAt || null,
         targetStatus,
+        operationKey,
       }),
     }).catch(() => null);
     setBusy(false);
@@ -158,6 +166,7 @@ function AddComponentForm({
   const [parentComponentId, setParentComponentId] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [operationKey] = useState(newOperationKey);
 
   const submit = async () => {
     setBusy(true);
@@ -173,6 +182,7 @@ function AddComponentForm({
         serialNumber: serialNumber || null,
         manufacturer: manufacturer || null,
         parentComponentId: parentComponentId || null,
+        operationKey,
       }),
     }).catch(() => null);
     setBusy(false);
@@ -263,10 +273,16 @@ export default function EquipmentComponentPanel({
     const payload = (await response.json()) as {
       entitled: boolean;
       canEdit?: boolean;
+      canRecordWork?: boolean;
       tree?: EquipmentComponentNode[];
     };
     if (!payload.entitled) return setState({ kind: "hidden" });
-    setState({ kind: "ready", tree: payload.tree ?? [], canEdit: Boolean(payload.canEdit) });
+    setState({
+      kind: "ready",
+      tree: payload.tree ?? [],
+      canEdit: Boolean(payload.canEdit),
+      canRecordWork: Boolean(payload.canRecordWork),
+    });
   }, [assetId]);
 
   useEffect(() => {
@@ -365,7 +381,7 @@ export default function EquipmentComponentPanel({
                           .join(" · ") || "No recorded history"}
                       </p>
                     </div>
-                    {state.canEdit ? (
+                    {state.canRecordWork ? (
                       <select
                         className="min-h-9 rounded-lg border border-[color:var(--theme-border-soft)] bg-transparent px-2 text-xs"
                         aria-label={`Record work on ${node.displayName}`}
@@ -376,7 +392,9 @@ export default function EquipmentComponentPanel({
                         }}
                       >
                         <option value="">Record…</option>
-                        {(Object.keys(ACTION_LABELS) as RecordAction[]).map((action) => (
+                        {(Object.keys(ACTION_LABELS) as RecordAction[])
+                          .filter((action) => state.canEdit || action !== "remove")
+                          .map((action) => (
                           <option key={action} value={action}>{ACTION_LABELS[action]}</option>
                         ))}
                       </select>

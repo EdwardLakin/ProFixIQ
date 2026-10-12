@@ -42,6 +42,22 @@ function display(value: string | number | null | undefined): string {
   return value === null || value === undefined || value === "" ? "—" : String(value);
 }
 
+const FIELD_LABELS: Record<string, string> = {
+  component_type: "Type",
+  position: "Position",
+  label: "Name",
+  manufacturer: "Manufacturer",
+  model: "Model",
+  serial_number: "Serial number",
+  part_number: "Part number",
+  attributes: "Attributes",
+};
+
+function changeText(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  return typeof value === "object" ? JSON.stringify(value) : String(value);
+}
+
 async function readError(response: Response): Promise<string> {
   const payload = (await response.json().catch(() => null)) as { error?: string } | null;
   return payload?.error ?? "The request could not be completed.";
@@ -158,7 +174,11 @@ export default function EquipmentComponentDetailView({
   const editable = canEdit && component.status !== "scrapped";
   const installed = component.status === "installed";
 
+  // One key per opened form: retries of a lost response cannot double-record.
+  const [operationKey, setOperationKey] = useState(() => crypto.randomUUID());
+
   const reset = () => {
+    setOperationKey(crypto.randomUUID());
     setMode(null);
     setError(null);
     setNotes("");
@@ -203,6 +223,7 @@ export default function EquipmentComponentDetailView({
       notes: notes || null,
       occurredAt: occurredAt || null,
       targetStatus,
+      operationKey,
     });
   };
 
@@ -413,6 +434,15 @@ export default function EquipmentComponentDetailView({
                   <Link href={event.asset.href} className="text-xs underline">
                     Open asset
                   </Link>
+                ) : null}
+                {event.details ? (
+                  <ul className="mt-1 text-xs">
+                    {Object.entries(event.details).map(([field, change]) => (
+                      <li key={field}>
+                        {FIELD_LABELS[field] ?? field}: {changeText(change.from)} → {changeText(change.to)}
+                      </li>
+                    ))}
+                  </ul>
                 ) : null}
                 {event.notes ? <p className="mt-1 text-sm">{event.notes}</p> : null}
               </li>

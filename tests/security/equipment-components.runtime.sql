@@ -36,7 +36,13 @@ insert into public.vehicles (id, shop_id, user_id, unit_number, year, make, mode
 values
   ('69700000-0000-4000-8000-000000000001', '69600000-0000-4000-8000-000000000001', '69500000-0000-4000-8000-000000000001', 'EX-1', 2021, 'Caterpillar', '336', 1000),
   ('69700000-0000-4000-8000-000000000002', '69600000-0000-4000-8000-000000000001', '69500000-0000-4000-8000-000000000001', 'EX-2', 2019, 'Caterpillar', '336', 5000),
-  ('69700000-0000-4000-8000-000000000003', '69600000-0000-4000-8000-000000000002', '69500000-0000-4000-8000-000000000002', 'EX-B', 2020, 'Komatsu', 'PC360', 900);
+  ('69700000-0000-4000-8000-000000000003', '69600000-0000-4000-8000-000000000002', '69500000-0000-4000-8000-000000000002', 'EX-B', 2020, 'Komatsu', 'PC360', 900),
+  ('69700000-0000-4000-8000-000000000004', '69600000-0000-4000-8000-000000000001', '69500000-0000-4000-8000-000000000001', 'EX-OLD', 2010, 'Caterpillar', '320', 300);
+
+insert into public.work_orders (id, shop_id, custom_id, vehicle_id, status, record_type, advisor_id)
+values
+  ('69800000-0000-4000-8000-000000000001', '69600000-0000-4000-8000-000000000001', 'CMP-EX1', '69700000-0000-4000-8000-000000000001', 'in_progress', 'work_order', '69500000-0000-4000-8000-000000000001'),
+  ('69800000-0000-4000-8000-000000000002', '69600000-0000-4000-8000-000000000001', 'CMP-EX2', '69700000-0000-4000-8000-000000000002', 'in_progress', 'work_order', '69500000-0000-4000-8000-000000000001');
 
 do $equipment_components_rpc$
 declare
@@ -56,6 +62,7 @@ declare
   v_turbo uuid;
   v_drive uuid;
   v_spare uuid;
+  v_created_id uuid;
   v_row public.equipment_components%rowtype;
 begin
   -- Seeding creates the hierarchy once; re-running is a no-op.
@@ -85,16 +92,30 @@ begin
     null;
   end;
 
-  -- Moving the engine to EX-2 carries its turbocharger and the life the
-  -- caller measured on EX-1's meter (600 h), restarting at EX-2's meter.
+  -- Moving the engine to EX-2 at EX-1 = 1600 h carries its turbocharger;
+  -- each keeps its own life (600 h) and restarts at EX-2's meter.
   perform public.equipment_component_move(
-    shop_a, actor, v_engine, 'install', ex2, null, null, 5000, 600
+    shop_a, actor, v_engine, 'install', ex2, null, null, 5000, 1600
   );
   select * into v_row from public.equipment_components where id = v_engine;
   if v_row.installed_vehicle_id <> ex2 or v_row.installed_asset_hours <> 5000
      or v_row.component_hours_at_install <> 600 then
     raise exception 'Engine move recorded the wrong asset or meters: % % %',
       v_row.installed_vehicle_id, v_row.installed_asset_hours, v_row.component_hours_at_install;
+  end if;
+  if (select component_hours_at_install from public.equipment_components where id = v_turbo) <> 600
+     or (select installed_asset_hours from public.equipment_components where id = v_turbo) <> 5000 then
+    raise exception 'Child component lost its life when moved with its parent.';
+  end if;
+  if (select component_hours from public.equipment_component_events
+      where component_id = v_turbo and event_type = 'removed') <> 600 then
+    raise exception 'Child removal event did not record its own life.';
+  end if;
+  if (select max(sequence) from public.equipment_component_events
+      where component_id = v_engine and event_type = 'removed')
+     >= (select min(sequence) from public.equipment_component_events
+      where component_id = v_engine and event_type = 'installed' and vehicle_id = ex2) then
+    raise exception 'Lifecycle events are not ordered removed-then-installed.';
   end if;
   if (select installed_vehicle_id from public.equipment_components where id = v_turbo) <> ex2
      or (select parent_component_id from public.equipment_components where id = v_turbo) <> v_engine then
@@ -132,6 +153,42 @@ begin
     perform public.equipment_component_move(shop_b, actor, v_drive, 'repaired');
     raise exception 'Another shop acted on a component.';
   exception when sqlstate 'P0002' then
+    null;
+  end;
+
+  -- Work orders must be for the component's asset.
+  begin
+    perform public.equipment_component_move(
+      shop_a, actor, v_drive, 'repaired', null, null, null, 1800, null, null,
+      '69800000-0000-4000-8000-000000000002'
+    );
+    raise exception 'Component event accepted a work order for another asset.';
+  exception when sqlstate '23514' then
+    null;
+  end;
+  perform public.equipment_component_move(
+    shop_a, actor, v_drive, 'repaired', null, null, null, 1800, null, null,
+    '69800000-0000-4000-8000-000000000001', null, null,
+    '69900000-0000-4000-8000-000000000001'
+  );
+  -- A retried action with the same key is a no-op; a reused key for a
+  -- different action is refused.
+  perform public.equipment_component_move(
+    shop_a, actor, v_drive, 'repaired', null, null, null, 1800, null, null,
+    '69800000-0000-4000-8000-000000000001', null, null,
+    '69900000-0000-4000-8000-000000000001'
+  );
+  if (select count(*) from public.equipment_component_events
+      where component_id = v_drive and event_type = 'repaired') <> 1 then
+    raise exception 'Replayed component action duplicated history.';
+  end if;
+  begin
+    perform public.equipment_component_move(
+      shop_a, actor, v_drive, 'inspected', null, null, null, 1800, null, null, null, null, null,
+      '69900000-0000-4000-8000-000000000001'
+    );
+    raise exception 'Operation key was reused for a different action.';
+  exception when sqlstate '22023' then
     null;
   end;
 
@@ -198,6 +255,58 @@ begin
     null;
   end;
 
+  -- Identity edits are audited with previous and new values.
+  perform public.equipment_component_save(
+    shop_a, actor, v_spare,
+    '{"component_type":"final_drive","position":"left","label":"Spare final drive","serial_number":"FD-101"}'::jsonb
+  );
+  if (select details -> 'serial_number' ->> 'from' from public.equipment_component_events
+      where component_id = v_spare and event_type = 'updated') <> 'FD-100'
+     or (select details -> 'serial_number' ->> 'to' from public.equipment_component_events
+      where component_id = v_spare and event_type = 'updated') <> 'FD-101' then
+    raise exception 'Identity edit was not audited.';
+  end if;
+  -- Saving unchanged values records nothing.
+  perform public.equipment_component_save(
+    shop_a, actor, v_spare,
+    '{"component_type":"final_drive","position":"left","label":"Spare final drive","serial_number":"FD-101"}'::jsonb
+  );
+  if (select count(*) from public.equipment_component_events
+      where component_id = v_spare and event_type = 'updated') <> 1 then
+    raise exception 'An unchanged save recorded an identity edit.';
+  end if;
+
+  -- Create-and-install is one atomic, retry-safe operation.
+  v_created_id := public.equipment_component_save(
+    shop_a, actor, null,
+    '{"component_type":"hydraulic_cylinder","label":"Boom cylinder"}'::jsonb,
+    ex1, null, 1800, '69900000-0000-4000-8000-000000000002'
+  );
+  if public.equipment_component_save(
+    shop_a, actor, null,
+    '{"component_type":"hydraulic_cylinder","label":"Boom cylinder"}'::jsonb,
+    ex1, null, 1800, '69900000-0000-4000-8000-000000000002'
+  ) <> v_created_id then
+    raise exception 'Replayed create did not return the original component.';
+  end if;
+  if (select count(*) from public.equipment_components where label = 'Boom cylinder') <> 1
+     or (select status from public.equipment_components where id = v_created_id) <> 'installed' then
+    raise exception 'Create-and-install duplicated or did not install the component.';
+  end if;
+  begin
+    perform public.equipment_component_save(
+      shop_a, actor, null,
+      '{"component_type":"hydraulic_cylinder","label":"Orphan cylinder"}'::jsonb,
+      ex1, v_engine, 1800
+    );
+    raise exception 'Create-and-install accepted a parent on another asset.';
+  exception when sqlstate '23514' then
+    null;
+  end;
+  if exists (select 1 from public.equipment_components where label = 'Orphan cylinder') then
+    raise exception 'A rejected install left an orphaned component.';
+  end if;
+
   -- Scrapping retires the component; it cannot change afterwards.
   perform public.equipment_component_move(shop_a, actor, v_spare, 'scrapped');
   begin
@@ -216,6 +325,46 @@ begin
   end;
 end
 $equipment_components_rpc$;
+
+-- Deleting an asset or work order with component history still works: the
+-- installed components return to stock and history keeps its rows.
+do $equipment_components_delete_paths$
+declare
+  v_old_engine uuid;
+begin
+  perform public.equipment_component_seed(
+    '69600000-0000-4000-8000-000000000001', '69500000-0000-4000-8000-000000000001',
+    '69700000-0000-4000-8000-000000000004',
+    '[{"key":"engine","parent_key":null,"component_type":"engine","position":null,"label":"Engine"},
+      {"key":"engine.turbocharger","parent_key":"engine","component_type":"turbocharger","position":null,"label":"Turbocharger"}]'::jsonb,
+    300
+  );
+  select id into v_old_engine from public.equipment_components
+  where installed_vehicle_id = '69700000-0000-4000-8000-000000000004' and component_type = 'engine';
+
+  delete from public.vehicles where id = '69700000-0000-4000-8000-000000000004';
+
+  if (select status from public.equipment_components where id = v_old_engine) <> 'in_stock'
+     or (select installed_vehicle_id from public.equipment_components where id = v_old_engine) is not null then
+    raise exception 'Deleting an asset did not return its components to stock.';
+  end if;
+  if exists (select 1 from public.equipment_components
+             where parent_component_id = v_old_engine and status <> 'in_stock') then
+    raise exception 'Deleting an asset left a child component installed.';
+  end if;
+  if not exists (select 1 from public.equipment_component_events
+                 where component_id = v_old_engine and event_type = 'installed' and vehicle_id is null) then
+    raise exception 'Deleting an asset removed or blocked component history.';
+  end if;
+
+  delete from public.work_orders where id = '69800000-0000-4000-8000-000000000001';
+  if not exists (select 1 from public.equipment_component_events
+                 where event_type = 'repaired' and work_order_id is null
+                   and shop_id = '69600000-0000-4000-8000-000000000001') then
+    raise exception 'Deleting a work order removed or blocked component history.';
+  end if;
+end
+$equipment_components_delete_paths$;
 
 -- Clients have no direct access to component tables or RPCs; the server
 -- routes enforce role, asset visibility and entitlement first.

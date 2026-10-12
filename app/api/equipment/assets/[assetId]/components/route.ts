@@ -2,13 +2,18 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { isAssetId } from "@/features/equipment/lib/assetProfile";
-import { isComponentId, validateComponentFields } from "@/features/equipment/lib/components";
 import {
-  canWriteComponents,
+  canManageComponents,
+  canRecordComponentWork,
+  COMPONENT_MANAGER_ROLES,
+  isComponentId,
+  isOperationKey,
+  validateComponentFields,
+} from "@/features/equipment/lib/components";
+import {
   componentEntitlementFailure,
   componentJson as json,
   componentServiceFailure,
-  EQUIPMENT_COMPONENT_WRITER_ROLES,
 } from "@/features/equipment/server/equipmentComponentRoutes";
 import {
   createComponent,
@@ -42,7 +47,13 @@ export async function GET(_request: Request, context: RouteContext) {
       assetId,
     });
     if (!result) return json({ error: "Asset not found." }, 404);
-    return json({ entitled: true, canEdit: canWriteComponents(access.canonicalRole), ...result });
+    return json({
+      entitled: true,
+      canEdit: canManageComponents(access.canonicalRole),
+      // Reaching here means the asset is visible (assignment rule applied).
+      canRecordWork: canRecordComponentWork(access.canonicalRole),
+      ...result,
+    });
   } catch (error) {
     return componentServiceFailure(error);
   }
@@ -50,7 +61,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
 export async function POST(request: Request, context: RouteContext) {
   const access = await requireShopScopedApiAccess({
-    allowRoles: EQUIPMENT_COMPONENT_WRITER_ROLES,
+    allowRoles: COMPONENT_MANAGER_ROLES,
   });
   if (!access.ok) return access.response;
 
@@ -73,6 +84,9 @@ export async function POST(request: Request, context: RouteContext) {
   if (parentComponentId !== null && !isComponentId(parentComponentId)) {
     return json({ error: "Parent component is invalid." }, 400);
   }
+  if (!seed && !isOperationKey(body.operationKey)) {
+    return json({ error: "An operation key is required." }, 400);
+  }
 
   const failure = await componentEntitlementFailure(access.profile.shop_id, true);
   if (failure) return failure;
@@ -93,6 +107,7 @@ export async function POST(request: Request, context: RouteContext) {
       ...writeContext,
       fields,
       install: { assetId, parentComponentId },
+      operationKey: body.operationKey as string,
     });
     return json({ id }, 201);
   } catch (error) {

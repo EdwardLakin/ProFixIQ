@@ -1,12 +1,15 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import { isComponentId, validateComponentAction } from "@/features/equipment/lib/components";
+import {
+  COMPONENT_WORK_RECORDER_ROLES,
+  isComponentId,
+  validateComponentAction,
+} from "@/features/equipment/lib/components";
 import {
   componentEntitlementFailure,
   componentJson as json,
   componentServiceFailure,
-  EQUIPMENT_COMPONENT_WRITER_ROLES,
 } from "@/features/equipment/server/equipmentComponentRoutes";
 import { applyComponentAction } from "@/features/equipment/server/equipmentComponentService";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
@@ -14,10 +17,14 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type RouteContext = { params: Promise<{ componentId: string }> };
 
-/** Install, remove, rebuild, repair, inspect or scrap a component. */
+/**
+ * Install, remove, rebuild, repair, inspect or scrap a component. Assigned
+ * technicians may only record work on a component installed on an asset
+ * visible to them; the service enforces that per action.
+ */
 export async function POST(request: Request, context: RouteContext) {
   const access = await requireShopScopedApiAccess({
-    allowRoles: EQUIPMENT_COMPONENT_WRITER_ROLES,
+    allowRoles: COMPONENT_WORK_RECORDER_ROLES,
   });
   if (!access.ok) return access.response;
 

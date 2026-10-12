@@ -3,9 +3,8 @@ import { notFound } from "next/navigation";
 
 import EquipmentAccessState from "@/features/equipment/components/EquipmentAccessState";
 import EquipmentComponentDetailView from "@/features/equipment/components/EquipmentComponentDetailView";
-import { isComponentId } from "@/features/equipment/lib/components";
+import { canManageComponents, isComponentId } from "@/features/equipment/lib/components";
 import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDirectory";
-import { canWriteComponents } from "@/features/equipment/server/equipmentComponentRoutes";
 import { loadComponentDetail } from "@/features/equipment/server/equipmentComponentService";
 import { resolveEquipmentPageEntitlement } from "@/features/equipment/server/pageEntitlement";
 import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
@@ -50,6 +49,6 @@ export default async function EquipmentComponentPage({ params }: ComponentPagePr
   if (!detail) notFound();
 
   return (
-    <EquipmentComponentDetailView detail={detail} canEdit={canWriteComponents(canonicalRole)} />
+    <EquipmentComponentDetailView detail={detail} canEdit={canManageComponents(canonicalRole)} />
   );
 }

@@ -5,16 +5,9 @@ import { NextResponse } from "next/server";
 import { resolveEquipmentAddonEntitlementForShop } from "@/features/equipment/server/equipmentAddonEntitlement";
 import { EquipmentAssetProfileError } from "@/features/equipment/server/equipmentAssetProfileService";
 import { EquipmentComponentError } from "@/features/equipment/server/equipmentComponentService";
-import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
-/** Roles that may add, edit, install, remove or record work on components. */
-export const EQUIPMENT_COMPONENT_WRITER_ROLES = ROLE_GROUPS.workOrderManagers;
-
-export function canWriteComponents(role: string): boolean {
-  return (EQUIPMENT_COMPONENT_WRITER_ROLES as readonly string[]).includes(role);
-}
 
 export function componentJson(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: NO_STORE });

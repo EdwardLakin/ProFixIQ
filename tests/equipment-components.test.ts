@@ -30,6 +30,7 @@ const USER = "00000000-0000-4000-8000-000000000222";
 const COMPONENT = "00000000-0000-4000-8000-000000000444";
 const ASSET_A = "00000000-0000-4000-8000-000000000001";
 const ASSET_B = "00000000-0000-4000-8000-000000000002";
+const KEY = "00000000-0000-4000-8000-0000000000aa";
 
 describe("component validation", () => {
   it("requires a recognized type and position", () => {
@@ -66,12 +67,12 @@ describe("component validation", () => {
         occurredAt: new Date(Date.now() + 3 * 86_400_000).toISOString(),
       }).ok,
     ).toBe(false);
-    const ok = validateComponentAction({ action: "install", assetId: ASSET_A, position: "left" });
+    const ok = validateComponentAction({ action: "install", assetId: ASSET_A, position: "left", operationKey: KEY });
     expect(ok.ok && ok.value).toMatchObject({ action: "install", assetId: ASSET_A, position: "left" });
   });
 
   it("only lets remove target stock or repair", () => {
-    const result = validateComponentAction({ action: "remove", targetStatus: "scrapped" });
+    const result = validateComponentAction({ action: "remove", targetStatus: "scrapped", operationKey: KEY });
     expect(result.ok && result.value.targetStatus).toBe("in_stock");
   });
 });
@@ -217,6 +218,7 @@ describe("component actions", () => {
         workOrderId: null,
         notes: null,
         targetStatus: "in_stock",
+        operationKey: KEY,
       },
     });
     expect(mocks.authorize.mock.calls.map(([call]) => call.assetId)).toEqual([ASSET_A, ASSET_B]);
@@ -226,7 +228,9 @@ describe("component actions", () => {
       p_actor_user_id: USER,
       p_vehicle_id: ASSET_B,
       p_asset_hours: 7000,
-      p_component_hours: 900,
+      // Life on the old asset is measured with the old asset's own meter.
+      p_source_asset_hours: 1400,
+      p_operation_key: KEY,
     });
   });
 
@@ -248,6 +252,7 @@ describe("component actions", () => {
           workOrderId: null,
           notes: null,
           targetStatus: "in_stock",
+          operationKey: KEY,
         },
       }),
     ).rejects.toMatchObject({ status: 404 });
@@ -269,6 +274,7 @@ describe("component actions", () => {
           workOrderId: null,
           notes: null,
           targetStatus: "in_repair",
+          operationKey: KEY,
         },
       }),
     ).rejects.toBeInstanceOf(EquipmentComponentError);
@@ -290,6 +296,7 @@ describe("component actions", () => {
           workOrderId: null,
           notes: null,
           targetStatus: "in_stock",
+          operationKey: KEY,
         },
       }),
     ).rejects.toMatchObject({ status: 409 });
@@ -331,24 +338,134 @@ describe("component creation", () => {
     mocks.authorize.mockResolvedValue({ id: ASSET_A, engineHours: 1400 });
   });
 
-  it("refuses a parent on another asset before creating anything", async () => {
+  it("creates and installs in one retry-safe RPC with the asset meter", async () => {
     const rpcs: Rpc[] = [];
+    const id = await createComponent({
+      ...context(fakeAdmin({}, rpcs, COMPONENT)),
+      fields: {
+        componentType: "turbocharger",
+        position: null,
+        label: "Turbocharger",
+        manufacturer: null,
+        model: null,
+        serialNumber: null,
+        partNumber: null,
+        attributes: {},
+      },
+      install: { assetId: ASSET_A, parentComponentId: COMPONENT },
+      operationKey: KEY,
+    });
+    expect(id).toBe(COMPONENT);
+    expect(rpcs).toHaveLength(1);
+    expect(rpcs[0]).toMatchObject({
+      name: "equipment_component_save",
+      args: {
+        p_component_id: null,
+        p_install_vehicle_id: ASSET_A,
+        p_parent_component_id: COMPONENT,
+        p_asset_hours: 1400,
+        p_operation_key: KEY,
+      },
+    });
+  });
+});
+
+describe("technician work recording", () => {
+  const work = (action: "repaired" | "install", patch: Partial<Record<string, unknown>> = {}) => ({
+    action,
+    assetId: action === "install" ? ASSET_B : null,
+    parentComponentId: null,
+    position: null,
+    occurredAt: null,
+    workOrderId: null,
+    notes: null,
+    targetStatus: "in_stock" as const,
+    operationKey: KEY,
+    ...patch,
+  });
+
+  beforeEach(() => {
+    mocks.authorize.mockReset();
+    mocks.authorize.mockImplementation(async ({ assetId }: { assetId: string }) => ({
+      id: assetId,
+      engineHours: 1400,
+    }));
+  });
+
+  it("lets an assigned mechanic record work on an installed component", async () => {
+    const rpcs: Rpc[] = [];
+    await applyComponentAction({
+      ...context(fakeAdmin({ equipment_components: installedOnA }, rpcs)),
+      role: "mechanic",
+      componentId: COMPONENT,
+      input: work("repaired") as never,
+    });
+    expect(mocks.authorize).toHaveBeenCalledWith(expect.objectContaining({ role: "mechanic", assetId: ASSET_A }));
+    expect(rpcs[0].args).toMatchObject({ p_action: "repaired", p_asset_hours: 1400 });
+  });
+
+  it("refuses moves by mechanics and work on components off the machine", async () => {
     await expect(
-      createComponent({
-        ...context(fakeAdmin({ equipment_components: { ...installedOnA, installed_vehicle_id: ASSET_B } }, rpcs)),
-        fields: {
-          componentType: "turbocharger",
-          position: null,
-          label: "Turbocharger",
-          manufacturer: null,
-          model: null,
-          serialNumber: null,
-          partNumber: null,
-          attributes: {},
-        },
-        install: { assetId: ASSET_A, parentComponentId: COMPONENT },
+      applyComponentAction({
+        ...context(fakeAdmin({ equipment_components: installedOnA }, [])),
+        role: "mechanic",
+        componentId: COMPONENT,
+        input: work("install") as never,
       }),
-    ).rejects.toMatchObject({ status: 409 });
+    ).rejects.toMatchObject({ status: 403 });
+    await expect(
+      applyComponentAction({
+        ...context(
+          fakeAdmin({ equipment_components: { ...installedOnA, status: "in_stock", installed_vehicle_id: null } }, []),
+        ),
+        role: "mechanic",
+        componentId: COMPONENT,
+        input: work("repaired") as never,
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+  });
+
+  it("rejects a work order for a different asset", async () => {
+    const rpcs: Rpc[] = [];
+    const supabase = {
+      from: () => {
+        const builder = {
+          select: () => builder,
+          eq: () => builder,
+          maybeSingle: async () => ({ data: { id: KEY, vehicle_id: ASSET_B }, error: null }),
+        };
+        return builder;
+      },
+    };
+    await expect(
+      applyComponentAction({
+        ...context(fakeAdmin({ equipment_components: installedOnA }, rpcs)),
+        supabase: supabase as never,
+        componentId: COMPONENT,
+        input: work("repaired", { workOrderId: "00000000-0000-4000-8000-000000000999" }) as never,
+      }),
+    ).rejects.toMatchObject({ status: 400 });
     expect(rpcs).toEqual([]);
+  });
+});
+
+describe("dates, keys and electric equipment", () => {
+  it("keeps a date-only value on the chosen calendar day", () => {
+    const result = validateComponentAction({ action: "inspected", occurredAt: "2026-10-01", operationKey: KEY });
+    expect(result.ok && result.value.occurredAt).toBe("2026-10-01T12:00:00.000Z");
+  });
+
+  it("requires an operation key for actions", () => {
+    expect(validateComponentAction({ action: "inspected" }).ok).toBe(false);
+  });
+
+  it("does not seed combustion engines on electric machines", () => {
+    for (const equipmentClass of ["scissor_lift", "vertical_mast_lift", "electric_rope_shovel"]) {
+      const types = componentTemplateForClass(equipmentClass).map((item) => item.componentType);
+      expect(types).not.toContain("engine");
+      expect(types).not.toContain("turbocharger");
+      expect(types).toContain("traction_motor");
+    }
+    expect(componentTemplateForClass("boom_lift").map((item) => item.componentType)).toContain("engine");
   });
 });

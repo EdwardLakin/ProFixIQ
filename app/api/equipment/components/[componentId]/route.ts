@@ -1,14 +1,17 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import { isComponentId, validateComponentFields } from "@/features/equipment/lib/components";
+import {
+  canManageComponents,
+  COMPONENT_MANAGER_ROLES,
+  isComponentId,
+  validateComponentFields,
+} from "@/features/equipment/lib/components";
 import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDirectory";
 import {
-  canWriteComponents,
   componentEntitlementFailure,
   componentJson as json,
   componentServiceFailure,
-  EQUIPMENT_COMPONENT_WRITER_ROLES,
 } from "@/features/equipment/server/equipmentComponentRoutes";
 import {
   loadComponentDetail,
@@ -38,7 +41,7 @@ export async function GET(_request: Request, context: RouteContext) {
       componentId,
     });
     if (!detail) return json({ error: "Component not found." }, 404);
-    return json({ entitled: true, canEdit: canWriteComponents(access.canonicalRole), ...detail });
+    return json({ entitled: true, canEdit: canManageComponents(access.canonicalRole), ...detail });
   } catch (error) {
     return componentServiceFailure(error);
   }
@@ -46,7 +49,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
 export async function PATCH(request: Request, context: RouteContext) {
   const access = await requireShopScopedApiAccess({
-    allowRoles: EQUIPMENT_COMPONENT_WRITER_ROLES,
+    allowRoles: COMPONENT_MANAGER_ROLES,
   });
   if (!access.ok) return access.response;
 

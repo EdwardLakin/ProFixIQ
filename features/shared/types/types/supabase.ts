@@ -4648,11 +4648,13 @@ export type Database = {
           component_hours: number | null
           component_id: string
           created_at: string
+          details: Json | null
           event_type: string
           id: string
           notes: string | null
           occurred_at: string
           recorded_by: string | null
+          sequence: number
           shop_id: string
           vehicle_id: string | null
           work_order_id: string | null
@@ -4662,11 +4664,13 @@ export type Database = {
           component_hours?: number | null
           component_id: string
           created_at?: string
+          details?: Json | null
           event_type: string
           id?: string
           notes?: string | null
           occurred_at?: string
           recorded_by?: string | null
+          sequence?: never
           shop_id: string
           vehicle_id?: string | null
           work_order_id?: string | null
@@ -4676,11 +4680,13 @@ export type Database = {
           component_hours?: number | null
           component_id?: string
           created_at?: string
+          details?: Json | null
           event_type?: string
           id?: string
           notes?: string | null
           occurred_at?: string
           recorded_by?: string | null
+          sequence?: never
           shop_id?: string
           vehicle_id?: string | null
           work_order_id?: string | null
@@ -4747,6 +4753,52 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipment_component_operations: {
+        Row: {
+          action: string
+          component_id: string
+          created_at: string
+          operation_key: string
+          shop_id: string
+        }
+        Insert: {
+          action: string
+          component_id: string
+          created_at?: string
+          operation_key: string
+          shop_id: string
+        }
+        Update: {
+          action?: string
+          component_id?: string
+          created_at?: string
+          operation_key?: string
+          shop_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_component_operations_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "equipment_components"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_component_operations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_component_operations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
             referencedColumns: ["id"]
           },
         ]
@@ -30567,18 +30619,37 @@ export type Database = {
         Returns: Json
       }
       dispatch_visit_snapshot: { Args: { p_visit_id: string }; Returns: Json }
+      equipment_component_claim_operation: {
+        Args: {
+          p_action: string
+          p_component_id: string
+          p_operation_key: string
+          p_shop_id: string
+        }
+        Returns: string
+      }
+      equipment_component_life: {
+        Args: {
+          p_current_asset_hours: number
+          p_hours_at_install: number
+          p_installed_asset_hours: number
+          p_status: string
+        }
+        Returns: number
+      }
       equipment_component_move: {
         Args: {
           p_action: string
           p_actor_user_id: string
           p_asset_hours?: number
-          p_component_hours?: number
           p_component_id: string
           p_notes?: string
           p_occurred_at?: string
+          p_operation_key?: string
           p_parent_component_id?: string
           p_position?: string
           p_shop_id: string
+          p_source_asset_hours?: number
           p_target_status?: string
           p_vehicle_id?: string
           p_work_order_id?: string
@@ -30588,8 +30659,12 @@ export type Database = {
       equipment_component_save: {
         Args: {
           p_actor_user_id: string
+          p_asset_hours?: number
           p_component_id: string
           p_fields: Json
+          p_install_vehicle_id?: string
+          p_operation_key?: string
+          p_parent_component_id?: string
           p_shop_id: string
         }
         Returns: string
