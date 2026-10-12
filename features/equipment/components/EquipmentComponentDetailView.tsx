@@ -11,6 +11,10 @@ import {
   COMPONENT_TYPE_LABELS,
   type EquipmentComponentDetail,
 } from "@/features/equipment/lib/components";
+import {
+  formatMeasurement,
+  type MeasurementSeries,
+} from "@/features/equipment/lib/measurements";
 import type { VehicleWorkspaceSearchResponse } from "@/features/vehicles/lib/vehicleWorkspace";
 import {
   WorkspaceEmptyState as EmptyState,
@@ -147,14 +151,18 @@ function AssetSearch({ onPick }: { onPick: (asset: { id: string; label: string }
  */
 export default function EquipmentComponentDetailView({
   detail,
+  measurements = [],
   canEdit,
 }: {
   detail: EquipmentComponentDetail;
+  /** Readings recorded against this component (any machine it was on). */
+  measurements?: MeasurementSeries[];
   canEdit: boolean;
 }) {
   const router = useRouter();
   const { component, asset, history } = detail;
   const [mode, setMode] = useState<Mode>(null);
+  const [expandedSeries, setExpandedSeries] = useState<Set<string>>(() => new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -406,6 +414,60 @@ export default function EquipmentComponentDetailView({
             </div>
           </div>
         ) : null}
+      </WorkspaceSection>
+
+      <WorkspaceSection
+        headingId="component-measurements"
+        eyebrow="Measurements"
+        title="Recorded measurements"
+        summary={`${measurements.length} tracked`}
+      >
+        {measurements.length ? (
+          <ul className="mt-3 grid gap-2">
+            {measurements.map((series) => (
+              <li key={series.key} className={ITEM}>
+                <p className="text-sm font-semibold">{series.label}</p>
+                <ul className="mt-1 grid gap-0.5 text-xs">
+                  {(expandedSeries.has(series.key) ? series.points : series.points.slice(0, 10)).map((point) => (
+                    <li key={point.id}>
+                      {formatDate(point.measuredAt)} ·{" "}
+                      {point.asset ? (
+                        <Link href={point.asset.href} className="underline">
+                          {point.asset.label}
+                        </Link>
+                      ) : (
+                        "Another asset"
+                      )}
+                      {point.assetHours !== null ? ` at ${point.assetHours.toLocaleString()} h` : ""} ·{" "}
+                      {formatMeasurement(point.value, point.unit)}
+                      {point.corrected ? " · corrected" : ""}
+                    </li>
+                  ))}
+                </ul>
+                {series.points.length > 10 ? (
+                  <button
+                    type="button"
+                    className="mt-1 text-xs underline"
+                    onClick={() =>
+                      setExpandedSeries((current) => {
+                        const next = new Set(current);
+                        if (next.has(series.key)) next.delete(series.key);
+                        else next.add(series.key);
+                        return next;
+                      })
+                    }
+                  >
+                    {expandedSeries.has(series.key)
+                      ? "Show latest 10"
+                      : `Show all ${series.points.length} readings`}
+                  </button>
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <EmptyState>No measurements recorded against this component.</EmptyState>
+        )}
       </WorkspaceSection>
 
       <WorkspaceSection
