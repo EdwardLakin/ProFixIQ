@@ -21,6 +21,8 @@ export type DeploymentHealthSnapshot = {
     total: number;
     failing: number;
     pending: number;
+    skipped: number;
+    missingRequired: string[];
     checks: Array<{
       name: string;
       status: string;
@@ -32,9 +34,7 @@ export type DeploymentHealthSnapshot = {
     state: DeploymentHealthState;
     repoCount: number | null;
     appliedCount: number | null;
-    /** In production's ledger but not in main's supabase/migrations. */
     productionOnly: string[];
-    /** In main's supabase/migrations but not in production's ledger. */
     unapplied: string[];
     note: string | null;
   };
@@ -76,9 +76,20 @@ type GithubPull = {
 };
 
 const GITHUB_API = "https://api.github.com/repos/EdwardLakin/ProFixIQ";
+const DEFAULT_REQUIRED_CI_CHECKS = ["Supabase Preview"] as const;
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function requiredCiCheckNames(): string[] {
+  const configured = text(process.env.OPS_REQUIRED_CI_CHECKS);
+  if (!configured) return [...DEFAULT_REQUIRED_CI_CHECKS];
+  const names = configured
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return names.length > 0 ? [...new Set(names)] : [...DEFAULT_REQUIRED_CI_CHECKS];
 }
 
 async function githubJson<T>(path: string): Promise<T | null> {
@@ -103,10 +114,6 @@ function migrationVersion(fileName: string): string | null {
   return match ? match[1] : null;
 }
 
-/**
- * Reads production's applied migration versions through the Supabase
- * Management API (read-only SELECT). Returns null when evidence is unavailable.
- */
 async function readProductionMigrationVersions(): Promise<string[] | null> {
   const token = text(process.env.SUPABASE_ACCESS_TOKEN);
   const url = text(process.env.NEXT_PUBLIC_SUPABASE_URL);
@@ -149,7 +156,7 @@ function overallState(states: DeploymentHealthState[]): DeploymentHealthState {
 }
 
 function successfulConclusion(value: string | null): boolean {
-  return value === "success" || value === "neutral" || value === "skipped";
+  return value === "success" || value === "neutral";
 }
 
 export async function getOpsDeploymentHealth(): Promise<DeploymentHealthSnapshot> {
@@ -178,13 +185,31 @@ export async function getOpsDeploymentHealth(): Promise<DeploymentHealthSnapshot
     conclusion: text(check.conclusion),
     detailsUrl: text(check.details_url),
   }));
-  const failing = checks.filter((check) => check.status === "completed" && !successfulConclusion(check.conclusion)).length;
+  const failing = checks.filter(
+    (check) =>
+      check.status === "completed" &&
+      check.conclusion !== "skipped" &&
+      !successfulConclusion(check.conclusion),
+  ).length;
+  const skipped = checks.filter(
+    (check) => check.status === "completed" && check.conclusion === "skipped",
+  ).length;
   const pending = checks.filter((check) => check.status !== "completed").length;
+  const requiredNames = requiredCiCheckNames();
+  const missingRequired = requiredNames.filter(
+    (name) =>
+      !checks.some(
+        (check) =>
+          check.name === name &&
+          check.status === "completed" &&
+          successfulConclusion(check.conclusion),
+      ),
+  );
   const ciState: DeploymentHealthState = !deployedSha || !checksPayload
     ? "degraded"
     : failing > 0
       ? "down"
-      : pending > 0 || checks.length === 0
+      : pending > 0 || skipped > 0 || missingRequired.length > 0 || checks.length === 0
         ? "degraded"
         : "healthy";
 
@@ -265,12 +290,14 @@ export async function getOpsDeploymentHealth(): Promise<DeploymentHealthSnapshot
       total: checks.length,
       failing,
       pending,
+      skipped,
+      missingRequired,
       checks,
     },
     migrations,
     database: {
       state: databaseState,
-      latencyMs: databaseRead.error ? databaseLatency : databaseLatency,
+      latencyMs: databaseLatency,
       feedbackRecords: databaseRead.error ? null : databaseRead.count ?? 0,
       error: databaseRead.error?.message ?? null,
     },
