@@ -10,6 +10,7 @@ import {
 } from "@/features/feedback/lib/feedback";
 import { sendFeedbackCompletedEmails } from "@/features/feedback/server/notifications";
 import { requireOpsOperatorApiAccess } from "@/features/ops/server/operator-access";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 type AgentRequestRow = Database["public"]["Tables"]["agent_requests"]["Row"];
 
@@ -29,7 +30,8 @@ function rowContext(row: AgentRequestRow): Record<string, unknown> {
 }
 
 function normalizeStatus(value: unknown): FeedbackStatus | null {
-  return typeof value === "string" && FEEDBACK_STATUSES.includes(value as FeedbackStatus)
+  return typeof value === "string" &&
+      FEEDBACK_STATUSES.includes(value as FeedbackStatus)
     ? (value as FeedbackStatus)
     : null;
 }
@@ -40,22 +42,38 @@ export async function PATCH(
 ) {
   const access = await requireOpsOperatorApiAccess();
   if (!access.ok) return access.response;
+
+  const admin = createAdminSupabase();
   const { id } = await params;
   const body = (await req.json().catch(() => null)) as UpdateFeedbackBody | null;
-  if (!body) return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  if (!body) {
+    return NextResponse.json({ error: "Invalid request" }, { status: 400 });
+  }
 
-  const { data, error } = await access.supabase
+  // Owner authorization is checked above. Use the admin client for the actual
+  // feedback control operation so clusters spanning multiple tenant shops are
+  // managed as one product-feedback item rather than being truncated by RLS.
+  const { data, error } = await admin
     .from("agent_requests")
     .select("*")
     .order("created_at", { ascending: false })
-    .limit(1000);
-  if (error) return NextResponse.json({ error: "Failed to load feedback group" }, { status: 500 });
+    .limit(1500);
+  if (error) {
+    console.error("feedback group load failed", error);
+    return NextResponse.json(
+      { error: "Failed to load feedback group" },
+      { status: 500 },
+    );
+  }
 
   const rows = (data ?? []) as AgentRequestRow[];
   const group = rows.filter((row) => clusterIdFor(row) === id);
   const canonical = group.find((row) => row.id === id) ?? null;
   if (!canonical || group.length === 0) {
-    return NextResponse.json({ error: "Feedback item not found" }, { status: 404 });
+    return NextResponse.json(
+      { error: "Feedback item not found" },
+      { status: 404 },
+    );
   }
 
   const metadata = readFeedbackMetadata(canonical.normalized_json);
@@ -67,38 +85,58 @@ export async function PATCH(
     clusterId: id,
     isCanonical: true,
     status: nextStatus,
-    kind: metadata?.kind ?? (canonical.intent === "bug_report" ? "bug" as const : "feature_request" as const),
-    surface: metadata?.surface ?? "other" as const,
+    kind:
+      metadata?.kind ??
+      (canonical.intent === "bug_report"
+        ? ("bug" as const)
+        : ("feature_request" as const)),
+    surface: metadata?.surface ?? ("other" as const),
     title: metadata?.title ?? canonical.description.slice(0, 100),
     summary: metadata?.summary ?? canonical.description,
-    severity: metadata?.severity ?? "normal" as const,
-    needsAttention: typeof body.needsAttention === "boolean" ? body.needsAttention : (metadata?.needsAttention ?? false),
-    recommendation: metadata?.recommendation ?? canonical.llm_notes ?? "Review alongside similar feedback.",
-    aiMode: metadata?.aiMode ?? "fallback" as const,
+    severity: metadata?.severity ?? ("normal" as const),
+    needsAttention:
+      typeof body.needsAttention === "boolean"
+        ? body.needsAttention
+        : (metadata?.needsAttention ?? false),
+    recommendation:
+      metadata?.recommendation ??
+      canonical.llm_notes ??
+      "Review alongside similar feedback.",
+    aiMode: metadata?.aiMode ?? ("fallback" as const),
     aiModel: metadata?.aiModel ?? canonical.llm_model,
     duplicateConfidence: metadata?.duplicateConfidence ?? null,
-    internalNotes: body.internalNotes === undefined ? (metadata?.internalNotes ?? null) : body.internalNotes?.trim() || null,
+    internalNotes:
+      body.internalNotes === undefined
+        ? (metadata?.internalNotes ?? null)
+        : body.internalNotes?.trim() || null,
     firstSeenAt: metadata?.firstSeenAt ?? canonical.created_at,
     lastSeenAt: metadata?.lastSeenAt ?? canonical.updated_at,
     ownerNotifiedAt: metadata?.ownerNotifiedAt ?? null,
-    completedAt: nextStatus === "completed" ? (metadata?.completedAt ?? now) : null,
+    completedAt:
+      nextStatus === "completed" ? (metadata?.completedAt ?? now) : null,
     requesterNotifiedAt: metadata?.requesterNotifiedAt ?? null,
   };
 
   const ids = group.map((row) => row.id);
-  const { error: statusError } = await access.supabase
+  const { error: statusError } = await admin
     .from("agent_requests")
     .update({ status: legacyStatusForFeedback(nextStatus) })
     .in("id", ids);
   if (statusError) {
     console.error("feedback group status update failed", statusError);
-    return NextResponse.json({ error: "Failed to update feedback status" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to update feedback status" },
+      { status: 500 },
+    );
   }
 
-  const { data: updatedCanonical, error: canonicalError } = await access.supabase
+  const { data: updatedCanonical, error: canonicalError } = await admin
     .from("agent_requests")
     .update({
-      normalized_json: { ...rowContext(canonical), feedback: nextMetadata } as Json,
+      normalized_json: {
+        ...rowContext(canonical),
+        feedback: nextMetadata,
+      } as Json,
       updated_at: now,
     })
     .eq("id", canonical.id)
@@ -106,7 +144,10 @@ export async function PATCH(
     .single();
   if (canonicalError || !updatedCanonical) {
     console.error("feedback canonical update failed", canonicalError);
-    return NextResponse.json({ error: "Failed to update feedback" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to update feedback" },
+      { status: 500 },
+    );
   }
 
   let notified = 0;
@@ -116,21 +157,33 @@ export async function PATCH(
     !nextMetadata.requesterNotifiedAt
   ) {
     notified = await sendFeedbackCompletedEmails({
-      reporterIds: group.map((row) => row.reporter_id).filter((value): value is string => Boolean(value)),
+      reporterIds: group
+        .map((row) => row.reporter_id)
+        .filter((value): value is string => Boolean(value)),
       title: nextMetadata.title,
       summary: nextMetadata.summary,
     });
+
     if (notified > 0) {
       const notifiedAt = new Date().toISOString();
-      await access.supabase
+      const { error: notificationUpdateError } = await admin
         .from("agent_requests")
         .update({
           normalized_json: {
             ...rowContext(updatedCanonical as AgentRequestRow),
-            feedback: { ...nextMetadata, requesterNotifiedAt: notifiedAt },
+            feedback: {
+              ...nextMetadata,
+              requesterNotifiedAt: notifiedAt,
+            },
           } as Json,
         })
         .eq("id", canonical.id);
+      if (notificationUpdateError) {
+        console.error(
+          "feedback requester notification state update failed",
+          notificationUpdateError,
+        );
+      }
     }
   }
 
