@@ -14,7 +14,6 @@ export type AIFeature =
   | "work_orders_suggest_lines"
   | "ai_summarize_stats"
   | "fleet_operations_summary"
-  | "feedback_triage"
   | "openai_realtime_token"
   | "technician_copilot_speech"
   | "inspection_voice_speech"
@@ -46,13 +45,6 @@ const AI_POLICIES: Record<AIFeature, AIPolicy> = {
     modelPurpose: "fast",
     timeoutMs: 10000,
     maxTokens: 80,
-    fallbackMode: "graceful_empty",
-  },
-  feedback_triage: {
-    feature: "feedback_triage",
-    modelPurpose: "fast",
-    timeoutMs: 10000,
-    maxTokens: 350,
     fallbackMode: "graceful_empty",
   },
   openai_realtime_token: {
