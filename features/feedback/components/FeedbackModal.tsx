@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type ChangeEvent } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import { usePathname } from "next/navigation";
 import { toast } from "sonner";
 
@@ -41,6 +41,8 @@ export default function FeedbackModal({ open, onOpenChange }: Props) {
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [device, setDevice] = useState("");
+  // One key per user action: retries of the same submission replay server-side.
+  const submissionKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -86,6 +88,7 @@ export default function FeedbackModal({ open, onOpenChange }: Props) {
     setExpected("");
     setActual("");
     setFiles([]);
+    submissionKeyRef.current = null;
   }
 
   async function submit() {
@@ -97,6 +100,7 @@ export default function FeedbackModal({ open, onOpenChange }: Props) {
 
     setLoading(true);
     try {
+      submissionKeyRef.current ??= crypto.randomUUID();
       const attachmentIds = await uploadScreenshots();
       const response = await fetch("/api/feedback", {
         method: "POST",
@@ -111,6 +115,7 @@ export default function FeedbackModal({ open, onOpenChange }: Props) {
           actual: actual.trim() || undefined,
           device,
           attachmentIds,
+          submissionKey: submissionKeyRef.current,
         }),
       });
       const result = (await response.json().catch(() => null)) as

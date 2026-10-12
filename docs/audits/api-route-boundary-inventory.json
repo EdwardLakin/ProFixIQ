@@ -291,22 +291,6 @@
     "riskLevel": "medium"
   },
   {
-    "path": "app/api/agent/attachments/route.ts",
-    "methods": [
-      "POST"
-    ],
-    "isMutating": true,
-    "hasRequireShopScopedApiAccess": false,
-    "hasRouteHandlerSupabaseAuthClient": false,
-    "hasAuthGetUser": true,
-    "hasServiceRolePattern": false,
-    "hasShopReference": false,
-    "hasRoleOrCapabilityReference": false,
-    "routeClassGuess": "public_or_token",
-    "riskFlags": [],
-    "riskLevel": "low"
-  },
-  {
     "path": "app/api/agent/events/route.ts",
     "methods": [
       "GET"
@@ -337,98 +321,6 @@
     "routeClassGuess": "public_or_token",
     "riskFlags": [],
     "riskLevel": "low"
-  },
-  {
-    "path": "app/api/agent/requests/[id]/notify-discord/route.ts",
-    "methods": [
-      "POST"
-    ],
-    "isMutating": true,
-    "hasRequireShopScopedApiAccess": false,
-    "hasRouteHandlerSupabaseAuthClient": false,
-    "hasAuthGetUser": false,
-    "hasServiceRolePattern": false,
-    "hasShopReference": false,
-    "hasRoleOrCapabilityReference": true,
-    "routeClassGuess": "staff_or_admin",
-    "riskFlags": [
-      "mutating_without_obvious_auth_marker"
-    ],
-    "riskLevel": "high"
-  },
-  {
-    "path": "app/api/agent/requests/[id]/reply/route.ts",
-    "methods": [
-      "POST"
-    ],
-    "isMutating": true,
-    "hasRequireShopScopedApiAccess": false,
-    "hasRouteHandlerSupabaseAuthClient": false,
-    "hasAuthGetUser": false,
-    "hasServiceRolePattern": false,
-    "hasShopReference": false,
-    "hasRoleOrCapabilityReference": false,
-    "routeClassGuess": "staff_or_admin",
-    "riskFlags": [
-      "mutating_without_obvious_auth_marker"
-    ],
-    "riskLevel": "high"
-  },
-  {
-    "path": "app/api/agent/requests/[id]/retry/route.ts",
-    "methods": [
-      "POST"
-    ],
-    "isMutating": true,
-    "hasRequireShopScopedApiAccess": false,
-    "hasRouteHandlerSupabaseAuthClient": false,
-    "hasAuthGetUser": false,
-    "hasServiceRolePattern": false,
-    "hasShopReference": true,
-    "hasRoleOrCapabilityReference": true,
-    "routeClassGuess": "staff_or_admin",
-    "riskFlags": [
-      "mutating_without_obvious_auth_marker"
-    ],
-    "riskLevel": "high"
-  },
-  {
-    "path": "app/api/agent/requests/[id]/route.ts",
-    "methods": [
-      "PATCH",
-      "DELETE"
-    ],
-    "isMutating": true,
-    "hasRequireShopScopedApiAccess": false,
-    "hasRouteHandlerSupabaseAuthClient": false,
-    "hasAuthGetUser": false,
-    "hasServiceRolePattern": false,
-    "hasShopReference": false,
-    "hasRoleOrCapabilityReference": true,
-    "routeClassGuess": "staff_or_admin",
-    "riskFlags": [
-      "mutating_without_obvious_auth_marker"
-    ],
-    "riskLevel": "high"
-  },
-  {
-    "path": "app/api/agent/requests/route.ts",
-    "methods": [
-      "GET",
-      "POST"
-    ],
-    "isMutating": true,
-    "hasRequireShopScopedApiAccess": false,
-    "hasRouteHandlerSupabaseAuthClient": false,
-    "hasAuthGetUser": true,
-    "hasServiceRolePattern": true,
-    "hasShopReference": true,
-    "hasRoleOrCapabilityReference": true,
-    "routeClassGuess": "public_or_token",
-    "riskFlags": [
-      "service_role_with_shop_identifier_input_or_reference"
-    ],
-    "riskLevel": "medium"
   },
   {
     "path": "app/api/ai/action-approvals/[approvalId]/route.ts",
@@ -1904,6 +1796,65 @@
     "riskLevel": "low"
   },
   {
+    "path": "app/api/feedback/[id]/route.ts",
+    "methods": [
+      "PATCH"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": false,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": false,
+    "hasRoleOrCapabilityReference": false,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "mutating_with_service_role_without_obvious_auth_or_boundary",
+      "service_role_without_shop_reference_on_staff_route",
+      "mutating_without_obvious_auth_marker"
+    ],
+    "riskLevel": "high"
+  },
+  {
+    "path": "app/api/feedback/attachments/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": false,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": false,
+    "hasRoleOrCapabilityReference": false,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "mutating_with_service_role_without_obvious_auth_or_boundary",
+      "service_role_without_shop_reference_on_staff_route",
+      "mutating_without_obvious_auth_marker"
+    ],
+    "riskLevel": "high"
+  },
+  {
+    "path": "app/api/feedback/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": false,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": true,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
+  },
+  {
     "path": "app/api/fleet/ai-summary/route.ts",
     "methods": [
       "POST"
@@ -2954,42 +2905,6 @@
     "hasRoleOrCapabilityReference": false,
     "routeClassGuess": "staff_or_admin",
     "riskFlags": [],
-    "riskLevel": "low"
-  },
-  {
-    "path": "app/api/internal/agent/ai-usage/route.ts",
-    "methods": [
-      "POST"
-    ],
-    "isMutating": true,
-    "hasRequireShopScopedApiAccess": false,
-    "hasRouteHandlerSupabaseAuthClient": false,
-    "hasAuthGetUser": false,
-    "hasServiceRolePattern": true,
-    "hasShopReference": false,
-    "hasRoleOrCapabilityReference": false,
-    "routeClassGuess": "internal",
-    "riskFlags": [
-      "has_stronger_boundary_signal"
-    ],
-    "riskLevel": "low"
-  },
-  {
-    "path": "app/api/internal/agent/approval-intents/consume/route.ts",
-    "methods": [
-      "POST"
-    ],
-    "isMutating": true,
-    "hasRequireShopScopedApiAccess": false,
-    "hasRouteHandlerSupabaseAuthClient": false,
-    "hasAuthGetUser": false,
-    "hasServiceRolePattern": false,
-    "hasShopReference": false,
-    "hasRoleOrCapabilityReference": false,
-    "routeClassGuess": "internal",
-    "riskFlags": [
-      "has_stronger_boundary_signal"
-    ],
     "riskLevel": "low"
   },
   {

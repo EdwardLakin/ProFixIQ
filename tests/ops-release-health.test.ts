@@ -33,7 +33,18 @@ describe("Ops deployments and release health", () => {
     expect(server).toContain('.from("agent_requests")');
     expect(server).toContain('select("id", { count: "exact", head: true })');
     expect(server).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
-    expect(server).not.toContain("api.supabase.com");
+    // The only Management API use is the read-only migration ledger SELECT.
+    expect(server).toContain("select version from supabase_migrations.schema_migrations");
+  });
+
+  it("keeps migration parity as a blocking release gate", () => {
+    const server = source("features/ops/server/get-deployment-health.ts");
+    const component = source("features/ops/components/OpsDeploymentHealth.tsx");
+    expect(server).toContain("/contents/supabase/migrations?ref=main");
+    expect(server).toContain("overallState([productionState, ciState, migrations.state, databaseState])");
+    expect(server).toContain("productionOnly");
+    expect(server).toContain("unapplied");
+    expect(component).toContain("Migration parity failed");
   });
 
   it("surfaces Deployments and Feedback in Ops navigation", () => {

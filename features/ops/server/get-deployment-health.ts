@@ -28,6 +28,16 @@ export type DeploymentHealthSnapshot = {
       detailsUrl: string | null;
     }>;
   };
+  migrations: {
+    state: DeploymentHealthState;
+    repoCount: number | null;
+    appliedCount: number | null;
+    /** In production's ledger but not in main's supabase/migrations. */
+    productionOnly: string[];
+    /** In main's supabase/migrations but not in production's ledger. */
+    unapplied: string[];
+    note: string | null;
+  };
   database: {
     state: DeploymentHealthState;
     latencyMs: number | null;
@@ -49,6 +59,7 @@ export type DeploymentHealthSnapshot = {
 };
 
 type GithubCommit = { sha?: string };
+type GithubContentItem = { name?: string; type?: string };
 type GithubCheck = {
   name?: string;
   status?: string;
@@ -87,6 +98,50 @@ async function githubJson<T>(path: string): Promise<T | null> {
   }
 }
 
+function migrationVersion(fileName: string): string | null {
+  const match = /^(\d+)_.+\.sql$/.exec(fileName);
+  return match ? match[1] : null;
+}
+
+/**
+ * Reads production's applied migration versions through the Supabase
+ * Management API (read-only SELECT). Returns null when evidence is unavailable.
+ */
+async function readProductionMigrationVersions(): Promise<string[] | null> {
+  const token = text(process.env.SUPABASE_ACCESS_TOKEN);
+  const url = text(process.env.NEXT_PUBLIC_SUPABASE_URL);
+  if (!token || !url) return null;
+  let ref: string | null = null;
+  try {
+    ref = new URL(url).hostname.split(".")[0] || null;
+  } catch {
+    ref = null;
+  }
+  if (!ref) return null;
+  try {
+    const response = await fetch(
+      `https://api.supabase.com/v1/projects/${encodeURIComponent(ref)}/database/query`,
+      {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${token}`,
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          query: "select version from supabase_migrations.schema_migrations",
+        }),
+        cache: "no-store",
+      },
+    );
+    if (!response.ok) return null;
+    const rows = (await response.json()) as Array<{ version?: unknown }>;
+    if (!Array.isArray(rows)) return null;
+    return rows.flatMap((row) => (typeof row.version === "string" ? [row.version] : []));
+  } catch {
+    return null;
+  }
+}
+
 function overallState(states: DeploymentHealthState[]): DeploymentHealthState {
   if (states.includes("down")) return "down";
   if (states.includes("degraded")) return "degraded";
@@ -105,8 +160,10 @@ export async function getOpsDeploymentHealth(): Promise<DeploymentHealthSnapshot
   const deploymentId = text(process.env.VERCEL_DEPLOYMENT_ID);
   const deploymentUrl = text(process.env.VERCEL_URL);
 
-  const [mainCommit, pulls] = await Promise.all([
+  const [mainCommit, mainMigrationFiles, appliedVersions, pulls] = await Promise.all([
     githubJson<GithubCommit>("/commits/main"),
+    githubJson<GithubContentItem[]>("/contents/supabase/migrations?ref=main"),
+    readProductionMigrationVersions(),
     githubJson<GithubPull[]>("/pulls?state=open&base=main&per_page=30&sort=updated&direction=desc"),
   ]);
   const mainSha = text(mainCommit?.sha);
@@ -138,6 +195,40 @@ export async function getOpsDeploymentHealth(): Promise<DeploymentHealthSnapshot
   const databaseLatency = Date.now() - dbStarted;
   const databaseState: DeploymentHealthState = databaseRead.error ? "down" : "healthy";
 
+  const repoVersions = mainMigrationFiles
+    ? mainMigrationFiles.flatMap((item) => {
+        const version = item.type === "file" && item.name ? migrationVersion(item.name) : null;
+        return version ? [version] : [];
+      })
+    : null;
+  let migrations: DeploymentHealthSnapshot["migrations"];
+  if (!repoVersions || !appliedVersions) {
+    migrations = {
+      state: "degraded",
+      repoCount: repoVersions?.length ?? null,
+      appliedCount: appliedVersions?.length ?? null,
+      productionOnly: [],
+      unapplied: [],
+      note: "Migration parity cannot be verified: repository or production ledger evidence is unavailable.",
+    };
+  } else {
+    const applied = new Set(appliedVersions);
+    const inRepo = new Set(repoVersions);
+    const productionOnly = appliedVersions.filter((version) => !inRepo.has(version)).sort();
+    const unapplied = repoVersions.filter((version) => !applied.has(version)).sort();
+    migrations = {
+      state: productionOnly.length > 0 || unapplied.length > 0 ? "down" : "healthy",
+      repoCount: repoVersions.length,
+      appliedCount: appliedVersions.length,
+      productionOnly,
+      unapplied,
+      note:
+        productionOnly.length > 0 || unapplied.length > 0
+          ? "Migration parity failed: production and main disagree."
+          : null,
+    };
+  }
+
   const productionState: DeploymentHealthState = environment === "production" && !deployedSha
     ? "degraded"
     : matchesMain === false
@@ -159,7 +250,7 @@ export async function getOpsDeploymentHealth(): Promise<DeploymentHealthSnapshot
 
   return {
     checkedAt,
-    overall: overallState([productionState, ciState, databaseState]),
+    overall: overallState([productionState, ciState, migrations.state, databaseState]),
     production: {
       state: productionState,
       environment,
@@ -176,6 +267,7 @@ export async function getOpsDeploymentHealth(): Promise<DeploymentHealthSnapshot
       pending,
       checks,
     },
+    migrations,
     database: {
       state: databaseState,
       latencyMs: databaseRead.error ? databaseLatency : databaseLatency,

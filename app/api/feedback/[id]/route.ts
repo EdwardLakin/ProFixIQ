@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import type { Database, Json } from "@shared/types/types/supabase";
+import type { Json } from "@shared/types/types/supabase";
 import {
   FEEDBACK_STATUSES,
   isRecord,
@@ -9,10 +9,12 @@ import {
   type FeedbackStatus,
 } from "@/features/feedback/lib/feedback";
 import { sendFeedbackCompletedEmails } from "@/features/feedback/server/notifications";
+import {
+  fetchClusterRows,
+  type AgentRequestRow,
+} from "@/features/feedback/server/ledger";
 import { requireOpsOperatorApiAccess } from "@/features/ops/server/operator-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
-
-type AgentRequestRow = Database["public"]["Tables"]["agent_requests"]["Row"];
 
 type UpdateFeedbackBody = {
   status?: string;
@@ -20,10 +22,6 @@ type UpdateFeedbackBody = {
   internalNotes?: string | null;
   notifyRequesters?: boolean;
 };
-
-function clusterIdFor(row: AgentRequestRow): string {
-  return readFeedbackMetadata(row.normalized_json)?.clusterId ?? row.id;
-}
 
 function rowContext(row: AgentRequestRow): Record<string, unknown> {
   return isRecord(row.normalized_json) ? row.normalized_json : {};
@@ -53,11 +51,7 @@ export async function PATCH(
   // Owner authorization is checked above. Use the admin client for the actual
   // feedback control operation so clusters spanning multiple tenant shops are
   // managed as one product-feedback item rather than being truncated by RLS.
-  const { data, error } = await admin
-    .from("agent_requests")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(1500);
+  const { rows: group, error } = await fetchClusterRows(admin, id);
   if (error) {
     console.error("feedback group load failed", error);
     return NextResponse.json(
@@ -66,8 +60,6 @@ export async function PATCH(
     );
   }
 
-  const rows = (data ?? []) as AgentRequestRow[];
-  const group = rows.filter((row) => clusterIdFor(row) === id);
   const canonical = group.find((row) => row.id === id) ?? null;
   if (!canonical || group.length === 0) {
     return NextResponse.json(
@@ -117,11 +109,13 @@ export async function PATCH(
     requesterNotifiedAt: metadata?.requesterNotifiedAt ?? null,
   };
 
-  const ids = group.map((row) => row.id);
+  // Two persisted sources of truth (legacy row status and canonical metadata)
+  // are updated together: if the second write fails, restore the first.
+  const nextLegacyStatus = legacyStatusForFeedback(nextStatus);
   const { error: statusError } = await admin
     .from("agent_requests")
-    .update({ status: legacyStatusForFeedback(nextStatus) })
-    .in("id", ids);
+    .update({ status: nextLegacyStatus })
+    .in("id", group.map((row) => row.id));
   if (statusError) {
     console.error("feedback group status update failed", statusError);
     return NextResponse.json(
@@ -130,7 +124,9 @@ export async function PATCH(
     );
   }
 
-  const { data: updatedCanonical, error: canonicalError } = await admin
+  // Guard on requesterNotifiedAt so a concurrent request's notification claim
+  // is never overwritten by this request's stale copy of the metadata.
+  const canonicalUpdate = admin
     .from("agent_requests")
     .update({
       normalized_json: {
@@ -139,14 +135,39 @@ export async function PATCH(
       } as Json,
       updated_at: now,
     })
-    .eq("id", canonical.id)
+    .eq("id", canonical.id);
+  const { data: updatedCanonical, error: canonicalError } = await (
+    nextMetadata.requesterNotifiedAt
+      ? canonicalUpdate.eq(
+          "normalized_json->feedback->>requesterNotifiedAt",
+          nextMetadata.requesterNotifiedAt,
+        )
+      : canonicalUpdate.is("normalized_json->feedback->>requesterNotifiedAt", null)
+  )
     .select("*")
-    .single();
+    .maybeSingle();
   if (canonicalError || !updatedCanonical) {
     console.error("feedback canonical update failed", canonicalError);
+    const byStatus = new Map<string, string[]>();
+    for (const row of group) {
+      byStatus.set(row.status, [...(byStatus.get(row.status) ?? []), row.id]);
+    }
+    for (const [status, ids] of byStatus) {
+      const { error: rollbackError } = await admin
+        .from("agent_requests")
+        .update({ status })
+        .in("id", ids);
+      if (rollbackError) {
+        console.error("feedback status rollback failed", rollbackError);
+      }
+    }
     return NextResponse.json(
-      { error: "Failed to update feedback" },
-      { status: 500 },
+      {
+        error: canonicalError
+          ? "Failed to update feedback"
+          : "Feedback changed concurrently; reload and retry",
+      },
+      { status: canonicalError ? 500 : 409 },
     );
   }
 
@@ -156,33 +177,48 @@ export async function PATCH(
     body.notifyRequesters === true &&
     !nextMetadata.requesterNotifiedAt
   ) {
-    notified = await sendFeedbackCompletedEmails({
-      reporterIds: group
-        .map((row) => row.reporter_id)
-        .filter((value): value is string => Boolean(value)),
-      title: nextMetadata.title,
-      summary: nextMetadata.summary,
-    });
+    // Atomic claim: only the request that flips requesterNotifiedAt from unset
+    // to a claim timestamp may send. Concurrent requests match zero rows.
+    const claimedAt = new Date().toISOString();
+    const { data: claimed, error: claimError } = await admin
+      .from("agent_requests")
+      .update({
+        normalized_json: {
+          ...rowContext(updatedCanonical as AgentRequestRow),
+          feedback: { ...nextMetadata, requesterNotifiedAt: claimedAt },
+        } as Json,
+      })
+      .eq("id", canonical.id)
+      .is("normalized_json->feedback->>requesterNotifiedAt", null)
+      .select("id")
+      .maybeSingle();
+    if (claimError) {
+      console.error("feedback requester notification claim failed", claimError);
+    }
 
-    if (notified > 0) {
-      const notifiedAt = new Date().toISOString();
-      const { error: notificationUpdateError } = await admin
-        .from("agent_requests")
-        .update({
-          normalized_json: {
-            ...rowContext(updatedCanonical as AgentRequestRow),
-            feedback: {
-              ...nextMetadata,
-              requesterNotifiedAt: notifiedAt,
-            },
-          } as Json,
-        })
-        .eq("id", canonical.id);
-      if (notificationUpdateError) {
-        console.error(
-          "feedback requester notification state update failed",
-          notificationUpdateError,
-        );
+    if (claimed) {
+      notified = await sendFeedbackCompletedEmails({
+        reporterIds: group
+          .map((row) => row.reporter_id)
+          .filter((value): value is string => Boolean(value)),
+        title: nextMetadata.title,
+        summary: nextMetadata.summary,
+      });
+
+      if (notified === 0) {
+        // Nothing was delivered: release the claim so a retry can send.
+        const { error: releaseError } = await admin
+          .from("agent_requests")
+          .update({
+            normalized_json: {
+              ...rowContext(updatedCanonical as AgentRequestRow),
+              feedback: { ...nextMetadata, requesterNotifiedAt: null },
+            } as Json,
+          })
+          .eq("id", canonical.id);
+        if (releaseError) {
+          console.error("feedback notification claim release failed", releaseError);
+        }
       }
     }
   }

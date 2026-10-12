@@ -40,7 +40,7 @@ describe("ops console access boundary", () => {
     expect(opsLayout).toContain("requireOpsOperatorPageAccess");
     expect(opsPage).toContain("getOpsDashboardFeedback");
     expect(opsFeedbackPage).toContain("FeedbackConsole");
-    expect(feedbackConsole).toContain('fetch("/api/feedback")');
+    expect(feedbackConsole).toContain('fetch("/api/feedback", { cache: "no-store" })');
     expect(legacyOpsAgentPage).toContain('redirect("/ops/feedback")');
     expect(legacyAgentPage).toContain('redirect("/ops/feedback")');
   });

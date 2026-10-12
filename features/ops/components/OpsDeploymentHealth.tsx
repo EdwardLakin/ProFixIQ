@@ -78,6 +78,12 @@ export default function OpsDeploymentHealth({ snapshot }: { snapshot: Deployment
       </section>
 
       <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 shadow-card">
+        <div className="flex items-start justify-between gap-3"><h2 className="text-sm font-bold">{snapshot.migrations.state === "down" ? "Migration parity failed" : "Migration parity"}</h2><Pill state={snapshot.migrations.state} /></div>
+        <p className="mt-1 text-xs leading-5 text-[color:var(--theme-text-secondary)]">{snapshot.migrations.note ?? "Production's migration ledger matches supabase/migrations on main."}</p>
+        <dl className="mt-4 grid gap-2 text-xs sm:grid-cols-4"><div><dt className="text-[color:var(--theme-text-muted)]">On main</dt><dd>{snapshot.migrations.repoCount ?? "Unavailable"}</dd></div><div><dt className="text-[color:var(--theme-text-muted)]">Applied in production</dt><dd>{snapshot.migrations.appliedCount ?? "Unavailable"}</dd></div><div><dt className="text-[color:var(--theme-text-muted)]">Production only</dt><dd className="font-mono break-all">{snapshot.migrations.productionOnly.join(", ") || "None"}</dd></div><div><dt className="text-[color:var(--theme-text-muted)]">Unapplied on main</dt><dd className="font-mono break-all">{snapshot.migrations.unapplied.join(", ") || "None"}</dd></div></dl>
+      </section>
+
+      <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 shadow-card">
         <div className="flex items-center gap-2"><GitPullRequest className="h-4 w-4 text-orange-500" /><h2 className="text-sm font-bold">Open pull requests</h2></div>
         <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{snapshot.pullRequests.total} open · {snapshot.pullRequests.ready} ready · {snapshot.pullRequests.draft} draft.</p>
         <div className="mt-4 grid gap-2 sm:grid-cols-2">{snapshot.pullRequests.recent.map((pull) => <a key={pull.number} href={pull.url} target="_blank" rel="noreferrer" className="rounded-xl border border-[color:var(--theme-border-soft)] p-3 text-sm hover:border-orange-500/40"><div className="font-semibold">#{pull.number} {pull.title}</div><div className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{pull.draft ? "Draft" : "Ready"} · updated {when(pull.updatedAt)}</div></a>)}</div>
