@@ -52,6 +52,13 @@ describe("Equipment asset profile validation", () => {
         ASSET_ID,
       ).ok,
     ).toBe(false);
+    // vehicles.engine_hours is an integer column.
+    expect(
+      validateEquipmentAssetProfileMutation(
+        { equipmentClass: "wheel_loader", engineHours: 4210.5 },
+        ASSET_ID,
+      ).ok,
+    ).toBe(false);
     expect(
       validateEquipmentAssetProfileMutation(
         { equipmentClass: "wheel_loader", currentCycles: 1.5 },
@@ -64,13 +71,25 @@ describe("Equipment asset profile validation", () => {
       ASSET_ID,
     );
     expect(omitted.ok && "engineHours" in omitted.value).toBe(false);
+    expect(omitted.ok && "odometer" in omitted.value).toBe(false);
 
     const supplied = validateEquipmentAssetProfileMutation(
-      { equipmentClass: "wheel_loader", engineHours: "4210.5", odometer: 1200, currentCycles: 30 },
+      {
+        equipmentClass: "wheel_loader",
+        engineHours: "4210",
+        expectedEngineHours: 4100,
+        odometer: "42,000 km",
+        expectedOdometer: "41,500 km ",
+        currentCycles: 30,
+      },
       ASSET_ID,
     );
-    expect(supplied.ok && supplied.value.engineHours).toBe(4210.5);
-    expect(supplied.ok && supplied.value.odometer).toBe("1200");
+    expect(supplied.ok && supplied.value.engineHours).toEqual({ value: 4210, expected: 4100 });
+    // Canonical text mileage is preserved; the baseline is compared verbatim.
+    expect(supplied.ok && supplied.value.odometer).toEqual({
+      value: "42,000 km",
+      expected: "41,500 km ",
+    });
     expect(supplied.ok && supplied.value.currentCycles).toBe(30);
   });
 

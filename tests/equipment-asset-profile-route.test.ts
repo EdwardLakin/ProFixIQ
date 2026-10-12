@@ -83,7 +83,9 @@ describe("Equipment asset profile route", () => {
     expect(response.status).toBe(200);
     expect(mocks.load).toHaveBeenCalledWith({
       supabase: { scoped: true },
+      admin: { admin: true },
       shopId: SHOP_ID,
+      role: "owner",
       assetId: ASSET_ID,
     });
     expect((await response.json()).canEdit).toBe(true);
@@ -136,6 +138,7 @@ describe("Equipment asset profile route", () => {
     expect(mocks.save).toHaveBeenCalledWith(
       expect.objectContaining({
         shopId: SHOP_ID,
+        role: "owner",
         actorUserId: USER_ID,
         assetId: ASSET_ID,
         supabase: { scoped: true },

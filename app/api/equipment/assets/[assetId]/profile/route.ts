@@ -65,7 +65,9 @@ export async function GET(_request: Request, context: RouteContext) {
   try {
     const record = await loadEquipmentAssetRecord({
       supabase: access.supabase,
+      admin: createAdminSupabase(),
       shopId: access.profile.shop_id,
+      role: access.canonicalRole,
       assetId,
     });
     if (!record) return json({ error: "Asset not found." }, 404);
@@ -102,6 +104,7 @@ export async function PUT(request: Request, context: RouteContext) {
       supabase: access.supabase,
       admin: createAdminSupabase(),
       shopId: access.profile.shop_id,
+      role: access.canonicalRole,
       actorUserId: access.authUserId,
       assetId,
       mutation: validation.value,

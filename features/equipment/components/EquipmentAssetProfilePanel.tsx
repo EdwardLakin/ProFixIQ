@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -24,7 +25,8 @@ type LoadState =
   | { kind: "error"; message: string }
   | { kind: "ready"; record: EquipmentAssetRecord; canEdit: boolean };
 
-type AttributeRow = { key: string; value: string };
+type AttributeType = "string" | "number" | "boolean" | "null";
+type AttributeRow = { key: string; value: string; type: AttributeType };
 
 type FormState = {
   equipmentClass: string;
@@ -42,6 +44,9 @@ type FormState = {
   mountedOnAssetId: string;
   mountedOnLabel: string;
   attributes: AttributeRow[];
+  /** Canonical meter values the form was opened with (optimistic baseline). */
+  baselineEngineHours: number | null;
+  baselineOdometer: string | null;
 };
 
 const INPUT =
@@ -57,7 +62,8 @@ function toForm(record: EquipmentAssetRecord): FormState {
   return {
     equipmentClass: profile?.equipmentClass ?? "",
     serialNumber: profile?.serialNumber ?? "",
-    pin: profile?.pin ?? asset.vin ?? "",
+    // The VIN stays canonical on the asset; only a distinct PIN is stored here.
+    pin: profile?.pin ?? "",
     engineMake: profile?.engineMake ?? "",
     engineModel: profile?.engineModel ?? "",
     engineSerial: profile?.engineSerial ?? "",
@@ -72,20 +78,25 @@ function toForm(record: EquipmentAssetRecord): FormState {
     attributes: Object.entries(profile?.attributes ?? {}).map(([key, value]) => ({
       key,
       value: value === null ? "" : String(value),
+      type: (value === null ? "null" : typeof value) as AttributeType,
     })),
+    baselineEngineHours: asset.engineHours,
+    baselineOdometer: asset.odometer,
   };
 }
 
 function toPayload(form: FormState) {
-  const attributes: Record<string, string> = {};
+  const attributes: Record<string, string | number | boolean | null> = {};
   for (const row of form.attributes) {
     const key = row.key
       .trim()
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, "_")
       .replace(/^_+|_+$/g, "");
-    if (key) attributes[key] = row.value.trim();
+    if (key) attributes[key] = typedAttributeValue(row);
   }
+  const engineHours = form.engineHours.trim() === "" ? null : Number(form.engineHours);
+  const odometer = form.odometer.trim() === "" ? null : form.odometer.trim();
   return {
     equipmentClass: form.equipmentClass,
     serialNumber: form.serialNumber,
@@ -94,14 +105,34 @@ function toPayload(form: FormState) {
     engineModel: form.engineModel,
     engineSerial: form.engineSerial,
     primaryMeter: form.primaryMeter,
-    engineHours: form.engineHours.trim() === "" ? null : form.engineHours,
-    odometer: form.odometer.trim() === "" ? null : form.odometer,
+    // Canonical meters are sent only when deliberately changed, with the
+    // value they were changed from, so a stale form cannot revert a newer
+    // reading recorded elsewhere.
+    ...(engineHours !== form.baselineEngineHours
+      ? { engineHours, expectedEngineHours: form.baselineEngineHours }
+      : {}),
+    ...(odometer !== (form.baselineOdometer?.trim() || null)
+      ? { odometer, expectedOdometer: form.baselineOdometer }
+      : {}),
     currentCycles: form.currentCycles.trim() === "" ? null : form.currentCycles,
     siteName: form.siteName,
     operatingStatus: form.operatingStatus,
     mountedOnAssetId: form.mountedOnAssetId || null,
     attributes,
   };
+}
+
+/** Preserve an existing attribute's scalar type when the edited text still fits it. */
+function typedAttributeValue(row: AttributeRow): string | number | boolean | null {
+  const text = row.value.trim();
+  if (row.type === "number" && text !== "" && Number.isFinite(Number(text))) {
+    return Number(text);
+  }
+  if (row.type === "boolean" && (text === "true" || text === "false")) {
+    return text === "true";
+  }
+  if (row.type === "null" && text === "") return null;
+  return text;
 }
 
 function humanizeKey(key: string): string {
@@ -224,6 +255,7 @@ export default function EquipmentAssetProfilePanel({ assetId }: { assetId: strin
   const [form, setForm] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const router = useRouter();
 
   useEffect(() => {
     let active = true;
@@ -295,18 +327,23 @@ export default function EquipmentAssetProfilePanel({ assetId }: { assetId: strin
         setSaveError(payload.error ?? "The Equipment profile could not be saved.");
         return;
       }
+      const metersChanged =
+        payload.asset.engineHours !== form.baselineEngineHours ||
+        payload.asset.odometer !== form.baselineOdometer;
       setState({
         kind: "ready",
         record: { asset: payload.asset, profile: payload.profile ?? null },
         canEdit: true,
       });
       setForm(null);
+      // Keep the server-rendered workspace header on the same canonical meters.
+      if (metersChanged) router.refresh();
     } catch {
       setSaveError("The Equipment profile could not be saved. Check your connection.");
     } finally {
       setSaving(false);
     }
-  }, [assetId, form]);
+  }, [assetId, form, router]);
 
   const selectedFamily = useMemo(
     () =>
@@ -435,7 +472,7 @@ export default function EquipmentAssetProfilePanel({ assetId }: { assetId: strin
               </label>
               {(
                 [
-                  ["engineHours", "Engine hours", "0.1"],
+                  ["engineHours", "Engine hours", "1"],
                   ["odometer", "Odometer", "1"],
                   ["currentCycles", "Cycles", "1"],
                 ] as const
@@ -444,8 +481,8 @@ export default function EquipmentAssetProfilePanel({ assetId }: { assetId: strin
                   <span className={LABEL}>{label}</span>
                   <input
                     className={INPUT}
-                    type="number"
-                    inputMode="decimal"
+                    type={field === "odometer" ? "text" : "number"}
+                    inputMode={field === "engineHours" || field === "currentCycles" ? "numeric" : "text"}
                     min={0}
                     step={step}
                     value={form[field]}
@@ -510,7 +547,9 @@ export default function EquipmentAssetProfilePanel({ assetId }: { assetId: strin
                 type="button"
                 className={BUTTON}
                 onClick={() =>
-                  update({ attributes: [...form.attributes, { key: "", value: "" }] })
+                  update({
+                    attributes: [...form.attributes, { key: "", value: "", type: "string" }],
+                  })
                 }
               >
                 Add attribute

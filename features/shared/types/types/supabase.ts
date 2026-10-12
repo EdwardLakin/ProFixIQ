@@ -32170,6 +32170,21 @@ export type Database = {
         }
         Returns: Json
       }
+      save_equipment_asset_profile: {
+        Args: {
+          p_actor_user_id: string
+          p_engine_hours?: number
+          p_expected_engine_hours?: number
+          p_expected_odometer?: string
+          p_odometer?: string
+          p_profile: Json
+          p_set_engine_hours?: boolean
+          p_set_odometer?: boolean
+          p_shop_id: string
+          p_vehicle_id: string
+        }
+        Returns: undefined
+      }
       save_estimate_draft_atomic: {
         Args: {
           p_expected_revision: number

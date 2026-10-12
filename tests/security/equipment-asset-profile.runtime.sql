@@ -38,49 +38,94 @@ values
   ('69300000-0000-4000-8000-000000000002', '69200000-0000-4000-8000-000000000001', '69100000-0000-4000-8000-000000000001', 'BKT-1', 2021, 'Caterpillar', 'Bucket', null),
   ('69300000-0000-4000-8000-000000000003', '69200000-0000-4000-8000-000000000002', '69100000-0000-4000-8000-000000000002', 'EX-B', 2020, 'Komatsu', 'PC360', 900);
 
--- Trusted (service-role equivalent) writes: valid same-shop profiles succeed.
-insert into public.equipment_asset_profiles (
-  vehicle_id, shop_id, equipment_class, equipment_family, serial_number, primary_meter
-)
-values
-  ('69300000-0000-4000-8000-000000000001', '69200000-0000-4000-8000-000000000001', 'crawler_excavator', 'excavation', 'CAT0336XA', 'hours'),
-  ('69300000-0000-4000-8000-000000000003', '69200000-0000-4000-8000-000000000002', 'crawler_excavator', 'excavation', 'KMT0360XB', 'hours');
-
-insert into public.equipment_asset_profiles (
-  vehicle_id, shop_id, equipment_class, equipment_family, primary_meter, mounted_on_vehicle_id
-)
-values (
-  '69300000-0000-4000-8000-000000000002',
+-- Trusted (service-role) saves go through the atomic RPC.
+select public.save_equipment_asset_profile(
   '69200000-0000-4000-8000-000000000001',
-  'attachment',
-  'attachments',
-  'none',
-  '69300000-0000-4000-8000-000000000001'
+  '69300000-0000-4000-8000-000000000001',
+  '69100000-0000-4000-8000-000000000001',
+  '{"equipment_class":"crawler_excavator","equipment_family":"excavation","serial_number":"CAT0336XA","primary_meter":"hours"}'::jsonb,
+  true, 4300, 4210
+);
+select public.save_equipment_asset_profile(
+  '69200000-0000-4000-8000-000000000002',
+  '69300000-0000-4000-8000-000000000003',
+  '69100000-0000-4000-8000-000000000002',
+  '{"equipment_class":"crawler_excavator","equipment_family":"excavation"}'::jsonb
+);
+select public.save_equipment_asset_profile(
+  '69200000-0000-4000-8000-000000000001',
+  '69300000-0000-4000-8000-000000000002',
+  '69100000-0000-4000-8000-000000000001',
+  '{"equipment_class":"attachment","equipment_family":"attachments","primary_meter":"none","mounted_on_vehicle_id":"69300000-0000-4000-8000-000000000001","attributes":{"width_mm":1500,"quick_coupler":true}}'::jsonb
 );
 
--- The trigger rejects a profile whose shop differs from its asset's shop.
-do $equipment_profile_scope$
+do $equipment_profile_rpc$
 begin
+  if (select engine_hours from public.vehicles where id = '69300000-0000-4000-8000-000000000001') <> 4300 then
+    raise exception 'RPC did not write the edited canonical engine hours.';
+  end if;
+  if (select meters_updated_at from public.equipment_asset_profiles where vehicle_id = '69300000-0000-4000-8000-000000000001') is null then
+    raise exception 'RPC did not stamp meters_updated_at after a meter change.';
+  end if;
+  if (select attributes -> 'width_mm' from public.equipment_asset_profiles where vehicle_id = '69300000-0000-4000-8000-000000000002') <> '1500'::jsonb then
+    raise exception 'RPC did not preserve typed attributes.';
+  end if;
+
+  -- A stale meter baseline is rejected and nothing is written.
   begin
-    update public.equipment_asset_profiles
-    set shop_id = '69200000-0000-4000-8000-000000000002'
-    where vehicle_id = '69300000-0000-4000-8000-000000000001';
-    raise exception 'Equipment profile accepted a shop that differs from its asset.';
+    perform public.save_equipment_asset_profile(
+      '69200000-0000-4000-8000-000000000001',
+      '69300000-0000-4000-8000-000000000001',
+      '69100000-0000-4000-8000-000000000001',
+      '{"equipment_class":"crawler_excavator","equipment_family":"excavation","serial_number":"STALE"}'::jsonb,
+      true, 4250, 4210
+    );
+    raise exception 'RPC accepted a stale engine-hours baseline.';
+  exception when serialization_failure then
+    null;
+  end;
+  if (select serial_number from public.equipment_asset_profiles where vehicle_id = '69300000-0000-4000-8000-000000000001') <> 'CAT0336XA' then
+    raise exception 'Rejected stale save partially wrote the profile.';
+  end if;
+
+  -- An asset from another shop is not found.
+  begin
+    perform public.save_equipment_asset_profile(
+      '69200000-0000-4000-8000-000000000001',
+      '69300000-0000-4000-8000-000000000003',
+      '69100000-0000-4000-8000-000000000001',
+      '{"equipment_class":"crawler_excavator","equipment_family":"excavation"}'::jsonb
+    );
+    raise exception 'RPC wrote a profile for another shop''s asset.';
+  exception when no_data_found then
+    null;
+  end;
+
+  -- Reciprocal mounting and cross-shop hosts are rejected.
+  begin
+    perform public.save_equipment_asset_profile(
+      '69200000-0000-4000-8000-000000000001',
+      '69300000-0000-4000-8000-000000000001',
+      '69100000-0000-4000-8000-000000000001',
+      '{"equipment_class":"crawler_excavator","equipment_family":"excavation","mounted_on_vehicle_id":"69300000-0000-4000-8000-000000000002"}'::jsonb
+    );
+    raise exception 'RPC allowed two assets to be mounted on each other.';
+  exception when check_violation then
+    null;
+  end;
+  begin
+    perform public.save_equipment_asset_profile(
+      '69200000-0000-4000-8000-000000000001',
+      '69300000-0000-4000-8000-000000000002',
+      '69100000-0000-4000-8000-000000000001',
+      '{"equipment_class":"attachment","equipment_family":"attachments","mounted_on_vehicle_id":"69300000-0000-4000-8000-000000000003"}'::jsonb
+    );
+    raise exception 'RPC accepted a cross-shop host asset.';
   exception when check_violation then
     null;
   end;
 
-  -- ...and a host asset from another shop.
-  begin
-    update public.equipment_asset_profiles
-    set mounted_on_vehicle_id = '69300000-0000-4000-8000-000000000003'
-    where vehicle_id = '69300000-0000-4000-8000-000000000002';
-    raise exception 'Equipment profile accepted a cross-shop host asset.';
-  exception when check_violation then
-    null;
-  end;
-
-  -- ...and an unrecognised operating status / meter.
+  -- The table constraints still bound direct trusted writes.
   begin
     update public.equipment_asset_profiles
     set operating_status = 'flying'
@@ -90,9 +135,10 @@ begin
     null;
   end;
 end
-$equipment_profile_scope$;
+$equipment_profile_rpc$;
 
--- Shop A owner reads only Shop A profiles and cannot write directly.
+-- Authenticated clients have no direct access to the table or the RPC; the
+-- server route enforces role, assignment and entitlement before using it.
 set local role authenticated;
 select set_config(
   'request.jwt.claims',
@@ -100,21 +146,14 @@ select set_config(
   true
 );
 
-do $equipment_profile_rls$
+do $equipment_profile_client_denied$
 begin
-  if (
-    select count(*) from public.equipment_asset_profiles
-    where shop_id = '69200000-0000-4000-8000-000000000001'
-  ) <> 2 then
-    raise exception 'Equipment profile owner could not read same-shop profiles.';
-  end if;
-
-  if exists (
-    select 1 from public.equipment_asset_profiles
-    where vehicle_id = '69300000-0000-4000-8000-000000000003'
-  ) then
-    raise exception 'Equipment profile tenant boundary exposed Shop B.';
-  end if;
+  begin
+    perform 1 from public.equipment_asset_profiles limit 1;
+    raise exception 'Authenticated client read Equipment profiles directly.';
+  exception when insufficient_privilege then
+    null;
+  end;
 
   begin
     update public.equipment_asset_profiles
@@ -126,32 +165,28 @@ begin
   end;
 
   begin
-    insert into public.equipment_asset_profiles (
-      vehicle_id, shop_id, equipment_class, equipment_family
-    ) values (
-      '69300000-0000-4000-8000-000000000002',
+    perform public.save_equipment_asset_profile(
       '69200000-0000-4000-8000-000000000001',
-      'attachment',
-      'attachments'
+      '69300000-0000-4000-8000-000000000001',
+      '69100000-0000-4000-8000-000000000001',
+      '{"equipment_class":"crawler_excavator","equipment_family":"excavation"}'::jsonb
     );
-    raise exception 'Authenticated client inserted an Equipment profile directly.';
+    raise exception 'Authenticated client executed the Equipment profile RPC.';
   exception when insufficient_privilege then
     null;
   end;
 end
-$equipment_profile_rls$;
+$equipment_profile_client_denied$;
 
 reset role;
 select set_config('request.jwt.claims', '', true);
 
--- Anonymous actors see nothing.
 set local role anon;
 do $equipment_profile_anon$
 begin
   begin
-    if exists (select 1 from public.equipment_asset_profiles) then
-      raise exception 'Anonymous actor read Equipment profiles.';
-    end if;
+    perform 1 from public.equipment_asset_profiles limit 1;
+    raise exception 'Anonymous actor read Equipment profiles.';
   exception when insufficient_privilege then
     null;
   end;

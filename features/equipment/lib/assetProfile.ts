@@ -105,9 +105,13 @@ export type EquipmentAssetProfileMutation = {
   operatingStatus: AssetOperatingStatus;
   mountedOnAssetId: string | null;
   attributes: Record<string, string | number | boolean | null>;
-  /** Canonical vehicles meters; omitted means unchanged. */
-  engineHours?: number | null;
-  odometer?: string | null;
+  /**
+   * Canonical vehicles meters. Present only when the user deliberately edited
+   * them; `expected` is the value the edit was made against, so a newer
+   * reading recorded elsewhere is never silently reverted.
+   */
+  engineHours?: { value: number | null; expected: number | null };
+  odometer?: { value: string | null; expected: string | null };
 };
 
 const UUID =
@@ -133,6 +137,11 @@ function optionalText(
     return { ok: false, error: `${field} must be ${max} characters or fewer.` };
   }
   return { ok: true, value: trimmed || null };
+}
+
+/** The caller's exact baseline text (untrimmed) for an optimistic compare. */
+function rawText(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
 }
 
 function optionalNonNegative(
@@ -278,14 +287,20 @@ export function validateEquipmentAssetProfileMutation(
   };
 
   if (Object.prototype.hasOwnProperty.call(input, "engineHours")) {
-    const hours = optionalNonNegative(input.engineHours, "Engine hours", false);
+    // vehicles.engine_hours is an integer column.
+    const hours = optionalNonNegative(input.engineHours, "Engine hours", true);
     if (!hours.ok) return hours;
-    value.engineHours = hours.value;
+    const expected = optionalNonNegative(input.expectedEngineHours, "Engine hours", true);
+    if (!expected.ok) return expected;
+    value.engineHours = { value: hours.value, expected: expected.value };
   }
   if (Object.prototype.hasOwnProperty.call(input, "odometer")) {
-    const odometer = optionalNonNegative(input.odometer, "Odometer", false);
+    // vehicles.mileage is canonical text (e.g. "42,000 km"); keep it as text.
+    const odometer = optionalText(input.odometer, "Odometer", 40);
     if (!odometer.ok) return odometer;
-    value.odometer = odometer.value === null ? null : String(odometer.value);
+    const expected = optionalText(input.expectedOdometer, "Odometer", 200);
+    if (!expected.ok) return expected;
+    value.odometer = { value: odometer.value, expected: rawText(input.expectedOdometer) };
   }
 
   return { ok: true, value };

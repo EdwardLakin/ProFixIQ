@@ -4,6 +4,7 @@ vi.mock("server-only", () => ({}));
 
 import {
   EquipmentAssetProfileError,
+  loadEquipmentAssetRecord,
   saveEquipmentAssetProfile,
 } from "@/features/equipment/server/equipmentAssetProfileService";
 import type { EquipmentAssetProfileMutation } from "@/features/equipment/lib/assetProfile";
@@ -16,12 +17,17 @@ const USER = "00000000-0000-4000-8000-000000000999";
 type Row = Record<string, unknown>;
 type Tables = Record<string, Row[]>;
 
-/** Minimal chainable Supabase fake honouring eq filters, update and upsert. */
-function fakeClient(tables: Tables, log: string[], name: string) {
+/** Minimal chainable Supabase fake honouring eq filters, limit and rpc. */
+function fakeClient(
+  tables: Tables,
+  log: string[],
+  name: string,
+  rpcResult: { error: { code: string; message: string } | null } = { error: null },
+) {
   return {
     from(table: string) {
+      log.push(`${name}:read:${table}`);
       const filters: Array<[string, unknown]> = [];
-      let patch: Row | null = null;
       const rows = () =>
         (tables[table] ?? []).filter((row) =>
           filters.every(([column, value]) => row[column] === value),
@@ -32,31 +38,15 @@ function fakeClient(tables: Tables, log: string[], name: string) {
           filters.push([column, value]);
           return builder;
         },
-        update: (value: Row) => {
-          patch = value;
-          return builder;
-        },
+        limit: async (count: number) => ({ data: rows().slice(0, count), error: null }),
         maybeSingle: async () => ({ data: rows()[0] ?? null, error: null }),
-        upsert: async (value: Row) => {
-          log.push(`${name}:upsert:${table}`);
-          const list = (tables[table] ??= []);
-          const index = list.findIndex((row) => row.vehicle_id === value.vehicle_id);
-          if (index >= 0) list[index] = { ...list[index], ...value, updated_at: "now" };
-          else list.push({ attributes: {}, updated_at: "now", ...value });
-          return { error: null };
-        },
-        then: (resolve: (value: unknown) => void) => {
-          if (patch) {
-            log.push(`${name}:update:${table}`);
-            const matched = rows();
-            for (const row of matched) Object.assign(row, patch);
-            resolve({ data: matched.map((row) => ({ id: row.id })), error: null });
-          } else {
-            resolve({ data: rows(), error: null });
-          }
-        },
       };
       return builder;
+    },
+    rpc: async (fn: string, args: Row) => {
+      log.push(`${name}:rpc:${fn}`);
+      (tables.__rpc ??= []).push(args);
+      return rpcResult;
     },
   };
 }
@@ -80,113 +70,141 @@ function mutation(patch: Partial<EquipmentAssetProfileMutation> = {}): Equipment
   };
 }
 
-function setup(extra: Tables = {}) {
+function setup(options: {
+  workOrders?: Row[];
+  rpcError?: { code: string; message: string };
+} = {}) {
   const tables: Tables = {
     vehicles: [
-      { id: ASSET, shop_id: SHOP, engine_hours: 100, mileage: null, unit_number: "EX-1" },
+      { id: ASSET, shop_id: SHOP, engine_hours: 100, mileage: "42,000 km", unit_number: "EX-1" },
       { id: HOST, shop_id: SHOP, engine_hours: 5, mileage: null, unit_number: "EX-2" },
-      { id: "other", shop_id: "other-shop", engine_hours: 1, mileage: null },
     ],
+    work_orders: options.workOrders ?? [],
     equipment_asset_profiles: [],
-    ...extra,
   };
   const log: string[] = [];
   return {
     tables,
     log,
     supabase: fakeClient(tables, log, "scoped") as never,
-    admin: fakeClient(tables, log, "admin") as never,
+    admin: fakeClient(tables, log, "admin", { error: options.rpcError ?? null }) as never,
   };
 }
 
-describe("saveEquipmentAssetProfile", () => {
-  it("writes meters through the caller-scoped client and the profile through the admin client", async () => {
+describe("Equipment asset profile service", () => {
+  it("authorizes through the caller-scoped client and reads the profile with the admin client", async () => {
     const env = setup();
-    const saved = await saveEquipmentAssetProfile({
+    const record = await loadEquipmentAssetRecord({
       supabase: env.supabase,
       admin: env.admin,
       shopId: SHOP,
-      actorUserId: USER,
+      role: "owner",
       assetId: ASSET,
-      mutation: mutation({ engineHours: 4210 }),
-      now: new Date("2026-10-11T00:00:00Z"),
     });
+    expect(record?.asset.odometer).toBe("42,000 km");
     expect(env.log).toEqual([
-      "scoped:update:vehicles",
-      "admin:upsert:equipment_asset_profiles",
+      "scoped:read:vehicles",
+      "admin:read:equipment_asset_profiles",
     ]);
-    expect(saved.asset.engineHours).toBe(4210);
-    expect(saved.profile?.equipmentClassLabel).toBe("Crawler excavator");
-    expect(env.tables.equipment_asset_profiles[0]).toMatchObject({
-      shop_id: SHOP,
-      created_by: USER,
-      updated_by: USER,
-      meters_updated_at: "2026-10-11T00:00:00.000Z",
-    });
   });
 
-  it("skips the vehicles write when meters are unchanged", async () => {
+  it("hides an asset from a mechanic with no visible work order, like the vehicle workspace", async () => {
+    const env = setup();
+    expect(
+      await loadEquipmentAssetRecord({
+        supabase: env.supabase,
+        admin: env.admin,
+        shopId: SHOP,
+        role: "mechanic",
+        assetId: ASSET,
+      }),
+    ).toBeNull();
+    expect(env.log).not.toContain("admin:read:equipment_asset_profiles");
+
+    const assigned = setup({ workOrders: [{ id: "wo-1", shop_id: SHOP, vehicle_id: ASSET }] });
+    expect(
+      await loadEquipmentAssetRecord({
+        supabase: assigned.supabase,
+        admin: assigned.admin,
+        shopId: SHOP,
+        role: "mechanic",
+        assetId: ASSET,
+      }),
+    ).not.toBeNull();
+  });
+
+  it("saves through the atomic RPC, sending meters only with their baseline", async () => {
     const env = setup();
     await saveEquipmentAssetProfile({
       supabase: env.supabase,
       admin: env.admin,
       shopId: SHOP,
+      role: "owner",
       actorUserId: USER,
       assetId: ASSET,
-      mutation: mutation({ engineHours: 100 }),
+      mutation: mutation({ engineHours: { value: 4210, expected: 100 } }),
     });
-    expect(env.log).toEqual(["admin:upsert:equipment_asset_profiles"]);
+    expect(env.log).toContain("admin:rpc:save_equipment_asset_profile");
+    expect(env.tables.__rpc[0]).toMatchObject({
+      p_shop_id: SHOP,
+      p_vehicle_id: ASSET,
+      p_actor_user_id: USER,
+      p_set_engine_hours: true,
+      p_engine_hours: 4210,
+      p_expected_engine_hours: 100,
+      p_set_odometer: false,
+    });
   });
 
-  it("treats a cross-shop asset as not found and writes nothing", async () => {
+  it("writes nothing for an asset outside the caller's shop", async () => {
     const env = setup();
     await expect(
       saveEquipmentAssetProfile({
         supabase: env.supabase,
         admin: env.admin,
         shopId: SHOP,
+        role: "owner",
         actorUserId: USER,
-        assetId: "other",
+        assetId: "00000000-0000-4000-8000-00000000dead",
         mutation: mutation(),
       }),
     ).rejects.toMatchObject({ status: 404 });
-    expect(env.log).toEqual([]);
+    expect(env.log).not.toContain("admin:rpc:save_equipment_asset_profile");
   });
 
-  it("rejects a host asset outside the shop and mutual mounting", async () => {
+  it("rejects a host asset the caller cannot see", async () => {
     const env = setup();
     await expect(
       saveEquipmentAssetProfile({
         supabase: env.supabase,
         admin: env.admin,
         shopId: SHOP,
+        role: "owner",
         actorUserId: USER,
         assetId: ASSET,
-        mutation: mutation({ mountedOnAssetId: "other" }),
+        mutation: mutation({ mountedOnAssetId: "00000000-0000-4000-8000-00000000beef" }),
       }),
     ).rejects.toBeInstanceOf(EquipmentAssetProfileError);
+    expect(env.log).not.toContain("admin:rpc:save_equipment_asset_profile");
+  });
 
-    env.tables.equipment_asset_profiles.push({
-      vehicle_id: HOST,
-      shop_id: SHOP,
-      equipment_class: "attachment",
-      equipment_family: "attachments",
-      primary_meter: "none",
-      operating_status: "operational",
-      mounted_on_vehicle_id: ASSET,
-      attributes: {},
-      updated_at: "now",
-    });
+  it.each([
+    ["40001", "Engine hours changed", 409],
+    ["23514", "Two assets cannot be mounted on each other", 409],
+    ["P0002", "Asset not found", 404],
+    ["22023", "Equipment profile input is invalid", 400],
+  ])("maps RPC SQLSTATE %s to HTTP %s", async (code, message, status) => {
+    const env = setup({ rpcError: { code, message } });
     await expect(
       saveEquipmentAssetProfile({
         supabase: env.supabase,
         admin: env.admin,
         shopId: SHOP,
+        role: "owner",
         actorUserId: USER,
         assetId: ASSET,
-        mutation: mutation({ mountedOnAssetId: HOST }),
+        mutation: mutation(),
       }),
-    ).rejects.toMatchObject({ status: 400 });
-    expect(env.log).toEqual([]);
+    ).rejects.toMatchObject({ status });
   });
 });
