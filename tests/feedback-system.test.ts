@@ -69,7 +69,7 @@ describe("premier feedback system", () => {
 
     expect(notifications).toContain("A feedback item needs your attention.");
     expect(notifications).toContain("You asked, we shipped it:");
-    expect(notifications).toContain('subject: "');
+    expect(notifications).toContain("functions.invoke(\"send-email\"");
     expect(controlRoute).toContain("sendFeedbackCompletedEmails");
     expect(controlRoute).toContain("notifyRequesters");
   });
