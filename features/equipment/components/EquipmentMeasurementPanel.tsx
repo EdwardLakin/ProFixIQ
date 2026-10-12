@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import Link from "next/link";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { COMPONENT_POSITION_LABELS } from "@/features/equipment/lib/components";
 import {
@@ -28,6 +29,7 @@ type LoadState =
       series: MeasurementSeries[];
       components: Array<{ id: string; label: string }>;
       canRecord: boolean;
+      canOpenSources: boolean;
     };
 
 type DraftRow = {
@@ -60,6 +62,21 @@ function formatDate(value: string | null | undefined): string {
 async function readError(response: Response): Promise<string> {
   const payload = (await response.json().catch(() => null)) as { error?: string } | null;
   return payload?.error ?? "The request could not be completed.";
+}
+
+/**
+ * One idempotency key per distinct request: a retry of the same values reuses
+ * it (a lost response cannot double-record); changed values get a new key.
+ */
+function useOperationKey() {
+  const last = useRef<{ payload: string; key: string } | null>(null);
+  return (payload: unknown) => {
+    const serialized = JSON.stringify(payload);
+    if (!last.current || last.current.payload !== serialized) {
+      last.current = { payload: serialized, key: crypto.randomUUID() };
+    }
+    return last.current.key;
+  };
 }
 
 function newRow(type: MeasurementType = "track_shoe_height"): DraftRow {
@@ -95,10 +112,10 @@ function RecordForm({
 }) {
   const [rows, setRows] = useState<DraftRow[]>([newRow()]);
   const [measuredAt, setMeasuredAt] = useState("");
+  const [assetHours, setAssetHours] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Same key across retries of this form, so a lost response cannot double-record.
-  const [operationKey] = useState(() => crypto.randomUUID());
+  const operationKeyFor = useOperationKey();
 
   const update = (index: number, patch: Partial<DraftRow>) =>
     setRows((current) => current.map((row, i) => (i === index ? { ...row, ...patch } : row)));
@@ -110,17 +127,23 @@ function RecordForm({
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        readings: rows.map((row) => ({
-          measurementType: row.measurementType,
-          position: row.position || null,
-          componentId: row.componentId || null,
-          value: row.value,
-          unit: row.unit,
-        })),
-        measuredAt: measuredAt || null,
-        operationKey,
-      }),
+      body: JSON.stringify(
+        (() => {
+          const payload = {
+            readings: rows.map((row) => ({
+              measurementType: row.measurementType,
+              position: row.position || null,
+              componentId: row.componentId || null,
+              value: row.value,
+              unit: row.unit,
+            })),
+            measuredAt: measuredAt || null,
+            // A backdated reading carries the meter observed then, never today's.
+            assetHours: measuredAt && assetHours ? assetHours : null,
+          };
+          return { ...payload, operationKey: operationKeyFor(payload) };
+        })(),
+      ),
     }).catch(() => null);
     setBusy(false);
     if (!response) return setError("Network error. Try again.");
@@ -206,6 +229,17 @@ function RecordForm({
           <span className={LABEL}>Date (optional, defaults to now)</span>
           <input type="date" className={INPUT} value={measuredAt} onChange={(event) => setMeasuredAt(event.target.value)} />
         </label>
+        {measuredAt ? (
+          <label className="grid gap-1">
+            <span className={LABEL}>Hour meter then (optional)</span>
+            <input
+              className={INPUT}
+              inputMode="numeric"
+              value={assetHours}
+              onChange={(event) => setAssetHours(event.target.value)}
+            />
+          </label>
+        ) : null}
       </div>
       {error ? <p className="text-xs text-red-400" role="alert">{error}</p> : null}
       <div className="flex gap-2">
@@ -238,7 +272,7 @@ function CorrectForm({
   const [reason, setReason] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [operationKey] = useState(() => crypto.randomUUID());
+  const operationKeyFor = useOperationKey();
 
   const submit = async () => {
     setBusy(true);
@@ -248,9 +282,12 @@ function CorrectForm({
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(
-        voidReading
-          ? { void: true, reason, operationKey }
-          : { void: false, value, unit, reason, operationKey },
+        (() => {
+          const payload = voidReading
+            ? { void: true, reason }
+            : { void: false, value, unit, reason };
+          return { ...payload, operationKey: operationKeyFor(payload) };
+        })(),
       ),
     }).catch(() => null);
     setBusy(false);
@@ -319,6 +356,7 @@ export default function EquipmentMeasurementPanel({ assetId }: { assetId: string
     const payload = (await response.json()) as {
       entitled: boolean;
       canRecord?: boolean;
+      canOpenSources?: boolean;
       series?: MeasurementSeries[];
       components?: Array<{ id: string; label: string }>;
     };
@@ -328,6 +366,7 @@ export default function EquipmentMeasurementPanel({ assetId }: { assetId: string
       series: payload.series ?? [],
       components: payload.components ?? [],
       canRecord: Boolean(payload.canRecord),
+      canOpenSources: Boolean(payload.canOpenSources),
     });
   }, [assetId]);
 
@@ -410,6 +449,30 @@ export default function EquipmentMeasurementPanel({ assetId }: { assetId: string
                                 ? ` (entered ${point.enteredValue} ${unitLabel(point.enteredUnit)})`
                                 : ""}
                               {point.corrected ? ` · corrected: ${point.correctionReason ?? ""}` : ""}
+                              {point.workOrderId ? (
+                                state.canOpenSources ? (
+                                  <>
+                                    {" · "}
+                                    <Link href={`/work-orders/${point.workOrderId}`} className="underline">
+                                      Work order
+                                    </Link>
+                                  </>
+                                ) : (
+                                  " · from a work order"
+                                )
+                              ) : null}
+                              {point.inspectionId ? (
+                                state.canOpenSources ? (
+                                  <>
+                                    {" · "}
+                                    <Link href={`/inspections/${point.inspectionId}`} className="underline">
+                                      Inspection
+                                    </Link>
+                                  </>
+                                ) : (
+                                  " · from an inspection"
+                                )
+                              ) : null}
                             </span>
                             {state.canRecord ? (
                               <button type="button" className={BUTTON} onClick={() => setCorrecting(point.id)}>

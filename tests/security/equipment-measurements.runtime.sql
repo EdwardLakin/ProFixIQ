@@ -40,10 +40,13 @@ values
   ('6a400000-0000-4000-8000-000000000001', '6a200000-0000-4000-8000-000000000001', 'MSR-DZ1', '6a300000-0000-4000-8000-000000000001', 'in_progress', 'work_order', '6a100000-0000-4000-8000-000000000001'),
   ('6a400000-0000-4000-8000-000000000002', '6a200000-0000-4000-8000-000000000001', 'MSR-DZ2', '6a300000-0000-4000-8000-000000000002', 'in_progress', 'work_order', '6a100000-0000-4000-8000-000000000001');
 
-insert into public.inspections (id, shop_id, vehicle_id)
+insert into public.inspections (id, shop_id, vehicle_id, work_order_id)
 values
-  ('6a500000-0000-4000-8000-000000000001', '6a200000-0000-4000-8000-000000000001', '6a300000-0000-4000-8000-000000000001'),
-  ('6a500000-0000-4000-8000-000000000002', '6a200000-0000-4000-8000-000000000001', '6a300000-0000-4000-8000-000000000002');
+  ('6a500000-0000-4000-8000-000000000001', '6a200000-0000-4000-8000-000000000001', '6a300000-0000-4000-8000-000000000001', null),
+  ('6a500000-0000-4000-8000-000000000002', '6a200000-0000-4000-8000-000000000001', '6a300000-0000-4000-8000-000000000002', null),
+  -- Canonical inspections often carry their asset only through the work order.
+  ('6a500000-0000-4000-8000-000000000003', '6a200000-0000-4000-8000-000000000001', null, '6a400000-0000-4000-8000-000000000002'),
+  ('6a500000-0000-4000-8000-000000000004', '6a200000-0000-4000-8000-000000000001', null, '6a400000-0000-4000-8000-000000000001');
 
 do $equipment_measurements_rpc$
 declare
@@ -84,10 +87,13 @@ begin
   if jsonb_array_length(v_ids) <> 2 then
     raise exception 'Batch did not record both readings.';
   end if;
+  -- An identical retry (same key, same payload) returns the original ids.
   if public.equipment_measurement_record(
     shop_a, actor, dz1,
-    '[{"measurement_type":"tire_pressure","value":1,"unit":"kPa","entered_value":1,"entered_unit":"kPa"}]'::jsonb,
-    4000, null, null, null, '6a900000-0000-4000-8000-000000000001'
+    ('[{"measurement_type":"track_shoe_height","position":"left","component_id":"' || v_uc_left || '","value":38.1,"unit":"mm","entered_value":1.5,"entered_unit":"in"},
+       {"measurement_type":"tire_pressure","value":689.4757,"unit":"kPa","entered_value":100,"entered_unit":"psi","notes":"Cold"}]')::jsonb,
+    4000, null, '6a400000-0000-4000-8000-000000000001', '6a500000-0000-4000-8000-000000000001',
+    '6a900000-0000-4000-8000-000000000001'
   ) <> v_ids then
     raise exception 'Replayed batch did not return the original readings.';
   end if;
@@ -231,6 +237,77 @@ begin
     raise exception 'Correction history is incomplete.';
   end if;
 
+  -- An inspection anchored only by its work order must be for the asset.
+  begin
+    perform public.equipment_measurement_record(
+      shop_a, actor, dz1,
+      '[{"measurement_type":"tire_pressure","value":1,"unit":"kPa","entered_value":1,"entered_unit":"kPa"}]'::jsonb,
+      null, null, null, '6a500000-0000-4000-8000-000000000003', '6a900000-0000-4000-8000-000000000030'
+    );
+    raise exception 'Linked a reading to an inspection of another asset via its work order.';
+  exception when sqlstate '23514' then
+    null;
+  end;
+  perform public.equipment_measurement_record(
+    shop_a, actor, dz1,
+    '[{"measurement_type":"tire_pressure","value":2,"unit":"kPa","entered_value":2,"entered_unit":"kPa"}]'::jsonb,
+    null, null, null, '6a500000-0000-4000-8000-000000000004', '6a900000-0000-4000-8000-000000000031'
+  );
+
+  -- A reused key with a different payload is refused, for records and corrections.
+  begin
+    perform public.equipment_measurement_record(
+      shop_a, actor, dz1,
+      '[{"measurement_type":"tire_pressure","value":3,"unit":"kPa","entered_value":3,"entered_unit":"kPa"}]'::jsonb,
+      null, null, null, '6a500000-0000-4000-8000-000000000004', '6a900000-0000-4000-8000-000000000031'
+    );
+    raise exception 'A reused record key returned the earlier batch for different values.';
+  exception when sqlstate '22023' then
+    null;
+  end;
+  begin
+    perform public.equipment_measurement_correct(
+      shop_a, actor, v_first, 36.0, 'mm', 36.0, 'mm', false, 'A different reason', '6a900000-0000-4000-8000-000000000010'
+    );
+    raise exception 'A reused correction key returned the earlier correction for different values.';
+  exception when sqlstate '22023' then
+    null;
+  end;
+
+  -- Component readings are checked against where the component was at
+  -- measured_at, not where it is now.
+  perform public.equipment_component_move(shop_a, actor, v_uc_left, 'install', dz2, null, null, 2000, 4000);
+  perform public.equipment_measurement_record(
+    shop_a, actor, dz1,
+    ('[{"measurement_type":"track_shoe_height","component_id":"' || v_uc_left || '","value":30,"unit":"mm","entered_value":30,"entered_unit":"mm"}]')::jsonb,
+    3990, now() - interval '1 hour', null, null, '6a900000-0000-4000-8000-000000000032'
+  );
+  begin
+    perform public.equipment_measurement_record(
+      shop_a, actor, dz2,
+      ('[{"measurement_type":"track_shoe_height","component_id":"' || v_uc_left || '","value":30,"unit":"mm","entered_value":30,"entered_unit":"mm"}]')::jsonb,
+      null, now() - interval '1 hour', null, null, '6a900000-0000-4000-8000-000000000033'
+    );
+    raise exception 'Attributed a pre-move reading to the component''s new asset.';
+  exception when sqlstate '23514' then
+    null;
+  end;
+  perform public.equipment_measurement_record(
+    shop_a, actor, dz2,
+    ('[{"measurement_type":"track_shoe_height","component_id":"' || v_uc_left || '","value":29,"unit":"mm","entered_value":29,"entered_unit":"mm"}]')::jsonb,
+    2000, null, null, null, '6a900000-0000-4000-8000-000000000034'
+  );
+  begin
+    perform public.equipment_measurement_record(
+      shop_a, actor, dz1,
+      ('[{"measurement_type":"track_shoe_height","component_id":"' || v_uc_left || '","value":29,"unit":"mm","entered_value":29,"entered_unit":"mm"}]')::jsonb,
+      null, null, null, null, '6a900000-0000-4000-8000-000000000035'
+    );
+    raise exception 'Attributed a current reading to the component''s old asset.';
+  exception when sqlstate '23514' then
+    null;
+  end;
+
   -- History is append-only.
   begin
     update public.equipment_measurements set value = 99 where id = v_first;
@@ -246,10 +323,9 @@ $equipment_measurements_rpc$;
 do $equipment_measurements_delete_paths$
 begin
   delete from public.work_orders where id = '6a400000-0000-4000-8000-000000000001';
-  delete from public.inspections where id = '6a500000-0000-4000-8000-000000000001';
-  delete from public.equipment_component_events
-  where component_id in (select id from public.equipment_components where installed_vehicle_id = '6a300000-0000-4000-8000-000000000001');
-  delete from public.equipment_components where installed_vehicle_id = '6a300000-0000-4000-8000-000000000001';
+  delete from public.inspections where shop_id = '6a200000-0000-4000-8000-000000000001';
+  delete from public.equipment_component_events where shop_id = '6a200000-0000-4000-8000-000000000001';
+  delete from public.equipment_components where shop_id = '6a200000-0000-4000-8000-000000000001';
 
   if exists (
     select 1 from public.equipment_measurements

@@ -4906,6 +4906,7 @@ export type Database = {
           created_at: string
           kind: string
           operation_key: string
+          request_hash: string
           result: Json | null
           shop_id: string
           vehicle_id: string
@@ -4914,6 +4915,7 @@ export type Database = {
           created_at?: string
           kind: string
           operation_key: string
+          request_hash: string
           result?: Json | null
           shop_id: string
           vehicle_id: string
@@ -4922,6 +4924,7 @@ export type Database = {
           created_at?: string
           kind?: string
           operation_key?: string
+          request_hash?: string
           result?: Json | null
           shop_id?: string
           vehicle_id?: string

@@ -68,6 +68,20 @@ describe("measurement validation", () => {
     expect(validateMeasurementBatch({ readings: [], operationKey: KEY }).ok).toBe(false);
   });
 
+  it("only accepts a meter reading together with a backdated date", () => {
+    expect(validateMeasurementBatch({ readings: [reading], assetHours: 1200, operationKey: KEY }).ok).toBe(false);
+    const ok = validateMeasurementBatch({
+      readings: [reading],
+      measuredAt: "2026-09-01",
+      assetHours: "1200",
+      operationKey: KEY,
+    });
+    expect(ok.ok && ok.value.assetHours).toBe(1200);
+    expect(
+      validateMeasurementBatch({ readings: [reading], measuredAt: "2026-09-01", assetHours: 12.5, operationKey: KEY }).ok,
+    ).toBe(false);
+  });
+
   it("requires a reason for corrections", () => {
     expect(validateMeasurementCorrection({ void: true, operationKey: KEY }).ok).toBe(false);
     expect(validateMeasurementCorrection({ void: true, reason: "Wrong machine", operationKey: KEY }).ok).toBe(true);
@@ -79,6 +93,8 @@ function row(patch: Partial<EquipmentMeasurement>): EquipmentMeasurement {
   return {
     id: "m",
     sequence: 1,
+    vehicleId: ASSET,
+    asset: null,
     measurementType: "track_shoe_height",
     position: "left",
     componentId: null,
@@ -123,6 +139,14 @@ describe("measurement series", () => {
     expect(series.points.map((point) => point.id)).toEqual(["c", "a"]);
     expect(series.latest).toMatchObject({ value: 46, corrected: true, originalId: "b" });
     expect(series.change).toBe(-4);
+  });
+
+  it("keeps source links and the asset on every point", () => {
+    const asset = { id: ASSET, label: "Unit DZ-1", href: `/equipment/${ASSET}` };
+    const [series] = buildMeasurementSeries([
+      row({ id: "a", workOrderId: "wo", inspectionId: "insp", asset }),
+    ]);
+    expect(series.latest).toMatchObject({ workOrderId: "wo", inspectionId: "insp", asset });
   });
 
   it("separates series by position and component", () => {
@@ -178,6 +202,7 @@ const batch = {
     },
   ],
   measuredAt: null,
+  assetHours: null,
   workOrderId: null,
   inspectionId: null,
   operationKey: KEY,
@@ -201,6 +226,53 @@ describe("recording measurements", () => {
       name: "equipment_measurement_record",
       args: { p_vehicle_id: ASSET, p_asset_hours: 1400, p_operation_key: KEY },
     });
+  });
+
+  it("never stamps a backdated reading with today's meter", async () => {
+    const rpcs: Rpc[] = [];
+    await recordMeasurements({
+      ...context("manager", fakeClient({}), fakeClient({}, rpcs, [MEASUREMENT])),
+      assetId: ASSET,
+      batch: { ...batch, measuredAt: "2026-09-01T12:00:00.000Z" },
+    });
+    expect(rpcs[0].args.p_asset_hours).toBeUndefined();
+    await recordMeasurements({
+      ...context("manager", fakeClient({}), fakeClient({}, rpcs, [MEASUREMENT])),
+      assetId: ASSET,
+      batch: { ...batch, measuredAt: "2026-09-01T12:00:00.000Z", assetHours: 1100 },
+    });
+    expect(rpcs[1].args.p_asset_hours).toBe(1100);
+  });
+
+  it("resolves an inspection's asset through its work order", async () => {
+    const rpcs: Rpc[] = [];
+    await expect(
+      recordMeasurements({
+        ...context(
+          "manager",
+          fakeClient({
+            inspections: { id: KEY, vehicle_id: null, work_order_id: MEASUREMENT, work_order_line_id: null },
+            work_orders: { vehicle_id: OTHER_ASSET },
+          }),
+          fakeClient({}, rpcs),
+        ),
+        assetId: ASSET,
+        batch: { ...batch, inspectionId: MEASUREMENT },
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    await recordMeasurements({
+      ...context(
+        "manager",
+        fakeClient({
+          inspections: { id: KEY, vehicle_id: null, work_order_id: MEASUREMENT, work_order_line_id: null },
+          work_orders: { vehicle_id: ASSET },
+        }),
+        fakeClient({}, rpcs, [MEASUREMENT]),
+      ),
+      assetId: ASSET,
+      batch: { ...batch, inspectionId: MEASUREMENT },
+    });
+    expect(rpcs).toHaveLength(1);
   });
 
   it("refuses roles that cannot record and assets the caller cannot see", async () => {

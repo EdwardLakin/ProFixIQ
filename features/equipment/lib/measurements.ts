@@ -166,6 +166,11 @@ export type MeasurementEntry = {
 export type MeasurementBatch = {
   entries: MeasurementEntry[];
   measuredAt: string | null;
+  /**
+   * Hour meter observed with a backdated reading. Without a date the asset's
+   * current meter is used; a backdated reading never gets today's meter.
+   */
+  assetHours: number | null;
   workOrderId: string | null;
   inspectionId: string | null;
   operationKey: string;
@@ -259,6 +264,17 @@ export function validateMeasurementBatch(body: unknown): Validation<MeasurementB
   }
   const measuredAt = parseEventDate(input.measuredAt);
   if (!measuredAt.ok) return measuredAt;
+  let assetHours: number | null = null;
+  if (input.assetHours !== undefined && input.assetHours !== null && input.assetHours !== "") {
+    const parsed = parseNumber(input.assetHours);
+    if (parsed === null || !Number.isInteger(parsed) || parsed < 0 || parsed > 10_000_000) {
+      return { ok: false, error: "Hour meter must be a whole number of hours." };
+    }
+    if (!measuredAt.value) {
+      return { ok: false, error: "Enter the date the reading was taken with its hour meter." };
+    }
+    assetHours = parsed;
+  }
   const workOrderId = optionalId(input.workOrderId, "Work order");
   if (!workOrderId.ok) return workOrderId;
   const inspectionId = optionalId(input.inspectionId, "Inspection");
@@ -271,6 +287,7 @@ export function validateMeasurementBatch(body: unknown): Validation<MeasurementB
     value: {
       entries,
       measuredAt: measuredAt.value,
+      assetHours,
       workOrderId: workOrderId.value,
       inspectionId: inspectionId.value,
       operationKey: input.operationKey,
@@ -323,9 +340,14 @@ export function validateMeasurementCorrection(body: unknown): Validation<Measure
 // Shared shapes and series
 // ---------------------------------------------------------------------------
 
+export type MeasurementAssetRef = { id: string; label: string; href: string };
+
 export type EquipmentMeasurement = {
   id: string;
   sequence: number;
+  vehicleId: string;
+  /** The asset the reading was taken on, when visible to the viewer. */
+  asset: MeasurementAssetRef | null;
   measurementType: string;
   position: string | null;
   componentId: string | null;
@@ -360,6 +382,10 @@ export type MeasurementSeriesPoint = {
   corrected: boolean;
   correctionReason: string | null;
   recordedBy: string | null;
+  /** Source evidence the reading was linked to. */
+  workOrderId: string | null;
+  inspectionId: string | null;
+  asset: MeasurementAssetRef | null;
 };
 
 export type MeasurementSeries = {
@@ -428,6 +454,9 @@ export function buildMeasurementSeries(rows: EquipmentMeasurement[]): Measuremen
       corrected: row.id !== root.id,
       correctionReason: row.correctionReason,
       recordedBy: row.recordedBy,
+      workOrderId: row.workOrderId,
+      inspectionId: row.inspectionId,
+      asset: row.asset,
     });
     groups.set(key, group);
   }

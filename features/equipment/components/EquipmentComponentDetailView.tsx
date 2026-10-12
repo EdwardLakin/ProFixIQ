@@ -162,6 +162,7 @@ export default function EquipmentComponentDetailView({
   const router = useRouter();
   const { component, asset, history } = detail;
   const [mode, setMode] = useState<Mode>(null);
+  const [expandedSeries, setExpandedSeries] = useState<Set<string>>(() => new Set());
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -427,15 +428,40 @@ export default function EquipmentComponentDetailView({
               <li key={series.key} className={ITEM}>
                 <p className="text-sm font-semibold">{series.label}</p>
                 <ul className="mt-1 grid gap-0.5 text-xs">
-                  {series.points.slice(0, 10).map((point) => (
+                  {(expandedSeries.has(series.key) ? series.points : series.points.slice(0, 10)).map((point) => (
                     <li key={point.id}>
-                      {formatDate(point.measuredAt)}
-                      {point.assetHours !== null ? ` · ${point.assetHours.toLocaleString()} h (asset)` : ""} ·{" "}
+                      {formatDate(point.measuredAt)} ·{" "}
+                      {point.asset ? (
+                        <Link href={point.asset.href} className="underline">
+                          {point.asset.label}
+                        </Link>
+                      ) : (
+                        "Another asset"
+                      )}
+                      {point.assetHours !== null ? ` at ${point.assetHours.toLocaleString()} h` : ""} ·{" "}
                       {formatMeasurement(point.value, point.unit)}
                       {point.corrected ? " · corrected" : ""}
                     </li>
                   ))}
                 </ul>
+                {series.points.length > 10 ? (
+                  <button
+                    type="button"
+                    className="mt-1 text-xs underline"
+                    onClick={() =>
+                      setExpandedSeries((current) => {
+                        const next = new Set(current);
+                        if (next.has(series.key)) next.delete(series.key);
+                        else next.add(series.key);
+                        return next;
+                      })
+                    }
+                  >
+                    {expandedSeries.has(series.key)
+                      ? "Show latest 10"
+                      : `Show all ${series.points.length} readings`}
+                  </button>
+                ) : null}
               </li>
             ))}
           </ul>

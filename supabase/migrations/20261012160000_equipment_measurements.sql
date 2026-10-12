@@ -114,6 +114,9 @@ create table if not exists public.equipment_measurement_operations (
   operation_key uuid not null,
   kind text not null,
   vehicle_id uuid not null references public.vehicles (id) on delete cascade,
+  -- Fingerprint of the request; a reused key with a different payload is
+  -- refused instead of returning the earlier result.
+  request_hash text not null,
   result jsonb,
   created_at timestamptz not null default now(),
   primary key (shop_id, operation_key),
@@ -137,6 +140,8 @@ declare
   v_vehicle uuid;
   v_installed_on uuid;
   v_original public.equipment_measurements%rowtype;
+  v_place_type text;
+  v_place_vehicle uuid;
 begin
   if tg_op = 'UPDATE' then
     if (to_jsonb(new) - 'component_id' - 'work_order_id' - 'inspection_id')
@@ -183,8 +188,31 @@ begin
       raise exception 'Measurement component must belong to the same shop'
         using errcode = '23514';
     end if;
-    if v_installed_on is distinct from new.vehicle_id then
-      raise exception 'Measurement component must be installed on the asset'
+    -- Where was the component at measured_at? The last install/remove at or
+    -- before that time decides; before tracking began, its first known
+    -- placement counts.
+    select e.event_type, e.vehicle_id into v_place_type, v_place_vehicle
+    from public.equipment_component_events e
+    where e.component_id = new.component_id
+      and e.event_type in ('installed', 'removed')
+      and e.occurred_at <= new.measured_at
+    order by e.occurred_at desc, e.sequence desc
+    limit 1;
+    if v_place_type is null then
+      select e.event_type, e.vehicle_id into v_place_type, v_place_vehicle
+      from public.equipment_component_events e
+      where e.component_id = new.component_id
+        and e.event_type in ('installed', 'removed')
+      order by e.occurred_at asc, e.sequence asc
+      limit 1;
+    end if;
+    if v_place_type is null then
+      if v_installed_on is distinct from new.vehicle_id then
+        raise exception 'Measurement component must be installed on the asset'
+          using errcode = '23514';
+      end if;
+    elsif v_place_type <> 'installed' or v_place_vehicle is distinct from new.vehicle_id then
+      raise exception 'Measurement component must be installed on the asset at that time'
         using errcode = '23514';
     end if;
   end if;
@@ -203,13 +231,19 @@ begin
   end if;
 
   if new.inspection_id is not null then
-    select i.shop_id, i.vehicle_id into v_shop, v_vehicle
-    from public.inspections i where i.id = new.inspection_id;
+    -- Inspections may carry their asset only through the work order or line.
+    select i.shop_id,
+           coalesce(i.vehicle_id, w.vehicle_id, l.vehicle_id)
+      into v_shop, v_vehicle
+    from public.inspections i
+    left join public.work_orders w on w.id = i.work_order_id
+    left join public.work_order_lines l on l.id = i.work_order_line_id
+    where i.id = new.inspection_id;
     if v_shop is null or v_shop <> new.shop_id then
       raise exception 'Measurement inspection must belong to the same shop'
         using errcode = '23514';
     end if;
-    if v_vehicle is not null and v_vehicle <> new.vehicle_id then
+    if v_vehicle is distinct from new.vehicle_id then
       raise exception 'Measurement inspection must be for the asset'
         using errcode = '23514';
     end if;
@@ -264,6 +298,7 @@ declare
   v_ids jsonb := '[]'::jsonb;
   v_existing public.equipment_measurement_operations%rowtype;
   v_at timestamptz := coalesce(p_measured_at, now());
+  v_hash text;
 begin
   if p_items is null or jsonb_typeof(p_items) <> 'array'
      or jsonb_array_length(p_items) not between 1 and 100 then
@@ -276,14 +311,20 @@ begin
     raise exception 'An operation key is required' using errcode = '22023';
   end if;
 
-  insert into public.equipment_measurement_operations (shop_id, operation_key, kind, vehicle_id)
-  values (p_shop_id, p_operation_key, 'record', p_vehicle_id)
+  v_hash := md5(jsonb_build_object(
+    'vehicle_id', p_vehicle_id, 'items', p_items, 'asset_hours', p_asset_hours,
+    'measured_at', p_measured_at, 'work_order_id', p_work_order_id,
+    'inspection_id', p_inspection_id
+  )::text);
+
+  insert into public.equipment_measurement_operations (shop_id, operation_key, kind, vehicle_id, request_hash)
+  values (p_shop_id, p_operation_key, 'record', p_vehicle_id, v_hash)
   on conflict (shop_id, operation_key) do nothing;
   if not found then
     select * into v_existing from public.equipment_measurement_operations o
     where o.shop_id = p_shop_id and o.operation_key = p_operation_key;
     if v_existing.kind <> 'record' or v_existing.vehicle_id <> p_vehicle_id
-       or v_existing.result is null then
+       or v_existing.request_hash <> v_hash or v_existing.result is null then
       raise exception 'Operation key was already used for a different request'
         using errcode = '22023';
     end if;
@@ -347,6 +388,7 @@ declare
   v_original public.equipment_measurements%rowtype;
   v_existing public.equipment_measurement_operations%rowtype;
   v_id uuid;
+  v_hash text;
 begin
   if p_operation_key is null then
     raise exception 'An operation key is required' using errcode = '22023';
@@ -359,13 +401,20 @@ begin
     raise exception 'Measurement not found' using errcode = 'P0002';
   end if;
 
-  insert into public.equipment_measurement_operations (shop_id, operation_key, kind, vehicle_id)
-  values (p_shop_id, p_operation_key, 'correct', v_original.vehicle_id)
+  v_hash := md5(jsonb_build_object(
+    'measurement_id', p_measurement_id, 'value', p_value, 'unit', p_unit,
+    'entered_value', p_entered_value, 'entered_unit', p_entered_unit,
+    'void', coalesce(p_void, false), 'reason', btrim(p_reason)
+  )::text);
+
+  insert into public.equipment_measurement_operations (shop_id, operation_key, kind, vehicle_id, request_hash)
+  values (p_shop_id, p_operation_key, 'correct', v_original.vehicle_id, v_hash)
   on conflict (shop_id, operation_key) do nothing;
   if not found then
     select * into v_existing from public.equipment_measurement_operations o
     where o.shop_id = p_shop_id and o.operation_key = p_operation_key;
     if v_existing.kind <> 'correct' or v_existing.result is null
+       or v_existing.request_hash <> v_hash
        or exists (
          select 1 from public.equipment_measurements m
          where m.id = (v_existing.result ->> 0)::uuid

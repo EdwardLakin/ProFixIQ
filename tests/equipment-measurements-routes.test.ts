@@ -85,7 +85,14 @@ describe("Equipment measurement routes", () => {
   it("lets assigned mechanics read and record through the asset rules", async () => {
     mocks.requireShopAccess.mockResolvedValue(access("mechanic"));
     const read = await GET(new Request("http://localhost"), assetContext);
-    expect(await read.json()).toEqual({ entitled: true, canRecord: true, assetHours: 10, series: [], components: [] });
+    expect(await read.json()).toEqual({
+      entitled: true,
+      canRecord: true,
+      canOpenSources: false,
+      assetHours: 10,
+      series: [],
+      components: [],
+    });
     const write = await POST(post({ readings, operationKey: KEY }), assetContext);
     expect(allowedRoles()).toContain("mechanic");
     expect(allowedRoles()).not.toContain("parts");

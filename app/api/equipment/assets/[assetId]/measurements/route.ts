@@ -6,6 +6,7 @@ import {
   canRecordComponentWork,
   COMPONENT_WORK_RECORDER_ROLES,
 } from "@/features/equipment/lib/components";
+import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDirectory";
 import { validateMeasurementBatch } from "@/features/equipment/lib/measurements";
 import { EquipmentAssetProfileError } from "@/features/equipment/server/equipmentAssetProfileService";
 import {
@@ -56,6 +57,9 @@ export async function GET(_request: Request, context: RouteContext) {
       entitled: true,
       // Reaching here means the asset is visible (assignment rule applied).
       canRecord: canRecordComponentWork(access.canonicalRole),
+      // Work-order / inspection links are offered to shop-wide roles; the
+      // target pages enforce their own access either way.
+      canOpenSources: (EQUIPMENT_DIRECTORY_ROLES as readonly string[]).includes(access.canonicalRole),
       ...result,
     });
   } catch (error) {

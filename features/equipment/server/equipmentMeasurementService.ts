@@ -13,6 +13,7 @@ import {
   MEASUREMENT_TYPES,
   toCanonical,
   type EquipmentMeasurement,
+  type MeasurementAssetRef,
   type MeasurementBatch,
   type MeasurementCorrection,
   type MeasurementSeries,
@@ -45,7 +46,9 @@ function rpcFailure(error: { code?: string | null; message: string }): never {
       throw new EquipmentMeasurementError("This reading was already corrected. Refresh and try again.", 409);
     case "23514":
       throw new EquipmentMeasurementError(
-        /component must be installed/i.test(error.message)
+        /component must be installed on the asset at that time/i.test(error.message)
+          ? "That component was not installed on this asset at that date."
+          : /component must be installed/i.test(error.message)
           ? "That component is not installed on this asset."
           : /work order must be for/i.test(error.message)
             ? "That work order is for a different asset."
@@ -59,6 +62,12 @@ function rpcFailure(error: { code?: string | null; message: string }): never {
     case "22023":
     case "22P02":
     case "22003":
+      if (/different request/i.test(error.message)) {
+        throw new EquipmentMeasurementError(
+          "This request was already submitted with different values. Refresh and try again.",
+          409,
+        );
+      }
       throw new EquipmentMeasurementError("The measurement request is invalid.", 400);
     default:
       console.error("[equipment/measurements] write failed", {
@@ -69,10 +78,16 @@ function rpcFailure(error: { code?: string | null; message: string }): never {
   }
 }
 
-function mapRow(row: MeasurementRow, componentNames: Map<string, string>): EquipmentMeasurement {
+function mapRow(
+  row: MeasurementRow,
+  componentNames: Map<string, string>,
+  assets: Map<string, MeasurementAssetRef>,
+): EquipmentMeasurement {
   return {
     id: row.id,
     sequence: Number(row.sequence),
+    vehicleId: row.vehicle_id,
+    asset: assets.get(row.vehicle_id) ?? null,
     measurementType: row.measurement_type,
     position: row.position,
     componentId: row.component_id,
@@ -133,7 +148,40 @@ async function componentNamesFor(
   return names;
 }
 
+function assetLabel(row: {
+  unit_number: string | null;
+  year: number | null;
+  make: string | null;
+  model: string | null;
+}): string {
+  const machine = [row.year, row.make, row.model].filter(Boolean).join(" ");
+  if (row.unit_number && machine) return `Unit ${row.unit_number} · ${machine}`;
+  return row.unit_number ? `Unit ${row.unit_number}` : machine || "Asset";
+}
+
+/** Asset labels for readings, through the caller's RLS client (visible assets only). */
+async function assetRefsFor(
+  supabase: SupabaseClient<DB>,
+  shopId: string,
+  ids: string[],
+): Promise<Map<string, MeasurementAssetRef>> {
+  const refs = new Map<string, MeasurementAssetRef>();
+  for (let offset = 0; offset < ids.length; offset += 100) {
+    const { data, error } = await supabase
+      .from("vehicles")
+      .select("id,unit_number,year,make,model")
+      .eq("shop_id", shopId)
+      .in("id", ids.slice(offset, offset + 100));
+    if (error) throw new EquipmentMeasurementError("Unable to load assets.", 500);
+    for (const vehicle of data ?? []) {
+      refs.set(vehicle.id, { id: vehicle.id, label: assetLabel(vehicle), href: `/equipment/${vehicle.id}` });
+    }
+  }
+  return refs;
+}
+
 async function toSeries(
+  supabase: SupabaseClient<DB>,
   admin: SupabaseClient<DB>,
   shopId: string,
   rows: MeasurementRow[],
@@ -141,8 +189,12 @@ async function toSeries(
   const componentIds = Array.from(
     new Set(rows.map((row) => row.component_id).filter((id): id is string => Boolean(id))),
   );
-  const names = await componentNamesFor(admin, shopId, componentIds);
-  return buildMeasurementSeries(rows.map((row) => mapRow(row, names)));
+  const vehicleIds = Array.from(new Set(rows.map((row) => row.vehicle_id)));
+  const [names, assets] = await Promise.all([
+    componentNamesFor(admin, shopId, componentIds),
+    assetRefsFor(supabase, shopId, vehicleIds),
+  ]);
+  return buildMeasurementSeries(rows.map((row) => mapRow(row, names, assets)));
 }
 
 export type AssetMeasurements = {
@@ -182,13 +234,18 @@ export async function loadAssetMeasurements(input: {
 
   return {
     assetHours: asset.engineHours,
-    series: await toSeries(input.admin, input.shopId, rows),
+    series: await toSeries(input.supabase, input.admin, input.shopId, rows),
     components: (installed ?? []).map((row) => ({ id: row.id, label: row.label })),
   };
 }
 
-/** Measurements recorded against one component (shop-wide roles only; the caller enforces). */
+/**
+ * Measurements recorded against one component, across every machine it was
+ * on (shop-wide roles only; the caller enforces). Asset labels come through
+ * the caller's RLS client.
+ */
 export async function loadComponentMeasurements(input: {
+  supabase: SupabaseClient<DB>;
   admin: SupabaseClient<DB>;
   shopId: string;
   componentId: string;
@@ -197,7 +254,7 @@ export async function loadComponentMeasurements(input: {
     column: "component_id",
     id: input.componentId,
   });
-  return toSeries(input.admin, input.shopId, rows);
+  return toSeries(input.supabase, input.admin, input.shopId, rows);
 }
 
 type WriteContext = {
@@ -243,13 +300,33 @@ export async function recordMeasurements(
   if (batch.inspectionId) {
     const { data, error } = await context.supabase
       .from("inspections")
-      .select("id,vehicle_id")
+      .select("id,vehicle_id,work_order_id,work_order_line_id")
       .eq("shop_id", context.shopId)
       .eq("id", batch.inspectionId)
       .maybeSingle();
     if (error) throw new EquipmentMeasurementError("Unable to load inspection.", 500);
     if (!data) throw new EquipmentMeasurementError("Inspection not found.", 400);
-    if (data.vehicle_id && data.vehicle_id !== asset.id) {
+    // Inspections may carry their asset only through the work order or line.
+    let inspectionVehicle = data.vehicle_id;
+    if (!inspectionVehicle && data.work_order_id) {
+      const { data: workOrder } = await context.supabase
+        .from("work_orders")
+        .select("vehicle_id")
+        .eq("shop_id", context.shopId)
+        .eq("id", data.work_order_id)
+        .maybeSingle();
+      inspectionVehicle = workOrder?.vehicle_id ?? null;
+    }
+    if (!inspectionVehicle && data.work_order_line_id) {
+      const { data: line } = await context.supabase
+        .from("work_order_lines")
+        .select("vehicle_id")
+        .eq("shop_id", context.shopId)
+        .eq("id", data.work_order_line_id)
+        .maybeSingle();
+      inspectionVehicle = line?.vehicle_id ?? null;
+    }
+    if (inspectionVehicle !== asset.id) {
       throw new EquipmentMeasurementError("That inspection is for a different asset.", 400);
     }
   }
@@ -268,7 +345,8 @@ export async function recordMeasurements(
       entered_unit: entry.enteredUnit,
       notes: entry.notes,
     })),
-    p_asset_hours: asset.engineHours ?? undefined,
+    // A backdated reading uses the meter observed then (or none), never today's.
+    p_asset_hours: (batch.measuredAt ? batch.assetHours : asset.engineHours) ?? undefined,
     p_measured_at: batch.measuredAt ?? undefined,
     p_work_order_id: batch.workOrderId ?? undefined,
     p_inspection_id: batch.inspectionId ?? undefined,

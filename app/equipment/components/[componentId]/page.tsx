@@ -42,14 +42,16 @@ export default async function EquipmentComponentPage({ params }: ComponentPagePr
   }
 
   const admin = createAdminSupabase();
+  const supabase = createServerSupabaseRSC();
   const detail = await loadComponentDetail({
-    supabase: createServerSupabaseRSC(),
+    supabase,
     admin,
     shopId: profile.shop_id,
     componentId,
   });
   if (!detail) notFound();
   const measurements = await loadComponentMeasurements({
+    supabase,
     admin,
     shopId: profile.shop_id,
     componentId,
