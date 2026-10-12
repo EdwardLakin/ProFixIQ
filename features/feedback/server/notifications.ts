@@ -49,23 +49,39 @@ export async function sendFeedbackAttentionEmail(input: {
   return results.some(Boolean);
 }
 
+export type FeedbackCompletionDelivery = {
+  deliveredReporterIds: string[];
+  retryReporterIds: string[];
+  unreachableReporterIds: string[];
+};
+
 export async function sendFeedbackCompletedEmails(input: {
   reporterIds: string[];
   title: string;
   summary: string;
-}): Promise<number> {
+}): Promise<FeedbackCompletionDelivery> {
   const admin = createAdminSupabase();
   const uniqueReporterIds = [...new Set(input.reporterIds.filter(Boolean))];
-  const emails = new Set<string>();
+  const reportersByEmail = new Map<string, string[]>();
+  const retryReporterIds: string[] = [];
+  const unreachableReporterIds: string[] = [];
 
   for (const reporterId of uniqueReporterIds) {
     const { data, error } = await admin.auth.admin.getUserById(reporterId);
     if (error) {
       console.warn("feedback completion reporter lookup failed", { reporterId, error });
+      retryReporterIds.push(reporterId);
       continue;
     }
     const email = data.user?.email?.trim().toLowerCase();
-    if (email) emails.add(email);
+    if (!email) {
+      unreachableReporterIds.push(reporterId);
+      continue;
+    }
+    reportersByEmail.set(email, [
+      ...(reportersByEmail.get(email) ?? []),
+      reporterId,
+    ]);
   }
 
   const subject = `You asked, we shipped it: ${input.title}`;
@@ -81,9 +97,18 @@ export async function sendFeedbackCompletedEmails(input: {
     "We appreciate the feedback — it directly helps us decide what to improve next.",
   ].join("\n");
 
-  let sent = 0;
-  for (const email of emails) {
-    if (await sendEmail(email, subject, text)) sent += 1;
+  const deliveredReporterIds: string[] = [];
+  for (const [email, reporterIds] of reportersByEmail) {
+    if (await sendEmail(email, subject, text)) {
+      deliveredReporterIds.push(...reporterIds);
+    } else {
+      retryReporterIds.push(...reporterIds);
+    }
   }
-  return sent;
+
+  return {
+    deliveredReporterIds: [...new Set(deliveredReporterIds)],
+    retryReporterIds: [...new Set(retryReporterIds)],
+    unreachableReporterIds: [...new Set(unreachableReporterIds)],
+  };
 }
