@@ -11,6 +11,11 @@ import {
   type FeedbackSurface,
 } from "@/features/feedback/lib/feedback";
 
+const MAX_TRIAGE_DESCRIPTION_LENGTH = 12_000;
+const MAX_TRIAGE_PATH_LENGTH = 500;
+const MAX_TRIAGE_ROLE_LENGTH = 100;
+const MAX_TRIAGE_CANDIDATES = 18;
+
 export type FeedbackCandidate = {
   id: string;
   title: string;
@@ -46,6 +51,16 @@ function enumValue<T extends readonly string[]>(
   return typeof value === "string" && values.includes(value as T[number])
     ? (value as T[number])
     : fallback;
+}
+
+function boundedCandidate(candidate: FeedbackCandidate): FeedbackCandidate {
+  return {
+    ...candidate,
+    id: candidate.id.slice(0, 100),
+    title: candidate.title.slice(0, 120),
+    summary: candidate.summary.slice(0, 500),
+    submissionCount: Math.max(0, Math.min(candidate.submissionCount, 1_000_000)),
+  };
 }
 
 function fallbackTriage(input: {
@@ -85,8 +100,20 @@ export async function triageFeedback(input: {
   shopId: string | null;
   userId: string;
 }) {
-  const fallback = fallbackTriage(input);
-  const candidateIds = new Set(input.candidates.map((candidate) => candidate.id));
+  // Keep the helper safe even if a future caller bypasses the HTTP route's
+  // validation. AI budget reservations assume prompt input is bounded.
+  const description = input.description.slice(0, MAX_TRIAGE_DESCRIPTION_LENGTH);
+  const pathname = input.pathname?.slice(0, MAX_TRIAGE_PATH_LENGTH) ?? null;
+  const role = input.role?.slice(0, MAX_TRIAGE_ROLE_LENGTH) ?? null;
+  const candidates = input.candidates
+    .slice(0, MAX_TRIAGE_CANDIDATES)
+    .map(boundedCandidate);
+  const fallback = fallbackTriage({
+    description,
+    requestedKind: input.requestedKind,
+    pathname,
+  });
+  const candidateIds = new Set(candidates.map((candidate) => candidate.id));
 
   return runOpenAIStructuredJson<FeedbackTriage>({
     purpose: "fast",
@@ -108,11 +135,11 @@ export async function triageFeedback(input: {
       "Return JSON with title, summary, kind, surface, severity, needsAttention, recommendation, duplicateOf, duplicateConfidence.",
     ].join(" "),
     user: {
-      description: input.description,
+      description,
       requestedKind: input.requestedKind,
-      currentPath: input.pathname,
-      reporterRole: input.role,
-      existingCandidates: input.candidates,
+      currentPath: pathname,
+      reporterRole: role,
+      existingCandidates: candidates,
     },
     fallback: () => fallback,
     validate: (candidate) => {
