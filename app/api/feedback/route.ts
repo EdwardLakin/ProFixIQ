@@ -62,24 +62,31 @@ function contextFromBody(body: CreateFeedbackBody): FeedbackContext {
     actual: nullableText(body.actual),
     device: nullableText(body.device),
     attachmentIds: Array.isArray(body.attachmentIds)
-      ? body.attachmentIds.filter((value): value is string => typeof value === "string" && value.trim().length > 0)
+      ? body.attachmentIds.filter(
+          (value): value is string =>
+            typeof value === "string" && value.trim().length > 0,
+        )
       : [],
   };
 }
 
 function fallbackCandidate(row: AgentRequestRow): FeedbackCandidate {
   const metadata = readFeedbackMetadata(row.normalized_json);
-  const kind: FeedbackKind = metadata?.kind ?? (row.intent === "bug_report" ? "bug" : "feature_request");
+  const kind: FeedbackKind =
+    metadata?.kind ?? (row.intent === "bug_report" ? "bug" : "feature_request");
   return {
     id: metadata?.clusterId ?? row.id,
     title: metadata?.title ?? row.description.slice(0, 100),
     summary: metadata?.summary ?? row.description.slice(0, 400),
     kind,
-    surface: metadata?.surface ?? inferFeedbackSurface(
-      isRecord(row.normalized_json) && typeof row.normalized_json.location === "string"
-        ? row.normalized_json.location
-        : null,
-    ),
+    surface:
+      metadata?.surface ??
+      inferFeedbackSurface(
+        isRecord(row.normalized_json) &&
+          typeof row.normalized_json.location === "string"
+          ? row.normalized_json.location
+          : null,
+      ),
     submissionCount: 1,
   };
 }
@@ -95,7 +102,9 @@ function buildCandidates(rows: AgentRequestRow[]): FeedbackCandidate[] {
     }
     grouped.set(candidate.id, candidate);
   }
-  return [...grouped.values()].slice(0, 18);
+  return [...grouped.values()]
+    .sort((left, right) => right.submissionCount - left.submissionCount)
+    .slice(0, 18);
 }
 
 function clusterIdFor(row: AgentRequestRow): string {
@@ -104,6 +113,12 @@ function clusterIdFor(row: AgentRequestRow): string {
 
 function rowContext(row: AgentRequestRow): Record<string, unknown> {
   return isRecord(row.normalized_json) ? row.normalized_json : {};
+}
+
+function frequencyMilestone(submissionCount: number, uniqueShopCount: number): boolean {
+  const reportMilestones = new Set([3, 5, 10, 25, 50, 100]);
+  const shopMilestones = new Set([2, 3, 5, 10, 25, 50]);
+  return reportMilestones.has(submissionCount) || shopMilestones.has(uniqueShopCount);
 }
 
 export async function POST(req: NextRequest) {
@@ -136,8 +151,10 @@ export async function POST(req: NextRequest) {
     .from("agent_requests")
     .select("*")
     .order("created_at", { ascending: false })
-    .limit(160);
-  if (recentError) console.warn("feedback duplicate candidate lookup failed", recentError);
+    .limit(750);
+  if (recentError) {
+    console.warn("feedback duplicate candidate lookup failed", recentError);
+  }
 
   const rows = (recentRows ?? []) as AgentRequestRow[];
   const triage = await triageFeedback({
@@ -202,52 +219,95 @@ export async function POST(req: NextRequest) {
   }
 
   const canonicalId = duplicateId ?? inserted.id;
-  let canonicalRow = duplicateId ? rows.find((row) => row.id === duplicateId) ?? null : inserted;
+  let canonicalRow: AgentRequestRow | null = duplicateId
+    ? rows.find((row) => row.id === duplicateId) ?? null
+    : (inserted as AgentRequestRow);
+
+  if (duplicateId && !canonicalRow) {
+    const { data: canonicalLookup, error: canonicalLookupError } = await admin
+      .from("agent_requests")
+      .select("*")
+      .eq("id", duplicateId)
+      .maybeSingle();
+    if (canonicalLookupError) {
+      console.warn("feedback canonical lookup failed", canonicalLookupError);
+    }
+    canonicalRow = (canonicalLookup as AgentRequestRow | null) ?? null;
+  }
+
+  const previousCanonicalMeta = canonicalRow
+    ? readFeedbackMetadata(canonicalRow.normalized_json)
+    : null;
 
   if (!duplicateId) {
-    const selfMetadata = { ...initialFeedback, clusterId: inserted.id, isCanonical: true };
+    const selfMetadata = {
+      ...initialFeedback,
+      clusterId: inserted.id,
+      isCanonical: true,
+    };
     const { data: updated, error } = await admin
       .from("agent_requests")
-      .update({ normalized_json: { ...rowContext(inserted), feedback: selfMetadata } as Json })
+      .update({
+        normalized_json: {
+          ...rowContext(inserted as AgentRequestRow),
+          feedback: selfMetadata,
+        } as Json,
+      })
       .eq("id", inserted.id)
       .select("*")
       .single();
     if (error) console.warn("feedback canonical self-link update failed", error);
-    if (updated) canonicalRow = updated;
+    if (updated) canonicalRow = updated as AgentRequestRow;
   } else if (canonicalRow) {
     const canonicalMeta = readFeedbackMetadata(canonicalRow.normalized_json);
     if (canonicalMeta) {
       const nextMeta = {
         ...canonicalMeta,
         lastSeenAt: now,
-        needsAttention: canonicalMeta.needsAttention || triage.output.needsAttention,
+        needsAttention:
+          canonicalMeta.needsAttention || triage.output.needsAttention,
         severity:
           triage.output.severity === "critical" ||
-          (triage.output.severity === "high" && canonicalMeta.severity !== "critical")
+          (triage.output.severity === "high" &&
+            canonicalMeta.severity !== "critical")
             ? triage.output.severity
             : canonicalMeta.severity,
       };
       const { data: updated, error } = await admin
         .from("agent_requests")
-        .update({ normalized_json: { ...rowContext(canonicalRow), feedback: nextMeta } as Json })
+        .update({
+          normalized_json: {
+            ...rowContext(canonicalRow),
+            feedback: nextMeta,
+          } as Json,
+        })
         .eq("id", canonicalId)
         .select("*")
         .single();
-      if (error) console.warn("feedback canonical aggregate update failed", error);
-      if (updated) canonicalRow = updated;
+      if (error) {
+        console.warn("feedback canonical aggregate update failed", error);
+      }
+      if (updated) canonicalRow = updated as AgentRequestRow;
     }
   }
 
-  const groupRows = [...rows.filter((row) => clusterIdFor(row) === canonicalId), inserted];
-  const uniqueShops = new Set(groupRows.map((row) => row.shop_id).filter(Boolean));
-  const canonicalMeta = canonicalRow ? readFeedbackMetadata(canonicalRow.normalized_json) : null;
+  const groupRows = [
+    ...rows.filter((row) => clusterIdFor(row) === canonicalId),
+    inserted as AgentRequestRow,
+  ].filter(
+    (row, index, all) => all.findIndex((candidate) => candidate.id === row.id) === index,
+  );
+  const uniqueShops = new Set(
+    groupRows.map((row) => row.shop_id).filter(Boolean),
+  );
+  const attentionEscalated =
+    triage.output.needsAttention && previousCanonicalMeta?.needsAttention !== true;
   const shouldNotify =
     duplicateId === null ||
-    triage.output.needsAttention ||
-    uniqueShops.size >= 3 ||
-    groupRows.length >= 5;
+    attentionEscalated ||
+    frequencyMilestone(groupRows.length, uniqueShops.size);
 
-  if (shouldNotify && !canonicalMeta?.ownerNotifiedAt) {
+  if (shouldNotify) {
     const delivered = await sendFeedbackAttentionEmail({
       title: triage.output.title,
       summary: triage.output.summary,
@@ -260,14 +320,14 @@ export async function POST(req: NextRequest) {
       feedbackId: canonicalId,
     });
     if (delivered && canonicalRow) {
-      const meta = readFeedbackMetadata(canonicalRow.normalized_json);
-      if (meta) {
+      const metadata = readFeedbackMetadata(canonicalRow.normalized_json);
+      if (metadata) {
         await admin
           .from("agent_requests")
           .update({
             normalized_json: {
               ...rowContext(canonicalRow),
-              feedback: { ...meta, ownerNotifiedAt: now },
+              feedback: { ...metadata, ownerNotifiedAt: now },
             } as Json,
           })
           .eq("id", canonicalId);
@@ -288,14 +348,17 @@ export async function GET() {
   const access = await requireOpsOperatorApiAccess();
   if (!access.ok) return access.response;
 
-  const { data, error } = await access.supabase
+  const { data, error } = await createAdminSupabase()
     .from("agent_requests")
     .select("*")
     .order("created_at", { ascending: false })
-    .limit(750);
+    .limit(1000);
   if (error) {
     console.error("feedback ops load failed", error);
-    return NextResponse.json({ error: "Failed to load feedback" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to load feedback" },
+      { status: 500 },
+    );
   }
 
   const rows = (data ?? []) as AgentRequestRow[];
@@ -308,12 +371,18 @@ export async function GET() {
   }
 
   const items = [...groups.entries()].map(([id, submissions]) => {
-    const canonical = submissions.find((row) => row.id === id) ?? submissions[submissions.length - 1];
+    const canonical =
+      submissions.find((row) => row.id === id) ??
+      submissions[submissions.length - 1];
     const meta = readFeedbackMetadata(canonical.normalized_json);
-    const sorted = [...submissions].sort((a, b) => Date.parse(a.created_at) - Date.parse(b.created_at));
+    const sorted = [...submissions].sort(
+      (a, b) => Date.parse(a.created_at) - Date.parse(b.created_at),
+    );
     const first = sorted[0];
     const last = sorted[sorted.length - 1];
-    const kind = meta?.kind ?? (canonical.intent === "bug_report" ? "bug" : "feature_request");
+    const kind =
+      meta?.kind ??
+      (canonical.intent === "bug_report" ? "bug" : "feature_request");
     const context = rowContext(canonical);
 
     return {
@@ -321,16 +390,27 @@ export async function GET() {
       title: meta?.title ?? canonical.description.slice(0, 100),
       summary: meta?.summary ?? canonical.description,
       kind,
-      surface: meta?.surface ?? inferFeedbackSurface(typeof context.location === "string" ? context.location : null),
+      surface:
+        meta?.surface ??
+        inferFeedbackSurface(
+          typeof context.location === "string" ? context.location : null,
+        ),
       status: meta?.status ?? feedbackStatusFromLegacy(canonical.status),
       severity: meta?.severity ?? "normal",
       needsAttention: meta?.needsAttention ?? canonical.status === "failed",
-      recommendation: meta?.recommendation ?? canonical.llm_notes ?? "Review and classify this historical request.",
+      recommendation:
+        meta?.recommendation ??
+        canonical.llm_notes ??
+        "Review and classify this historical request.",
       internalNotes: meta?.internalNotes ?? null,
       aiMode: meta?.aiMode ?? "fallback",
       submissionCount: submissions.length,
-      uniqueUserCount: new Set(submissions.map((row) => row.reporter_id).filter(Boolean)).size,
-      uniqueShopCount: new Set(submissions.map((row) => row.shop_id).filter(Boolean)).size,
+      uniqueUserCount: new Set(
+        submissions.map((row) => row.reporter_id).filter(Boolean),
+      ).size,
+      uniqueShopCount: new Set(
+        submissions.map((row) => row.shop_id).filter(Boolean),
+      ).size,
       firstSeenAt: meta?.firstSeenAt ?? first.created_at,
       lastSeenAt: meta?.lastSeenAt ?? last.created_at,
       completedAt: meta?.completedAt ?? null,
@@ -347,8 +427,12 @@ export async function GET() {
   });
 
   items.sort((a, b) => {
-    if (a.needsAttention !== b.needsAttention) return a.needsAttention ? -1 : 1;
-    if (a.submissionCount !== b.submissionCount) return b.submissionCount - a.submissionCount;
+    if (a.needsAttention !== b.needsAttention) {
+      return a.needsAttention ? -1 : 1;
+    }
+    if (a.submissionCount !== b.submissionCount) {
+      return b.submissionCount - a.submissionCount;
+    }
     return Date.parse(b.lastSeenAt) - Date.parse(a.lastSeenAt);
   });
 
