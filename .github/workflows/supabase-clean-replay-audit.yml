@@ -940,6 +940,20 @@ jobs:
             -f tests/security/equipment-components.runtime.sql \
             2>&1 | tee equipment-components-runtime.log
 
+      - name: Execute Equipment measurements tenant integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/equipment-measurements.runtime.sql \
+            2>&1 | tee equipment-measurements-runtime.log
+
       - name: Upload replay diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -997,6 +1011,7 @@ jobs:
             vehicle-pickup-financial-lock-runtime.log
             equipment-asset-profile-runtime.log
             equipment-components-runtime.log
+            equipment-measurements-runtime.log
             supabase-generated-types.diff
             generated-supabase-types.ts
             supabase/config.toml

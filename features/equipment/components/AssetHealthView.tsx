@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import EquipmentAssetProfilePanel from "@/features/equipment/components/EquipmentAssetProfilePanel";
 import EquipmentComponentPanel from "@/features/equipment/components/EquipmentComponentPanel";
+import EquipmentMeasurementPanel from "@/features/equipment/components/EquipmentMeasurementPanel";
 import { ASSET_OPERATING_STATUS_LABELS } from "@/features/equipment/lib/assetProfile";
 import type { AssetHealth } from "@/features/equipment/server/loadAssetHealth";
 import {
@@ -341,18 +342,13 @@ export default function AssetHealthView({
       {/* 6. Component hierarchy */}
       <EquipmentComponentPanel assetId={identity.id} canOpenHistory={canOpenComponentHistory} />
 
-      {/* 7–8. Upcoming Equipment capabilities */}
-      <div className="grid gap-4 lg:grid-cols-2">
-        <WorkspaceSection headingId="asset-measurements" eyebrow="Measurements" title="Measurement trends">
-          <ComingNext>
-            Recorded measurements (track shoe height, pressures, blow-by, temperatures)
-            with factual change and trend arrive with first-class measurements.
-          </ComingNext>
-        </WorkspaceSection>
-        <WorkspaceSection headingId="asset-fluids" eyebrow="Fluids" title="Fluid / sample history">
-          <ComingNext>Oil and fluid sample history arrives in a later Equipment release.</ComingNext>
-        </WorkspaceSection>
-      </div>
+      {/* 7. Measurements */}
+      <EquipmentMeasurementPanel assetId={identity.id} />
+
+      {/* 8. Upcoming Equipment capabilities */}
+      <WorkspaceSection headingId="asset-fluids" eyebrow="Fluids" title="Fluid / sample history">
+        <ComingNext>Oil and fluid sample history arrives in a later Equipment release.</ComingNext>
+      </WorkspaceSection>
 
       {/* 9. Service history */}
       <WorkspaceSection

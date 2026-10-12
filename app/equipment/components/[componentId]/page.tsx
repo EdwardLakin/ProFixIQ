@@ -6,6 +6,7 @@ import EquipmentComponentDetailView from "@/features/equipment/components/Equipm
 import { canManageComponents, isComponentId } from "@/features/equipment/lib/components";
 import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDirectory";
 import { loadComponentDetail } from "@/features/equipment/server/equipmentComponentService";
+import { loadComponentMeasurements } from "@/features/equipment/server/equipmentMeasurementService";
 import { resolveEquipmentPageEntitlement } from "@/features/equipment/server/pageEntitlement";
 import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
 import {
@@ -40,15 +41,25 @@ export default async function EquipmentComponentPage({ params }: ComponentPagePr
     );
   }
 
+  const admin = createAdminSupabase();
   const detail = await loadComponentDetail({
     supabase: createServerSupabaseRSC(),
-    admin: createAdminSupabase(),
+    admin,
     shopId: profile.shop_id,
     componentId,
   });
   if (!detail) notFound();
+  const measurements = await loadComponentMeasurements({
+    admin,
+    shopId: profile.shop_id,
+    componentId,
+  });
 
   return (
-    <EquipmentComponentDetailView detail={detail} canEdit={canManageComponents(canonicalRole)} />
+    <EquipmentComponentDetailView
+      detail={detail}
+      measurements={measurements}
+      canEdit={canManageComponents(canonicalRole)}
+    />
   );
 }
