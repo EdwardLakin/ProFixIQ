@@ -55,10 +55,14 @@ export type FeedbackCompletionDelivery = {
   unreachableReporterIds: string[];
 };
 
+/**
+ * Requester-facing completion mail intentionally contains no canonical title,
+ * summary, notes, AI output, shop identifiers, or other cluster text. A cluster
+ * may contain submissions from more than one tenant, so external messaging must
+ * be product-authored and tenant-neutral.
+ */
 export async function sendFeedbackCompletedEmails(input: {
   reporterIds: string[];
-  title: string;
-  summary: string;
 }): Promise<FeedbackCompletionDelivery> {
   const admin = createAdminSupabase();
   const uniqueReporterIds = [...new Set(input.reporterIds.filter(Boolean))];
@@ -84,15 +88,11 @@ export async function sendFeedbackCompletedEmails(input: {
     ]);
   }
 
-  const subject = `You asked, we shipped it: ${input.title}`;
+  const subject = "A ProFixIQ improvement you requested is now available";
   const text = [
     "Thanks for helping improve ProFixIQ.",
     "",
-    `You previously sent feedback about: ${input.title}`,
-    "",
-    input.summary,
-    "",
-    "This item has now been completed in ProFixIQ.",
+    "An item you previously asked us to improve has now been completed in ProFixIQ.",
     "",
     "We appreciate the feedback — it directly helps us decide what to improve next.",
   ].join("\n");
