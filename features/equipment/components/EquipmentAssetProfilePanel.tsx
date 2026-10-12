@@ -249,7 +249,13 @@ function HostAssetPicker({
  * Equipment asset profile panel for the canonical vehicle/asset workspace.
  * Renders nothing for shops without the Equipment add-on.
  */
-export default function EquipmentAssetProfilePanel({ assetId }: { assetId: string }) {
+export default function EquipmentAssetProfilePanel({
+  assetId,
+  showAssetHealthLink = true,
+}: {
+  assetId: string;
+  showAssetHealthLink?: boolean;
+}) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [attempt, setAttempt] = useState(0);
   const [form, setForm] = useState<FormState | null>(null);
@@ -639,15 +645,25 @@ export default function EquipmentAssetProfilePanel({ assetId }: { assetId: strin
                 ))}
               </dl>
             ) : null}
-            {state.canEdit ? (
-              <button
-                type="button"
-                className={BUTTON}
-                onClick={() => setForm(toForm(state.record))}
-              >
-                Edit Equipment profile
-              </button>
-            ) : null}
+            <div className="flex flex-wrap gap-2">
+              {showAssetHealthLink ? (
+                <Link
+                  href={`/equipment/${assetId}`}
+                  className={`${BUTTON} inline-flex items-center`}
+                >
+                  Open Asset Health
+                </Link>
+              ) : null}
+              {state.canEdit ? (
+                <button
+                  type="button"
+                  className={BUTTON}
+                  onClick={() => setForm(toForm(state.record))}
+                >
+                  Edit Equipment profile
+                </button>
+              ) : null}
+            </div>
           </div>
         ) : (
           <EmptyState>

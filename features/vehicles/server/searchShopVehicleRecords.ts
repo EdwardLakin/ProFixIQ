@@ -69,7 +69,7 @@ type SearchVehicleRow = Pick<
   | "created_at"
 >;
 
-type SearchWorkOrderRow = Pick<
+export type SearchWorkOrderRow = Pick<
   WorkOrderRow,
   | "id"
   | "custom_id"
@@ -172,7 +172,7 @@ const TERMINAL_LINE_STATES = new Set([
   "ready_to_invoice",
   "voided",
 ]);
-const TERMINAL_APPOINTMENT_STATUSES = new Set([
+export const TERMINAL_APPOINTMENT_STATUSES = new Set([
   "cancelled",
   "canceled",
   "completed",
@@ -193,7 +193,7 @@ const CUSTOMER_SAFE_COLUMNS =
 const WORK_ORDER_COLUMNS =
   "id,custom_id,status,record_type,estimate_number,estimate_status,customer_id,customer_name,vehicle_id,vehicle_year,vehicle_make,vehicle_model,vehicle_submodel,vehicle_vin,vehicle_license_plate,vehicle_unit_number,vehicle_mileage,odometer_km,scheduled_at,created_at,updated_at";
 
-function normalizedState(value: string | null | undefined): string {
+export function normalizedState(value: string | null | undefined): string {
   return String(value ?? "")
     .trim()
     .toLowerCase()
@@ -371,7 +371,7 @@ function toAccountSummary(
   };
 }
 
-function workOrderTitle(row: SearchWorkOrderRow): string {
+export function workOrderTitle(row: SearchWorkOrderRow): string {
   const isEstimate = workOrderIsEstimate(row);
   if (isEstimate) {
     return row.estimate_number
@@ -383,13 +383,13 @@ function workOrderTitle(row: SearchWorkOrderRow): string {
     : `WO ${row.id.slice(0, 8)}`;
 }
 
-function workOrderHref(row: SearchWorkOrderRow): string {
+export function workOrderHref(row: SearchWorkOrderRow): string {
   return workOrderIsEstimate(row)
     ? `/estimates/${row.id}`
     : `/work-orders/${row.id}`;
 }
 
-function workOrderDisplayStatus(row: SearchWorkOrderRow): string {
+export function workOrderDisplayStatus(row: SearchWorkOrderRow): string {
   const isEstimate = workOrderIsEstimate(row);
   return isEstimate ? row.estimate_status ?? row.status : row.status;
 }
@@ -419,7 +419,7 @@ function latestOdometerWorkOrder(
   }, null);
 }
 
-function workOrderIsActive(row: SearchWorkOrderRow): boolean {
+export function workOrderIsActive(row: SearchWorkOrderRow): boolean {
   if (
     TERMINAL_WORK_ORDER_STATUSES.has(normalizedState(row.status)) ||
     TERMINAL_WORK_ORDER_STATUSES.has(normalizeWorkOrderStatus(row.status))

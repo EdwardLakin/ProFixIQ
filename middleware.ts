@@ -900,6 +900,7 @@ export const config = {
     "/chat/:path*",
     "/copilot/:path*",
     "/customers/:path*",
+    "/equipment/:path*",
     "/estimates/:path*",
     "/fleet/:path*",
     "/inspection-reports/:path*",

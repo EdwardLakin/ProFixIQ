@@ -95,7 +95,7 @@ const WORK_ORDER_SOURCE_TYPES = new Set<
   "work_order_part",
 ]);
 
-function canOpenReference(
+export function canOpenReference(
   reference: VehicleWorkspaceReference,
   permissions: VehicleWorkspacePermissions,
 ): boolean {
@@ -120,7 +120,7 @@ function canOpenReference(
   return true;
 }
 
-function canOpenActiveWork(
+export function canOpenActiveWork(
   item: ActiveWorkSummary,
   permissions: VehicleWorkspacePermissions,
 ): boolean {
@@ -128,7 +128,7 @@ function canOpenActiveWork(
   return canOpenReference(item.reference, permissions);
 }
 
-function canOpenTimelineEvent(
+export function canOpenTimelineEvent(
   event: VehicleTimelineEvent,
   permissions: VehicleWorkspacePermissions,
 ): boolean {
