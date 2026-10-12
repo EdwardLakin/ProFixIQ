@@ -55,6 +55,7 @@ export type FeedbackMetadata = {
   ownerNotifiedAt?: string | null;
   completedAt?: string | null;
   requesterNotifiedAt?: string | null;
+  requesterNotifiedReporterIds?: string[];
 };
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
@@ -93,6 +94,11 @@ export function readFeedbackMetadata(value: unknown): FeedbackMetadata | null {
     ownerNotifiedAt: typeof feedback.ownerNotifiedAt === "string" ? feedback.ownerNotifiedAt : null,
     completedAt: typeof feedback.completedAt === "string" ? feedback.completedAt : null,
     requesterNotifiedAt: typeof feedback.requesterNotifiedAt === "string" ? feedback.requesterNotifiedAt : null,
+    requesterNotifiedReporterIds: Array.isArray(feedback.requesterNotifiedReporterIds)
+      ? feedback.requesterNotifiedReporterIds.filter(
+          (value): value is string => typeof value === "string" && value.trim().length > 0,
+        )
+      : [],
   };
 }
 
