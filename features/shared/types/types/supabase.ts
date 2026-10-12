@@ -5103,6 +5103,70 @@ export type Database = {
           },
         ]
       }
+      equipment_wear_limits: {
+        Row: {
+          component_id: string
+          created_at: string
+          created_by: string | null
+          id: string
+          limit_value: number
+          measurement_type: string
+          new_value: number
+          reference: string | null
+          sequence: number
+          shop_id: string
+          unit: string
+        }
+        Insert: {
+          component_id: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          limit_value: number
+          measurement_type: string
+          new_value: number
+          reference?: string | null
+          sequence?: never
+          shop_id: string
+          unit: string
+        }
+        Update: {
+          component_id?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          limit_value?: number
+          measurement_type?: string
+          new_value?: number
+          reference?: string | null
+          sequence?: never
+          shop_id?: string
+          unit?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_wear_limits_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "equipment_components"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_wear_limits_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_wear_limits_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       estimate_events: {
         Row: {
           actor_profile_id: string | null
@@ -30909,6 +30973,19 @@ export type Database = {
           p_work_order_id?: string
         }
         Returns: Json
+      }
+      equipment_wear_limit_set: {
+        Args: {
+          p_actor_user_id: string
+          p_component_id: string
+          p_limit_value: number
+          p_measurement_type: string
+          p_new_value: number
+          p_reference?: string
+          p_shop_id: string
+          p_unit: string
+        }
+        Returns: string
       }
       estimate_actor_for_shop: {
         Args: { p_allowed_roles: string[]; p_shop_id: string }
