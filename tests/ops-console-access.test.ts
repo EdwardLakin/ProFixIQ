@@ -38,7 +38,7 @@ describe("ops console access boundary", () => {
     expect(isOutsideDesktopAppShell("/ops")).toBe(true);
     expect(isOutsideDesktopAppShell("/ops/feedback")).toBe(true);
     expect(opsLayout).toContain("requireOpsOperatorPageAccess");
-    expect(opsPage).toContain("getOpsDashboardRequests");
+    expect(opsPage).toContain("getOpsDashboardFeedback");
     expect(opsFeedbackPage).toContain("FeedbackConsole");
     expect(feedbackConsole).toContain('fetch("/api/feedback")');
     expect(legacyOpsAgentPage).toContain('redirect("/ops/feedback")');
