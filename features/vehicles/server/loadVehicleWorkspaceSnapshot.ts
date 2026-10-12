@@ -407,7 +407,7 @@ function dateValue(...values: Array<string | null | undefined>): string {
   return values.find((value): value is string => Boolean(value)) ?? new Date(0).toISOString();
 }
 
-function latestWorkOrderOdometer(
+export function latestWorkOrderOdometer(
   workOrders: WorkspaceWorkOrderRow[],
 ): number | null {
   const newestReading = [...workOrders]

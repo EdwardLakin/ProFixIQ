@@ -20,6 +20,7 @@ function fakeClient(tables: Tables, log: string[], name: string) {
       log.push(`${name}:${table}`);
       const filters: Array<(row: Row) => boolean> = [];
       let max = Infinity;
+      let offset = 0;
       const builder = {
         select: () => builder,
         eq: (column: string, value: unknown) => {
@@ -39,11 +40,16 @@ function fakeClient(tables: Tables, log: string[], name: string) {
           max = count;
           return builder;
         },
+        range: (from: number, to: number) => {
+          offset = from;
+          max = to - from + 1;
+          return builder;
+        },
         then: (resolve: (value: unknown) => void) =>
           resolve({
             data: (tables[table] ?? [])
               .filter((row) => filters.every((filter) => filter(row)))
-              .slice(0, max),
+              .slice(offset, offset + max),
             error: null,
           }),
       };
@@ -78,7 +84,13 @@ function profile(vehicleId: string, patch: Row = {}): Row {
   };
 }
 
-function workOrder(id: string, vehicleId: string, status: string, updatedAt: string): Row {
+function workOrder(
+  id: string,
+  vehicleId: string,
+  status: string,
+  updatedAt: string,
+  patch: Row = {},
+): Row {
   return {
     id,
     custom_id: id.toUpperCase(),
@@ -92,8 +104,10 @@ function workOrder(id: string, vehicleId: string, status: string, updatedAt: str
     shop_id: SHOP,
     odometer_km: null,
     scheduled_at: null,
+    picked_up_at: null,
     created_at: updatedAt,
     updated_at: updatedAt,
+    ...patch,
   };
 }
 
@@ -133,7 +147,8 @@ function setup(extra: Partial<Tables> = {}) {
         model: "336",
         unit_number: "EX-1",
         engine_hours: 4210,
-        mileage: null,
+        mileage: "500",
+        odometer_unit: "mi",
         last_service_date: null,
       },
       {
@@ -146,19 +161,61 @@ function setup(extra: Partial<Tables> = {}) {
         unit_number: "BKT-1",
         engine_hours: null,
         mileage: null,
+        odometer_unit: null,
         last_service_date: "2026-01-05",
       },
     ],
     customers: [{ id: "cust-1", shop_id: SHOP, business_name: "Granite Co" }],
     work_orders: [
-      workOrder("wo-active", EX, "in_progress", "2026-10-11T00:00:00Z"),
-      workOrder("wo-done", EX, "completed", "2026-09-01T00:00:00Z"),
+      workOrder("wo-active", EX, "in_progress", "2026-10-11T00:00:00Z", { odometer_km: 812 }),
+      workOrder("wo-done", EX, "completed", "2026-09-01T00:00:00Z", {
+        picked_up_at: "2026-09-03T15:00:00Z",
+      }),
+      // Older job invoiced/edited recently: must not become "last service".
+      workOrder("wo-old", EX, "paid", "2026-03-01T00:00:00Z", {
+        updated_at: "2026-10-09T00:00:00Z",
+      }),
     ],
     inspections: [
+      // Older completed canonical inspection: superseded by insp-1.
+      {
+        id: "insp-0",
+        vehicle_id: EX,
+        shop_id: SHOP,
+        work_order_id: null,
+        status: "completed",
+        completed: true,
+        is_canonical: true,
+        finalized_at: "2026-08-01T00:00:00Z",
+        updated_at: "2026-08-01T00:00:00Z",
+        created_at: "2026-08-01T00:00:00Z",
+        summary: { items: [{ item: "Old finding", status: "fail" }] },
+      },
+      // Newer draft: not completed, must be ignored.
+      {
+        id: "insp-draft",
+        vehicle_id: EX,
+        shop_id: SHOP,
+        work_order_id: null,
+        status: "in_progress",
+        completed: false,
+        is_canonical: true,
+        finalized_at: null,
+        updated_at: "2026-10-11T12:00:00Z",
+        created_at: "2026-10-11T12:00:00Z",
+        summary: { items: [{ item: "Draft finding", status: "fail" }] },
+      },
       {
         id: "insp-1",
         vehicle_id: EX,
         shop_id: SHOP,
+        work_order_id: null,
+        status: "completed",
+        completed: true,
+        is_canonical: true,
+        finalized_at: "2026-10-05T00:00:00Z",
+        updated_at: "2026-10-05T00:00:00Z",
+        created_at: "2026-10-05T00:00:00Z",
         summary: {
           items: [
             { item: "Track shoe wear", status: "fail" },
@@ -213,7 +270,7 @@ function setup(extra: Partial<Tables> = {}) {
 describe("loadEquipmentDirectory", () => {
   it("reads profiles with the admin client and every operational fact through the caller's client", async () => {
     const env = setup();
-    await loadEquipmentDirectory({ ...env, shopId: SHOP, now: NOW });
+    await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
     expect(env.log.filter((entry) => entry.startsWith("admin:"))).toEqual([
       "admin:equipment_asset_profiles",
     ]);
@@ -224,7 +281,7 @@ describe("loadEquipmentDirectory", () => {
 
   it("builds the operational row from canonical workspace evidence", async () => {
     const env = setup();
-    const { rows, truncated } = await loadEquipmentDirectory({ ...env, shopId: SHOP, now: NOW });
+    const { rows, truncated } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
     expect(truncated).toBe(false);
 
     const ex = rows.find((row) => row.assetId === EX)!;
@@ -237,9 +294,14 @@ describe("loadEquipmentDirectory", () => {
       customerName: "Granite Co",
       siteName: "North pit",
       operatingStatus: "operational",
+      // Latest completed canonical inspection only (not the older one or the draft).
       openDefects: { total: 2, failed: 1 },
       pm: { state: "overdue", dueCount: 2 },
-      lastServiceAt: "2026-09-01T00:00:00Z",
+      // Ordered by immutable intake time, shown as the recorded pickup.
+      lastServiceAt: "2026-09-03T15:00:00Z",
+      // Dated work-order reading wins over the undated vehicle value, like the workspace.
+      odometer: "812",
+      odometerUnit: "km",
       nextService: { startsAt: "2026-10-20T08:00:00Z", status: "scheduled" },
     });
     expect(ex.activeWorkOrder?.href).toBe("/work-orders/wo-active");
@@ -257,7 +319,7 @@ describe("loadEquipmentDirectory", () => {
 
   it("never lists an asset the caller cannot see through RLS", async () => {
     const env = setup();
-    const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, now: NOW });
+    const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
     expect(rows.map((row) => row.assetId)).not.toContain(HIDDEN);
   });
 
@@ -274,7 +336,7 @@ describe("loadEquipmentDirectory", () => {
         },
       ],
     });
-    const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, now: NOW });
+    const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
     expect(rows.find((row) => row.assetId === EX)?.pm).toEqual({
       state: "not_evaluated",
       dueCount: 0,
@@ -283,7 +345,7 @@ describe("loadEquipmentDirectory", () => {
 
   it("returns an empty directory without operational queries when no profiles exist", async () => {
     const env = setup({ equipment_asset_profiles: [] });
-    const directory = await loadEquipmentDirectory({ ...env, shopId: SHOP, now: NOW });
+    const directory = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
     expect(directory).toEqual({ rows: [], truncated: false });
     expect(env.log).toEqual(["admin:equipment_asset_profiles"]);
   });
@@ -292,7 +354,29 @@ describe("loadEquipmentDirectory", () => {
     const env = setup({
       equipment_asset_profiles: [profile(EX, { shop_id: "other-shop" })],
     });
-    const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, now: NOW });
+    const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
     expect(rows).toEqual([]);
+  });
+
+  it("omits the active work order link for roles that cannot open it", async () => {
+    const env = setup();
+    const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "parts", now: NOW });
+    expect(rows.find((row) => row.assetId === EX)?.activeWorkOrder).toMatchObject({
+      title: expect.any(String),
+      href: null,
+    });
+  });
+
+  it("pages evidence past the API row cap", async () => {
+    const many = Array.from({ length: 2_300 }, (_, index) =>
+      workOrder(`wo-${String(index).padStart(5, "0")}`, EX, "cancelled", "2025-01-01T00:00:00Z"),
+    );
+    // The single active job sorts last by id, beyond the first two 1,000-row pages.
+    many.push(workOrder("wo-zzzzz", EX, "in_progress", "2026-10-11T00:00:00Z"));
+    const env = setup({ work_orders: many, maintenance_suggestions: [], work_order_lines: [] });
+    const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
+    expect(rows.find((row) => row.assetId === EX)?.activeWorkOrder?.href).toBe(
+      "/work-orders/wo-zzzzz",
+    );
   });
 });

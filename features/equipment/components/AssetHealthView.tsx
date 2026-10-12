@@ -3,10 +3,13 @@ import Link from "next/link";
 import EquipmentAssetProfilePanel from "@/features/equipment/components/EquipmentAssetProfilePanel";
 import { ASSET_OPERATING_STATUS_LABELS } from "@/features/equipment/lib/assetProfile";
 import type { AssetHealth } from "@/features/equipment/server/loadAssetHealth";
-import type {
-  VehicleWorkspacePermissions,
-  VehicleWorkspaceReference,
-} from "@/features/vehicles/lib/vehicleWorkspace";
+import {
+  canOpenActiveWork,
+  canOpenReference,
+  canOpenTimelineEvent,
+} from "@/features/vehicles/components/VehicleWorkspace";
+import type { VehicleWorkspaceReference } from "@/features/vehicles/lib/vehicleWorkspace";
+import { EQUIPMENT_PM_STATE_LABELS } from "@/features/equipment/lib/equipmentDirectory";
 import {
   WorkspaceEmptyState as EmptyState,
   WorkspaceHeader,
@@ -27,36 +30,17 @@ function display(value: string | number | null | undefined): string {
   return value === null || value === undefined || value === "" ? "—" : String(value);
 }
 
-/** Link only to sources the viewer's role may open (mirrors the vehicle workspace). */
-function referenceHref(
-  reference: VehicleWorkspaceReference,
-  permissions: VehicleWorkspacePermissions,
-): string | null {
-  if (!reference.href) return null;
-  switch (reference.sourceType) {
-    case "work_order":
-    case "work_order_line":
-    case "maintenance_suggestion":
-      return permissions.canOpenWorkOrders ? reference.href : null;
-    case "inspection":
-      return permissions.canOpenInspections ? reference.href : null;
-    case "appointment":
-      return permissions.canOpenAppointments ? reference.href : null;
-    default:
-      return null;
-  }
-}
-
+/** Link only when the canonical vehicle-workspace permission rules allow it. */
 function SourceLink({
   reference,
-  permissions,
+  canOpen,
   children,
 }: {
   reference: VehicleWorkspaceReference;
-  permissions: VehicleWorkspacePermissions;
+  canOpen: boolean;
   children: React.ReactNode;
 }) {
-  const href = referenceHref(reference, permissions);
+  const href = canOpen ? reference.href : null;
   return href ? (
     <Link href={href} className="font-semibold hover:underline">
       {children}
@@ -78,7 +62,7 @@ function ComingNext({ children }: { children: React.ReactNode }) {
  * the diagnosis and repair decision.
  */
 export default function AssetHealthView({ health }: { health: AssetHealth }) {
-  const { snapshot, equipment, attachments, host } = health;
+  const { snapshot, equipment, evidence, attachments, host } = health;
   const { identity, permissions } = snapshot;
   const profile = equipment.profile;
   const title =
@@ -89,10 +73,19 @@ export default function AssetHealthView({ health }: { health: AssetHealth }) {
       .filter(Boolean)
       .join(" · ") || "Asset";
 
-  const defects = snapshot.attentionItems.filter(
-    (item) => item.kind === "failed_inspection" || item.kind === "unresolved_concern",
-  );
-  const pmItems = snapshot.attentionItems.filter((item) => item.kind === "maintenance_due");
+  // Current recorded condition: findings on the latest completed canonical
+  // inspection (shared with the directory), plus concerns still open on lines.
+  const inspection = evidence.latestInspection;
+  const concerns = snapshot.attentionItems.filter((item) => item.kind === "unresolved_concern");
+  const inspectionReference: VehicleWorkspaceReference | null = inspection
+    ? {
+        sourceType: "inspection",
+        sourceId: inspection.inspectionId,
+        sourceLabel: "Latest inspection",
+        href: `/inspections/${inspection.inspectionId}`,
+      }
+    : null;
+  const pm = evidence.pm;
   const otherAttention = snapshot.attentionItems.filter(
     (item) => item.kind === "deferred_work" || item.kind === "waiting_parts",
   );
@@ -171,35 +164,77 @@ export default function AssetHealthView({ health }: { health: AssetHealth }) {
         headingId="asset-defects"
         eyebrow="Recorded evidence"
         title="Open defects"
-        summary={defects.length ? `${defects.length} recorded` : undefined}
+        summary={
+          inspection
+            ? `From latest inspection · ${formatDate(inspection.recordedAt)}`
+            : undefined
+        }
       >
-        {defects.length ? (
+        {inspection && inspection.findings.length ? (
           <ul className="mt-3 grid gap-2">
-            {defects.map((item, index) => (
-              <li key={`${item.reference.sourceId}-${index}`} className={`${ITEM} p-3 text-sm`}>
+            {inspection.findings.map((finding) => (
+              <li key={finding.key} className={`${ITEM} p-3 text-sm`}>
                 <div className="flex justify-between gap-2">
-                  <SourceLink reference={item.reference} permissions={permissions}>
-                    {item.title || "Finding"}
-                  </SourceLink>
+                  <span className="font-semibold">
+                    {[finding.section, finding.label].filter(Boolean).join(" — ")}
+                  </span>
                   <span
                     className={
-                      item.severity === "urgent" ? "text-xs text-red-400" : "text-xs text-amber-400"
+                      finding.status === "fail" ? "text-xs text-red-400" : "text-xs text-amber-400"
                     }
                   >
-                    {item.severity === "urgent" ? "Failed" : "Recommended"}
+                    {finding.status === "fail" ? "Failed" : "Recommended"}
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                  {item.explanation} · {formatDate(item.occurredAt)}
-                </p>
+                {finding.measurement || finding.note ? (
+                  <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                    {[finding.measurement, finding.note].filter(Boolean).join(" · ")}
+                  </p>
+                ) : null}
               </li>
             ))}
           </ul>
         ) : (
           <div className="mt-3">
-            <EmptyState>No open defects recorded for this asset.</EmptyState>
+            <EmptyState>
+              {inspection
+                ? "The latest completed inspection recorded no failed or recommended items."
+                : "No completed inspection on record for this asset."}
+            </EmptyState>
           </div>
         )}
+        {inspectionReference ? (
+          <p className="mt-2 text-sm">
+            <SourceLink
+              reference={inspectionReference}
+              canOpen={canOpenReference(inspectionReference, permissions)}
+            >
+              Open latest inspection
+            </SourceLink>
+          </p>
+        ) : null}
+        {concerns.length ? (
+          <>
+            <h3 className="mt-4 text-xs font-semibold uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
+              Open concerns
+            </h3>
+            <ul className="mt-2 grid gap-2">
+              {concerns.map((item, index) => (
+                <li key={`concern-${index}`} className={`${ITEM} p-3 text-sm`}>
+                  <SourceLink
+                    reference={item.reference}
+                    canOpen={canOpenReference(item.reference, permissions)}
+                  >
+                    {item.title}
+                  </SourceLink>
+                  <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                    {item.explanation}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </>
+        ) : null}
       </WorkspaceSection>
 
       {/* 4. Active work */}
@@ -208,7 +243,10 @@ export default function AssetHealthView({ health }: { health: AssetHealth }) {
           <ul className="mt-3 grid gap-2">
             {snapshot.activeWork.map((item) => (
               <li key={`${item.kind}-${item.reference.sourceId}`} className={`${ITEM} p-3 text-sm`}>
-                <SourceLink reference={item.reference} permissions={permissions}>
+                <SourceLink
+                  reference={item.reference}
+                  canOpen={canOpenActiveWork(item, permissions)}
+                >
                   {item.title}
                 </SourceLink>
                 <span className="ml-2 text-xs text-[color:var(--theme-text-muted)]">
@@ -219,7 +257,10 @@ export default function AssetHealthView({ health }: { health: AssetHealth }) {
             ))}
             {otherAttention.map((item, index) => (
               <li key={`attention-${index}`} className={`${ITEM} p-3 text-sm`}>
-                <SourceLink reference={item.reference} permissions={permissions}>
+                <SourceLink
+                  reference={item.reference}
+                  canOpen={canOpenReference(item.reference, permissions)}
+                >
                   {item.title}
                 </SourceLink>
                 <span className="ml-2 text-xs text-[color:var(--theme-text-muted)]">
@@ -237,35 +278,46 @@ export default function AssetHealthView({ health }: { health: AssetHealth }) {
 
       {/* 5. PM status */}
       <WorkspaceSection headingId="asset-pm" eyebrow="Preventive maintenance" title="PM status">
-        {pmItems.length ? (
+        <p className="mt-3 text-sm">
+          <span className="text-[color:var(--theme-text-muted)]">Evaluation: </span>
+          <span className="font-semibold">{EQUIPMENT_PM_STATE_LABELS[pm.state]}</span>
+        </p>
+        {pm.items.length ? (
           <ul className="mt-3 grid gap-2">
-            {pmItems.map((item, index) => (
-              <li key={`pm-${index}`} className={`${ITEM} p-3 text-sm`}>
+            {pm.items.map((item) => (
+              <li key={item.serviceCode} className={`${ITEM} p-3 text-sm`}>
                 <div className="flex justify-between gap-2">
-                  <span className="font-semibold">{item.title}</span>
+                  <span className="font-semibold">{item.label}</span>
                   <span
                     className={
-                      item.severity === "urgent" ? "text-xs text-red-400" : "text-xs text-amber-400"
+                      item.overdue || item.isCritical
+                        ? "text-xs text-red-400"
+                        : "text-xs text-amber-400"
                     }
                   >
-                    {item.severity === "urgent" ? "Overdue" : "Due"}
+                    {item.overdue || item.isCritical ? "Overdue" : "Due"}
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
-                  {item.explanation}
-                </p>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{item.whyDue}</p>
               </li>
             ))}
           </ul>
         ) : (
           <div className="mt-3">
-            <EmptyState>No maintenance is currently due from the latest service evaluation.</EmptyState>
+            <EmptyState>
+              {pm.state === "ok"
+                ? "The latest service evaluation found no maintenance due."
+                : "Maintenance has not been evaluated from current service evidence."}
+            </EmptyState>
           </div>
         )}
         <p className="mt-3 text-sm">
           <span className="text-[color:var(--theme-text-muted)]">Next scheduled service: </span>
           {nextAppointment ? (
-            <SourceLink reference={nextAppointment.reference} permissions={permissions}>
+            <SourceLink
+              reference={nextAppointment.reference}
+              canOpen={permissions.canOpenAppointments && canOpenReference(nextAppointment.reference, permissions)}
+            >
               {formatDate(nextAppointment.startsAt)}
             </SourceLink>
           ) : (
@@ -316,7 +368,10 @@ export default function AssetHealthView({ health }: { health: AssetHealth }) {
                   {formatDate(event.occurredAt)}
                 </span>
                 <span className="min-w-0">
-                  <SourceLink reference={event.reference} permissions={permissions}>
+                  <SourceLink
+                    reference={event.reference}
+                    canOpen={canOpenTimelineEvent(event, permissions)}
+                  >
                     {event.title}
                   </SourceLink>
                   {event.detail ? (

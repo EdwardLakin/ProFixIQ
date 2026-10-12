@@ -7,6 +7,11 @@ vi.mock("server-only", () => ({}));
 const mocks = vi.hoisted(() => ({
   snapshot: vi.fn(),
   record: vi.fn(),
+  evidence: vi.fn(),
+}));
+
+vi.mock("@/features/equipment/server/equipmentEvidence", () => ({
+  loadEquipmentEvidence: mocks.evidence,
 }));
 
 vi.mock("@/features/vehicles/server/loadVehicleWorkspaceSnapshot", () => ({
@@ -22,6 +27,7 @@ const SHOP = "00000000-0000-4000-8000-000000000111";
 const EX = "00000000-0000-4000-8000-000000000001";
 const BUCKET = "00000000-0000-4000-8000-000000000002";
 const PRIVATE_TOOL = "00000000-0000-4000-8000-000000000003";
+const RIPPER = "00000000-0000-4000-8000-000000000004";
 
 type Row = Record<string, unknown>;
 
@@ -55,11 +61,17 @@ const admin = client({
   equipment_asset_profiles: [
     { vehicle_id: BUCKET, shop_id: SHOP, equipment_class: "attachment", mounted_on_vehicle_id: EX },
     { vehicle_id: PRIVATE_TOOL, shop_id: SHOP, equipment_class: "attachment", mounted_on_vehicle_id: EX },
+    { vehicle_id: RIPPER, shop_id: SHOP, equipment_class: "attachment", mounted_on_vehicle_id: EX },
   ],
 });
-// The caller's RLS client can see the bucket but not the private tool.
+// The caller's RLS client can see the bucket and ripper but not the private tool.
+// Work-order RLS exposes work on the bucket only.
 const scoped = client({
-  vehicles: [{ id: BUCKET, shop_id: SHOP, unit_number: "BKT-1", year: null, make: "Cat", model: "Bucket" }],
+  vehicles: [
+    { id: BUCKET, shop_id: SHOP, unit_number: "BKT-1", year: null, make: "Cat", model: "Bucket" },
+    { id: RIPPER, shop_id: SHOP, unit_number: "RIP-1", year: null, make: "Cat", model: "Ripper" },
+  ],
+  work_orders: [{ id: "wo-1", shop_id: SHOP, vehicle_id: BUCKET }],
 });
 
 describe("loadAssetHealth", () => {
@@ -67,6 +79,7 @@ describe("loadAssetHealth", () => {
     vi.clearAllMocks();
     mocks.snapshot.mockResolvedValue({ identity: { id: EX } });
     mocks.record.mockResolvedValue({ asset: { id: EX }, profile: null });
+    mocks.evidence.mockResolvedValue(new Map([[EX, { latestInspection: null }]]));
   });
 
   it("returns null when the canonical workspace hides the asset (cross-shop or unassigned mechanic)", async () => {
@@ -85,6 +98,31 @@ describe("loadAssetHealth", () => {
     );
   });
 
+  it("hides unassigned related assets from assigned-work-only mechanics", async () => {
+    const result = await loadAssetHealth({
+      supabase: scoped,
+      admin,
+      shopId: SHOP,
+      role: "mechanic",
+      assetId: EX,
+    });
+    expect(result?.attachments.map((attachment) => attachment.assetId)).toEqual([BUCKET]);
+  });
+
+  it("returns the shared Equipment evidence for the asset", async () => {
+    const result = await loadAssetHealth({
+      supabase: scoped,
+      admin,
+      shopId: SHOP,
+      role: "owner",
+      assetId: EX,
+    });
+    expect(result?.evidence).toEqual({ latestInspection: null });
+    expect(mocks.evidence).toHaveBeenCalledWith(
+      expect.objectContaining({ shopId: SHOP, assetIds: [EX] }),
+    );
+  });
+
   it("lists only attachments the caller can see through RLS", async () => {
     const result = await loadAssetHealth({
       supabase: scoped,
@@ -98,6 +136,12 @@ describe("loadAssetHealth", () => {
         assetId: BUCKET,
         href: `/equipment/${BUCKET}`,
         label: "Unit BKT-1 · Cat Bucket",
+        equipmentClassLabel: "Attachment / work tool",
+      },
+      {
+        assetId: RIPPER,
+        href: `/equipment/${RIPPER}`,
+        label: "Unit RIP-1 · Cat Ripper",
         equipmentClassLabel: "Attachment / work tool",
       },
     ]);

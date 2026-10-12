@@ -17,7 +17,7 @@ export const revalidate = 0;
 export default async function EquipmentDirectoryPage() {
   noStore();
 
-  const { profile } = await requireShopPageAccess({
+  const { profile, canonicalRole } = await requireShopPageAccess({
     allowRoles: EQUIPMENT_DIRECTORY_ROLES,
   });
 
@@ -30,6 +30,7 @@ export default async function EquipmentDirectoryPage() {
     supabase: createServerSupabaseRSC(),
     admin: createAdminSupabase(),
     shopId: profile.shop_id,
+    role: canonicalRole,
   });
 
   return <EquipmentDirectoryView rows={directory.rows} truncated={directory.truncated} />;

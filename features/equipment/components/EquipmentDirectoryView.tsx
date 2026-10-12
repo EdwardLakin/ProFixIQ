@@ -48,7 +48,9 @@ function formatDate(value: string | null): string {
 }
 
 function meterText(row: EquipmentDirectoryRow): string {
-  if (row.primaryMeter === "odometer") return row.odometer ?? "—";
+  if (row.primaryMeter === "odometer") {
+    return row.odometer ? `${row.odometer} ${row.odometerUnit ?? ""}`.trim() : "—";
+  }
   if (row.primaryMeter === "cycles") {
     return row.currentCycles == null ? "—" : `${row.currentCycles.toLocaleString()} cycles`;
   }
@@ -260,13 +262,20 @@ export default function EquipmentDirectoryView({
                     <td className="px-3 py-2">{formatDate(row.lastServiceAt)}</td>
                     <td className="px-3 py-2">{formatDate(row.nextService?.startsAt ?? null)}</td>
                     <td className="px-3 py-2">
-                      {row.activeWorkOrder ? (
+                      {row.activeWorkOrder?.href ? (
                         <Link href={row.activeWorkOrder.href} className="hover:underline">
                           {row.activeWorkOrder.title}
                           <span className="block text-xs text-[color:var(--theme-text-muted)]">
                             {row.activeWorkOrder.status}
                           </span>
                         </Link>
+                      ) : row.activeWorkOrder ? (
+                        <span>
+                          {row.activeWorkOrder.title}
+                          <span className="block text-xs text-[color:var(--theme-text-muted)]">
+                            {row.activeWorkOrder.status}
+                          </span>
+                        </span>
                       ) : (
                         "—"
                       )}

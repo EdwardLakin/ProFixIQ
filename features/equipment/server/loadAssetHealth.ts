@@ -5,6 +5,11 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { equipmentClassLabel, type EquipmentAssetRecord } from "@/features/equipment/lib/assetProfile";
 import { loadEquipmentAssetRecord } from "@/features/equipment/server/equipmentAssetProfileService";
+import {
+  loadEquipmentEvidence,
+  type EquipmentAssetEvidence,
+} from "@/features/equipment/server/equipmentEvidence";
+import { vehicleWorkspacePermissionsForRole } from "@/features/vehicles/server/vehicleWorkspacePermissions";
 import type { CanonicalRole } from "@/features/shared/lib/rbac";
 import type { VehicleWorkspaceSnapshot } from "@/features/vehicles/lib/vehicleWorkspace";
 import { loadVehicleWorkspaceSnapshot } from "@/features/vehicles/server/loadVehicleWorkspaceSnapshot";
@@ -21,6 +26,8 @@ export type MountedAttachment = {
 export type AssetHealth = {
   snapshot: VehicleWorkspaceSnapshot;
   equipment: EquipmentAssetRecord;
+  /** Shared Equipment evidence (latest inspection findings, PM evaluation) — same source as the directory. */
+  evidence: EquipmentAssetEvidence;
   attachments: MountedAttachment[];
   host: { assetId: string; href: string; label: string } | null;
 };
@@ -86,7 +93,25 @@ export async function loadAssetHealth(input: {
       .eq("shop_id", input.shopId)
       .in("id", relatedIds);
     if (error) throw new Error("Unable to load related assets.");
-    for (const row of vehicles ?? []) labels.set(row.id, assetLabel(row));
+    let visible = vehicles ?? [];
+
+    // Same-shop vehicle RLS does not encode work assignment. For
+    // assigned-work-only roles, apply the vehicle workspace rule: a related
+    // asset is shown only when work-order RLS exposes work on it.
+    if (vehicleWorkspacePermissionsForRole(input.role).isAssignedWorkOnly && visible.length) {
+      const { data: assigned, error: assignedError } = await input.supabase
+        .from("work_orders")
+        .select("vehicle_id")
+        .eq("shop_id", input.shopId)
+        .in(
+          "vehicle_id",
+          visible.map((row) => row.id),
+        );
+      if (assignedError) throw new Error("Unable to load related assets.");
+      const assignedIds = new Set((assigned ?? []).map((row) => row.vehicle_id));
+      visible = visible.filter((row) => assignedIds.has(row.id));
+    }
+    for (const row of visible) labels.set(row.id, assetLabel(row));
   }
 
   const attachments = (mounted ?? [])
@@ -104,5 +129,13 @@ export async function loadAssetHealth(input: {
       ? { assetId: hostId, href: `/equipment/${hostId}`, label: labels.get(hostId)! }
       : null;
 
-  return { snapshot, equipment, attachments, host };
+  const evidence = (
+    await loadEquipmentEvidence({
+      supabase: input.supabase,
+      shopId: input.shopId,
+      assetIds: [input.assetId],
+    })
+  ).get(input.assetId)!;
+
+  return { snapshot, equipment, evidence, attachments, host };
 }

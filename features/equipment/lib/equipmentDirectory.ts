@@ -31,16 +31,18 @@ export type EquipmentDirectoryRow = {
   primaryMeter: AssetPrimaryMeter;
   engineHours: number | null;
   odometer: string | null;
+  odometerUnit: string | null;
   currentCycles: number | null;
   customerName: string | null;
   siteName: string | null;
   operatingStatus: AssetOperatingStatus;
-  /** Inspection findings recorded against the asset (same source as the vehicle workspace). */
+  /** Findings on the latest completed canonical inspection (the asset's current recorded condition). */
   openDefects: { total: number; failed: number };
   pm: { state: EquipmentPmState; dueCount: number };
   lastServiceAt: string | null;
   nextService: { startsAt: string; status: string } | null;
-  activeWorkOrder: { title: string; status: string; href: string } | null;
+  /** href is null when the viewer's role may not open the record. */
+  activeWorkOrder: { title: string; status: string; href: string | null } | null;
   mountedOnAssetId: string | null;
 };
 
