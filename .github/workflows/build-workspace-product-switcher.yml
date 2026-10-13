@@ -1,0 +1,155 @@
+name: Build Workspace Product Switcher
+
+on:
+  push:
+    branches:
+      - feature/workspace-product-switcher
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-workspace-product-switcher
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/workspace-product-switcher
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Wire shared switcher into product shells
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          # Shop + Equipment share AppShell.
+          path = Path('features/shared/components/AppShell.tsx')
+          text = path.read_text()
+          import_anchor = 'import RoleSidebar from "@/features/shared/components/RoleSidebar";\n'
+          switcher_import = 'import WorkspaceProductSwitcher from "@/features/shared/components/WorkspaceProductSwitcher";\n'
+          if switcher_import not in text:
+              text = text.replace(import_anchor, import_anchor + switcher_import, 1)
+          old = '''              <nav className="flex gap-3 text-sm text-[color:var(--theme-text-secondary)]">
+                <Link
+                  href="/dashboard"
+                  className="hover:text-[color:var(--theme-text-primary)]"
+                >
+                  Dashboard
+                </Link>
+              </nav>'''
+          new = '''              <WorkspaceProductSwitcher
+                surface={pathname.startsWith("/equipment") ? "equipment" : "shop"}
+              />'''
+          if old in text:
+              text = text.replace(old, new, 1)
+          elif new not in text:
+              raise SystemExit('AppShell dashboard navigation anchor changed')
+          path.write_text(text)
+
+          # Field workspace.
+          path = Path('features/mobile/service/FieldWorkspaceShell.tsx')
+          text = path.read_text()
+          import_anchor = 'import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";\n'
+          switcher_import = 'import WorkspaceProductSwitcher from "@/features/shared/components/WorkspaceProductSwitcher";\n'
+          if switcher_import not in text:
+              text = text.replace(import_anchor, switcher_import + import_anchor, 1)
+          header_anchor = '''        <Link
+          href="/mobile/service/new"
+          aria-label="Create service call"'''
+          header_switcher = '''        <WorkspaceProductSwitcher
+          surface="field"
+          className="hidden md:flex"
+        />
+        <Link
+          href="/mobile/service/new"
+          aria-label="Create service call"'''
+          if header_anchor in text:
+              text = text.replace(header_anchor, header_switcher, 1)
+          elif '<WorkspaceProductSwitcher\n          surface="field"' not in text:
+              raise SystemExit('Field header anchor changed')
+          mobile_anchor = '      <main className="field-workspace-main">{children}</main>\n'
+          mobile_switcher = '''      <div className="border-b border-[color:var(--theme-border-soft)] px-3 py-2 md:hidden">
+        <WorkspaceProductSwitcher surface="field" />
+      </div>
+
+      <main className="field-workspace-main">{children}</main>
+'''
+          if mobile_anchor in text and 'px-3 py-2 md:hidden' not in text:
+              text = text.replace(mobile_anchor, mobile_switcher, 1)
+          path.write_text(text)
+
+          # Fleet workspace.
+          path = Path('features/fleet/components/FleetProductShell.tsx')
+          text = path.read_text()
+          import_anchor = 'import ThemeToggleButton from "@/features/shared/components/ThemeToggleButton";\n'
+          switcher_import = 'import WorkspaceProductSwitcher from "@/features/shared/components/WorkspaceProductSwitcher";\n'
+          if switcher_import not in text:
+              text = text.replace(import_anchor, import_anchor + switcher_import, 1)
+          header_anchor = '''            <div className="hidden items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 sm:flex">'''
+          header_switcher = '''            <WorkspaceProductSwitcher
+              surface="fleet"
+              className="hidden md:flex"
+            />
+
+            <div className="hidden items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 sm:flex">'''
+          if header_anchor in text:
+              text = text.replace(header_anchor, header_switcher, 1)
+          elif '<WorkspaceProductSwitcher\n              surface="fleet"' not in text:
+              raise SystemExit('Fleet header anchor changed')
+          main_anchor = '''        <main
+          aria-busy={navigationTarget ? true : undefined}'''
+          mobile_switcher = '''        <div className="border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-header-bg)]/88 px-3 py-2 md:hidden">
+          <WorkspaceProductSwitcher surface="fleet" />
+        </div>
+
+        <main
+          aria-busy={navigationTarget ? true : undefined}'''
+          if main_anchor in text and 'bg-[color:var(--theme-header-bg)]/88 px-3 py-2 md:hidden' not in text:
+              text = text.replace(main_anchor, mobile_switcher, 1)
+          path.write_text(text)
+          PY
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Regenerate API route inventory
+        run: pnpm audit:api-routes
+
+      - name: Validate switcher
+        run: |
+          pnpm exec vitest run tests/workspace-product-switcher.test.ts
+          pnpm typecheck
+
+      - name: Commit implementation
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/build-workspace-product-switcher.yml
+          git add \
+            .github/workflows/build-workspace-product-switcher.yml \
+            features/shared/components/AppShell.tsx \
+            features/mobile/service/FieldWorkspaceShell.tsx \
+            features/fleet/components/FleetProductShell.tsx \
+            docs/audits/api-route-boundary-inventory.json \
+            docs/audits/api-route-boundary-inventory.md
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Wire product switcher across workspaces'
+          git push origin HEAD:feature/workspace-product-switcher
