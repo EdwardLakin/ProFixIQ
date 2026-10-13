@@ -3,35 +3,39 @@ import {
   Activity,
   AlertTriangle,
   ArrowRight,
-  Bot,
   CheckCircle2,
   CircleDot,
   Database,
   GitBranch,
-  GitPullRequest,
+  MessageSquareText,
   ShieldCheck,
 } from "lucide-react";
 import {
-  attentionRequests,
+  attentionFeedback,
   buildOpsDashboardMetrics,
-  isOpsRequestBlocked,
-  type OpsAgentRequestSummary,
+  opsFeedbackKind,
+  opsFeedbackNeedsAttention,
+  opsFeedbackStatus,
+  opsFeedbackSurface,
+  opsFeedbackTitle,
+  type OpsFeedbackSummary,
 } from "@/features/ops/lib/dashboard";
 import { cn } from "@shared/lib/utils";
 
-function statusLabel(request: OpsAgentRequestSummary): string {
-  if (isOpsRequestBlocked(request)) return "blocked";
-  return request.status.replace(/_/g, " ");
+function pretty(value: string): string {
+  return value.replace(/_/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function statusTone(request: OpsAgentRequestSummary): string {
-  if (request.status === "awaiting_approval") {
-    return "border-amber-500/40 bg-amber-500/10 text-amber-300";
-  }
-  if (isOpsRequestBlocked(request) || request.status === "failed") {
-    return "border-red-500/40 bg-red-500/10 text-red-300";
-  }
-  return "border-sky-500/40 bg-sky-500/10 text-sky-300";
+function statusTone(item: OpsFeedbackSummary): string {
+  const status = opsFeedbackStatus(item);
+  if (status === "completed") return "border-emerald-500/40 bg-emerald-500/10 text-emerald-300";
+  if (status === "planned") return "border-violet-500/40 bg-violet-500/10 text-violet-300";
+  if (status === "in_progress") return "border-orange-500/40 bg-orange-500/10 text-orange-300";
+  if (status === "reviewing") return "border-amber-500/40 bg-amber-500/10 text-amber-300";
+  if (status === "declined") return "border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-subtle)] text-[color:var(--theme-text-muted)]";
+  return opsFeedbackNeedsAttention(item)
+    ? "border-red-500/40 bg-red-500/10 text-red-300"
+    : "border-sky-500/40 bg-sky-500/10 text-sky-300";
 }
 
 function formatUpdated(value: string): string {
@@ -40,60 +44,61 @@ function formatUpdated(value: string): string {
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    timeZone: "America/Edmonton",
   }).format(new Date(value));
 }
 
 export default function OpsDashboard({
-  requests,
+  feedback,
 }: {
-  requests: OpsAgentRequestSummary[];
+  feedback: OpsFeedbackSummary[];
 }) {
-  const metrics = buildOpsDashboardMetrics(requests);
-  const attention = attentionRequests(requests);
+  const metrics = buildOpsDashboardMetrics(feedback);
+  const attention = attentionFeedback(feedback);
   const metricCards = [
     {
-      label: "Needs approval",
-      value: metrics.awaitingApproval,
-      detail: "Human decision required",
+      label: "New feedback",
+      value: metrics.newSubmissions,
+      detail: "Unreviewed submissions",
+      tone: "text-sky-300",
+    },
+    {
+      label: "Needs attention",
+      value: metrics.needsAttention,
+      detail: "Feedback themes requiring review",
       tone: "text-amber-300",
     },
     {
       label: "In progress",
       value: metrics.inProgress,
-      detail: "Agent team working",
-      tone: "text-sky-300",
+      detail: "Approved product work underway",
+      tone: "text-orange-300",
     },
     {
-      label: "Blocked",
-      value: metrics.blocked,
-      detail: "Investigation needs input",
-      tone: "text-red-300",
-    },
-    {
-      label: "Failed",
-      value: metrics.failed,
-      detail: "Runtime attention required",
-      tone: "text-rose-300",
+      label: "Completed",
+      value: metrics.completed,
+      detail: "Shipped feedback items",
+      tone: "text-emerald-300",
     },
   ];
   const controlSurfaces = [
     {
+      href: "/ops/feedback",
+      label: "Feedback Control",
+      detail: "Requests, trends, triage and completion",
+      icon: MessageSquareText,
+    },
+    {
       href: "/ops/system-health",
       label: "System Health",
-      detail: "Live service and generation checks",
+      detail: "Live application and production data checks",
       icon: Activity,
     },
     {
       href: "/ops/deployments",
       label: "Deployments",
-      detail: "Production SHA, CI and migration parity",
+      detail: "Production SHA, GitHub and CI evidence",
       icon: GitBranch,
-    },
-    {
-      href: "/ops/agent-control",
-      label: "Agent Work",
-      detail: "Cases, approvals, retries and execution",
-      icon: Bot,
     },
   ] as const;
 
@@ -109,22 +114,21 @@ export default function OpsDashboard({
             Operations overview
           </h1>
           <p className="mt-2 max-w-2xl text-sm text-[color:var(--theme-text-secondary)]">
-            Review agent work, make human approval decisions, and see the health
-            of the engineering workflow without entering the tenant application.
+            Review customer feedback, spot repeated product friction, and monitor production health. AI organizes feedback only; product decisions and engineering remain human-controlled.
           </p>
         </div>
         <Link
-          href="/ops/agent-control"
+          href="/ops/feedback"
           className="inline-flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-orange-400"
         >
-          Open Agent Control
+          Open Feedback Control
           <ArrowRight className="h-4 w-4" />
         </Link>
       </section>
 
       <section
         className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
-        aria-label="Agent request metrics"
+        aria-label="Feedback metrics"
       >
         {metricCards.map((metric) => (
           <div
@@ -169,12 +173,11 @@ export default function OpsDashboard({
             <div>
               <h2 className="font-bold">Needs your attention</h2>
               <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">
-                Approval, blocked, failed, and unstarted requests are
-                prioritized here.
+                New and high-impact feedback is surfaced here for product review.
               </p>
             </div>
             <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2.5 py-1 text-xs text-[color:var(--theme-text-secondary)]">
-              {metrics.open} open
+              {metrics.totalSubmissions} submissions
             </span>
           </div>
           <div className="divide-y divide-[color:var(--theme-border-soft)]">
@@ -182,43 +185,40 @@ export default function OpsDashboard({
               <div className="px-5 py-10 text-center">
                 <CheckCircle2 className="mx-auto h-8 w-8 text-emerald-400" />
                 <p className="mt-3 text-sm font-semibold">
-                  No requests need attention
+                  No feedback needs attention
                 </p>
               </div>
             ) : (
-              attention.map((request) => (
+              attention.map((item) => (
                 <Link
-                  key={request.id}
-                  href={`/ops/agent-control?request=${encodeURIComponent(request.id)}`}
+                  key={item.id}
+                  href={`/ops/feedback?feedback=${encodeURIComponent(item.id)}`}
                   className="flex flex-col gap-3 px-4 py-4 transition hover:bg-[color:var(--theme-surface-subtle)] sm:flex-row sm:items-center sm:justify-between sm:px-5"
                 >
                   <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <Bot className="h-4 w-4 shrink-0 text-orange-400" />
+                      {opsFeedbackNeedsAttention(item) ? (
+                        <AlertTriangle className="h-4 w-4 shrink-0 text-amber-400" />
+                      ) : (
+                        <MessageSquareText className="h-4 w-4 shrink-0 text-orange-400" />
+                      )}
                       <p className="truncate text-sm font-semibold">
-                        {request.description}
+                        {opsFeedbackTitle(item)}
                       </p>
                     </div>
                     <div className="mt-1.5 flex flex-wrap items-center gap-2 text-xs text-[color:var(--theme-text-muted)]">
-                      <span>
-                        {request.intent?.replace(/_/g, " ") ?? "agent request"}
-                      </span>
-                      <span>Updated {formatUpdated(request.updated_at)}</span>
-                      {request.github_pr_number ? (
-                        <span className="inline-flex items-center gap-1">
-                          <GitPullRequest className="h-3 w-3" />#
-                          {request.github_pr_number}
-                        </span>
-                      ) : null}
+                      <span>{pretty(opsFeedbackSurface(item))}</span>
+                      <span>{pretty(opsFeedbackKind(item))}</span>
+                      <span>Updated {formatUpdated(item.updated_at)}</span>
                     </div>
                   </div>
                   <span
                     className={cn(
                       "w-fit rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide",
-                      statusTone(request),
+                      statusTone(item),
                     )}
                   >
-                    {statusLabel(request)}
+                    {pretty(opsFeedbackStatus(item))}
                   </span>
                 </Link>
               ))
@@ -242,8 +242,8 @@ export default function OpsDashboard({
           {[
             {
               icon: Database,
-              label: "Agent requests",
-              detail: `${metrics.total} requests available`,
+              label: "Feedback ledger",
+              detail: `${metrics.totalSubmissions} submissions available`,
             },
             {
               icon: ShieldCheck,
@@ -252,11 +252,11 @@ export default function OpsDashboard({
             },
             {
               icon: AlertTriangle,
-              label: "Decision queue",
+              label: "Attention queue",
               detail:
-                metrics.awaitingApproval > 0
-                  ? `${metrics.awaitingApproval} approval${metrics.awaitingApproval === 1 ? "" : "s"} waiting`
-                  : "No approvals waiting",
+                metrics.needsAttention > 0
+                  ? `${metrics.needsAttention} item${metrics.needsAttention === 1 ? "" : "s"} flagged`
+                  : "No urgent feedback waiting",
             },
           ].map(({ icon: Icon, label, detail }) => (
             <div

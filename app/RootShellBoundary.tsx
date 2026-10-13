@@ -6,6 +6,7 @@ import type { Session } from "@supabase/supabase-js";
 
 import Providers from "./providers";
 import BrandThemeBoot from "@/features/branding/components/BrandThemeBoot";
+import FeedbackLauncher from "@/features/feedback/components/FeedbackLauncher";
 import { toFleetInternalPath } from "@/features/fleet/lib/fleetProductRouting";
 import AppShell from "@/features/shared/components/AppShell";
 import {
@@ -61,16 +62,22 @@ export default function RootShellBoundary({
     );
   }
 
+  const outsideDesktopShell = isOutsideDesktopAppShell(shellPathname);
+  const showStandaloneFeedback = Boolean(
+    outsideDesktopShell && initialSession?.user?.id,
+  );
+
   return (
     <Providers initialSession={initialSession}>
       <VoiceProvider>
         <BrandThemeBoot />
         <AppShell
           initialIdentity={initialIdentity}
-          initialOutsideDesktopShell={isOutsideDesktopAppShell(shellPathname)}
+          initialOutsideDesktopShell={outsideDesktopShell}
         >
           {children}
         </AppShell>
+        {showStandaloneFeedback ? <FeedbackLauncher /> : null}
       </VoiceProvider>
     </Providers>
   );
