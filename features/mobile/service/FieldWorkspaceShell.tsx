@@ -311,6 +311,10 @@ export default function FieldWorkspaceShell({
           </span>
         </Link>
 
+        <div className="px-3 pb-2">
+          <WorkspaceProductSwitcher surface="field" />
+        </div>
+
         <Link href="/mobile/service/new" className="field-workspace-new-call">
           <Plus aria-hidden className="h-5 w-5" /> New service call
         </Link>
@@ -375,7 +379,6 @@ export default function FieldWorkspaceShell({
             {pageTitle(pathname)}
           </div>
         </div>
-        <WorkspaceProductSwitcher surface="field" className="hidden md:flex" />
         <Link
           href="/mobile/service/new"
           aria-label="Create service call"
