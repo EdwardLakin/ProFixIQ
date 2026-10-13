@@ -3,6 +3,7 @@ import Link from "next/link";
 import EquipmentAssetProfilePanel from "@/features/equipment/components/EquipmentAssetProfilePanel";
 import EquipmentComponentPanel from "@/features/equipment/components/EquipmentComponentPanel";
 import EquipmentMeasurementPanel from "@/features/equipment/components/EquipmentMeasurementPanel";
+import EquipmentPmPanel from "@/features/equipment/components/EquipmentPmPanel";
 import EquipmentUndercarriagePanel from "@/features/equipment/components/EquipmentUndercarriagePanel";
 import { ASSET_OPERATING_STATUS_LABELS } from "@/features/equipment/lib/assetProfile";
 import type { AssetHealth } from "@/features/equipment/server/loadAssetHealth";
@@ -334,10 +335,7 @@ export default function AssetHealthView({
             "None booked"
           )}
         </p>
-        <ComingNext>
-          Hour, calendar, mileage and cycle-based Equipment PM intervals arrive with the
-          Equipment PM engine.
-        </ComingNext>
+        <EquipmentPmPanel assetId={identity.id} />
       </WorkspaceSection>
 
       {/* 6. Component hierarchy */}
