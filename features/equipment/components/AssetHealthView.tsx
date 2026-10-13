@@ -4,6 +4,7 @@ import EquipmentAssetProfilePanel from "@/features/equipment/components/Equipmen
 import EquipmentComponentPanel from "@/features/equipment/components/EquipmentComponentPanel";
 import EquipmentFluidSamplePanel from "@/features/equipment/components/EquipmentFluidSamplePanel";
 import EquipmentMeasurementPanel from "@/features/equipment/components/EquipmentMeasurementPanel";
+import EquipmentMeterPanel from "@/features/equipment/components/EquipmentMeterPanel";
 import EquipmentPmPanel from "@/features/equipment/components/EquipmentPmPanel";
 import EquipmentUndercarriagePanel from "@/features/equipment/components/EquipmentUndercarriagePanel";
 import { ASSET_OPERATING_STATUS_LABELS } from "@/features/equipment/lib/assetProfile";
@@ -167,6 +168,7 @@ export default function AssetHealthView({
             </div>
           ))}
         </dl>
+        <EquipmentMeterPanel assetId={identity.id} />
       </WorkspaceSection>
 
       {/* 3. Open defects */}
