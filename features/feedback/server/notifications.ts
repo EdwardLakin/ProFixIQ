@@ -1,7 +1,8 @@
 import "server-only";
 
-import { defaultOpsOperatorEmails } from "@/features/ops/lib/operatorAccess";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+
+const FEEDBACK_ATTENTION_EMAIL = "profixiqdemo@gmail.com";
 
 async function sendEmail(
   to: string,
@@ -55,12 +56,7 @@ export async function sendFeedbackAttentionEmail(input: {
     `Open in Ops Console: ${baseUrl}/ops/feedback?feedback=${encodeURIComponent(input.feedbackId)}`,
   ].join("\n");
 
-  const results = await Promise.all(
-    defaultOpsOperatorEmails.map((email) => sendEmail(email, subject, text)),
-  );
-  return results.every((result) => result === "delivered")
-    ? "delivered"
-    : "unknown";
+  return sendEmail(FEEDBACK_ATTENTION_EMAIL, subject, text);
 }
 
 export type FeedbackCompletionDelivery = {
