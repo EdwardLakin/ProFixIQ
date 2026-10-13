@@ -1,16 +1,16 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-10-13T15:47:36.487Z
+Generated: 2026-10-13T18:33:18.546Z
 
 ## Summary
-- Total route count: **561**
-- Routes exporting GET: **210**
+- Total route count: **562**
+- Routes exporting GET: **211**
 - Routes exporting POST: **378**
 - Routes exporting PUT: **15**
 - Routes exporting PATCH: **36**
 - Routes exporting DELETE: **15**
-- Routes with service-role pattern: **215**
-- Routes using requireShopScopedApiAccess: **236**
+- Routes with service-role pattern: **216**
+- Routes using requireShopScopedApiAccess: **237**
 - Routes with auth.getUser references: **121**
 
 ## High-Risk Routes
@@ -290,6 +290,7 @@ Generated: 2026-10-13T15:47:36.487Z
 - `app/api/workforce/job-time/corrections/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/workforce/me/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/workforce/overview/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
+- `app/api/workspaces/entitlements/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 
 ## Service-Role Route List
 - `app/api/admin/create-user/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
@@ -507,6 +508,7 @@ Generated: 2026-10-13T15:47:36.487Z
 - `app/api/workforce/job-time/corrections/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/workforce/me/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/workforce/overview/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
+- `app/api/workspaces/entitlements/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 
 ## Routes Missing Obvious Auth Markers (staff/admin guess)
 - `app/api/agent/events/route.ts` | methods: GET | riskFlags: none

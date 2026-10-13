@@ -9,6 +9,7 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 import RoleSidebar from "@/features/shared/components/RoleSidebar";
+import WorkspaceProductSwitcher from "@/features/shared/components/WorkspaceProductSwitcher";
 import ShiftTracker from "@shared/components/ShiftTracker";
 import ActionButton from "@/features/shared/components/ActionButton";
 import PwaUpdateButton from "@/features/shared/components/pwa/PwaUpdateButton";
@@ -639,14 +640,9 @@ export default function AppShell({
                 </div>
               </button>
 
-              <nav className="flex gap-3 text-sm text-[color:var(--theme-text-secondary)]">
-                <Link
-                  href="/dashboard"
-                  className="hover:text-[color:var(--theme-text-primary)]"
-                >
-                  Dashboard
-                </Link>
-              </nav>
+              <WorkspaceProductSwitcher
+                surface={pathname.startsWith("/equipment") ? "equipment" : "shop"}
+              />
             </div>
 
             <div className="flex items-center gap-1.5 lg:gap-2">

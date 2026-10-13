@@ -9929,5 +9929,23 @@
       "has_stronger_boundary_signal"
     ],
     "riskLevel": "low"
+  },
+  {
+    "path": "app/api/workspaces/entitlements/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "isMutating": false,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
   }
 ]
