@@ -40,8 +40,9 @@ function fakeClient(tables: Tables, log: string[], name: string) {
           return builder;
         },
         order: () => builder,
-        limit: (count: number) => {
-          max = count;
+        // A referenced-table limit applies to embedded rows, not to this table.
+        limit: (count: number, options?: { referencedTable?: string }) => {
+          if (!options?.referencedTable) max = count;
           return builder;
         },
         range: (from: number, to: number) => {
@@ -402,28 +403,51 @@ describe("loadEquipmentDirectory", () => {
       // EX: suggestions overdue (2 items), plan done on Oct 1 (ok).
       // BUCKET: no suggestion evidence, calendar plan never done since Aug 1 (overdue).
       const env = setup({
-        equipment_pm_plans: [plan("p-ex", EX), plan("p-bucket", BUCKET)],
-        equipment_pm_completions: [completion("c-ex", "p-ex", EX)],
+        equipment_pm_plans: [
+          plan("p-ex", EX, { equipment_pm_completions: [completion("c-ex", "p-ex", EX)] }),
+          plan("p-bucket", BUCKET),
+        ],
       });
       const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
       expect(rows.find((row) => row.assetId === EX)?.pm).toEqual({ state: "overdue", dueCount: 2 });
       expect(rows.find((row) => row.assetId === BUCKET)?.pm).toEqual({ state: "overdue", dueCount: 1 });
-      expect(env.log).toContain("admin:equipment_pm_completions");
+      // The latest completion is embedded in the plan read; history is never scanned.
+      expect(env.log).not.toContain("admin:equipment_pm_completions");
+    });
+
+    it("evaluates distance plans against the odometer the row displays", async () => {
+      // EX shows the newest work-order reading (812 km), not the vehicle's 500 mi (≈ 804.7 km).
+      // Due at 900 km: 88 km left is within 10 % of 890 → due; the vehicle value would read ok.
+      const env = setup({
+        equipment_pm_plans: [
+          plan("p-dist", EX, {
+            interval_days: null,
+            interval_distance: 890,
+            distance_unit: "km",
+            start_distance: 10,
+          }),
+        ],
+      });
+      const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
+      const ex = rows.find((row) => row.assetId === EX)!;
+      expect(ex.odometer).toBe("812");
+      expect(ex.pm).toEqual({ state: "overdue", dueCount: 3 });
     });
 
     it("lets an up-to-date plan replace 'not evaluated' and ignores voided completions and archived plans", async () => {
       const env = setup({
         equipment_pm_plans: [
-          plan("p-bucket", BUCKET),
-          plan("p-archived", BUCKET, { active: false, start_date: "2020-01-01" }),
-        ],
-        equipment_pm_completions: [
-          completion("c-ok", "p-bucket", BUCKET, { completed_on: "2026-10-01" }),
-          completion("c-void", "p-bucket", BUCKET, {
-            completed_on: "2026-10-10",
-            voided_at: "2026-10-11T00:00:00Z",
-            void_reason: "Wrong unit",
+          plan("p-bucket", BUCKET, {
+            equipment_pm_completions: [
+              completion("c-void", "p-bucket", BUCKET, {
+                completed_on: "2026-10-10",
+                voided_at: "2026-10-11T00:00:00Z",
+                void_reason: "Wrong unit",
+              }),
+              completion("c-ok", "p-bucket", BUCKET, { completed_on: "2026-10-01" }),
+            ],
           }),
+          plan("p-archived", BUCKET, { active: false, start_date: "2020-01-01" }),
         ],
       });
       const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
@@ -434,8 +458,19 @@ describe("loadEquipmentDirectory", () => {
       const env = setup({ equipment_pm_plans: [plan("p-hidden", HIDDEN, { start_date: "2020-01-01" })] });
       const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
       expect(rows.map((row) => row.assetId)).not.toContain(HIDDEN);
-      // No visible asset has a plan, so completions are never read.
-      expect(env.log).not.toContain("admin:equipment_pm_completions");
+      expect(rows.every((row) => row.pm.state !== "overdue" || row.assetId === EX)).toBe(true);
+    });
+
+    it("pages through every active plan instead of stopping at one page", async () => {
+      // 1,000 up-to-date plans fill the first page; the overdue one is on the second.
+      const many = Array.from({ length: 1_000 }, (_, index) =>
+        plan(`p-${String(index).padStart(4, "0")}`, BUCKET, {
+          equipment_pm_completions: [completion(`c-${index}`, `p-${index}`, BUCKET)],
+        }),
+      );
+      const env = setup({ equipment_pm_plans: [...many, plan("p-overdue", BUCKET)] });
+      const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
+      expect(rows.find((row) => row.assetId === BUCKET)?.pm).toEqual({ state: "overdue", dueCount: 1 });
     });
   });
 

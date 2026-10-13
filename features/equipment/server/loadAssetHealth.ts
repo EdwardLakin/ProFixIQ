@@ -152,8 +152,13 @@ export async function loadAssetHealth(input: {
           {
             id: input.assetId,
             engineHours: equipment.asset.engineHours,
-            odometer: equipment.asset.odometer,
-            odometerUnit: equipment.asset.odometerUnit,
+            // Canonical reading: the newest dated work-order odometer (km)
+            // wins over the vehicle value, as in the directory.
+            odometer:
+              evidence.workOrderOdometerKm === null
+                ? equipment.asset.odometer
+                : String(evidence.workOrderOdometerKm),
+            odometerUnit: evidence.workOrderOdometerKm === null ? equipment.asset.odometerUnit : "km",
             cycles: equipment.profile?.currentCycles ?? null,
           },
         ],

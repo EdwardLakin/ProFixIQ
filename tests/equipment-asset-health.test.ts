@@ -46,6 +46,9 @@ function client(rows: Record<string, Row[]>) {
           return builder;
         },
         limit: () => builder,
+        is: () => builder,
+        order: () => builder,
+        range: () => builder,
         then: (resolve: (value: unknown) => void) =>
           resolve({
             data: (rows[table] ?? []).filter((row) => filters.every((f) => f(row))),

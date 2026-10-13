@@ -364,6 +364,24 @@ describe("PM service", () => {
     expect(result!.plans[0].history).toHaveLength(12);
   });
 
+  it("uses the newest work-order odometer as the current distance, like the directory", async () => {
+    mocks.authorize.mockResolvedValue({ ...identity, odometer: "500", odometerUnit: "mi" });
+    const result = await loadAssetPm({
+      supabase: fakeClient({
+        work_orders: [
+          { id: "wo-old", shop_id: SHOP, vehicle_id: ASSET, record_type: "work_order", status: "completed", created_at: "2026-09-01T00:00:00Z", odometer_km: 700 },
+          { id: "wo-new", shop_id: SHOP, vehicle_id: ASSET, record_type: "work_order", status: "completed", created_at: "2026-10-01T00:00:00Z", odometer_km: 812 },
+        ],
+      }) as never,
+      admin: fakeClient({}) as never,
+      shopId: SHOP,
+      role: "manager",
+      assetId: ASSET,
+      now: NOW,
+    });
+    expect(result?.meters.distance).toEqual({ value: 812, unit: "km" });
+  });
+
   it("hides the linked work order of a completion the caller cannot see", async () => {
     mocks.authorize.mockResolvedValue(identity);
     const result = await loadAssetPm({

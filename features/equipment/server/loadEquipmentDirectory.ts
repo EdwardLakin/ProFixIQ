@@ -146,7 +146,7 @@ export async function loadEquipmentDirectory(input: {
   const customerNames = new Map(customers.map((row) => [row.id, customerAccountDisplayName(row)]));
 
   // Equipment PM plans (no client grants) for the visible assets only, with
-  // the same meters Asset Health's PM panel uses.
+  // the same meters this row displays (and Asset Health's PM panel uses).
   let pmPlans: Awaited<ReturnType<typeof loadEquipmentPmSummaries>>;
   try {
     pmPlans = await loadEquipmentPmSummaries({
@@ -156,11 +156,14 @@ export async function loadEquipmentDirectory(input: {
         .filter((profile) => vehicles.has(profile.assetId))
         .map((profile) => {
           const vehicle = vehicles.get(profile.assetId)!;
+          // The odometer this row displays: the newest dated work-order
+          // reading (km) wins over the undated vehicle value.
+          const workOrderKm = evidence.get(profile.assetId)?.workOrderOdometerKm ?? null;
           return {
             id: profile.assetId,
             engineHours: vehicle.engine_hours,
-            odometer: vehicle.mileage,
-            odometerUnit: vehicle.odometer_unit,
+            odometer: workOrderKm === null ? vehicle.mileage : String(workOrderKm),
+            odometerUnit: workOrderKm === null ? vehicle.odometer_unit : "km",
             cycles: profile.currentCycles,
           };
         }),
