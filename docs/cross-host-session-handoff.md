@@ -17,7 +17,7 @@ separately-run `shopreel.profixiq.com`) never see a session token.
    `<target>/api/auth/handoff/redeem?token_hash=…&next=<path>&bind=<hash>`.
 3. **redeem** (target host): only if the nonce cookie hashes to `bind`, verifies
    the OTP, which creates a fresh host-only session, then redirects to `next`.
-   Only that handoff's nonce is cleared, so concurrent handoffs in other tabs are unaffected.
+   Only that handoff's nonce is cleared, so one tab's attempt never deletes another tab's nonce.
 
 ## Guards
 - `target`/`source` must exactly match the primary site or Fleet origin; `next`
@@ -54,6 +54,12 @@ separately-run `shopreel.profixiq.com`) never see a session token.
   (Safari < 16.4) therefore land on sign-in instead of the handoff.
 
 ## Notes
+- **Concurrent handoffs can collide on the token.** Supabase keeps one pending
+  magic-link token per user, so a second mint replaces the first. If two
+  workspace links reach `start` in the same instant (before the first tab's
+  immediate redeem hop), the earlier tab lands on the failure page and a retry
+  works. Serializing this would need shared storage (a lock) across serverless
+  instances; deliberately not built for such a narrow, benign race.
 - Minting a magiclink replaces any pending password-recovery token for that user.
 - Sign-out stays per host; a tab already open on the other host keeps its
   in-memory access token until it expires.
