@@ -221,8 +221,8 @@ export type MeterUsageRate =
       status: "ok";
       /** Display rate, rounded to two decimals. */
       perDay: number;
-      /** Unrounded rate used for arithmetic so low-but-real usage is preserved. */
-      rawPerDay: number;
+      /** Unrounded rate used for arithmetic; optional for older synthetic fixtures. */
+      rawPerDay?: number;
       unit: string;
       from: { at: string; value: number };
       to: { at: string; value: number };
@@ -360,12 +360,13 @@ export function projectPmDue(
         if (entry.remaining <= 0) return { ...base, status: "reached", perDay: null, days: 0, date: today };
         const rate = rates[entry.dimension as MeterKind];
         if (!rate || rate.status !== "ok") return { ...base, status: "no_rate", perDay: null, days: null, date: null };
-        let perDay = rate.rawPerDay;
+        const rawRate = rate.rawPerDay ?? rate.perDay;
+        let perDay = rawRate;
         if (entry.dimension === "distance") {
           const from = normalizeDistanceUnit(rate.unit);
           const to = normalizeDistanceUnit(entry.unit);
           if (!from || !to) return { ...base, status: "no_rate", perDay: null, days: null, date: null };
-          perDay = convertDistance(rate.rawPerDay, from, to);
+          perDay = convertDistance(rawRate, from, to);
         }
         if (perDay <= 0) return { ...base, status: "no_usage", perDay: 0, days: null, date: null };
         const days = Math.ceil(entry.remaining / perDay);
