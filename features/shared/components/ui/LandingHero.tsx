@@ -42,7 +42,7 @@ export default function LandingHero() {
 
           <div className="inline-flex items-center gap-2 rounded-full border border-[color:var(--marketing-border)] bg-white px-3.5 py-2 text-[11px] font-bold uppercase tracking-[0.2em] text-[color:var(--marketing-copper-dark)] shadow-sm">
             <span className="h-1.5 w-1.5 rounded-full bg-[color:var(--marketing-copper)]" />
-            Heavy-Duty • Diesel • Fleet • Field
+            Heavy-Duty • Diesel • Fleet • Field • Equipment
           </div>
 
           <h1 className="mt-7 max-w-3xl text-5xl font-semibold leading-[0.98] tracking-[-0.055em] text-[color:var(--marketing-ink)] sm:text-6xl lg:text-[4.65rem]">
@@ -50,9 +50,9 @@ export default function LandingHero() {
           </h1>
 
           <p className="mt-7 max-w-2xl text-lg leading-8 text-[color:var(--marketing-muted)] sm:text-xl">
-            Built for diesel and commercial repair operations: voice inspections,
-            technician-built repairs, parts workflows, approvals, workforce operations,
-            field service, and fleet transparency—connected in one system. Automotive supported.
+            Voice inspections, technician-built repairs, automated approvals,
+            parts workflows, workforce operations, fleet transparency, and optional
+            Equipment workflows—connected in one heavy-duty-first system. Automotive repair is supported too.
           </p>
 
           <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
