@@ -30,11 +30,13 @@ export default function ComparePlansPage() {
     interval,
     checkoutAttemptId,
     checkoutMode,
+    equipmentAddon,
   }: {
     packageKey: string;
     interval: Interval;
     checkoutAttemptId: string;
     checkoutMode: "trial" | "paid";
+    equipmentAddon?: boolean;
   }) => {
     const res = await fetch("/api/stripe/checkout", {
       method: "POST",
@@ -45,6 +47,7 @@ export default function ComparePlansPage() {
         interval,
         checkoutAttemptId,
         checkoutMode,
+        ...(equipmentAddon ? { equipmentAddon: true } : {}),
       }),
     });
 
