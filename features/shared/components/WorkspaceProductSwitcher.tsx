@@ -4,6 +4,7 @@ import { LockKeyhole } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+import { isHandoffHref } from "@/features/shared/lib/hostHandoff";
 import {
   WORKSPACE_PRODUCTS,
   workspaceProductHref,
@@ -156,19 +157,14 @@ export default function WorkspaceProductSwitcher({
           );
         }
 
-        return (
-          <Link
-            key={product.surface}
-            href={href}
-            aria-current={active ? "page" : undefined}
-            title={title}
-            className={cn(
-              "inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs font-semibold transition",
-              active
-                ? "border-[color:var(--brand-primary,#C1663B)] bg-[color:color-mix(in_srgb,var(--brand-primary,#C1663B)_12%,transparent)] text-[color:var(--theme-text-primary)]"
-                : "border-transparent text-[color:var(--theme-text-secondary)] hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-inset)] hover:text-[color:var(--theme-text-primary)]",
-            )}
-          >
+        const className = cn(
+          "inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border px-2.5 text-xs font-semibold transition",
+          active
+            ? "border-[color:var(--brand-primary,#C1663B)] bg-[color:color-mix(in_srgb,var(--brand-primary,#C1663B)_12%,transparent)] text-[color:var(--theme-text-primary)]"
+            : "border-transparent text-[color:var(--theme-text-secondary)] hover:border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-inset)] hover:text-[color:var(--theme-text-primary)]",
+        );
+        const content = (
+          <>
             <span>{product.label}</span>
             {verified && !accessible ? (
               <LockKeyhole
@@ -180,6 +176,30 @@ export default function WorkspaceProductSwitcher({
                 className="h-3 w-3 opacity-65"
               />
             ) : null}
+          </>
+        );
+
+        // Handoff links mint a one-time token when visited, so they must be a
+        // full-document navigation: never prefetched, never a router fetch.
+        return isHandoffHref(href) ? (
+          <a
+            key={product.surface}
+            href={href}
+            referrerPolicy="origin"
+            title={title}
+            className={className}
+          >
+            {content}
+          </a>
+        ) : (
+          <Link
+            key={product.surface}
+            href={href}
+            aria-current={active ? "page" : undefined}
+            title={title}
+            className={className}
+          >
+            {content}
           </Link>
         );
       })}
