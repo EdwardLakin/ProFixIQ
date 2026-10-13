@@ -10,16 +10,54 @@ import {
   type WorkspaceEntitlementsPayload,
   type WorkspaceSurface,
 } from "@/features/shared/lib/workspaceProducts";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { cn } from "@/features/shared/utils/cn";
 
+let entitlementIdentity: string | null = null;
 let entitlementRequest: Promise<WorkspaceEntitlementsPayload | null> | null = null;
 
-function loadWorkspaceEntitlements(): Promise<WorkspaceEntitlementsPayload | null> {
-  if (!entitlementRequest) {
-    entitlementRequest = fetch("/api/workspaces/entitlements", { credentials: "include", cache: "no-store" })
-      .then(async (response) => response.ok ? (await response.json()) as WorkspaceEntitlementsPayload : null)
-      .catch(() => null);
+function isWorkspaceEntitlementsPayload(
+  value: unknown,
+): value is WorkspaceEntitlementsPayload {
+  if (!value || typeof value !== "object") return false;
+  const payload = value as Partial<WorkspaceEntitlementsPayload>;
+  if (!payload.workspaces || typeof payload.workspaces !== "object") return false;
+
+  return WORKSPACE_PRODUCTS.every((product) => {
+    const workspace = payload.workspaces?.[product.surface];
+    return (
+      !!workspace &&
+      typeof workspace.entitled === "boolean" &&
+      typeof workspace.accessible === "boolean"
+    );
+  });
+}
+
+function loadWorkspaceEntitlements(
+  identity: string,
+): Promise<WorkspaceEntitlementsPayload | null> {
+  if (entitlementIdentity !== identity) {
+    entitlementIdentity = identity;
+    entitlementRequest = null;
   }
+
+  if (!entitlementRequest) {
+    const request = fetch("/api/workspaces/entitlements", {
+      credentials: "include",
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const payload: unknown = await response.json();
+        return isWorkspaceEntitlementsPayload(payload) ? payload : null;
+      })
+      .catch(() => null)
+      .finally(() => {
+        if (entitlementRequest === request) entitlementRequest = null;
+      });
+    entitlementRequest = request;
+  }
+
   return entitlementRequest;
 }
 
@@ -34,11 +72,34 @@ export default function WorkspaceProductSwitcher({
     useState<WorkspaceEntitlementsPayload | null>(null);
 
   useEffect(() => {
+    const supabase = createBrowserSupabase();
     let active = true;
-    void loadWorkspaceEntitlements().then((payload) => {
-      if (active && payload) setEntitlements(payload);
+
+    const refreshForIdentity = (identity: string) => {
+      setEntitlements(null);
+      void loadWorkspaceEntitlements(identity).then((payload) => {
+        if (active && entitlementIdentity === identity && payload) {
+          setEntitlements(payload);
+        }
+      });
+    };
+
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!active) return;
+      refreshForIdentity(data.session?.user.id ?? "signed-out");
     });
-    return () => { active = false; };
+
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        if (!active || event === "TOKEN_REFRESHED") return;
+        refreshForIdentity(session?.user.id ?? "signed-out");
+      },
+    );
+
+    return () => {
+      active = false;
+      authListener.subscription.unsubscribe();
+    };
   }, []);
 
   return (
@@ -52,18 +113,21 @@ export default function WorkspaceProductSwitcher({
       {WORKSPACE_PRODUCTS.map((product) => {
         const active = product.surface === surface;
         const verified = entitlements !== null;
-        const entitled =
-          active || entitlements?.workspaces[product.surface]?.entitled === true;
+        const workspace = entitlements?.workspaces?.[product.surface];
+        const entitled = active || workspace?.entitled === true;
+        const accessible = active || workspace?.accessible === true;
         const href = active
           ? workspaceProductHref(product, true, surface)
-          : workspaceProductHref(product, verified ? entitled : false, surface);
+          : workspaceProductHref(product, verified ? accessible : false, surface);
         const title = active
           ? `${product.label} workspace`
           : !verified
             ? `Check ${product.label} access`
-            : entitled
+            : accessible
               ? `Open ${product.label}`
-              : product.upgradeLabel;
+              : entitled
+                ? `${product.label} access is not enabled for this account`
+                : product.upgradeLabel;
 
         return (
           <Link
@@ -79,9 +143,13 @@ export default function WorkspaceProductSwitcher({
             )}
           >
             <span>{product.label}</span>
-            {verified && !entitled ? (
+            {verified && !accessible ? (
               <LockKeyhole
-                aria-label={`${product.label} not included in current subscription`}
+                aria-label={
+                  entitled
+                    ? `${product.label} access is not enabled for this account`
+                    : `${product.label} not included in current subscription`
+                }
                 className="h-3 w-3 opacity-65"
               />
             ) : null}
