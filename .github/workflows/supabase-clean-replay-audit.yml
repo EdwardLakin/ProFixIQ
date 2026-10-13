@@ -982,7 +982,7 @@ jobs:
             -f tests/security/equipment-pm-plans.runtime.sql \
             2>&1 | tee equipment-pm-plans-runtime.log
 
-      - name: Execute Equipment PM work orders tenant integration
+      - name: Execute Equipment fluid samples tenant integration
         shell: bash
         env:
           DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
@@ -993,8 +993,8 @@ jobs:
             sudo apt-get install -y postgresql-client
           fi
           psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
-            -f tests/security/equipment-pm-work-orders.runtime.sql \
-            2>&1 | tee equipment-pm-work-orders-runtime.log
+            -f tests/security/equipment-fluid-samples.runtime.sql \
+            2>&1 | tee equipment-fluid-samples-runtime.log
 
       - name: Execute Feedback Control authorization and recovery integration
         shell: bash
@@ -1065,7 +1065,7 @@ jobs:
             equipment-measurements-runtime.log
             equipment-wear-limits-runtime.log
             equipment-pm-plans-runtime.log
-            equipment-pm-work-orders-runtime.log
+            equipment-fluid-samples-runtime.log
             feedback-control-runtime.log
             feedback-control-concurrency-runtime.log
             supabase-generated-types.diff

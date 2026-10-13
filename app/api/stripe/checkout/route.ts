@@ -20,6 +20,7 @@ import {
   type ProductAcquisitionSurface,
   type ProductPackageKey,
 } from "@/features/stripe/lib/stripe/product-packages";
+import { resolveEquipmentAddonPriceId } from "@/features/stripe/lib/server/equipment-addon-price-contract";
 import { resolveProductPackagePriceId } from "@/features/stripe/lib/server/product-package-price-contract";
 import { resolveStripePlanPriceId } from "@/features/stripe/lib/server/stripe-price-contract";
 import { configuredTrialDays } from "@/features/stripe/lib/server/trial-config";
@@ -54,6 +55,7 @@ const checkoutSchema = z
     source: z.enum(["pricing_cta", "billing_recovery"]).optional(),
     interval: z.literal("monthly").optional(),
     checkoutMode: z.enum(["trial", "paid"]).optional(),
+    equipmentAddon: z.boolean().optional(),
     // Rolling-deploy compatibility only. These values are never trusted.
     priceId: z.string().optional(),
     shopId: z.string().nullable().optional(),
@@ -72,6 +74,12 @@ const checkoutSchema = z
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Choose exactly one subscription package",
+      });
+    }
+    if (value.equipmentAddon && value.packageKey !== "complete_operations") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Equipment requires Complete Operations",
       });
     }
   });
@@ -193,6 +201,7 @@ function acquisitionMetadata(input: {
   selection: CheckoutSelection;
   priceId: string;
   trialDays: number;
+  equipmentAddon: boolean;
 }): Stripe.MetadataParam {
   return {
     app: "profixiq",
@@ -205,6 +214,7 @@ function acquisitionMetadata(input: {
     ...(input.selection.packageKey
       ? { package_key: input.selection.packageKey }
       : {}),
+    ...(input.equipmentAddon ? { equipment_addon: "true" } : {}),
     price_id: input.priceId,
     pricing_model: input.selection.pricingModel,
     trial_enabled: input.trialDays > 0 ? "true" : "false",
@@ -249,6 +259,7 @@ async function resolveCheckoutPriceId(
 function buildCheckoutParams(input: {
   customerId?: string;
   priceId: string;
+  additionalPriceIds?: string[];
   successUrl: string;
   cancelUrl: string;
   clientReferenceId?: string;
@@ -265,7 +276,9 @@ function buildCheckoutParams(input: {
   return {
     mode: "subscription",
     ...(input.customerId ? { customer: input.customerId } : {}),
-    line_items: [{ price: input.priceId, quantity: 1 }],
+    line_items: [input.priceId, ...(input.additionalPriceIds ?? [])].map(
+      (price) => ({ price, quantity: 1 }),
+    ),
     success_url: input.successUrl,
     cancel_url: input.cancelUrl,
     allow_promotion_codes: true,
@@ -323,10 +336,19 @@ export async function POST(req: Request) {
     ) {
       return noStoreJson({ error: "Invalid checkout flow" }, 400);
     }
+    if (parsed.data.equipmentAddon && !isAcquisition) {
+      return noStoreJson(
+        { error: "Equipment add-on checkout is available through acquisition pricing" },
+        400,
+      );
+    }
 
     const stripe = createStripeClient(mustEnv("STRIPE_SECRET_KEY"));
     const selection = resolveCheckoutSelection(parsed.data);
     const priceId = await resolveCheckoutPriceId(stripe, selection);
+    const equipmentAddonPriceId = parsed.data.equipmentAddon
+      ? await resolveEquipmentAddonPriceId(stripe)
+      : null;
     const baseUrl = getBaseUrl();
     const configuredDays = configuredTrialDays();
     const attemptId = parsed.data.checkoutAttemptId ?? randomUUID();
@@ -395,10 +417,14 @@ export async function POST(req: Request) {
         selection,
         priceId,
         trialDays,
+        equipmentAddon: parsed.data.equipmentAddon === true,
       });
       const session = await stripe.checkout.sessions.create(
         buildCheckoutParams({
           priceId,
+          ...(equipmentAddonPriceId
+            ? { additionalPriceIds: [equipmentAddonPriceId] }
+            : {}),
           successUrl,
           cancelUrl: `${baseUrl}/compare-plans`,
           clientReferenceId: intent.id,

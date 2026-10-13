@@ -131,10 +131,30 @@ export async function getStripeCheckoutPriceId(
   sessionId: string,
 ): Promise<string | null> {
   const items = await stripe.checkout.sessions.listLineItems(sessionId, {
-    limit: 2,
+    limit: 10,
   });
-  if (items.data.length !== 1 || items.data[0]?.quantity !== 1) return null;
-  return toStripeId(items.data[0]?.price, "price_");
+  if (!items.data.length || items.data.some((item) => item.quantity !== 1)) {
+    return null;
+  }
+  if (items.data.length === 1) {
+    return toStripeId(items.data[0]?.price, "price_");
+  }
+
+  // Acquisition may include server-owned add-ons. Keep the base package as
+  // the canonical acquisition identity while allowing additional recurring
+  // subscription items such as Equipment on the same Stripe subscription.
+  const baseItems = items.data.filter((item) => {
+    const price = item.price;
+    return (
+      price &&
+      typeof price === "object" &&
+      (price.metadata?.price_role === "base" ||
+        Boolean(String(price.metadata?.package_key ?? "").trim()))
+    );
+  });
+  return baseItems.length === 1
+    ? toStripeId(baseItems[0]?.price, "price_")
+    : null;
 }
 
 export async function getStripeCheckoutEmail(

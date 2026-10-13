@@ -32,6 +32,7 @@ const ACQUISITION_SOURCE_PATHS = new Set([
   "/fleet-preventive-maintenance-software",
   "/mobile-truck-repair-software",
   "/service-truck-work-order-software",
+  "/equipment-maintenance-software",
   "/heavy-equipment-repair-software",
   "/off-highway-equipment-repair-software",
   "/field-service",

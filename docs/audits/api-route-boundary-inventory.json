@@ -1686,6 +1686,25 @@
     "riskLevel": "medium"
   },
   {
+    "path": "app/api/equipment/assets/[assetId]/fluid-samples/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
+  },
+  {
     "path": "app/api/equipment/assets/[assetId]/measurements/route.ts",
     "methods": [
       "GET",
@@ -1711,24 +1730,6 @@
       "POST"
     ],
     "isMutating": true,
-    "hasRequireShopScopedApiAccess": true,
-    "hasRouteHandlerSupabaseAuthClient": false,
-    "hasAuthGetUser": false,
-    "hasServiceRolePattern": true,
-    "hasShopReference": true,
-    "hasRoleOrCapabilityReference": true,
-    "routeClassGuess": "staff_or_admin",
-    "riskFlags": [
-      "service_role_with_shop_identifier_input_or_reference"
-    ],
-    "riskLevel": "medium"
-  },
-  {
-    "path": "app/api/equipment/assets/[assetId]/pm/work-orders/route.ts",
-    "methods": [
-      "GET"
-    ],
-    "isMutating": false,
     "hasRequireShopScopedApiAccess": true,
     "hasRouteHandlerSupabaseAuthClient": false,
     "hasAuthGetUser": false,
@@ -1852,6 +1853,24 @@
     "riskLevel": "low"
   },
   {
+    "path": "app/api/equipment/fluid-samples/[sampleId]/void/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
+  },
+  {
     "path": "app/api/equipment/measurements/[measurementId]/correct/route.ts",
     "methods": [
       "POST"
@@ -1909,42 +1928,6 @@
     "path": "app/api/equipment/pm-plans/[planId]/route.ts",
     "methods": [
       "PUT"
-    ],
-    "isMutating": true,
-    "hasRequireShopScopedApiAccess": true,
-    "hasRouteHandlerSupabaseAuthClient": false,
-    "hasAuthGetUser": false,
-    "hasServiceRolePattern": true,
-    "hasShopReference": true,
-    "hasRoleOrCapabilityReference": true,
-    "routeClassGuess": "staff_or_admin",
-    "riskFlags": [
-      "service_role_with_shop_identifier_input_or_reference"
-    ],
-    "riskLevel": "medium"
-  },
-  {
-    "path": "app/api/equipment/pm-plans/[planId]/work-orders/route.ts",
-    "methods": [
-      "POST"
-    ],
-    "isMutating": true,
-    "hasRequireShopScopedApiAccess": true,
-    "hasRouteHandlerSupabaseAuthClient": false,
-    "hasAuthGetUser": false,
-    "hasServiceRolePattern": true,
-    "hasShopReference": true,
-    "hasRoleOrCapabilityReference": true,
-    "routeClassGuess": "staff_or_admin",
-    "riskFlags": [
-      "service_role_with_shop_identifier_input_or_reference"
-    ],
-    "riskLevel": "medium"
-  },
-  {
-    "path": "app/api/equipment/pm-work-orders/[linkId]/unlink/route.ts",
-    "methods": [
-      "POST"
     ],
     "isMutating": true,
     "hasRequireShopScopedApiAccess": true,
