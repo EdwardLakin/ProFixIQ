@@ -11,6 +11,7 @@ vi.mock("@/features/equipment/server/equipmentAssetProfileService", () => ({
 }));
 
 import {
+  combinePmStates,
   evaluatePmPlan,
   lastCompletion,
   parseOdometer,
@@ -165,6 +166,19 @@ describe("PM due arithmetic", () => {
       state: "ok",
     });
     expect(status.dimensions.find((entry) => entry.dimension === "hours")).toMatchObject({ from: 2390 });
+  });
+
+  it("combines plan and suggestion states without letting either hide an alert", () => {
+    // No active plans: exactly the suggestion state.
+    expect(combinePmStates(null, "due")).toBe("due");
+    expect(combinePmStates(null, "not_evaluated")).toBe("not_evaluated");
+    // Unevaluated suggestions are absence of evidence, not uncertainty.
+    expect(combinePmStates("ok", "not_evaluated")).toBe("ok");
+    expect(combinePmStates("ok", "overdue")).toBe("overdue");
+    expect(combinePmStates("overdue", "ok")).toBe("overdue");
+    // An unevaluable plan is uncertainty and still outranks "ok".
+    expect(combinePmStates("not_evaluated", "ok")).toBe("not_evaluated");
+    expect(combinePmStates("not_evaluated", "due")).toBe("due");
   });
 
   it("does not evaluate archived plans", () => {

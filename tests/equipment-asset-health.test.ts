@@ -123,6 +123,17 @@ describe("loadAssetHealth", () => {
     );
   });
 
+  it("reports no Equipment PM plan status when the asset has no active plan", async () => {
+    const result = await loadAssetHealth({
+      supabase: scoped,
+      admin,
+      shopId: SHOP,
+      role: "owner",
+      assetId: EX,
+    });
+    expect(result?.pmPlans).toBeNull();
+  });
+
   it("lists only attachments the caller can see through RLS", async () => {
     const result = await loadAssetHealth({
       supabase: scoped,

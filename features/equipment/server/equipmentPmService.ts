@@ -19,6 +19,7 @@ import {
   type PmPlan,
 } from "@/features/equipment/lib/pm";
 import { authorizeEquipmentAsset } from "@/features/equipment/server/equipmentAssetProfileService";
+import type { EquipmentPmState } from "@/features/equipment/lib/equipmentDirectory";
 import type { CanonicalRole } from "@/features/shared/lib/rbac";
 import {
   workOrderHref,
@@ -209,6 +210,119 @@ export async function loadAssetPm(input: {
       createdAt: row.created_at ?? "",
     })),
   };
+}
+
+export type EquipmentPmSummary = {
+  /** Most urgent state across the asset's active plans. */
+  state: EquipmentPmState;
+  /** Active plans that are due or overdue. */
+  dueCount: number;
+  activePlans: number;
+};
+
+/** Assets per plan query; a batch that fills a page is re-read per asset. */
+const SUMMARY_CHUNK = 25;
+
+async function readActivePlans(
+  admin: SupabaseClient<DB>,
+  shopId: string,
+  assetIds: string[],
+): Promise<PlanRow[]> {
+  const { data, error } = await admin
+    .from("equipment_pm_plans")
+    .select(PLAN_COLUMNS)
+    .eq("shop_id", shopId)
+    .in("vehicle_id", assetIds)
+    .eq("active", true)
+    .limit(PAGE);
+  if (error) throw new EquipmentPmError("Unable to load PM plans.", 500);
+  const rows = (data ?? []) as PlanRow[];
+  if (rows.length < PAGE || assetIds.length === 1) return rows;
+  // A full page may be cut off: read each asset on its own instead.
+  const perAsset: PlanRow[] = [];
+  for (const assetId of assetIds) perAsset.push(...(await readActivePlans(admin, shopId, [assetId])));
+  return perAsset;
+}
+
+/**
+ * PM plan status for assets the caller has already been authorized to see
+ * (the directory and Asset Health authorize first). Read with the privileged
+ * client, scoped to the shop; meters are passed in from the caller's reads.
+ * Assets without an active plan are absent from the result.
+ */
+export async function loadEquipmentPmSummaries(input: {
+  admin: SupabaseClient<DB>;
+  shopId: string;
+  assets: Array<{
+    id: string;
+    engineHours: number | null;
+    odometer: string | null;
+    odometerUnit: string | null;
+    cycles: number | null;
+  }>;
+  now?: number;
+}): Promise<Map<string, EquipmentPmSummary>> {
+  const summaries = new Map<string, EquipmentPmSummary>();
+  if (!input.assets.length) return summaries;
+
+  const plans: PlanRow[] = [];
+  for (let offset = 0; offset < input.assets.length; offset += SUMMARY_CHUNK) {
+    const chunk = input.assets.slice(offset, offset + SUMMARY_CHUNK).map((asset) => asset.id);
+    plans.push(...(await readActivePlans(input.admin, input.shopId, chunk)));
+  }
+  if (!plans.length) return summaries;
+
+  // Only non-voided completions matter for the due point.
+  const completions = new Map<string, PmCompletion[]>();
+  const planIds = plans.map((plan) => plan.id);
+  for (let offset = 0; offset < planIds.length; offset += 100) {
+    const chunk = planIds.slice(offset, offset + 100);
+    for (let page = 0; ; page += 1) {
+      const { data, error } = await input.admin
+        .from("equipment_pm_completions")
+        .select(COMPLETION_COLUMNS)
+        .eq("shop_id", input.shopId)
+        .in("plan_id", chunk)
+        .is("voided_at", null)
+        .order("completed_on", { ascending: false })
+        .order("sequence", { ascending: false })
+        .range(page * PAGE, page * PAGE + PAGE - 1);
+      if (error) throw new EquipmentPmError("Unable to load PM completions.", 500);
+      for (const row of (data ?? []) as CompletionRow[]) {
+        const list = completions.get(row.plan_id) ?? [];
+        list.push(mapCompletion(row, new Map()));
+        completions.set(row.plan_id, list);
+      }
+      if (!data || data.length < PAGE) break;
+    }
+  }
+
+  const today = todayIso(input.now);
+  const assets = new Map(input.assets.map((asset) => [asset.id, asset]));
+  const statesByAsset = new Map<string, EquipmentPmState[]>();
+  for (const row of plans) {
+    const asset = assets.get(row.vehicle_id);
+    if (!asset) continue;
+    const meters: PmMeters = {
+      hours: asset.engineHours,
+      distance: parseOdometer(asset.odometer, asset.odometerUnit),
+      cycles: asset.cycles,
+      updatedAt: null,
+      today,
+    };
+    const status = evaluatePmPlan(mapPlan(row), completions.get(row.id) ?? [], meters);
+    const list = statesByAsset.get(row.vehicle_id) ?? [];
+    list.push(status.state);
+    statesByAsset.set(row.vehicle_id, list);
+  }
+  for (const [assetId, states] of statesByAsset) {
+    summaries.set(assetId, {
+      state: worstPmState(states),
+      dueCount: states.filter((state) => state === "due" || state === "overdue").length,
+      activePlans: states.length,
+    });
+  }
+  return summaries;
 }
 
 type WriteContext = {

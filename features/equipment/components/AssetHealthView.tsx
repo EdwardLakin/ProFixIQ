@@ -14,6 +14,7 @@ import {
 } from "@/features/vehicles/components/VehicleWorkspace";
 import type { VehicleWorkspaceReference } from "@/features/vehicles/lib/vehicleWorkspace";
 import { EQUIPMENT_PM_STATE_LABELS } from "@/features/equipment/lib/equipmentDirectory";
+import { combinePmStates } from "@/features/equipment/lib/pm";
 import {
   WorkspaceEmptyState as EmptyState,
   WorkspaceHeader,
@@ -73,7 +74,7 @@ export default function AssetHealthView({
   /** Shop-wide (directory) roles may open a component's cross-machine history. */
   canOpenComponentHistory?: boolean;
 }) {
-  const { snapshot, equipment, evidence, attachments, host } = health;
+  const { snapshot, equipment, evidence, pmPlans, attachments, host } = health;
   const { identity, permissions } = snapshot;
   const profile = equipment.profile;
   const title =
@@ -97,6 +98,8 @@ export default function AssetHealthView({
       }
     : null;
   const pm = evidence.pm;
+  // Same combination as the directory's PM column.
+  const pmOverall = combinePmStates(pmPlans?.state ?? null, pm.state);
   const otherAttention = snapshot.attentionItems.filter(
     (item) => item.kind === "deferred_work" || item.kind === "waiting_parts",
   );
@@ -291,8 +294,15 @@ export default function AssetHealthView({
       <WorkspaceSection headingId="asset-pm" eyebrow="Preventive maintenance" title="PM status">
         <p className="mt-3 text-sm">
           <span className="text-[color:var(--theme-text-muted)]">Evaluation: </span>
-          <span className="font-semibold">{EQUIPMENT_PM_STATE_LABELS[pm.state]}</span>
+          <span className="font-semibold">{EQUIPMENT_PM_STATE_LABELS[pmOverall]}</span>
         </p>
+        {pmPlans ? (
+          <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+            Equipment PM plans: {EQUIPMENT_PM_STATE_LABELS[pmPlans.state]} ·{" "}
+            {pmPlans.activePlans} active{pmPlans.dueCount ? `, ${pmPlans.dueCount} due` : ""} · Service
+            suggestions: {EQUIPMENT_PM_STATE_LABELS[pm.state]}
+          </p>
+        ) : null}
         {pm.items.length ? (
           <ul className="mt-3 grid gap-2">
             {pm.items.map((item) => (
