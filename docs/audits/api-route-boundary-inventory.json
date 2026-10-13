@@ -1724,6 +1724,25 @@
     "riskLevel": "medium"
   },
   {
+    "path": "app/api/equipment/assets/[assetId]/meters/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
+  },
+  {
     "path": "app/api/equipment/assets/[assetId]/pm/route.ts",
     "methods": [
       "GET",
@@ -1872,6 +1891,24 @@
   },
   {
     "path": "app/api/equipment/measurements/[measurementId]/correct/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
+  },
+  {
+    "path": "app/api/equipment/meter-readings/[readingId]/void/route.ts",
     "methods": [
       "POST"
     ],
