@@ -12,6 +12,17 @@ import {
 } from "@/features/shared/lib/workspaceProducts";
 import { cn } from "@/features/shared/utils/cn";
 
+let entitlementRequest: Promise<WorkspaceEntitlementsPayload | null> | null = null;
+
+function loadWorkspaceEntitlements(): Promise<WorkspaceEntitlementsPayload | null> {
+  if (!entitlementRequest) {
+    entitlementRequest = fetch("/api/workspaces/entitlements", { credentials: "include", cache: "no-store" })
+      .then(async (response) => response.ok ? (await response.json()) as WorkspaceEntitlementsPayload : null)
+      .catch(() => null);
+  }
+  return entitlementRequest;
+}
+
 export default function WorkspaceProductSwitcher({
   surface,
   className,
@@ -23,30 +34,11 @@ export default function WorkspaceProductSwitcher({
     useState<WorkspaceEntitlementsPayload | null>(null);
 
   useEffect(() => {
-    const controller = new AbortController();
     let active = true;
-
-    void fetch("/api/workspaces/entitlements", {
-      credentials: "include",
-      cache: "no-store",
-      signal: controller.signal,
-    })
-      .then(async (response) => {
-        if (!response.ok) return null;
-        return (await response.json()) as WorkspaceEntitlementsPayload;
-      })
-      .then((payload) => {
-        if (active && payload) setEntitlements(payload);
-      })
-      .catch(() => {
-        // Navigation remains visible; unavailable products fail closed to their
-        // acquisition pages until entitlement verification succeeds.
-      });
-
-    return () => {
-      active = false;
-      controller.abort();
-    };
+    void loadWorkspaceEntitlements().then((payload) => {
+      if (active && payload) setEntitlements(payload);
+    });
+    return () => { active = false; };
   }, []);
 
   return (
@@ -63,10 +55,8 @@ export default function WorkspaceProductSwitcher({
         const entitled =
           active || entitlements?.workspaces[product.surface]?.entitled === true;
         const href = active
-          ? product.workspaceHref
-          : verified
-            ? workspaceProductHref(product, entitled)
-            : product.marketingHref;
+          ? workspaceProductHref(product, true, surface)
+          : workspaceProductHref(product, verified ? entitled : false, surface);
         const title = active
           ? `${product.label} workspace`
           : !verified
