@@ -27,7 +27,7 @@ const blackOps = Black_Ops_One({
 });
 
 const siteDescription =
-  "Heavy-duty repair shop software for diesel and commercial vehicle operations, with connected inspections, technician-built repairs, parts, approvals, field service, fleet maintenance, and automotive support.";
+  "Heavy-duty repair shop software for diesel and commercial operations, with voice inspections, technician-built repairs, parts, approvals, field service, fleet maintenance, and optional Equipment workflows.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://profixiq.com"),
