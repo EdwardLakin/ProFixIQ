@@ -145,11 +145,13 @@ async function componentNamesFor(
 ): Promise<Map<string, string>> {
   const names = new Map<string, string>();
   for (let offset = 0; offset < ids.length; offset += CHUNK) {
+    const chunk = ids.slice(offset, offset + CHUNK);
+    if (!chunk.length) continue;
     const { data, error } = await admin
       .from("equipment_components")
       .select("id,label")
       .eq("shop_id", shopId)
-      .in("id", ids.slice(offset, offset + CHUNK));
+      .in("id", chunk);
     if (error) throw new EquipmentFluidSampleError("Unable to load components.", 500);
     for (const row of data ?? []) names.set(row.id, row.label);
   }
@@ -162,9 +164,43 @@ function componentIdsOf(rows: SampleRow[]): string[] {
   );
 }
 
+async function componentPickerFor(
+  admin: SupabaseClient<DB>,
+  shopId: string,
+  assetId: string,
+): Promise<Array<{ id: string; label: string }>> {
+  const ids = new Set<string>();
+
+  const { data: installed, error: installedError } = await admin
+    .from("equipment_components")
+    .select("id")
+    .eq("shop_id", shopId)
+    .eq("installed_vehicle_id", assetId)
+    .limit(PAGE);
+  if (installedError) throw new EquipmentFluidSampleError("Unable to load components.", 500);
+  for (const row of installed ?? []) ids.add(row.id);
+
+  for (let page = 0; page < MAX_PAGES; page += 1) {
+    const { data, error } = await admin
+      .from("equipment_component_events")
+      .select("component_id")
+      .eq("shop_id", shopId)
+      .eq("vehicle_id", assetId)
+      .in("event_type", ["installed", "removed"])
+      .order("sequence", { ascending: false })
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (error) throw new EquipmentFluidSampleError("Unable to load component history.", 500);
+    for (const row of data ?? []) ids.add(row.component_id);
+    if (!data || data.length < PAGE) break;
+  }
+
+  const names = await componentNamesFor(admin, shopId, Array.from(ids));
+  return Array.from(names, ([id, label]) => ({ id, label })).sort((a, b) => a.label.localeCompare(b.label));
+}
+
 export type AssetFluidSamples = {
   groups: FluidSampleGroup[];
-  /** Components installed on the asset, for recording against a component. */
+  /** Components installed now or historically on the asset, for backdated reports. */
   components: Array<{ id: string; label: string }>;
   /** Current hour meter, offered as the default for a sample taken now. */
   assetHours: number | null;
@@ -187,22 +223,15 @@ export async function loadAssetFluidSamples(input: {
   if (!asset) return null;
 
   const rows = await readSamples(input.admin, input.shopId, input.assetId, false);
-  const [results, names, installed] = await Promise.all([
+  const [results, names, components] = await Promise.all([
     readResults(input.admin, input.shopId, rows.map((row) => row.id)),
     componentNamesFor(input.admin, input.shopId, componentIdsOf(rows)),
-    input.admin
-      .from("equipment_components")
-      .select("id,label")
-      .eq("shop_id", input.shopId)
-      .eq("installed_vehicle_id", input.assetId)
-      .order("label", { ascending: true })
-      .limit(PAGE),
+    componentPickerFor(input.admin, input.shopId, input.assetId),
   ]);
-  if (installed.error) throw new EquipmentFluidSampleError("Unable to load components.", 500);
 
   return {
     groups: buildFluidHistory(rows.map((row) => mapSample(row, names, results.get(row.id) ?? []))),
-    components: (installed.data ?? []).map((row) => ({ id: row.id, label: row.label })),
+    components,
     assetHours: asset.engineHours,
   };
 }
@@ -315,9 +344,10 @@ export async function recordFluidSample(
       component_id: sample.componentId,
       fluid_type: sample.fluidType,
       sampled_at: sample.sampledAt,
-      // A sample taken now defaults to the current hour meter; a dated
-      // sample carries only the meter entered for that time.
-      asset_hours: sample.assetHours ?? (sample.sampledAt ? null : asset.engineHours),
+      // Keep idempotency based only on client intent. The UI may offer the
+      // current meter as a default, but the server must not inject a mutable
+      // meter value after the operation key has been chosen.
+      asset_hours: sample.assetHours,
       fluid_hours: sample.fluidHours,
       fluid_distance: sample.fluidDistance,
       fluid_distance_unit: sample.fluidDistanceUnit,
