@@ -383,6 +383,10 @@ export async function middleware(req: NextRequest) {
     pathname === "/compare/fullbay-alternative" ||
     pathname === "/compare/profixiq-vs-fullbay" ||
     pathname === "/mobile-truck-repair-software" ||
+    pathname === "/repair-shop-management-software" ||
+    pathname === "/field-service" ||
+    pathname === "/fleet-maintenance" ||
+    pathname === "/equipment-maintenance-software" ||
     pathname === "/service-truck-work-order-software" ||
     pathname === "/heavy-equipment-repair-software" ||
     pathname === "/off-highway-equipment-repair-software" ||
