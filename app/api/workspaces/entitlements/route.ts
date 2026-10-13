@@ -4,6 +4,8 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 
 import { resolveEquipmentAddonEntitlementForShop } from "@/features/equipment/server/equipmentAddonEntitlement";
+import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
+import { getMobileFieldServiceAccess } from "@/features/mobile/service/server/access";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import type { WorkspaceEntitlementsPayload } from "@/features/shared/lib/workspaceProducts";
@@ -52,6 +54,20 @@ export async function GET() {
   const internalDemo =
     shopRow.data?.billing_entitlement_override === INTERNAL_DEMO_ENTITLEMENT;
 
+  const [fieldActorAccess, fleetActorAccess] = internalDemo
+    ? [true, true]
+    : await Promise.all([
+        getMobileFieldServiceAccess(access)
+          .then((result) => result.canAccessFieldService)
+          .catch(() => false),
+        resolveFleetActorContext(access.supabase, {
+          userId: access.authUserId,
+          profileId: access.profile.id,
+        })
+          .then((result) => result.capabilities.canAccessFleetIntake)
+          .catch(() => false),
+      ]);
+
   let equipmentEntitled = internalDemo;
   if (!internalDemo) {
     try {
@@ -65,16 +81,29 @@ export async function GET() {
     }
   }
 
+  const shopEntitled = internalDemo || shopAccess.data === true;
+  const fieldEntitled = internalDemo || fieldAccess.data === true;
+  const fleetEntitled = internalDemo || fleetAccess.data === true;
+
   const payload: WorkspaceEntitlementsPayload = {
     packageKey: internalDemo
       ? "complete_operations"
       : (shopRow.data?.subscription_package ?? null),
     internalDemo,
     workspaces: {
-      shop: { entitled: internalDemo || shopAccess.data === true },
-      field: { entitled: internalDemo || fieldAccess.data === true },
-      fleet: { entitled: internalDemo || fleetAccess.data === true },
-      equipment: { entitled: equipmentEntitled },
+      shop: { entitled: shopEntitled, accessible: shopEntitled },
+      field: {
+        entitled: fieldEntitled,
+        accessible: internalDemo || (fieldEntitled && fieldActorAccess),
+      },
+      fleet: {
+        entitled: fleetEntitled,
+        accessible: internalDemo || (fleetEntitled && fleetActorAccess),
+      },
+      equipment: {
+        entitled: equipmentEntitled,
+        accessible: equipmentEntitled,
+      },
     },
   };
 
