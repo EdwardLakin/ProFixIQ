@@ -31362,6 +31362,18 @@ export type Database = {
         Args: { p_claim_token: string; p_error: string; p_event_id: string }
         Returns: boolean
       }
+      feedback_metadata: { Args: { p_row: Json }; Returns: Json }
+      feedback_notification: {
+        Args: {
+          p_action: string
+          p_id: string
+          p_key: string
+          p_kind: string
+          p_token?: string
+        }
+        Returns: Json
+      }
+      feedback_ready: { Args: never; Returns: boolean }
       field_actor_can_access_service_vehicle: {
         Args: { p_service_vehicle_id: string; p_shop_id: string }
         Returns: boolean
@@ -33812,6 +33824,7 @@ export type Database = {
         }
         Returns: Json
       }
+      submit_feedback: { Args: { p_submission: Json }; Returns: Json }
       submit_fleet_pretrip_report: {
         Args: {
           p_checklist: Json
@@ -33961,6 +33974,10 @@ export type Database = {
           p_tax_exempt: boolean
           p_tax_exemption_reference: string
         }
+        Returns: Json
+      }
+      update_feedback: {
+        Args: { p_expected_updated_at: string; p_id: string; p_patch: Json }
         Returns: Json
       }
       update_menu_item_with_parts_intake: {

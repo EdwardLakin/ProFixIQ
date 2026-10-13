@@ -13,25 +13,27 @@ describe("Ops System Health", () => {
     expect(page).toContain("<OpsSystemHealth snapshot={snapshot} />");
   });
 
-  it("uses the authenticated Ops Supabase path instead of a service-role health bypass", () => {
+  it("authorizes with the owner session and probes the feedback ledger through the privileged Ops path", () => {
     const server = source("features/ops/server/get-system-health.ts");
     expect(server).toContain("requireOpsOperatorPageAccess");
+    expect(server).toContain("createAdminSupabase()");
     expect(server).toContain('.from("agent_requests")');
     expect(server).toContain('{ count: "exact", head: true }');
     expect(server).not.toContain("SUPABASE_SERVICE_ROLE_KEY");
     expect(server).not.toContain("createClient(");
   });
 
-  it("treats Agent deployment generation as required health evidence", () => {
+  it("reports native application, database and feedback health without the retired Agent service", () => {
     const server = source("features/ops/server/get-system-health.ts");
-    expect(server).toContain('`${baseUrl}/health`');
-    expect(server).toContain("readAgentTeamReadiness");
-    expect(server).toContain('Pipeline readiness", value: pipelineReady ? "Passed" : "Failed"');
-    expect(server).toContain("Authenticated Agent API access was denied.");
-    expect(server).toContain("generationVerifiable");
+    expect(server).toContain('key: "application"');
+    expect(server).toContain('key: "database"');
+    expect(server).toContain('key: "feedback"');
     expect(server).toContain('state: "down"');
-    expect(server).toContain('state: "degraded"');
-    expect(server).toContain("Agent is reachable, but its deployment generation is not yet verifiable.");
+    expect(server).toContain('"degraded"');
+    expect(server).toContain("Privileged feedback ledger read");
+    expect(server).not.toContain("readAgentTeamReadiness");
+    expect(server).not.toContain("PROFIXIQ_AGENT_URL");
+    expect(server).not.toContain("AGENT_API_SECRET");
   });
 
   it("surfaces System Health in both desktop and mobile Ops navigation and makes it the canonical live-health destination", () => {
@@ -45,11 +47,11 @@ describe("Ops System Health", () => {
     expect(dashboard).not.toContain("Control plane health");
   });
 
-  it("explains the approval and database health semantics to the operator", () => {
+  it("explains the feedback safety boundary and database health semantics to the operator", () => {
     const component = source("features/ops/components/OpsSystemHealth.tsx");
-    expect(component).toContain("Mission approval safety");
+    expect(component).toContain("Feedback safety boundary");
     expect(component).toContain("Database check semantics");
-    expect(component).toContain("A configured integration is not treated as healthy");
+    expect(component).toContain("no autonomous GitHub branch, code, release, or approval path");
     expect(component).toContain("Refresh health");
   });
 });

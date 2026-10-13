@@ -982,6 +982,15 @@ jobs:
             -f tests/security/equipment-pm-plans.runtime.sql \
             2>&1 | tee equipment-pm-plans-runtime.log
 
+      - name: Execute Feedback Control authorization and recovery integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 -f tests/security/feedback-control.runtime.sql 2>&1 | tee feedback-control-runtime.log
+          bash tests/security/feedback-control-concurrency.runtime.sh 2>&1 | tee feedback-control-concurrency-runtime.log
+
       - name: Upload replay diagnostics
         if: always()
         uses: actions/upload-artifact@v4
@@ -1042,6 +1051,8 @@ jobs:
             equipment-measurements-runtime.log
             equipment-wear-limits-runtime.log
             equipment-pm-plans-runtime.log
+            feedback-control-runtime.log
+            feedback-control-concurrency-runtime.log
             supabase-generated-types.diff
             generated-supabase-types.ts
             supabase/config.toml

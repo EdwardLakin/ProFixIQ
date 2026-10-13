@@ -126,6 +126,10 @@ jobs:
             2>&1 | tee operational-observability-runtime.log
       - name: Generate Supabase types from replayed schema
         shell: bash
+        env:
+          # Use Supabase's identical-version mirror to avoid ECR's shared
+          # anonymous pull quota; the CLI still selects its pinned meta image.
+          SUPABASE_INTERNAL_IMAGE_REGISTRY: ghcr.io
         run: |
           set -euo pipefail
           supabase gen types typescript --local --schema public \

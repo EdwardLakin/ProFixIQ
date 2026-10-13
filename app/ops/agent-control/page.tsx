@@ -1,8 +1,8 @@
-import AgentConsolePage from "@/features/agent/agent-console/app/agent/page";
+import { redirect } from "next/navigation";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default function OpsAgentControlPage() {
-  return <AgentConsolePage />;
+export default function RetiredAgentControlPage() {
+  redirect("/ops/feedback");
 }

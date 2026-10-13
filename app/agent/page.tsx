@@ -3,6 +3,6 @@ import { redirect } from "next/navigation";
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-export default function AgentPage() {
-  redirect("/ops/agent-control");
+export default function RetiredAgentPage() {
+  redirect("/ops/feedback");
 }

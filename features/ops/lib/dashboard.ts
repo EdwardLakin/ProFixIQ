@@ -1,94 +1,103 @@
 import type { Json } from "@shared/types/types/supabase";
+import {
+  feedbackStatusFromLegacy,
+  readFeedbackMetadata,
+  type FeedbackStatus,
+} from "@/features/feedback/lib/feedback";
 
-export type OpsAgentRequestStatus =
-  | "submitted"
-  | "in_progress"
-  | "awaiting_approval"
-  | "approved"
-  | "rejected"
-  | "failed"
-  | "merged";
-
-export type OpsAgentRequestSummary = {
+export type OpsFeedbackSummary = {
   id: string;
   description: string;
   intent: string | null;
-  status: OpsAgentRequestStatus;
+  status: string;
   normalized_json: Json | null;
-  github_pr_number: number | null;
-  github_pr_url: string | null;
+  reporter_id: string | null;
+  shop_id: string | null;
   created_at: string;
   updated_at: string;
+  submissionCount?: number;
 };
 
 export type OpsDashboardMetrics = {
-  total: number;
-  open: number;
-  awaitingApproval: number;
+  totalSubmissions: number;
+  newSubmissions: number;
+  needsAttention: number;
   inProgress: number;
-  blocked: number;
-  failed: number;
+  completed: number;
 };
 
-function agentTeamState(
-  value: Json | null,
-): Record<string, Json | undefined> | null {
-  if (!value || Array.isArray(value) || typeof value !== "object") return null;
-  const team = value.agentTeam;
-  if (!team || Array.isArray(team) || typeof team !== "object") return null;
-  return team;
+export function opsFeedbackStatus(item: OpsFeedbackSummary): FeedbackStatus {
+  return (
+    readFeedbackMetadata(item.normalized_json)?.status ??
+    feedbackStatusFromLegacy(item.status)
+  );
 }
 
-export function isOpsRequestBlocked(request: OpsAgentRequestSummary): boolean {
-  return agentTeamState(request.normalized_json)?.caseStatus === "blocked";
+export function opsFeedbackNeedsAttention(item: OpsFeedbackSummary): boolean {
+  const metadata = readFeedbackMetadata(item.normalized_json);
+  return metadata?.needsAttention === true || item.status === "failed";
+}
+
+export function opsFeedbackTitle(item: OpsFeedbackSummary): string {
+  return readFeedbackMetadata(item.normalized_json)?.title ?? item.description;
+}
+
+export function opsFeedbackSurface(item: OpsFeedbackSummary): string {
+  return readFeedbackMetadata(item.normalized_json)?.surface ?? "historical";
+}
+
+export function opsFeedbackKind(item: OpsFeedbackSummary): string {
+  const metadata = readFeedbackMetadata(item.normalized_json);
+  if (metadata?.kind) return metadata.kind;
+  return item.intent === "bug_report" ? "bug" : "feature_request";
 }
 
 export function buildOpsDashboardMetrics(
-  requests: OpsAgentRequestSummary[],
+  items: OpsFeedbackSummary[],
 ): OpsDashboardMetrics {
   return {
-    total: requests.length,
-    open: requests.filter(
-      (request) => !["merged", "rejected"].includes(request.status),
+    totalSubmissions: items.reduce(
+      (total, item) => total + (item.submissionCount ?? 1),
+      0,
+    ),
+    newSubmissions: items
+      .filter((item) => opsFeedbackStatus(item) === "new")
+      .reduce((total, item) => total + (item.submissionCount ?? 1), 0),
+    needsAttention: items.filter(
+      (item) =>
+        opsFeedbackNeedsAttention(item) &&
+        !["completed", "declined"].includes(opsFeedbackStatus(item)),
     ).length,
-    awaitingApproval: requests.filter(
-      (request) => request.status === "awaiting_approval",
+    inProgress: items.filter(
+      (item) => opsFeedbackStatus(item) === "in_progress",
     ).length,
-    inProgress: requests.filter((request) => request.status === "in_progress")
+    completed: items.filter((item) => opsFeedbackStatus(item) === "completed")
       .length,
-    blocked: requests.filter(isOpsRequestBlocked).length,
-    failed: requests.filter((request) => request.status === "failed").length,
   };
 }
 
-export function opsRequestPriority(request: OpsAgentRequestSummary): number {
-  if (request.status === "awaiting_approval") return 0;
-  if (isOpsRequestBlocked(request)) return 1;
-  if (request.status === "failed") return 2;
-  if (request.status === "submitted") return 3;
-  if (request.status === "in_progress") return 4;
-  return 5;
-}
-
-export function attentionRequests(
-  requests: OpsAgentRequestSummary[],
-  limit = 5,
-): OpsAgentRequestSummary[] {
-  return requests
+export function attentionFeedback(
+  items: OpsFeedbackSummary[],
+  limit = 6,
+): OpsFeedbackSummary[] {
+  return items
+    .filter((item) => {
+      const status = opsFeedbackStatus(item);
+      return (
+        opsFeedbackNeedsAttention(item) ||
+        status === "new" ||
+        status === "reviewing"
+      );
+    })
     .filter(
-      (request) =>
-        request.status === "awaiting_approval" ||
-        request.status === "failed" ||
-        request.status === "submitted" ||
-        isOpsRequestBlocked(request),
+      (item) => !["completed", "declined"].includes(opsFeedbackStatus(item)),
     )
     .sort((left, right) => {
-      const priority = opsRequestPriority(left) - opsRequestPriority(right);
-      if (priority !== 0) return priority;
-      return (
-        new Date(right.updated_at).getTime() -
-        new Date(left.updated_at).getTime()
-      );
+      const attentionDelta =
+        Number(opsFeedbackNeedsAttention(right)) -
+        Number(opsFeedbackNeedsAttention(left));
+      if (attentionDelta !== 0) return attentionDelta;
+      return Date.parse(right.updated_at) - Date.parse(left.updated_at);
     })
     .slice(0, limit);
 }
