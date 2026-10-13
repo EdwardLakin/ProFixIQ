@@ -183,7 +183,13 @@ function RecordForm({
         </label>
         <label className="grid gap-1">
           <span className={LABEL}>Sample date (defaults to today)</span>
-          <input type="date" className={INPUT} value={sampledAt} onChange={(event) => setSampledAt(event.target.value)} />
+          <input
+            type="date"
+            className={INPUT}
+            max={new Date().toISOString().slice(0, 10)}
+            value={sampledAt}
+            onChange={(event) => setSampledAt(event.target.value)}
+          />
         </label>
         <label className="grid gap-1">
           <span className={LABEL}>Hour meter at sample</span>
@@ -244,8 +250,13 @@ function RecordForm({
                 value={row.analyte}
                 onChange={(event) => {
                   const analyte = event.target.value;
-                  const known = COMMON_ANALYTES[normalizeAnalyte(analyte) ?? ""];
-                  update(index, { analyte, ...(known && !row.unit ? { unit: known.unit } : {}) });
+                  const previousKnown = COMMON_ANALYTES[normalizeAnalyte(row.analyte) ?? ""];
+                  const nextKnown = COMMON_ANALYTES[normalizeAnalyte(analyte) ?? ""];
+                  const unitWasAutomatic = !row.unit || Boolean(previousKnown && row.unit === previousKnown.unit);
+                  update(index, {
+                    analyte,
+                    ...(unitWasAutomatic ? { unit: nextKnown?.unit ?? "" } : {}),
+                  });
                 }}
               />
             </label>
