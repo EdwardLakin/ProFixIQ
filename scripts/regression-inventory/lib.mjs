@@ -394,6 +394,22 @@ function scriptKindFor(file) {
 }
 
 /**
+ * Embed aliases in the chain's literal select list: "alias:relation(...)"
+ * (optionally "alias:relation!hint(...)") maps alias -> relation.
+ */
+function embedAliases(chain) {
+  const aliases = new Map();
+  for (const entry of chain) {
+    if (entry.name !== "select" || !entry.args[0]) continue;
+    const select = literalText(entry.args[0]);
+    if (select === null) continue;
+    const pattern = /([A-Za-z_][A-Za-z0-9_]*)\s*:\s*([A-Za-z_][A-Za-z0-9_]*)(?:![A-Za-z0-9_]+)?\s*\(/g;
+    for (const match of select.matchAll(pattern)) aliases.set(match[1], match[2]);
+  }
+  return aliases;
+}
+
+/**
  * The embedded table named by a supabase-js { referencedTable } (or legacy
  * { foreignTable }) option, when it is a literal; otherwise null.
  */
@@ -797,7 +813,13 @@ function scanRelationCall({ call, sourceFile, schema, relativeFile }) {
       if (column !== null) {
         // order(column, { referencedTable }) orders an embedded resource: the
         // column belongs to that table, not to the queried one.
-        const referenced = referencedTableOption(entry.args[1]);
+        const referencedName =
+          entry.name === "order" ? referencedTableOption(entry.args[1]) : null;
+        // The option may name an embed alias ("latest:table(...)"): resolve it
+        // through the chain's select list to the physical relation.
+        const referenced = referencedName
+          ? embedAliases(chain).get(referencedName) ?? referencedName
+          : null;
         const referencedContract = referenced ? schema.relations.get(referenced) : null;
         if (referenced && !referencedContract) {
           findings.push(
