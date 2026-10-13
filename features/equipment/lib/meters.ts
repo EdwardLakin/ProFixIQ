@@ -49,7 +49,8 @@ export type MeterDistance = { value: number; unit: PmDistanceUnit };
 
 export type MeterReading = {
   id: string;
-  sequence: number;
+  /** Database insertion sequence; optional for synthetic/test readings. */
+  sequence?: number;
   readAt: string;
   engineHours: number | null;
   odometer: MeterDistance | null;
@@ -137,7 +138,7 @@ export function buildMeterTimeline(input: {
     entries.push({
       key: `reading:${reading.id}`,
       origin: "reading",
-      observationOrder: reading.sequence,
+      observationOrder: reading.sequence ?? timeOf(reading.createdAt),
       label: METER_READING_SOURCE_LABELS[reading.source] ?? "Reading",
       readingId: reading.id,
       href: null,
@@ -159,7 +160,7 @@ export function buildMeterTimeline(input: {
     entries.push({
       key: `pm:${completion.id}`,
       origin: "pm_completion",
-      observationOrder: 0,
+      observationOrder: timeOf(completion.createdAt),
       label: `PM: ${planName}`,
       readingId: null,
       href: completion.workOrder?.href ?? null,
@@ -179,7 +180,7 @@ export function buildMeterTimeline(input: {
     entries.push({
       key: `wo:${workOrder.id}`,
       origin: "work_order",
-      observationOrder: 0,
+      observationOrder: timeOf(workOrder.createdAt),
       label: workOrder.label,
       readingId: null,
       href: workOrder.href,
