@@ -16,6 +16,16 @@ import {
   type PmPlan,
   type PmPlanStatus,
 } from "@/features/equipment/lib/pm";
+import {
+  pmCompletionPrefill,
+  pmWorkOrderRecorded,
+  pmHasOpenWorkOrder,
+  type AssetPmWorkOrders,
+  type PmWorkOrderCandidate,
+  type PmCompletionPrefill,
+  type PmWorkOrderLink,
+} from "@/features/equipment/lib/pmWorkOrders";
+import { formatOperationalLabel } from "@/features/work-orders/lib/work-order-status";
 import { WORKSPACE_ITEM as ITEM } from "@/features/workspace/components";
 
 type LoadState =
@@ -247,12 +257,15 @@ function CompletionForm({
   status,
   meters,
   workOrders,
+  prefill = null,
   onDone,
   onCancel,
 }: {
   status: PmPlanStatus;
   meters: AssetPm["meters"];
   workOrders: AssetPm["workOrders"];
+  /** Facts from a completed linked work order, for the technician to confirm. */
+  prefill?: PmCompletionPrefill | null;
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -261,11 +274,15 @@ function CompletionForm({
     plan.distanceUnit && meters.distance
       ? Math.round(convertDistance(meters.distance.value, meters.distance.unit, plan.distanceUnit) * 10) / 10
       : null;
-  const [completedOn, setCompletedOn] = useState(meters.today);
-  const [assetHours, setAssetHours] = useState(text(meters.hours));
-  const [distance, setDistance] = useState(text(currentDistance));
+  const [completedOn, setCompletedOn] = useState(prefill?.completedOn ?? meters.today);
+  const [assetHours, setAssetHours] = useState(text(prefill?.assetHours ?? meters.hours));
+  const [distance, setDistance] = useState(text(prefill?.distance ?? currentDistance));
   const [cycles, setCycles] = useState(text(meters.cycles));
-  const [workOrderId, setWorkOrderId] = useState("");
+  const [workOrderId, setWorkOrderId] = useState(prefill?.workOrderId ?? "");
+  const workOrderOptions =
+    prefill && !workOrders.some((workOrder) => workOrder.id === prefill.workOrderId)
+      ? [{ id: prefill.workOrderId, label: prefill.workOrderLabel, status: "", createdAt: "" }, ...workOrders]
+      : workOrders;
   const [notes, setNotes] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -293,6 +310,12 @@ function CompletionForm({
       <p className="text-xs text-[color:var(--theme-text-muted)]">
         Record when this PM was done and the meters at that time; the next interval counts from them.
       </p>
+      {prefill ? (
+        <p className="text-xs text-amber-400">
+          Prefilled from {prefill.workOrderLabel}: the meters recorded on the work order and the date it was last
+          updated, where recorded; anything else is the asset&apos;s current reading. Check each value before recording.
+        </p>
+      ) : null}
       <div className="grid gap-2 sm:grid-cols-2">
         <label className={LABEL}>
           Completed on
@@ -320,9 +343,9 @@ function CompletionForm({
           Work order (optional)
           <select className={INPUT} value={workOrderId} onChange={(event) => setWorkOrderId(event.target.value)}>
             <option value="">None</option>
-            {workOrders.map((workOrder) => (
+            {workOrderOptions.map((workOrder) => (
               <option key={workOrder.id} value={workOrder.id}>
-                {workOrder.label} · {formatDay(workOrder.createdAt)}
+                {workOrder.createdAt ? `${workOrder.label} · ${formatDay(workOrder.createdAt)}` : workOrder.label}
               </option>
             ))}
           </select>
@@ -387,12 +410,159 @@ function completionLine(completion: PmCompletion): string {
   return [formatDay(completion.completedOn), ...meters].join(" · ");
 }
 
+function LinkWorkOrderForm({
+  plan,
+  workOrders,
+  onDone,
+  onCancel,
+}: {
+  plan: PmPlan;
+  workOrders: PmWorkOrderCandidate[];
+  onDone: () => void;
+  onCancel: () => void;
+}) {
+  const [workOrderId, setWorkOrderId] = useState(workOrders[0]?.id ?? "");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const operationKeyFor = useOperationKey();
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    const payload = { workOrderId };
+    const failure = await send(`/api/equipment/pm-plans/${plan.id}/work-orders`, "POST", payload, operationKeyFor(payload));
+    setBusy(false);
+    if (failure) return setError(failure);
+    onDone();
+  };
+  return (
+    <div className="mt-2 grid gap-2 rounded-lg border border-[color:var(--theme-border-soft)] p-3">
+      {workOrders.length ? (
+        <label className={LABEL}>
+          Work order doing this PM
+          <select className={INPUT} value={workOrderId} onChange={(event) => setWorkOrderId(event.target.value)}>
+            {workOrders.map((workOrder) => (
+              <option key={workOrder.id} value={workOrder.id}>
+                {workOrder.label} · {formatOperationalLabel(workOrder.status)} · {formatDay(workOrder.createdAt)}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : (
+        <p className="text-xs text-[color:var(--theme-text-muted)]">This asset has no other work orders you can see.</p>
+      )}
+      {error ? <p className="text-xs text-red-400">{error}</p> : null}
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className={PRIMARY_BUTTON} disabled={busy || !workOrderId} onClick={submit}>
+          {busy ? "Linking…" : "Link work order"}
+        </button>
+        <button type="button" className={BUTTON} disabled={busy} onClick={onCancel}>
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function UnlinkButton({ link, onDone }: { link: PmWorkOrderLink; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const operationKeyFor = useOperationKey();
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    const failure = await send(`/api/equipment/pm-work-orders/${link.id}/unlink`, "POST", {}, operationKeyFor({ linkId: link.id }));
+    setBusy(false);
+    if (failure) return setError(failure);
+    onDone();
+  };
+  return (
+    <>
+      <button type="button" className={BUTTON} disabled={busy} onClick={submit}>
+        {busy ? "Unlinking…" : "Unlink"}
+      </button>
+      {error ? <span className="text-red-400">{error}</span> : null}
+    </>
+  );
+}
+
+function workOrderName(link: PmWorkOrderLink) {
+  return link.workOrder.href ? (
+    <a className="underline" href={link.workOrder.href}>
+      {link.workOrder.label}
+    </a>
+  ) : (
+    link.workOrder.label
+  );
+}
+
+/**
+ * Work orders linked to a plan, facts only: open ones (so nobody starts a
+ * duplicate), and completed ones whose PM completion is not recorded yet.
+ */
+function PlanWorkOrders({
+  status,
+  links,
+  canRecord,
+  canUnlink,
+  onRecord,
+  reload,
+}: {
+  status: PmPlanStatus;
+  links: PmWorkOrderLink[];
+  canRecord: boolean;
+  canUnlink: boolean;
+  onRecord: (link: PmWorkOrderLink) => void;
+  reload: () => void;
+}) {
+  const shown = links.filter(
+    (link) => link.workOrder.state !== "completed" || !pmWorkOrderRecorded(status.history, link.workOrder.id),
+  );
+  if (!shown.length) return null;
+  const canRecordHere = canRecord && status.plan.active;
+  return (
+    <ul className="mt-2 grid gap-1 text-xs">
+      {shown.map((link) => (
+        <li key={link.id} className="flex flex-wrap items-center gap-2">
+          {link.workOrder.state === "completed" ? (
+            <>
+              <span className="text-emerald-400">
+                Work order {workOrderName(link)} completed{canRecordHere ? " — record PM completion" : ""}
+              </span>
+              {canRecordHere ? (
+                <button type="button" className={PRIMARY_BUTTON} onClick={() => onRecord(link)}>
+                  Record PM completion
+                </button>
+              ) : null}
+            </>
+          ) : link.workOrder.state === "open" ? (
+            <span>
+              PM work order {workOrderName(link)} open · {formatOperationalLabel(link.workOrder.status)}
+            </span>
+          ) : link.workOrder.state === "moved" ? (
+            <span className="text-amber-400">
+              Work order {workOrderName(link)} is now on another asset — this link no longer applies
+            </span>
+          ) : link.workOrder.state === "closed" ? (
+            <span className="text-[color:var(--theme-text-muted)]">
+              PM work order {workOrderName(link)} · {formatOperationalLabel(link.workOrder.status)}
+            </span>
+          ) : (
+            <span className="text-[color:var(--theme-text-muted)]">A PM work order you cannot open is linked</span>
+          )}
+          {canUnlink ? <UnlinkButton link={link} onDone={reload} /> : null}
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function PlanCard({
   status,
   data,
   canManage,
   canRecord,
   assetId,
+  pmWorkOrders,
   reload,
 }: {
   status: PmPlanStatus;
@@ -400,10 +570,19 @@ function PlanCard({
   canManage: boolean;
   canRecord: boolean;
   assetId: string;
+  pmWorkOrders: AssetPmWorkOrders | null;
   reload: () => void;
 }) {
   const { plan } = status;
-  const [mode, setMode] = useState<"view" | "edit" | "complete">("view");
+  const [mode, setMode] = useState<"view" | "edit" | "complete" | "link">("view");
+  const [prefill, setPrefill] = useState<PmCompletionPrefill | null>(null);
+  const links = (pmWorkOrders?.links ?? []).filter((link) => link.planId === plan.id);
+  const linkable = (pmWorkOrders?.candidates ?? []).filter(
+    (workOrder) => !links.some((link) => link.workOrder.id === workOrder.id),
+  );
+  // An open linked work order is already doing this PM; offering create would start a duplicate.
+  const openLinked = pmHasOpenWorkOrder(links);
+  const dueNow = status.state === "due" || status.state === "overdue";
   const [voiding, setVoiding] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
   const [showAllHistory, setShowAllHistory] = useState(false);
@@ -413,8 +592,13 @@ function PlanCard({
   const operationKeyFor = useOperationKey();
   const done = () => {
     setMode("view");
+    setPrefill(null);
     setVoiding(null);
     reload();
+  };
+  const recordFrom = (link: PmWorkOrderLink) => {
+    setPrefill(pmCompletionPrefill(link, plan));
+    setMode("complete");
   };
 
   const toggleActive = async () => {
@@ -466,12 +650,35 @@ function PlanCard({
         Last done: {status.lastCompletion ? completionLine(status.lastCompletion) : `not recorded (counting from ${formatDay(plan.startDate)})`}
       </p>
       {plan.instructions ? <p className="mt-1 whitespace-pre-line text-xs">{plan.instructions}</p> : null}
+      {mode === "view" ? (
+        <PlanWorkOrders
+          status={status}
+          links={links}
+          canRecord={canRecord}
+          canUnlink={pmWorkOrders?.canUnlink ?? false}
+          onRecord={recordFrom}
+          reload={reload}
+        />
+      ) : null}
       {error ? <p className="mt-2 text-xs text-red-400">{error}</p> : null}
       {mode === "view" ? (
         <div className="mt-2 flex flex-wrap gap-2">
           {canRecord && plan.active ? (
             <button type="button" className={PRIMARY_BUTTON} onClick={() => setMode("complete")}>
               Record completion
+            </button>
+          ) : null}
+          {plan.active && pmWorkOrders?.createWorkOrderHref && !openLinked ? (
+            <a
+              className={`${dueNow ? PRIMARY_BUTTON : BUTTON} inline-flex items-center`}
+              href={pmWorkOrders.createWorkOrderHref}
+            >
+              Create work order
+            </a>
+          ) : null}
+          {plan.active && pmWorkOrders?.canLink ? (
+            <button type="button" className={BUTTON} onClick={() => setMode("link")}>
+              Link work order
             </button>
           ) : null}
           {canManage ? (
@@ -495,7 +702,20 @@ function PlanCard({
         <PlanForm assetId={assetId} plan={plan} meters={data.meters} onDone={done} onCancel={() => setMode("view")} />
       ) : null}
       {mode === "complete" ? (
-        <CompletionForm status={status} meters={data.meters} workOrders={data.workOrders} onDone={done} onCancel={() => setMode("view")} />
+        <CompletionForm
+          status={status}
+          meters={data.meters}
+          workOrders={data.workOrders}
+          prefill={prefill}
+          onDone={done}
+          onCancel={() => {
+            setPrefill(null);
+            setMode("view");
+          }}
+        />
+      ) : null}
+      {mode === "link" ? (
+        <LinkWorkOrderForm plan={plan} workOrders={linkable} onDone={done} onCancel={() => setMode("view")} />
       ) : null}
       {showHistory ? (
         <ul className="mt-2 grid gap-2 border-t border-[color:var(--theme-border-soft)] pt-2 text-xs">
@@ -554,7 +774,21 @@ export default function EquipmentPmPanel({ assetId }: { assetId: string }) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [adding, setAdding] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const [pmWorkOrders, setPmWorkOrders] = useState<AssetPmWorkOrders | null>(null);
+  const [pmWorkOrdersError, setPmWorkOrdersError] = useState<string | null>(null);
   const router = useRouter();
+
+  // Linked work orders load separately; a failure here never hides the plans.
+  const loadWorkOrders = useCallback(async () => {
+    const response = await fetch(`/api/equipment/assets/${assetId}/pm/work-orders`, { credentials: "include" }).catch(() => null);
+    if (!response) return setPmWorkOrdersError("Linked work orders could not be loaded. Network error.");
+    if (!response.ok) return setPmWorkOrdersError(await readError(response));
+    const payload = (await response.json()) as { entitled: false } | ({ entitled: true } & AssetPmWorkOrders);
+    setPmWorkOrdersError(null);
+    if (!payload.entitled) return setPmWorkOrders(null);
+    const { entitled: _entitled, ...result } = payload;
+    setPmWorkOrders(result);
+  }, [assetId]);
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/equipment/assets/${assetId}/pm`, { credentials: "include" }).catch(() => null);
@@ -570,7 +804,8 @@ export default function EquipmentPmPanel({ assetId }: { assetId: string }) {
 
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadWorkOrders();
+  }, [load, loadWorkOrders]);
 
   if (state.kind === "hidden") return null;
   if (state.kind === "loading") {
@@ -599,6 +834,7 @@ export default function EquipmentPmPanel({ assetId }: { assetId: string }) {
   // (Asset Health's combined evaluation) so the page never disagrees with itself.
   const reload = () => {
     void load();
+    void loadWorkOrders();
     router.refresh();
   };
 
@@ -622,6 +858,14 @@ export default function EquipmentPmPanel({ assetId }: { assetId: string }) {
         {data.meters.updatedAt ? ` (updated ${formatDay(data.meters.updatedAt)})` : ""}. Due when{" "}
         {Math.round(PM_DUE_WINDOW * 100)} % of an interval remains; overdue once it is passed.
       </p>
+      {pmWorkOrdersError ? (
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-red-400">{pmWorkOrdersError}</span>
+          <button type="button" className={BUTTON} onClick={() => void loadWorkOrders()}>
+            Retry
+          </button>
+        </div>
+      ) : null}
       {adding ? (
         <PlanForm
           assetId={assetId}
@@ -637,7 +881,7 @@ export default function EquipmentPmPanel({ assetId }: { assetId: string }) {
       {active.length ? (
         <ul className="mt-3 grid gap-2">
           {active.map((status) => (
-            <PlanCard key={status.plan.id} status={status} data={data} canManage={canManage} canRecord={canRecord} assetId={assetId} reload={reload} />
+            <PlanCard key={status.plan.id} status={status} data={data} canManage={canManage} canRecord={canRecord} assetId={assetId} pmWorkOrders={pmWorkOrders} reload={reload} />
           ))}
         </ul>
       ) : (
@@ -653,7 +897,7 @@ export default function EquipmentPmPanel({ assetId }: { assetId: string }) {
           {showArchived ? (
             <ul className="mt-2 grid gap-2">
               {archived.map((status) => (
-                <PlanCard key={status.plan.id} status={status} data={data} canManage={canManage} canRecord={canRecord} assetId={assetId} reload={reload} />
+                <PlanCard key={status.plan.id} status={status} data={data} canManage={canManage} canRecord={canRecord} assetId={assetId} pmWorkOrders={pmWorkOrders} reload={reload} />
               ))}
             </ul>
           ) : null}

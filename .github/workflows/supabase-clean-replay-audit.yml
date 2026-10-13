@@ -1010,6 +1010,20 @@ jobs:
             -f tests/security/equipment-meter-readings.runtime.sql \
             2>&1 | tee equipment-meter-readings-runtime.log
 
+      - name: Execute Equipment PM work orders tenant integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/equipment-pm-work-orders.runtime.sql \
+            2>&1 | tee equipment-pm-work-orders-runtime.log
+
       - name: Execute Feedback Control authorization and recovery integration
         shell: bash
         env:
@@ -1081,6 +1095,7 @@ jobs:
             equipment-pm-plans-runtime.log
             equipment-fluid-samples-runtime.log
             equipment-meter-readings-runtime.log
+            equipment-pm-work-orders-runtime.log
             feedback-control-runtime.log
             feedback-control-concurrency-runtime.log
             supabase-generated-types.diff
