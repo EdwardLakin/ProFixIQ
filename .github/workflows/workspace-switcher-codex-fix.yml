@@ -1,0 +1,138 @@
+name: Workspace Switcher Codex Fix
+
+on:
+  push:
+    branches:
+      - feature/workspace-product-switcher
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feature/workspace-product-switcher
+          fetch-depth: 0
+
+      - name: Apply Codex fixes directly
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          # 1) Host-aware destinations for Fleet-host exits.
+          path = Path('features/shared/lib/workspaceProducts.ts')
+          text = path.read_text()
+          if 'const PRIMARY_SITE_ORIGIN' not in text:
+              text = text.replace(
+                  'export const WORKSPACE_PRODUCTS: readonly WorkspaceProductDefinition[] = [',
+                  'const PRIMARY_SITE_ORIGIN =\n  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\\/$/, "") ||\n  "https://profixiq.com";\n\nexport const WORKSPACE_PRODUCTS: readonly WorkspaceProductDefinition[] = ['
+              )
+          old = '''export function workspaceProductHref(
+  product: WorkspaceProductDefinition,
+  entitled: boolean,
+): string {
+  return entitled ? product.workspaceHref : product.marketingHref;
+}
+'''
+          new = '''export function workspaceProductHref(
+  product: WorkspaceProductDefinition,
+  entitled: boolean,
+  currentSurface?: WorkspaceSurface,
+): string {
+  const href = entitled ? product.workspaceHref : product.marketingHref;
+  if (currentSurface === "fleet" && product.surface !== "fleet") {
+    return `${PRIMARY_SITE_ORIGIN}${href}`;
+  }
+  return href;
+}
+'''
+          if old in text:
+              text = text.replace(old, new)
+          path.write_text(text)
+
+          # 2) Share the entitlement request across responsive switcher instances,
+          # and use host-aware hrefs even before verification completes.
+          path = Path('features/shared/components/WorkspaceProductSwitcher.tsx')
+          text = path.read_text()
+          marker = 'import { cn } from "@/features/shared/utils/cn";\n\n'
+          cache = '''import { cn } from "@/features/shared/utils/cn";\n\nlet entitlementRequest: Promise<WorkspaceEntitlementsPayload | null> | null = null;\n\nfunction loadWorkspaceEntitlements(): Promise<WorkspaceEntitlementsPayload | null> {\n  if (!entitlementRequest) {\n    entitlementRequest = fetch("/api/workspaces/entitlements", {\n      credentials: "include",\n      cache: "no-store",\n    })\n      .then(async (response) => {\n        if (!response.ok) return null;\n        return (await response.json()) as WorkspaceEntitlementsPayload;\n      })\n      .catch(() => null);\n  }\n  return entitlementRequest;\n}\n\n'''
+          if 'let entitlementRequest:' not in text:
+              text = text.replace(marker, cache)
+
+          start = text.index('  useEffect(() => {')
+          end = text.index('  }, []);', start) + len('  }, []);')
+          replacement = '''  useEffect(() => {\n    let active = true;\n    void loadWorkspaceEntitlements().then((payload) => {\n      if (active && payload) setEntitlements(payload);\n    });\n    return () => {\n      active = false;\n    };\n  }, []);'''
+          text = text[:start] + replacement + text[end:]
+
+          old_href = '''        const href = active
+          ? product.workspaceHref
+          : verified
+            ? workspaceProductHref(product, entitled)
+            : product.marketingHref;'''
+          new_href = '''        const href = active
+          ? workspaceProductHref(product, true, surface)
+          : workspaceProductHref(product, verified ? entitled : false, surface);'''
+          text = text.replace(old_href, new_href)
+          path.write_text(text)
+
+          # 3) Field: desktop switcher belongs in the persistent sidebar, not the
+          # header that disappears at the lg layout. Keep compact mobile rendering.
+          path = Path('features/mobile/service/FieldWorkspaceShell.tsx')
+          text = path.read_text()
+          header_switcher = '        <WorkspaceProductSwitcher surface="field" className="hidden md:flex" />\n'
+          text = text.replace(header_switcher, '')
+          brand_anchor = '''        </Link>\n\n        <Link href="/mobile/service/new" className="field-workspace-new-call">'''
+          sidebar_switcher = '''        </Link>\n\n        <div className="px-3 pb-2">\n          <WorkspaceProductSwitcher surface="field" />\n        </div>\n\n        <Link href="/mobile/service/new" className="field-workspace-new-call">'''
+          if sidebar_switcher not in text:
+              if brand_anchor not in text:
+                  raise SystemExit('Field sidebar brand anchor changed')
+              text = text.replace(brand_anchor, sidebar_switcher, 1)
+          path.write_text(text)
+
+          # 4) Shop/Equipment: provide the same cross-product navigation on mobile.
+          path = Path('features/shared/components/AppShell.tsx')
+          text = path.read_text()
+          main_anchor = '''          <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden px-3 pb-14 pt-16 md:px-4 md:pb-6 md:pt-16 lg:px-6 lg:pt-[4.25rem] xl:px-8 2xl:px-10">\n            <TabsBridge tabsSubdued={chatOpen}>'''
+          mobile = '''          <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden px-3 pb-14 pt-16 md:px-4 md:pb-6 md:pt-16 lg:px-6 lg:pt-[4.25rem] xl:px-8 2xl:px-10">\n            <div className="mb-2 md:hidden">\n              <WorkspaceProductSwitcher\n                surface={pathname.startsWith("/equipment") ? "equipment" : "shop"}\n              />\n            </div>\n            <TabsBridge tabsSubdued={chatOpen}>'''
+          if 'className="mb-2 md:hidden"' not in text:
+              if main_anchor not in text:
+                  raise SystemExit('AppShell main anchor changed')
+              text = text.replace(main_anchor, mobile, 1)
+          path.write_text(text)
+
+          # 5) Acquisition pages must stay public so locked products can upsell
+          # rather than being intercepted by product authorization middleware.
+          path = Path('middleware.ts')
+          text = path.read_text()
+          public_anchor = '''    pathname === "/mobile-truck-repair-software" ||\n    pathname === "/service-truck-work-order-software" ||'''
+          public_routes = '''    pathname === "/mobile-truck-repair-software" ||\n    pathname === "/repair-shop-management-software" ||\n    pathname === "/field-service" ||\n    pathname === "/fleet-maintenance" ||\n    pathname === "/equipment-maintenance-software" ||\n    pathname === "/service-truck-work-order-software" ||'''
+          if 'pathname === "/repair-shop-management-software"' not in text:
+              if public_anchor not in text:
+                  raise SystemExit('Middleware public route anchor changed')
+              text = text.replace(public_anchor, public_routes, 1)
+          path.write_text(text)
+
+          # 6) Strengthen contract coverage for review regressions.
+          path = Path('tests/workspace-product-switcher.test.ts')
+          text = path.read_text()
+          if 'fleet host exits use the primary site origin' not in text:
+              text += '''\n\ndescribe("workspace switcher review regressions", () => {\n  it("keeps acquisition destinations public", () => {\n    const middleware = source("middleware.ts");\n    for (const route of [\n      "/repair-shop-management-software",\n      "/field-service",\n      "/fleet-maintenance",\n      "/equipment-maintenance-software",\n    ]) {\n      expect(middleware).toContain(`pathname === "${route}"`);\n    }\n  });\n\n  it("fleet host exits use the primary site origin", () => {\n    const products = source("features/shared/lib/workspaceProducts.ts");\n    expect(products).toContain("NEXT_PUBLIC_SITE_URL");\n    expect(products).toContain('currentSurface === "fleet"');\n    expect(products).toContain('product.surface !== "fleet"');\n  });\n\n  it("shares entitlement loading across responsive switchers", () => {\n    const switcher = source("features/shared/components/WorkspaceProductSwitcher.tsx");\n    expect(switcher).toContain("let entitlementRequest");\n    expect(switcher).toContain("loadWorkspaceEntitlements");\n  });\n\n  it("renders Field desktop switching from the persistent sidebar", () => {\n    const field = source("features/mobile/service/FieldWorkspaceShell.tsx");\n    const brand = field.indexOf('className="field-workspace-brand"');\n    const switcher = field.indexOf('<WorkspaceProductSwitcher surface="field" />', brand);\n    const header = field.indexOf('<header className="field-workspace-header">');\n    expect(brand).toBeGreaterThanOrEqual(0);\n    expect(switcher).toBeGreaterThan(brand);\n    expect(switcher).toBeLessThan(header);\n  });\n\n  it("renders Shop and Equipment switching on mobile", () => {\n    const shell = source("features/shared/components/AppShell.tsx");\n    expect(shell).toContain('className="mb-2 md:hidden"');\n  });\n});\n'''
+              path.write_text(text)
+          PY
+
+      - name: Remove temporary repair machinery and commit fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/workspace-switcher-codex-fix.yml
+          git add -A
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Fix workspace switcher Codex findings'
+          git push origin HEAD:feature/workspace-product-switcher
