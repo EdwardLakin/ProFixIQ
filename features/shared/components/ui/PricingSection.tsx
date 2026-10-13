@@ -114,6 +114,11 @@ export default function PricingSection({
     equipmentAddon = false,
   ) => {
     if (busyKey) return;
+    if (equipmentAddon && window.location.pathname !== "/compare-plans") {
+      window.location.href = "/compare-plans#equipment";
+      return;
+    }
+
     const checkoutKey = equipmentAddon ? "complete_operations+equipment" : packageKey;
     setBusyKey(checkoutKey);
     const checkoutAttemptId = crypto.randomUUID();
