@@ -38,6 +38,16 @@ describe("workspace product switcher", () => {
     expect(route).toContain("internalDemo || fleetAccess.data === true");
   });
 
+  it("checks actor-specific Field and Fleet access separately from package entitlement", () => {
+    const route = source("app/api/workspaces/entitlements/route.ts");
+    expect(route).toContain("getMobileFieldServiceAccess(access)");
+    expect(route).toContain("resolveFleetActorContext(access.supabase");
+    expect(route).toContain("result.canAccessFieldService");
+    expect(route).toContain("result.capabilities.canAccessFleetIntake");
+    expect(route).toContain("accessible: internalDemo || (fieldEntitled && fieldActorAccess)");
+    expect(route).toContain("accessible: internalDemo || (fleetEntitled && fleetActorAccess)");
+  });
+
   it("renders the shared switcher from Shop/Equipment, Field and Fleet shells", () => {
     const appShell = source("features/shared/components/AppShell.tsx");
     const fieldShell = source("features/mobile/service/FieldWorkspaceShell.tsx");
@@ -49,7 +59,6 @@ describe("workspace product switcher", () => {
     expect(fleetShell).toContain('<WorkspaceProductSwitcher surface="fleet"');
   });
 });
-
 
 describe("workspace switcher review regressions", () => {
   it("keeps acquisition destinations public", () => {
@@ -65,15 +74,25 @@ describe("workspace switcher review regressions", () => {
     expect(products).toContain('currentSurface === "fleet"');
   });
 
-  it("shares entitlement loading across responsive switchers", () => {
+  it("shares only in-flight entitlement loading and revalidates on auth changes", () => {
     const switcher = source("features/shared/components/WorkspaceProductSwitcher.tsx");
+    expect(switcher).toContain("let entitlementIdentity");
     expect(switcher).toContain("let entitlementRequest");
-    expect(switcher).toContain("loadWorkspaceEntitlements");
+    expect(switcher).toContain("loadWorkspaceEntitlements(identity)");
+    expect(switcher).toContain("auth.onAuthStateChange");
+    expect(switcher).toContain("entitlementRequest = null");
+    expect(switcher).toContain("isWorkspaceEntitlementsPayload");
   });
 
   it("keeps Field switching in the persistent desktop sidebar", () => {
     const field = source("features/mobile/service/FieldWorkspaceShell.tsx");
     expect(field).toContain('className="px-3 pb-2"');
+  });
+
+  it("keeps the Field strip visible through the tablet breakpoint", () => {
+    const field = source("features/mobile/service/FieldWorkspaceShell.tsx");
+    expect(field).toContain("px-3 py-2 lg:hidden");
+    expect(field).not.toContain("px-3 py-2 md:hidden");
   });
 
   it("renders Shop and Equipment switching on mobile", () => {
