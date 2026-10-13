@@ -30,7 +30,7 @@ describe("repair shop management acquisition page", () => {
     expect(page).toContain("CoreSearchLandingPage");
   });
 
-  it("targets heavy-duty intent first while retaining broader repair-shop coverage", () => {
+  it("leads with heavy-duty intent while retaining generic and automotive search coverage", () => {
     const content = source(
       "features/marketing/repairShopManagementPage.tsx",
     ).toLowerCase();
@@ -49,15 +49,19 @@ describe("repair shop management acquisition page", () => {
     ]) {
       expect(content).toContain(phrase);
     }
-    expect(content).toContain("heavy-duty-first repair workflows");
-    expect(content).toContain("25 years of hands-on shop experience");
+    expect(content).toContain("heavy-duty-first");
+    expect(content).toContain(
+      "25 years of hands-on shop experience",
+    );
   });
 
-  it("links the homepage and shared acquisition-page footer to the category page", () => {
+  it("links the homepage and shared acquisition-page footer to category pages", () => {
     const footer = source("features/shared/components/ui/Footer.tsx");
 
     expect(footer).toContain("Repair Shop Management Software");
     expect(footer).toContain('href: "/repair-shop-management-software"');
+    expect(footer).toContain("Equipment Maintenance Software");
+    expect(footer).toContain('href: "/equipment-maintenance-software"');
   });
 
   it("keeps the page focused on actual supported workflows", () => {
