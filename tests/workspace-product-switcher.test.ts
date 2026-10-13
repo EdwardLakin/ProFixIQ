@@ -49,3 +49,35 @@ describe("workspace product switcher", () => {
     expect(fleetShell).toContain('<WorkspaceProductSwitcher surface="fleet"');
   });
 });
+
+
+describe("workspace switcher review regressions", () => {
+  it("keeps acquisition destinations public", () => {
+    const middleware = source("middleware.ts");
+    for (const route of ["/repair-shop-management-software", "/field-service", "/fleet-maintenance", "/equipment-maintenance-software"]) {
+      expect(middleware).toContain(`pathname === "${route}"`);
+    }
+  });
+
+  it("uses the primary site when leaving the Fleet host", () => {
+    const products = source("features/shared/lib/workspaceProducts.ts");
+    expect(products).toContain("NEXT_PUBLIC_SITE_URL");
+    expect(products).toContain('currentSurface === "fleet"');
+  });
+
+  it("shares entitlement loading across responsive switchers", () => {
+    const switcher = source("features/shared/components/WorkspaceProductSwitcher.tsx");
+    expect(switcher).toContain("let entitlementRequest");
+    expect(switcher).toContain("loadWorkspaceEntitlements");
+  });
+
+  it("keeps Field switching in the persistent desktop sidebar", () => {
+    const field = source("features/mobile/service/FieldWorkspaceShell.tsx");
+    expect(field).toContain('className="px-3 pb-2"');
+  });
+
+  it("renders Shop and Equipment switching on mobile", () => {
+    const shell = source("features/shared/components/AppShell.tsx");
+    expect(shell).toContain('className="mb-2 md:hidden"');
+  });
+});
