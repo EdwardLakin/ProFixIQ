@@ -5311,6 +5311,137 @@ export type Database = {
           },
         ]
       }
+      equipment_meter_operations: {
+        Row: {
+          created_at: string
+          kind: string
+          operation_key: string
+          request_hash: string
+          result: Json | null
+          shop_id: string
+          vehicle_id: string
+        }
+        Insert: {
+          created_at?: string
+          kind: string
+          operation_key: string
+          request_hash: string
+          result?: Json | null
+          shop_id: string
+          vehicle_id: string
+        }
+        Update: {
+          created_at?: string
+          kind?: string
+          operation_key?: string
+          request_hash?: string
+          result?: Json | null
+          shop_id?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_meter_operations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_meter_operations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_meter_operations_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipment_meter_readings: {
+        Row: {
+          created_at: string
+          cycles: number | null
+          engine_hours: number | null
+          id: string
+          notes: string | null
+          odometer: number | null
+          odometer_unit: string | null
+          read_at: string
+          recorded_by: string | null
+          sequence: number
+          shop_id: string
+          source: string
+          vehicle_id: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          cycles?: number | null
+          engine_hours?: number | null
+          id?: string
+          notes?: string | null
+          odometer?: number | null
+          odometer_unit?: string | null
+          read_at: string
+          recorded_by?: string | null
+          sequence?: never
+          shop_id: string
+          source?: string
+          vehicle_id: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          cycles?: number | null
+          engine_hours?: number | null
+          id?: string
+          notes?: string | null
+          odometer?: number | null
+          odometer_unit?: string | null
+          read_at?: string
+          recorded_by?: string | null
+          sequence?: never
+          shop_id?: string
+          source?: string
+          vehicle_id?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_meter_readings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_meter_readings_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_meter_readings_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       equipment_pm_completions: {
         Row: {
           asset_hours: number | null
@@ -5626,6 +5757,158 @@ export type Database = {
             columns: ["vehicle_id"]
             isOneToOne: false
             referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipment_pm_work_order_operations: {
+        Row: {
+          created_at: string
+          kind: string
+          operation_key: string
+          request_hash: string
+          result: Json | null
+          shop_id: string
+          vehicle_id: string
+        }
+        Insert: {
+          created_at?: string
+          kind: string
+          operation_key: string
+          request_hash: string
+          result?: Json | null
+          shop_id: string
+          vehicle_id: string
+        }
+        Update: {
+          created_at?: string
+          kind?: string
+          operation_key?: string
+          request_hash?: string
+          result?: Json | null
+          shop_id?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_pm_work_order_operations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_pm_work_order_operations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_pm_work_order_operations_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipment_pm_work_orders: {
+        Row: {
+          id: string
+          linked_at: string
+          linked_by: string | null
+          plan_id: string
+          shop_id: string
+          unlinked_at: string | null
+          unlinked_by: string | null
+          vehicle_id: string
+          work_order_id: string
+        }
+        Insert: {
+          id?: string
+          linked_at?: string
+          linked_by?: string | null
+          plan_id: string
+          shop_id: string
+          unlinked_at?: string | null
+          unlinked_by?: string | null
+          vehicle_id: string
+          work_order_id: string
+        }
+        Update: {
+          id?: string
+          linked_at?: string
+          linked_by?: string | null
+          plan_id?: string
+          shop_id?: string
+          unlinked_at?: string | null
+          unlinked_by?: string | null
+          vehicle_id?: string
+          work_order_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_pm_work_orders_plan_id_fkey"
+            columns: ["plan_id"]
+            isOneToOne: false
+            referencedRelation: "equipment_pm_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_pm_work_orders_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_pm_work_orders_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_pm_work_orders_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_pm_work_orders_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_portal_invoices"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "equipment_pm_work_orders_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_fleet"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "equipment_pm_work_orders_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_portal"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "equipment_pm_work_orders_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "v_work_order_board_cards_shop"
+            referencedColumns: ["work_order_id"]
+          },
+          {
+            foreignKeyName: "equipment_pm_work_orders_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
             referencedColumns: ["id"]
           },
         ]
@@ -31522,6 +31805,26 @@ export type Database = {
         }
         Returns: Json
       }
+      equipment_meter_reading_record: {
+        Args: {
+          p_actor_user_id: string
+          p_operation_key: string
+          p_reading: Json
+          p_shop_id: string
+          p_vehicle_id: string
+        }
+        Returns: Json
+      }
+      equipment_meter_reading_void: {
+        Args: {
+          p_actor_user_id: string
+          p_operation_key: string
+          p_reading_id: string
+          p_reason: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
       equipment_pm_complete: {
         Args: {
           p_actor_user_id: string
@@ -31551,6 +31854,25 @@ export type Database = {
           p_plan_id: string
           p_shop_id: string
           p_vehicle_id: string
+        }
+        Returns: Json
+      }
+      equipment_pm_work_order_link: {
+        Args: {
+          p_actor_user_id: string
+          p_operation_key: string
+          p_plan_id: string
+          p_shop_id: string
+          p_work_order_id: string
+        }
+        Returns: Json
+      }
+      equipment_pm_work_order_unlink: {
+        Args: {
+          p_actor_user_id: string
+          p_link_id: string
+          p_operation_key: string
+          p_shop_id: string
         }
         Returns: Json
       }
