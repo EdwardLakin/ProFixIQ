@@ -9,6 +9,7 @@ import {
   pmCreateWorkOrderHref,
   pmWorkOrderState,
   type AssetPmWorkOrders,
+  type PmWorkOrderCandidate,
   type PmWorkOrderLink,
 } from "@/features/equipment/lib/pmWorkOrders";
 import { authorizeEquipmentAsset } from "@/features/equipment/server/equipmentAssetProfileService";
@@ -31,12 +32,14 @@ type LinkRow = Pick<
 
 const LINK_COLUMNS = "id,plan_id,work_order_id,linked_at";
 const WORK_ORDER_COLUMNS =
-  "id,custom_id,status,record_type,estimate_number,estimate_status,updated_at,odometer_km,vehicle_engine_hours";
+  "id,vehicle_id,custom_id,status,record_type,estimate_number,estimate_status,updated_at,odometer_km,vehicle_engine_hours";
+const CANDIDATE_COLUMNS = "id,custom_id,status,record_type,estimate_number,estimate_status,created_at";
 const PAGE = 1_000;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 type WorkOrderRow = {
   id: string;
+  vehicle_id: string | null;
   custom_id: string | null;
   status: string | null;
   record_type: string | null;
@@ -89,7 +92,17 @@ function rpcFailure(
   throw new EquipmentPmError(fallback, 500);
 }
 
-function mapLink(row: LinkRow, workOrder: WorkOrderRow | undefined): PmWorkOrderLink {
+type CandidateRow = {
+  id: string;
+  custom_id: string | null;
+  status: string | null;
+  record_type: string | null;
+  estimate_number: string | null;
+  estimate_status: string | null;
+  created_at: string | null;
+};
+
+function mapLink(row: LinkRow, workOrder: WorkOrderRow | undefined, assetId: string): PmWorkOrderLink {
   // Work orders the caller cannot see are shown without a number, link or facts.
   if (!workOrder) {
     return {
@@ -109,6 +122,25 @@ function mapLink(row: LinkRow, workOrder: WorkOrderRow | undefined): PmWorkOrder
     };
   }
   const searchRow = workOrder as unknown as SearchWorkOrderRow;
+  // The work order was moved to another asset after it was linked: show only
+  // that fact, so its status and meters are never offered for this plan.
+  if (workOrder.vehicle_id !== assetId) {
+    return {
+      id: row.id,
+      planId: row.plan_id,
+      linkedAt: row.linked_at,
+      workOrder: {
+        id: workOrder.id,
+        label: workOrderTitle(searchRow),
+        href: workOrderHref(searchRow),
+        status: workOrder.status,
+        state: "moved",
+        odometerKm: null,
+        engineHours: null,
+        updatedOn: null,
+      },
+    };
+  }
   return {
     id: row.id,
     planId: row.plan_id,
@@ -157,22 +189,43 @@ export async function loadAssetPmWorkOrders(input: {
 
   const workOrders = new Map<string, WorkOrderRow>();
   const ids = [...new Set(links.map((link) => link.work_order_id))];
-  if (ids.length) {
-    const { data, error: workOrderError } = await input.supabase
+  // Linked work orders are read by id (not by this asset) so one that was
+  // moved to another asset after linking is shown as moved instead of hidden.
+  const [linkedResult, candidateResult] = await Promise.all([
+    ids.length
+      ? input.supabase
+          .from("work_orders")
+          .select(WORK_ORDER_COLUMNS)
+          .eq("shop_id", input.shopId)
+          .in("id", ids)
+      : Promise.resolve({ data: [] as WorkOrderRow[], error: null }),
+    input.supabase
       .from("work_orders")
-      .select(WORK_ORDER_COLUMNS)
+      .select(CANDIDATE_COLUMNS)
       .eq("shop_id", input.shopId)
       .eq("vehicle_id", input.assetId)
-      .in("id", ids);
-    if (workOrderError) throw new EquipmentPmError("Unable to load work orders.", 500);
-    for (const row of (data ?? []) as WorkOrderRow[]) {
-      if (!isEstimateRecord(row)) workOrders.set(row.id, row);
-    }
+      .order("created_at", { ascending: false })
+      .limit(PAGE),
+  ]);
+  if (linkedResult.error || candidateResult.error) {
+    throw new EquipmentPmError("Unable to load work orders.", 500);
   }
+  for (const row of (linkedResult.data ?? []) as WorkOrderRow[]) {
+    if (!isEstimateRecord(row)) workOrders.set(row.id, row);
+  }
+  const candidates: PmWorkOrderCandidate[] = ((candidateResult.data ?? []) as CandidateRow[])
+    .filter((row) => !isEstimateRecord(row))
+    .map((row) => ({
+      id: row.id,
+      label: workOrderTitle(row as unknown as SearchWorkOrderRow),
+      status: row.status ?? "",
+      createdAt: row.created_at ?? "",
+    }));
 
   const canCreate = vehicleWorkspacePermissionsForRole(input.role).canCreateWorkOrder;
   return {
-    links: links.map((link) => mapLink(link, workOrders.get(link.work_order_id))),
+    links: links.map((link) => mapLink(link, workOrders.get(link.work_order_id), input.assetId)),
+    candidates,
     createWorkOrderHref: canCreate
       ? pmCreateWorkOrderHref({
           baseHref: createWorkOrderHandoffHref({ customerId: asset.customerId, vehicleId: asset.id }),

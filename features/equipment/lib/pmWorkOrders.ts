@@ -20,8 +20,12 @@ import {
  * automatically.
  */
 
-/** Where a linked work order is in its lifecycle (from the canonical statuses). */
-export type PmWorkOrderState = "open" | "completed" | "closed" | "unknown";
+/**
+ * Where a linked work order is in its lifecycle (from the canonical statuses).
+ * "moved" means the work order now belongs to a different asset (for example
+ * an import corrected its vehicle), so the link no longer applies to this plan.
+ */
+export type PmWorkOrderState = "open" | "completed" | "closed" | "moved" | "unknown";
 
 export type PmWorkOrderLink = {
   id: string;
@@ -43,8 +47,13 @@ export type PmWorkOrderLink = {
   };
 };
 
+/** A work order of this asset that can be linked to a plan. */
+export type PmWorkOrderCandidate = { id: string; label: string; status: string; createdAt: string };
+
 export type AssetPmWorkOrders = {
   links: PmWorkOrderLink[];
+  /** Every visible (non-estimate) work order of the asset, newest first. */
+  candidates: PmWorkOrderCandidate[];
   /** Existing work-order create page with the asset prefilled, when the caller may create one. */
   createWorkOrderHref: string | null;
   canLink: boolean;
@@ -120,4 +129,9 @@ export function pmCompletionPrefill(
     assetHours: workOrder.engineHours !== null ? Math.round(workOrder.engineHours) : null,
     distance,
   };
+}
+
+/** True while a current link points at an open work order (creating another would duplicate it). */
+export function pmHasOpenWorkOrder(links: PmWorkOrderLink[]): boolean {
+  return links.some((link) => link.workOrder.state === "open");
 }

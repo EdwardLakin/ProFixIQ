@@ -14,6 +14,7 @@ import type { PmCompletion, PmPlan } from "@/features/equipment/lib/pm";
 import {
   pmCompletionPrefill,
   pmCreateWorkOrderHref,
+  pmHasOpenWorkOrder,
   pmWorkOrderRecorded,
   pmWorkOrderState,
   type PmWorkOrderLink,
@@ -158,6 +159,12 @@ describe("PM work order facts", () => {
     });
   });
 
+  it("treats only an open linked work order as blocking a new one", () => {
+    expect(pmHasOpenWorkOrder([link({ state: "open" })])).toBe(true);
+    expect(pmHasOpenWorkOrder([link(), link({ state: "moved" }), link({ state: "closed" })])).toBe(false);
+    expect(pmHasOpenWorkOrder([])).toBe(false);
+  });
+
   it("knows when a completion already records the work order (voided ones do not count)", () => {
     const completion = { workOrder: { id: WO, label: "WO-1042", href: null }, voided: null } as PmCompletion;
     expect(pmWorkOrderRecorded([completion], WO)).toBe(true);
@@ -202,6 +209,43 @@ describe("PM work order service", () => {
     expect(result).toMatchObject({ canLink: true, canUnlink: true });
   });
 
+  it("shows a linked work order moved to another asset as moved, without its facts", async () => {
+    mocks.authorize.mockResolvedValue(identity);
+    const result = await loadAssetPmWorkOrders({
+      supabase: fakeClient({ work_orders: [workOrderRow({ vehicle_id: "another-asset" })] }) as never,
+      admin: fakeClient({ equipment_pm_work_orders: [linkRow({})] }) as never,
+      shopId: SHOP,
+      role: "manager",
+      assetId: ASSET,
+    });
+    expect(result?.links[0].workOrder).toMatchObject({
+      label: "WO-1042",
+      state: "moved",
+      odometerKm: null,
+      engineHours: null,
+      updatedOn: null,
+    });
+    expect(result?.candidates).toEqual([]);
+  });
+
+  it("offers every visible non-estimate work order of the asset as a link candidate", async () => {
+    mocks.authorize.mockResolvedValue(identity);
+    const many = Array.from({ length: 30 }, (_, index) =>
+      workOrderRow({ id: `wo-${index}`, custom_id: String(2000 + index), created_at: "2026-10-01T00:00:00Z" }),
+    );
+    const result = await loadAssetPmWorkOrders({
+      supabase: fakeClient({
+        work_orders: [...many, workOrderRow({ id: "est", record_type: "estimate", estimate_number: "E-1" })],
+      }) as never,
+      admin: fakeClient({}) as never,
+      shopId: SHOP,
+      role: "manager",
+      assetId: ASSET,
+    });
+    expect(result?.candidates).toHaveLength(30);
+    expect(result?.candidates[29]).toEqual({ id: "wo-29", label: "WO-2029", status: "completed", createdAt: "2026-10-01T00:00:00Z" });
+  });
+
   it("gives mechanics link-only access and no create handoff", async () => {
     mocks.authorize.mockResolvedValue(identity);
     const result = await loadAssetPmWorkOrders({
@@ -211,7 +255,7 @@ describe("PM work order service", () => {
       role: "mechanic",
       assetId: ASSET,
     });
-    expect(result).toEqual({ links: [], createWorkOrderHref: null, canLink: true, canUnlink: false });
+    expect(result).toEqual({ links: [], candidates: [], createWorkOrderHref: null, canLink: true, canUnlink: false });
   });
 
   it("offers no create handoff for an asset without a customer, and null for a hidden asset", async () => {

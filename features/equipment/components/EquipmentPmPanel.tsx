@@ -19,7 +19,9 @@ import {
 import {
   pmCompletionPrefill,
   pmWorkOrderRecorded,
+  pmHasOpenWorkOrder,
   type AssetPmWorkOrders,
+  type PmWorkOrderCandidate,
   type PmCompletionPrefill,
   type PmWorkOrderLink,
 } from "@/features/equipment/lib/pmWorkOrders";
@@ -415,7 +417,7 @@ function LinkWorkOrderForm({
   onCancel,
 }: {
   plan: PmPlan;
-  workOrders: AssetPm["workOrders"];
+  workOrders: PmWorkOrderCandidate[];
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -536,6 +538,10 @@ function PlanWorkOrders({
             <span>
               PM work order {workOrderName(link)} open · {formatOperationalLabel(link.workOrder.status)}
             </span>
+          ) : link.workOrder.state === "moved" ? (
+            <span className="text-amber-400">
+              Work order {workOrderName(link)} is now on another asset — this link no longer applies
+            </span>
           ) : link.workOrder.state === "closed" ? (
             <span className="text-[color:var(--theme-text-muted)]">
               PM work order {workOrderName(link)} · {formatOperationalLabel(link.workOrder.status)}
@@ -571,7 +577,11 @@ function PlanCard({
   const [mode, setMode] = useState<"view" | "edit" | "complete" | "link">("view");
   const [prefill, setPrefill] = useState<PmCompletionPrefill | null>(null);
   const links = (pmWorkOrders?.links ?? []).filter((link) => link.planId === plan.id);
-  const linkable = data.workOrders.filter((workOrder) => !links.some((link) => link.workOrder.id === workOrder.id));
+  const linkable = (pmWorkOrders?.candidates ?? []).filter(
+    (workOrder) => !links.some((link) => link.workOrder.id === workOrder.id),
+  );
+  // An open linked work order is already doing this PM; offering create would start a duplicate.
+  const openLinked = pmHasOpenWorkOrder(links);
   const dueNow = status.state === "due" || status.state === "overdue";
   const [voiding, setVoiding] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
@@ -658,7 +668,7 @@ function PlanCard({
               Record completion
             </button>
           ) : null}
-          {plan.active && pmWorkOrders?.createWorkOrderHref ? (
+          {plan.active && pmWorkOrders?.createWorkOrderHref && !openLinked ? (
             <a
               className={`${dueNow ? PRIMARY_BUTTON : BUTTON} inline-flex items-center`}
               href={pmWorkOrders.createWorkOrderHref}
@@ -848,7 +858,14 @@ export default function EquipmentPmPanel({ assetId }: { assetId: string }) {
         {data.meters.updatedAt ? ` (updated ${formatDay(data.meters.updatedAt)})` : ""}. Due when{" "}
         {Math.round(PM_DUE_WINDOW * 100)} % of an interval remains; overdue once it is passed.
       </p>
-      {pmWorkOrdersError ? <p className="mt-1 text-xs text-red-400">{pmWorkOrdersError}</p> : null}
+      {pmWorkOrdersError ? (
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+          <span className="text-red-400">{pmWorkOrdersError}</span>
+          <button type="button" className={BUTTON} onClick={() => void loadWorkOrders()}>
+            Retry
+          </button>
+        </div>
+      ) : null}
       {adding ? (
         <PlanForm
           assetId={assetId}
