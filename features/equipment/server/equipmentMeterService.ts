@@ -37,7 +37,6 @@ const WORK_ORDER_COLUMNS =
 const HISTORY_LIMIT = 200;
 const RATE_LIMIT = 5_000;
 const WORK_ORDER_LIMIT = 1_000;
-const DAY_MS = 86_400_000;
 
 export class EquipmentMeterError extends Error {
   constructor(
@@ -96,16 +95,12 @@ async function readRateReadings(
   admin: SupabaseClient<DB>,
   shopId: string,
   assetId: string,
-  now: number,
 ): Promise<ReadingRow[]> {
-  const since = new Date(now - METER_RATE_WINDOW_DAYS * DAY_MS).toISOString();
   const { data, error } = await admin
     .from("equipment_meter_readings")
     .select(READING_COLUMNS)
     .eq("shop_id", shopId)
     .eq("vehicle_id", assetId)
-    .gte("read_at", since)
-    .lte("read_at", new Date(now).toISOString())
     .order("read_at", { ascending: false })
     .order("sequence", { ascending: false })
     .limit(RATE_LIMIT);
@@ -132,9 +127,9 @@ function latestMeters(profile: PmMeters, timeline: MeterTimelineEntry[]): PmMete
  * Meter history for an asset: manual readings, PM completion meters and
  * dated work-order odometers, the usage rate over the last
  * METER_RATE_WINDOW_DAYS days, and when each active PM plan would come due at
- * that rate. The visible history is intentionally bounded; rate calculations
- * read the rate window separately so telematics history cannot make the asset
- * page grow without bound. Returns null when the asset is not visible.
+ * that rate. The visible history and the rate input are both intentionally
+ * bounded so telematics history cannot make the asset page grow without
+ * bound. meterUsageRates applies the exact 90-day time window in memory.
  */
 export async function loadAssetMeters(input: {
   supabase: SupabaseClient<DB>;
@@ -150,7 +145,7 @@ export async function loadAssetMeters(input: {
 
   const [historyRows, rateRows, workOrdersResult] = await Promise.all([
     readRecentReadings(input.admin, input.shopId, input.assetId, HISTORY_LIMIT),
-    readRateReadings(input.admin, input.shopId, input.assetId, now),
+    readRateReadings(input.admin, input.shopId, input.assetId),
     input.supabase
       .from("work_orders")
       .select(WORK_ORDER_COLUMNS)
