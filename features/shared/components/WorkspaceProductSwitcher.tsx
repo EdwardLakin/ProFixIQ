@@ -84,21 +84,31 @@ export default function WorkspaceProductSwitcher({
       });
     };
 
-    void supabase.auth.getSession().then(({ data }) => {
-      if (!active) return;
-      refreshForIdentity(data.session?.user.id ?? "signed-out");
-    });
+    const getSession = supabase.auth?.getSession;
+    if (typeof getSession === "function") {
+      void getSession.call(supabase.auth).then(({ data }) => {
+        if (!active) return;
+        refreshForIdentity(data.session?.user.id ?? "signed-out");
+      });
+    } else {
+      // Some shell tests intentionally provide a minimal auth client. The
+      // switcher is supplemental navigation, so fall back to one shared
+      // request instead of making those shells depend on auth-client details.
+      refreshForIdentity("current-session");
+    }
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(
-      (event, session) => {
-        if (!active || event === "TOKEN_REFRESHED") return;
-        refreshForIdentity(session?.user.id ?? "signed-out");
-      },
-    );
+    const onAuthStateChange = supabase.auth?.onAuthStateChange;
+    const authListener =
+      typeof onAuthStateChange === "function"
+        ? onAuthStateChange.call(supabase.auth, (event, session) => {
+            if (!active || event === "TOKEN_REFRESHED") return;
+            refreshForIdentity(session?.user.id ?? "signed-out");
+          }).data
+        : null;
 
     return () => {
       active = false;
-      authListener.subscription.unsubscribe();
+      authListener?.subscription.unsubscribe();
     };
   }, []);
 
