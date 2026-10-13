@@ -88,8 +88,7 @@ export default function ComparePlansPage() {
               Choose your operation
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-[color:var(--theme-text-secondary)]">
-              Start with a clear product boundary, then add capacity only where
-              your operation grows.
+              Choose Shop, Field, Fleet, or Complete Operations. Equipment is available as a premium add-on to Complete for off-road and industrial asset maintenance.
             </p>
 
             {demoId ? (
