@@ -27,11 +27,11 @@ const blackOps = Black_Ops_One({
 });
 
 const siteDescription =
-  "Heavy-duty and automotive repair shop software for voice inspections, technician-built repairs, parts workflows, approvals, field service, and fleet maintenance.";
+  "Heavy-duty repair shop software for diesel and commercial vehicle operations, with connected inspections, technician-built repairs, parts, approvals, field service, fleet maintenance, and automotive support.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://profixiq.com"),
-  title: "ProFixIQ | Heavy-Duty & Automotive Repair Shop Software",
+  title: "ProFixIQ | Heavy-Duty Repair Shop Software",
   description: siteDescription,
   applicationName: "ProFixIQ",
   openGraph: {
