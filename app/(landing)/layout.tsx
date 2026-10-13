@@ -6,7 +6,7 @@ import { Toaster } from "sonner";
 export const metadata: Metadata = {
   title: "ProFixIQ | Heavy-Duty Repair Shop Software",
   description:
-    "Heavy-duty repair shop software for diesel and commercial vehicle operations, with voice inspections, technician-built repairs, parts workflows, approvals, field service, fleet maintenance, and automotive support.",
+    "Heavy-duty repair shop software for diesel and commercial operations, with voice inspections, technician-built repairs, parts, approvals, field service, fleet maintenance, and optional Equipment workflows.",
   alternates: {
     canonical: "/",
   },
