@@ -9,8 +9,9 @@ separately-run `shopreel.profixiq.com`) never see a session token.
 1. **begin** (target host): the Fleet switcher links to
    `<target>/api/auth/handoff/begin?source=<fleet>&next=<path>`. The target sets
    a host-only `__Host-profixiq-handoff` nonce cookie (httpOnly, Secure, 5 min)
-   and redirects to the source with `bind = sha256(nonce)`.
-2. **start** (source host): for the signed-in user, mints a Supabase `magiclink`
+   and redirects to the source with `bind = sha256(nonce)` plus an expiry and an
+   HMAC signature over `(target, next, bind, exp)`.
+2. **start** (source host): verifies the signature, then for the signed-in user mints a Supabase `magiclink`
    OTP via the admin API (no email is sent) and redirects to
    `<target>/api/auth/handoff/redeem?token_hash=…&next=<path>&bind=<hash>`.
 3. **redeem** (target host): only if the nonce cookie hashes to `bind`, verifies
@@ -26,12 +27,21 @@ separately-run `shopreel.profixiq.com`) never see a session token.
   victim's nonce cookie will not hash to the attacker's `bind`. The `__Host-`
   prefix stops sibling subdomains from setting or shadowing the cookie.
   `Sec-Fetch-Site: same-origin|same-site` is also required (fails closed).
+- **Forced minting:** `start` only acts on state signed by `begin` (key derived
+  from the service-role key, 5 min expiry) and only for a top-level navigation
+  (`Sec-Fetch-Mode: navigate`, `Sec-Fetch-Dest: document`). A page, including a
+  same-site sibling, cannot trigger minting with an embedded image, iframe or
+  fetch, or by forging parameters.
 - The OTP is single-use and short-lived. Responses are `no-store` with
   `Referrer-Policy: no-referrer`; the token is never echoed.
 - Handoff links are rendered as plain `<a>` elements (never a prefetched router
   `<Link>`), because visiting `start` mints a token.
-- Any failure (signed out, no email, mint/verify error, nonce mismatch) falls
-  through to a plain navigation, so the target's normal sign-in applies.
+- **Failures never open the workspace.** Signed out, no email, mint/verify error,
+  nonce mismatch or untrusted navigation all redirect to
+  `<target>/sign-in?access=handoff_failed`, never to `next`: the target host may
+  already hold a different account's session, and opening a protected page
+  under it would be the wrong tenant. Browsers without fetch metadata
+  (Safari < 16.4) therefore land on sign-in instead of the handoff.
 
 ## Notes
 - Minting a magiclink replaces any pending password-recovery token for that user.

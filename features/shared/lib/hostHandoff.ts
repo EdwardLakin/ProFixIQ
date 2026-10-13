@@ -45,12 +45,27 @@ export function isValidHandoffTokenHash(raw: string | null): raw is string {
 }
 
 /**
- * Redeeming logs the browser in, so refuse links that were not followed from
- * one of our own pages (login-CSRF). Fails closed when the header is absent.
+ * Handoff routes have side effects (they mint or redeem sessions), so only a
+ * top-level navigation that began on one of our own origins is acceptable:
+ * embeds (img, iframe, fetch) and cross-site links are refused. Fails closed
+ * when fetch metadata is absent.
  */
 export function isTrustedHandoffNavigation(headers: Headers): boolean {
   const site = headers.get("sec-fetch-site");
-  return site === "same-origin" || site === "same-site";
+  return (
+    (site === "same-origin" || site === "same-site") &&
+    headers.get("sec-fetch-mode") === "navigate" &&
+    headers.get("sec-fetch-dest") === "document"
+  );
+}
+
+/**
+ * Where every failed handoff goes. Never the requested workspace: the target
+ * host may hold a different account's session, and silently opening a
+ * protected page under it would be the wrong tenant.
+ */
+export function handoffFailureUrl(origin: string): string {
+  return `${origin}/sign-in?access=handoff_failed`;
 }
 
 /**

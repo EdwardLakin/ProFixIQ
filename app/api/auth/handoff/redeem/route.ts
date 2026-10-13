@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
+  handoffFailureUrl,
   isTrustedHandoffNavigation,
   isValidHandoffBind,
   isValidHandoffTokenHash,
@@ -24,42 +25,49 @@ const NO_STORE = {
 /**
  * Target side (step 3) of the cross-host handoff. The token only redeems in
  * the browser that began the handoff (nonce cookie matches `bind`), so a token
- * minted elsewhere and planted in a link cannot log a victim in as someone else: exchange the single-use OTP for a
- * session on this host. On any failure the user still lands on `next`, where
- * normal sign-in applies; the token is never echoed back.
+ * minted elsewhere and planted in a link cannot log a victim in as someone
+ * else. Only a verified session reaches `next`; every failure goes to sign-in,
+ * because this host may already hold a different account's session and
+ * silently opening a workspace under it would be the wrong tenant. The token
+ * is never echoed.
  */
 export async function GET(req: NextRequest) {
-  const next = safeHandoffPath(req.nextUrl.searchParams.get("next")) ?? "/";
-  const destination = NextResponse.redirect(new URL(next, req.nextUrl.origin), {
-    status: 303,
-    headers: NO_STORE,
-  });
+  const origin = req.nextUrl.origin;
+  const respond = (location: string) => {
+    const res = NextResponse.redirect(location, {
+      status: 303,
+      headers: NO_STORE,
+    });
+    // The nonce is single-use: clear it whatever happens.
+    res.cookies.set(HANDOFF_NONCE_COOKIE, "", {
+      ...HANDOFF_NONCE_COOKIE_OPTIONS,
+      maxAge: 0,
+    });
+    return res;
+  };
+  const failed = () => respond(handoffFailureUrl(origin));
 
-  // The nonce is single-use: clear it whatever happens below.
-  const nonce = req.cookies.get(HANDOFF_NONCE_COOKIE)?.value;
-  destination.cookies.set(HANDOFF_NONCE_COOKIE, "", {
-    ...HANDOFF_NONCE_COOKIE_OPTIONS,
-    maxAge: 0,
-  });
-
+  const next = safeHandoffPath(req.nextUrl.searchParams.get("next"));
   const tokenHash = req.nextUrl.searchParams.get("token_hash");
   const bind = req.nextUrl.searchParams.get("bind");
   if (
+    !next ||
     !isTrustedHandoffNavigation(req.headers) ||
     !isValidHandoffTokenHash(tokenHash) ||
     !isValidHandoffBind(bind) ||
-    !handoffNonceMatches(nonce, bind)
+    !handoffNonceMatches(req.cookies.get(HANDOFF_NONCE_COOKIE)?.value, bind)
   ) {
-    return destination;
+    return failed();
   }
 
   try {
-    await createServerSupabaseRoute().auth.verifyOtp({
+    const { data, error } = await createServerSupabaseRoute().auth.verifyOtp({
       type: "magiclink",
       token_hash: tokenHash,
     });
+    if (error || !data?.session) return failed();
   } catch {
-    // Fall through to sign-in on the destination.
+    return failed();
   }
-  return destination;
+  return respond(new URL(next, origin).toString());
 }

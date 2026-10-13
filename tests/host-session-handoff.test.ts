@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 
 import {
   handoffBeginHref,
+  handoffFailureUrl,
   isHandoffHref,
   isTrustedHandoffNavigation,
   isValidHandoffBind,
@@ -12,6 +13,13 @@ import {
   resolveHandoffTarget,
   safeHandoffPath,
 } from "@/features/shared/lib/hostHandoff";
+import {
+  createHandoffState,
+  handoffNonceMatches,
+  hashHandoffNonce,
+  HANDOFF_NONCE_COOKIE,
+  verifyHandoffState,
+} from "@/features/shared/lib/server/hostHandoffBinding";
 import {
   WORKSPACE_PRODUCTS,
   workspaceProductHref,
@@ -39,16 +47,19 @@ import { GET as begin } from "../app/api/auth/handoff/begin/route";
 import { GET as start } from "../app/api/auth/handoff/start/route";
 import { GET as redeem } from "../app/api/auth/handoff/redeem/route";
 
-import {
-  handoffNonceMatches,
-  hashHandoffNonce,
-  HANDOFF_NONCE_COOKIE,
-} from "@/features/shared/lib/server/hostHandoffBinding";
-
 const PRIMARY = "https://profixiq.com";
 const FLEET = "https://fleet.profixiq.com";
 
+const NAV = {
+  "sec-fetch-site": "same-site",
+  "sec-fetch-mode": "navigate",
+  "sec-fetch-dest": "document",
+};
+
 beforeEach(() => {
+  process.env.SUPABASE_SERVICE_ROLE_KEY = "test-service-role-key";
+  process.env.NEXT_PUBLIC_SUPABASE_URL = "https://example.supabase.co";
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "anon";
   mocks.user = null;
   mocks.generateLink.mockReset();
   mocks.verifyOtp.mockReset();
@@ -95,6 +106,7 @@ describe("handoff helpers", () => {
     }
     expect(isHandoffHref(handoffBeginHref(PRIMARY, FLEET, "/dashboard"))).toBe(true);
     expect(isHandoffHref("/dashboard")).toBe(false);
+    expect(handoffFailureUrl(PRIMARY)).toBe(`${PRIMARY}/sign-in?access=handoff_failed`);
   });
 
   it("matches the nonce cookie to its hash only", () => {
@@ -104,19 +116,43 @@ describe("handoff helpers", () => {
     expect(handoffNonceMatches(undefined, bind)).toBe(false);
   });
 
-  it("validates token shape and fails closed on missing fetch metadata", () => {
+  it("validates token shape", () => {
     expect(isValidHandoffTokenHash("abcDEF123_-xyz")).toBe(true);
     expect(isValidHandoffTokenHash("short")).toBe(false);
     expect(isValidHandoffTokenHash("has space 12345")).toBe(false);
     expect(isValidHandoffTokenHash(null)).toBe(false);
+  });
 
-    const h = (site?: string) =>
-      new Headers(site ? { "sec-fetch-site": site } : {});
-    expect(isTrustedHandoffNavigation(h("same-site"))).toBe(true);
-    expect(isTrustedHandoffNavigation(h("same-origin"))).toBe(true);
-    expect(isTrustedHandoffNavigation(h("cross-site"))).toBe(false);
-    expect(isTrustedHandoffNavigation(h("none"))).toBe(false);
-    expect(isTrustedHandoffNavigation(h())).toBe(false);
+  it("only trusts top-level navigations from our own origins, failing closed", () => {
+    const h = (o: Record<string, string>) => new Headers(o);
+    expect(isTrustedHandoffNavigation(h(NAV))).toBe(true);
+    expect(isTrustedHandoffNavigation(h({ ...NAV, "sec-fetch-site": "same-origin" }))).toBe(true);
+    expect(isTrustedHandoffNavigation(h({ ...NAV, "sec-fetch-site": "cross-site" }))).toBe(false);
+    expect(isTrustedHandoffNavigation(h({ ...NAV, "sec-fetch-site": "none" }))).toBe(false);
+    // Embeds from a same-site sibling: img / iframe / fetch.
+    expect(isTrustedHandoffNavigation(h({ ...NAV, "sec-fetch-dest": "image", "sec-fetch-mode": "no-cors" }))).toBe(false);
+    expect(isTrustedHandoffNavigation(h({ ...NAV, "sec-fetch-dest": "iframe" }))).toBe(false);
+    expect(isTrustedHandoffNavigation(h({ ...NAV, "sec-fetch-mode": "cors" }))).toBe(false);
+    expect(isTrustedHandoffNavigation(h({}))).toBe(false);
+  });
+});
+
+describe("signed handoff state", () => {
+  const fields = { target: PRIMARY, next: "/dashboard", bind: "a".repeat(64) };
+
+  it("verifies only state the server issued, unmodified and unexpired", () => {
+    const now = 1_800_000_000_000;
+    const { sig, ...state } = createHandoffState(fields, now);
+    expect(verifyHandoffState(state, sig, now)).toBe(true);
+
+    expect(verifyHandoffState({ ...state, next: "/equipment" }, sig, now)).toBe(false);
+    expect(verifyHandoffState({ ...state, bind: "b".repeat(64) }, sig, now)).toBe(false);
+    expect(verifyHandoffState({ ...state, target: FLEET }, sig, now)).toBe(false);
+    expect(verifyHandoffState(state, "0".repeat(64), now)).toBe(false);
+    expect(verifyHandoffState(state, null, now)).toBe(false);
+    expect(verifyHandoffState(state, sig, now + 301_000)).toBe(false);
+    // An attacker cannot extend the lifetime of a signature.
+    expect(verifyHandoffState({ ...state, exp: state.exp + 10_000 }, sig, now)).toBe(false);
   });
 });
 
@@ -140,19 +176,119 @@ describe("switcher links leaving the Fleet host", () => {
   });
 });
 
-describe("GET /api/auth/handoff/start", () => {
-  const BIND = "a".repeat(64);
-  const url = (target: string, next: string, bind: string | null = BIND) =>
+describe("GET /api/auth/handoff/begin", () => {
+  const req = (
+    source: string,
+    next: string,
+    origin = PRIMARY,
+    headers: Record<string, string> = NAV,
+  ) =>
     new NextRequest(
-      `${FLEET}/api/auth/handoff/start?target=${encodeURIComponent(target)}&next=${encodeURIComponent(next)}${bind ? `&bind=${bind}` : ""}`,
+      `${origin}/api/auth/handoff/begin?source=${encodeURIComponent(source)}&next=${encodeURIComponent(next)}`,
+      { headers },
     );
 
-  it("rejects unknown targets and unsafe paths without minting", async () => {
-    expect((await start(url("https://evil.io", "/dashboard"))).status).toBe(400);
-    expect((await start(url(PRIMARY, "//evil.io"))).status).toBe(400);
-    expect((await start(url(PRIMARY, "/dashboard", null))).status).toBe(400);
-    expect((await start(url(PRIMARY, "/dashboard", "xyz"))).status).toBe(400);
+  it("sets a host-only nonce cookie and sends the browser to the source with signed state", async () => {
+    const res = await begin(req(FLEET, "/dashboard"));
+    const loc = new URL(res.headers.get("location")!);
+    const cookie = res.cookies.get(HANDOFF_NONCE_COOKIE);
+    expect(res.status).toBe(303);
+    expect(loc.origin).toBe(FLEET);
+    expect(loc.pathname).toBe("/api/auth/handoff/start");
+    expect(loc.searchParams.get("target")).toBe(PRIMARY);
+    expect(loc.searchParams.get("next")).toBe("/dashboard");
+    expect(cookie?.value).toBeTruthy();
+    expect(loc.searchParams.get("bind")).toBe(hashHandoffNonce(cookie!.value));
+    expect(
+      verifyHandoffState(
+        {
+          target: PRIMARY,
+          next: "/dashboard",
+          bind: loc.searchParams.get("bind")!,
+          exp: Number(loc.searchParams.get("exp")),
+        },
+        loc.searchParams.get("sig"),
+      ),
+    ).toBe(true);
+    const setCookie = res.headers.get("set-cookie")!.toLowerCase();
+    expect(setCookie).toContain("httponly");
+    expect(setCookie).toContain("secure");
+    expect(setCookie).toContain("path=/");
+    expect(setCookie).not.toContain("domain=");
+    expect(HANDOFF_NONCE_COOKIE.startsWith("__Host-")).toBe(true);
+  });
+
+  it("rejects unknown sources, same-host sources, unsafe paths and unknown hosts", async () => {
+    for (const r of [
+      req("https://evil.io", "/dashboard"),
+      req(PRIMARY, "/dashboard"),
+      req(FLEET, "//evil.io"),
+      req(FLEET, "/dashboard", "https://evil.io"),
+    ]) {
+      const res = await begin(r);
+      expect(res.status).toBe(400);
+      expect(res.cookies.get(HANDOFF_NONCE_COOKIE)).toBeUndefined();
+    }
+  });
+
+  it("refuses embeds and sends the user to sign-in without setting a nonce", async () => {
+    const res = await begin(
+      req(FLEET, "/dashboard", PRIMARY, { ...NAV, "sec-fetch-dest": "image" }),
+    );
+    expect(res.headers.get("location")).toBe(handoffFailureUrl(PRIMARY));
+    expect(res.cookies.get(HANDOFF_NONCE_COOKIE)).toBeUndefined();
+  });
+});
+
+describe("GET /api/auth/handoff/start", () => {
+  const BIND = "a".repeat(64);
+  const signed = (over: Partial<{ target: string; next: string; bind: string }> = {}) => {
+    const state = createHandoffState({
+      target: PRIMARY,
+      next: "/dashboard",
+      bind: BIND,
+      ...over,
+    });
+    return state;
+  };
+  const urlFor = (
+    state: ReturnType<typeof signed>,
+    tweak: (p: URLSearchParams) => void = () => {},
+    headers: Record<string, string> = NAV,
+  ) => {
+    const u = new URL(`${FLEET}/api/auth/handoff/start`);
+    u.searchParams.set("target", state.target);
+    u.searchParams.set("next", state.next);
+    u.searchParams.set("bind", state.bind);
+    u.searchParams.set("exp", String(state.exp));
+    u.searchParams.set("sig", state.sig);
+    tweak(u.searchParams);
+    return new NextRequest(u, { headers });
+  };
+
+  it("rejects forged, tampered or unsigned requests without minting", async () => {
+    for (const r of [
+      urlFor(signed(), (p) => p.delete("sig")),
+      urlFor(signed(), (p) => p.set("sig", "0".repeat(64))),
+      urlFor(signed(), (p) => p.set("bind", "b".repeat(64))),
+      urlFor(signed(), (p) => p.set("next", "/equipment")),
+      urlFor(signed(), (p) => p.set("target", "https://evil.io")),
+      urlFor(signed(), (p) => p.set("next", "//evil.io")),
+      urlFor(signed(), (p) => p.set("exp", "1")),
+      urlFor(signed(), (p) => p.delete("bind")),
+    ]) {
+      expect((await start(r)).status).toBe(400);
+    }
     expect(mocks.generateLink).not.toHaveBeenCalled();
+  });
+
+  it("does not mint for embeds from a same-site sibling, even with valid state", async () => {
+    mocks.user = { email: "a@b.co" };
+    const res = await start(
+      urlFor(signed(), () => {}, { ...NAV, "sec-fetch-dest": "image", "sec-fetch-mode": "no-cors" }),
+    );
+    expect(mocks.generateLink).not.toHaveBeenCalled();
+    expect(res.headers.get("location")).toBe(handoffFailureUrl(PRIMARY));
   });
 
   it("redirects to the target redeem route with a one-time token", async () => {
@@ -161,7 +297,7 @@ describe("GET /api/auth/handoff/start", () => {
       data: { properties: { hashed_token: "tok_1234567890" } },
       error: null,
     });
-    const res = await start(url(PRIMARY, "/dashboard"));
+    const res = await start(urlFor(signed()));
     const loc = new URL(res.headers.get("location")!);
     expect(res.status).toBe(303);
     expect(loc.origin).toBe(PRIMARY);
@@ -176,73 +312,46 @@ describe("GET /api/auth/handoff/start", () => {
     });
   });
 
-  it("falls back to a plain navigation when signed out or minting fails", async () => {
-    let res = await start(url(PRIMARY, "/dashboard"));
-    expect(res.headers.get("location")).toBe(`${PRIMARY}/dashboard`);
+  it("sends every failure to the target sign-in, never to next", async () => {
+    // Signed out
+    let res = await start(urlFor(signed()));
+    expect(res.headers.get("location")).toBe(handoffFailureUrl(PRIMARY));
 
+    // Mint error
     mocks.user = { email: "a@b.co" };
     mocks.generateLink.mockResolvedValue({ data: null, error: new Error("x") });
-    res = await start(url(PRIMARY, "/dashboard"));
-    expect(res.headers.get("location")).toBe(`${PRIMARY}/dashboard`);
-  });
-});
+    res = await start(urlFor(signed()));
+    expect(res.headers.get("location")).toBe(handoffFailureUrl(PRIMARY));
 
-describe("GET /api/auth/handoff/begin", () => {
-  const url = (source: string, next: string, origin = PRIMARY) =>
-    new NextRequest(
-      `${origin}/api/auth/handoff/begin?source=${encodeURIComponent(source)}&next=${encodeURIComponent(next)}`,
-    );
-
-  it("sets a host-only nonce cookie and sends the browser to the source with its hash", async () => {
-    const res = await begin(url(FLEET, "/dashboard"));
-    const loc = new URL(res.headers.get("location")!);
-    const cookie = res.cookies.get(HANDOFF_NONCE_COOKIE);
-    expect(res.status).toBe(303);
-    expect(loc.origin).toBe(FLEET);
-    expect(loc.pathname).toBe("/api/auth/handoff/start");
-    expect(loc.searchParams.get("target")).toBe(PRIMARY);
-    expect(loc.searchParams.get("next")).toBe("/dashboard");
-    expect(cookie?.value).toBeTruthy();
-    expect(loc.searchParams.get("bind")).toBe(hashHandoffNonce(cookie!.value));
-    const setCookie = res.headers.get("set-cookie")!.toLowerCase();
-    expect(setCookie).toContain("httponly");
-    expect(setCookie).toContain("secure");
-    expect(setCookie).toContain("path=/");
-    expect(setCookie).not.toContain("domain=");
-    expect(HANDOFF_NONCE_COOKIE.startsWith("__Host-")).toBe(true);
-  });
-
-  it("rejects unknown sources, same-host sources, unsafe paths and unknown hosts", async () => {
-    for (const r of [
-      url("https://evil.io", "/dashboard"),
-      url(PRIMARY, "/dashboard"),
-      url(FLEET, "//evil.io"),
-      url(FLEET, "/dashboard", "https://evil.io"),
-    ]) {
-      const res = await begin(r);
-      expect(res.status).toBe(400);
-      expect(res.cookies.get(HANDOFF_NONCE_COOKIE)).toBeUndefined();
-    }
+    // Mint throws
+    mocks.generateLink.mockRejectedValue(new Error("boom"));
+    res = await start(urlFor(signed()));
+    expect(res.headers.get("location")).toBe(handoffFailureUrl(PRIMARY));
   });
 });
 
 describe("GET /api/auth/handoff/redeem", () => {
   const NONCE = "victim-nonce";
   const BIND = hashHandoffNonce(NONCE);
+  const FAIL = handoffFailureUrl(PRIMARY);
   const req = (
     query: string,
-    opts: { site?: string; nonce?: string } = { site: "same-site", nonce: NONCE },
+    opts: { headers?: Record<string, string>; nonce?: string } = {
+      headers: NAV,
+      nonce: NONCE,
+    },
   ) =>
     new NextRequest(`${PRIMARY}/api/auth/handoff/redeem?${query}`, {
       headers: {
-        ...(opts.site ? { "sec-fetch-site": opts.site } : {}),
+        ...(opts.headers ?? {}),
         ...(opts.nonce ? { cookie: `${HANDOFF_NONCE_COOKIE}=${opts.nonce}` } : {}),
       },
     });
   const good = `token_hash=tok_1234567890&next=/dashboard&bind=${BIND}`;
+  const ok = { data: { session: { access_token: "x" } }, error: null };
 
   it("exchanges the token for a session when the nonce matches, and clears the nonce", async () => {
-    mocks.verifyOtp.mockResolvedValue({ data: {}, error: null });
+    mocks.verifyOtp.mockResolvedValue(ok);
     const res = await redeem(req(good));
     expect(mocks.verifyOtp).toHaveBeenCalledWith({
       type: "magiclink",
@@ -254,46 +363,44 @@ describe("GET /api/auth/handoff/redeem", () => {
 
   it("does not log a victim in with an attacker-minted token (login CSRF)", async () => {
     // Attacker begins on their own browser, so the link carries bind=H(attackerNonce).
-    const attackerBind = hashHandoffNonce("attacker-nonce");
-    const link = `token_hash=tok_1234567890&next=/dashboard&bind=${attackerBind}`;
-
-    // Victim has no nonce, or a different one, or tries a same-site-planted link.
+    const link = `token_hash=tok_1234567890&next=/dashboard&bind=${hashHandoffNonce("attacker-nonce")}`;
     for (const r of [
-      req(link, { site: "same-site" }),
-      req(link, { site: "same-site", nonce: NONCE }),
+      req(link, { headers: NAV }),
+      req(link, { headers: NAV, nonce: NONCE }),
     ]) {
       const res = await redeem(r);
-      expect(res.headers.get("location")).toBe(`${PRIMARY}/dashboard`);
+      expect(res.headers.get("location")).toBe(FAIL);
     }
     expect(mocks.verifyOtp).not.toHaveBeenCalled();
   });
 
-  it("does not log in for untrusted or malformed requests", async () => {
+  it("sends untrusted or malformed requests to sign-in without redeeming", async () => {
     for (const r of [
-      req(good, { site: "cross-site", nonce: NONCE }),
-      req(good, { nonce: NONCE }),
+      req(good, { headers: { ...NAV, "sec-fetch-site": "cross-site" }, nonce: NONCE }),
+      req(good, { headers: {}, nonce: NONCE }),
+      req(good, { headers: { ...NAV, "sec-fetch-dest": "iframe" }, nonce: NONCE }),
       req(`token_hash=bad&next=/dashboard&bind=${BIND}`),
       req("token_hash=tok_1234567890&next=/dashboard"),
       req(`token_hash=tok_1234567890&next=/dashboard&bind=zz`),
+      req(`token_hash=tok_1234567890&next=//evil.io&bind=${BIND}`),
     ]) {
       const res = await redeem(r);
-      expect(res.headers.get("location")).toBe(`${PRIMARY}/dashboard`);
+      expect(res.headers.get("location")).toBe(FAIL);
+      expect(res.cookies.get(HANDOFF_NONCE_COOKIE)?.value).toBe("");
     }
     expect(mocks.verifyOtp).not.toHaveBeenCalled();
   });
 
-  it("never redirects off-origin, even with a hostile next", async () => {
-    mocks.verifyOtp.mockResolvedValue({ data: {}, error: null });
-    const res = await redeem(
-      req(`token_hash=tok_1234567890&next=//evil.io&bind=${BIND}`),
-    );
-    expect(res.headers.get("location")).toBe(`${PRIMARY}/`);
-  });
+  it("never opens next when the exchange fails, even if the host holds another session", async () => {
+    // Supabase reports expired/invalid OTPs via a resolved { error }, not a throw.
+    mocks.verifyOtp.mockResolvedValue({ data: { session: null }, error: { message: "expired" } });
+    expect((await redeem(req(good))).headers.get("location")).toBe(FAIL);
 
-  it("still lands on next when the exchange throws", async () => {
+    mocks.verifyOtp.mockResolvedValue({ data: { session: null }, error: null });
+    expect((await redeem(req(good))).headers.get("location")).toBe(FAIL);
+
     mocks.verifyOtp.mockRejectedValue(new Error("boom"));
-    const res = await redeem(req(good));
-    expect(res.headers.get("location")).toBe(`${PRIMARY}/dashboard`);
+    expect((await redeem(req(good))).headers.get("location")).toBe(FAIL);
   });
 });
 
