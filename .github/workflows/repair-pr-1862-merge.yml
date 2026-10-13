@@ -1,0 +1,105 @@
+name: Repair PR 1862 Merge
+
+on:
+  push:
+    branches:
+      - agent/equipment-meter-readings
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-pr-1862-merge
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/equipment-meter-readings
+          fetch-depth: 0
+
+      - uses: supabase/setup-cli@v2
+        with:
+          version: 2.114.0
+          github-token: ${{ github.token }}
+
+      - name: Reconcile Asset Health meter and fluid surfaces
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('features/equipment/components/AssetHealthView.tsx')
+          text = path.read_text()
+          import_anchor = 'import EquipmentMeasurementPanel from "@/features/equipment/components/EquipmentMeasurementPanel";\n'
+          meter_import = 'import EquipmentMeterPanel from "@/features/equipment/components/EquipmentMeterPanel";\n'
+          if meter_import not in text:
+              if import_anchor not in text:
+                  raise SystemExit('Could not find AssetHealthView measurement import anchor')
+              text = text.replace(import_anchor, import_anchor + meter_import, 1)
+          meters_anchor = '        </dl>\n      </WorkspaceSection>\n\n      {/* 3. Open defects */}'
+          meters_block = '        </dl>\n        <EquipmentMeterPanel assetId={identity.id} />\n      </WorkspaceSection>\n\n      {/* 3. Open defects */}'
+          if '<EquipmentMeterPanel assetId={identity.id} />' not in text:
+              if meters_anchor not in text:
+                  raise SystemExit('Could not find AssetHealthView current-meters anchor')
+              text = text.replace(meters_anchor, meters_block, 1)
+          path.write_text(text)
+          PY
+
+      - name: Restore meter clean replay coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/supabase-clean-replay-audit.yml')
+          text = path.read_text()
+          step = "      - name: Execute Equipment meter readings tenant integration\n        shell: bash\n        env:\n          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres\n        run: |\n          set -euo pipefail\n          if ! command -v psql >/dev/null 2>&1; then\n            sudo apt-get update\n            sudo apt-get install -y postgresql-client\n          fi\n          psql \"$DB_URL\" -X -v ON_ERROR_STOP=1 \\\\\n            -f tests/security/equipment-meter-readings.runtime.sql \\\\\n            2>&1 | tee equipment-meter-readings-runtime.log\n\n"
+          anchor = '      - name: Execute Equipment fluid samples tenant integration\n'
+          if 'Execute Equipment meter readings tenant integration' not in text:
+              if anchor not in text:
+                  raise SystemExit('Could not find Equipment fluid-samples workflow anchor')
+              text = text.replace(anchor, step + anchor, 1)
+          artifact_anchor = '            equipment-fluid-samples-runtime.log\n'
+          artifact_line = '            equipment-meter-readings-runtime.log\n'
+          if artifact_line not in text:
+              if artifact_anchor not in text:
+                  raise SystemExit('Could not find Equipment fluid-samples artifact anchor')
+              text = text.replace(artifact_anchor, artifact_line + artifact_anchor, 1)
+          path.write_text(text)
+          PY
+
+      - name: Regenerate API route inventory
+        shell: bash
+        run: node scripts/audit-api-routes.mjs
+
+      - name: Replay schema and regenerate Supabase types
+        shell: bash
+        run: bash scripts/check-supabase-schema-contract.sh --write
+
+      - name: Commit resolved files
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/repair-pr-1862-merge.yml
+          git add \
+            .github/workflows/supabase-clean-replay-audit.yml \
+            .github/workflows/repair-pr-1862-merge.yml \
+            docs/audits/api-route-boundary-inventory.json \
+            docs/audits/api-route-boundary-inventory.md \
+            features/equipment/components/AssetHealthView.tsx \
+            features/shared/types/types/supabase.ts
+          if git diff --cached --quiet; then
+            echo 'No merge repairs were needed.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Resolve PR 1862 merge conflicts'
+          git push origin HEAD:agent/equipment-meter-readings
