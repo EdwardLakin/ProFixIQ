@@ -189,6 +189,22 @@ export function worstPmState(states: EquipmentPmState[]): EquipmentPmState {
   return states.reduce((worst, state) => (STATE_RANK[state] > STATE_RANK[worst] ? state : worst));
 }
 
+/**
+ * One PM state for an asset from its two sources: the Equipment PM plans
+ * (null when the asset has no active plan) and the Shop maintenance-suggestion
+ * evaluation. A suggestion that was never evaluated is an absence of evidence,
+ * not uncertainty, so it is left out; otherwise the most urgent state wins, so
+ * neither source can hide the other's alert. Without active plans the result
+ * is exactly the suggestion state.
+ */
+export function combinePmStates(
+  planState: EquipmentPmState | null,
+  suggestionState: EquipmentPmState,
+): EquipmentPmState {
+  if (planState === null) return suggestionState;
+  return worstPmState(suggestionState === "not_evaluated" ? [planState] : [planState, suggestionState]);
+}
+
 /** Latest completion that is not voided; input may be in any order. */
 export function lastCompletion(completions: PmCompletion[]): PmCompletion | null {
   return (

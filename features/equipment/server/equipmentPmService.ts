@@ -19,12 +19,14 @@ import {
   type PmPlan,
 } from "@/features/equipment/lib/pm";
 import { authorizeEquipmentAsset } from "@/features/equipment/server/equipmentAssetProfileService";
+import type { EquipmentPmState } from "@/features/equipment/lib/equipmentDirectory";
 import type { CanonicalRole } from "@/features/shared/lib/rbac";
 import {
   workOrderHref,
   workOrderTitle,
   type SearchWorkOrderRow,
 } from "@/features/vehicles/server/searchShopVehicleRecords";
+import { latestWorkOrderOdometer } from "@/features/vehicles/server/loadVehicleWorkspaceSnapshot";
 import { isEstimateRecord } from "@/features/work-orders/lib/work-order-status";
 
 type DB = Database;
@@ -35,7 +37,8 @@ const PLAN_COLUMNS =
   "id,shop_id,vehicle_id,name,instructions,interval_hours,interval_distance,distance_unit,interval_cycles,interval_days,start_date,start_hours,start_distance,start_cycles,active,version,created_by,created_at,updated_by,updated_at";
 const COMPLETION_COLUMNS =
   "id,shop_id,sequence,plan_id,vehicle_id,completed_on,asset_hours,distance,distance_unit,cycles,work_order_id,notes,recorded_by,created_at,voided_at,voided_by,void_reason";
-const WORK_ORDER_COLUMNS = "id,custom_id,status,record_type,estimate_number,estimate_status,created_at";
+const WORK_ORDER_COLUMNS =
+  "id,custom_id,status,record_type,estimate_number,estimate_status,created_at,odometer_km";
 const PAGE = 1_000;
 
 export class EquipmentPmError extends Error {
@@ -130,6 +133,16 @@ async function readCompletions(
   return rows;
 }
 
+/** The newest dated work-order odometer (km) when recorded, else the vehicle's own value. */
+function canonicalOdometer(
+  workOrders: Array<{ odometer_km: number | null; created_at: string | null }>,
+  odometer: string | null,
+  odometerUnit: string | null,
+): PmMeters["distance"] {
+  const km = latestWorkOrderOdometer(workOrders as Parameters<typeof latestWorkOrderOdometer>[0]);
+  return km !== null ? parseOdometer(km, "km") : parseOdometer(odometer, odometerUnit);
+}
+
 /**
  * PM plans for an asset with their due status. The asset is authorized with
  * the vehicle-workspace rules (shop scope, mechanic assignment) through the
@@ -181,7 +194,9 @@ export async function loadAssetPm(input: {
 
   const meters: PmMeters = {
     hours: asset.engineHours,
-    distance: parseOdometer(asset.odometer, asset.odometerUnit),
+    // Canonical reading, as the directory and vehicle workspace show it: the
+    // newest dated work-order odometer (km) wins over the vehicle value.
+    distance: canonicalOdometer(workOrdersResult.data ?? [], asset.odometer, asset.odometerUnit),
     cycles: profileResult.data?.current_cycles ?? null,
     updatedAt: profileResult.data?.meters_updated_at ?? null,
     today: todayIso(input.now),
@@ -209,6 +224,112 @@ export async function loadAssetPm(input: {
       createdAt: row.created_at ?? "",
     })),
   };
+}
+
+export type EquipmentPmSummary = {
+  /** Most urgent state across the asset's active plans. */
+  state: EquipmentPmState;
+  /** Active plans that are due or overdue. */
+  dueCount: number;
+  activePlans: number;
+};
+
+/** Assets per plan query. */
+const SUMMARY_CHUNK = 25;
+
+type PlanWithLatestRow = PlanRow & { equipment_pm_completions: CompletionRow[] | null };
+
+/**
+ * Active plans for a batch of assets, each with only its newest non-voided
+ * completion embedded (the due point needs nothing older), paged until a
+ * short page so no plan is cut off.
+ */
+async function readActivePlansWithLatest(
+  admin: SupabaseClient<DB>,
+  shopId: string,
+  assetIds: string[],
+): Promise<PlanWithLatestRow[]> {
+  const rows: PlanWithLatestRow[] = [];
+  for (let page = 0; ; page += 1) {
+    const { data, error } = await admin
+      .from("equipment_pm_plans")
+      .select(`${PLAN_COLUMNS},equipment_pm_completions(${COMPLETION_COLUMNS})`)
+      .eq("shop_id", shopId)
+      .in("vehicle_id", assetIds)
+      .eq("active", true)
+      .is("equipment_pm_completions.voided_at", null)
+      .order("completed_on", { referencedTable: "equipment_pm_completions", ascending: false })
+      .order("sequence", { referencedTable: "equipment_pm_completions", ascending: false })
+      .limit(1, { referencedTable: "equipment_pm_completions" })
+      .order("id", { ascending: true })
+      .range(page * PAGE, page * PAGE + PAGE - 1);
+    if (error) throw new EquipmentPmError("Unable to load PM plans.", 500);
+    const batch = (data ?? []) as unknown as PlanWithLatestRow[];
+    rows.push(...batch);
+    if (batch.length < PAGE) break;
+  }
+  return rows;
+}
+
+/**
+ * PM plan status for assets the caller has already been authorized to see
+ * (the directory and Asset Health authorize first). Read with the privileged
+ * client, scoped to the shop; meters are passed in from the caller's reads
+ * (odometer: the canonical reading the caller displays). Assets without an
+ * active plan are absent from the result.
+ */
+export async function loadEquipmentPmSummaries(input: {
+  admin: SupabaseClient<DB>;
+  shopId: string;
+  assets: Array<{
+    id: string;
+    engineHours: number | null;
+    odometer: string | null;
+    odometerUnit: string | null;
+    cycles: number | null;
+  }>;
+  now?: number;
+}): Promise<Map<string, EquipmentPmSummary>> {
+  const summaries = new Map<string, EquipmentPmSummary>();
+  if (!input.assets.length) return summaries;
+
+  const plans: PlanWithLatestRow[] = [];
+  for (let offset = 0; offset < input.assets.length; offset += SUMMARY_CHUNK) {
+    const chunk = input.assets.slice(offset, offset + SUMMARY_CHUNK).map((asset) => asset.id);
+    plans.push(...(await readActivePlansWithLatest(input.admin, input.shopId, chunk)));
+  }
+  if (!plans.length) return summaries;
+
+  const today = todayIso(input.now);
+  const assets = new Map(input.assets.map((asset) => [asset.id, asset]));
+  const statesByAsset = new Map<string, EquipmentPmState[]>();
+  for (const row of plans) {
+    const asset = assets.get(row.vehicle_id);
+    if (!asset) continue;
+    const meters: PmMeters = {
+      hours: asset.engineHours,
+      distance: parseOdometer(asset.odometer, asset.odometerUnit),
+      cycles: asset.cycles,
+      updatedAt: null,
+      today,
+    };
+    // Defensive: only non-voided completions count, newest first.
+    const latest = (row.equipment_pm_completions ?? [])
+      .filter((completion) => !completion.voided_at)
+      .map((completion) => mapCompletion(completion, new Map()));
+    const status = evaluatePmPlan(mapPlan(row), latest, meters);
+    const list = statesByAsset.get(row.vehicle_id) ?? [];
+    list.push(status.state);
+    statesByAsset.set(row.vehicle_id, list);
+  }
+  for (const [assetId, states] of statesByAsset) {
+    summaries.set(assetId, {
+      state: worstPmState(states),
+      dueCount: states.filter((state) => state === "due" || state === "overdue").length,
+      activePlans: states.length,
+    });
+  }
+  return summaries;
 }
 
 type WriteContext = {

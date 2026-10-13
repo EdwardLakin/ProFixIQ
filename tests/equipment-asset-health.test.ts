@@ -46,6 +46,9 @@ function client(rows: Record<string, Row[]>) {
           return builder;
         },
         limit: () => builder,
+        is: () => builder,
+        order: () => builder,
+        range: () => builder,
         then: (resolve: (value: unknown) => void) =>
           resolve({
             data: (rows[table] ?? []).filter((row) => filters.every((f) => f(row))),
@@ -121,6 +124,17 @@ describe("loadAssetHealth", () => {
     expect(mocks.evidence).toHaveBeenCalledWith(
       expect.objectContaining({ shopId: SHOP, assetIds: [EX] }),
     );
+  });
+
+  it("reports no Equipment PM plan status when the asset has no active plan", async () => {
+    const result = await loadAssetHealth({
+      supabase: scoped,
+      admin,
+      shopId: SHOP,
+      role: "owner",
+      assetId: EX,
+    });
+    expect(result?.pmPlans).toBeNull();
   });
 
   it("lists only attachments the caller can see through RLS", async () => {

@@ -9,6 +9,10 @@ import {
   loadEquipmentEvidence,
   type EquipmentAssetEvidence,
 } from "@/features/equipment/server/equipmentEvidence";
+import {
+  loadEquipmentPmSummaries,
+  type EquipmentPmSummary,
+} from "@/features/equipment/server/equipmentPmService";
 import { vehicleWorkspacePermissionsForRole } from "@/features/vehicles/server/vehicleWorkspacePermissions";
 import type { CanonicalRole } from "@/features/shared/lib/rbac";
 import type { VehicleWorkspaceSnapshot } from "@/features/vehicles/lib/vehicleWorkspace";
@@ -28,6 +32,8 @@ export type AssetHealth = {
   equipment: EquipmentAssetRecord;
   /** Shared Equipment evidence (latest inspection findings, PM evaluation) — same source as the directory. */
   evidence: EquipmentAssetEvidence;
+  /** Equipment PM plan status (null without active plans) — same loader as the directory. */
+  pmPlans: EquipmentPmSummary | null;
   attachments: MountedAttachment[];
   host: { assetId: string; href: string; label: string } | null;
 };
@@ -137,5 +143,27 @@ export async function loadAssetHealth(input: {
     })
   ).get(input.assetId)!;
 
-  return { snapshot, equipment, evidence, attachments, host };
+  const pmPlans =
+    (
+      await loadEquipmentPmSummaries({
+        admin: input.admin,
+        shopId: input.shopId,
+        assets: [
+          {
+            id: input.assetId,
+            engineHours: equipment.asset.engineHours,
+            // Canonical reading: the newest dated work-order odometer (km)
+            // wins over the vehicle value, as in the directory.
+            odometer:
+              evidence.workOrderOdometerKm === null
+                ? equipment.asset.odometer
+                : String(evidence.workOrderOdometerKm),
+            odometerUnit: evidence.workOrderOdometerKm === null ? equipment.asset.odometerUnit : "km",
+            cycles: equipment.profile?.currentCycles ?? null,
+          },
+        ],
+      })
+    ).get(input.assetId) ?? null;
+
+  return { snapshot, equipment, evidence, pmPlans, attachments, host };
 }

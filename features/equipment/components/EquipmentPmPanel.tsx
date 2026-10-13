@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { EQUIPMENT_PM_STATE_LABELS, type EquipmentPmState } from "@/features/equipment/lib/equipmentDirectory";
@@ -553,6 +554,7 @@ export default function EquipmentPmPanel({ assetId }: { assetId: string }) {
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [adding, setAdding] = useState(false);
   const [showArchived, setShowArchived] = useState(false);
+  const router = useRouter();
 
   const load = useCallback(async () => {
     const response = await fetch(`/api/equipment/assets/${assetId}/pm`, { credentials: "include" }).catch(() => null);
@@ -593,7 +595,12 @@ export default function EquipmentPmPanel({ assetId }: { assetId: string }) {
     data.meters.distance ? `${data.meters.distance.value.toLocaleString()} ${data.meters.distance.unit}` : null,
     data.meters.cycles !== null ? `${data.meters.cycles.toLocaleString()} cycles` : null,
   ].filter(Boolean);
-  const reload = () => void load();
+  // After a change, refresh this panel and the server-rendered PM summary
+  // (Asset Health's combined evaluation) so the page never disagrees with itself.
+  const reload = () => {
+    void load();
+    router.refresh();
+  };
 
   return (
     <div className="mt-4 border-t border-[color:var(--theme-border-soft)] pt-3">

@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@shared/types/types/supabase";
 import { equipmentClassLabel } from "@/features/equipment/lib/assetProfile";
+import { combinePmStates } from "@/features/equipment/lib/pm";
 import type {
   EquipmentDirectory,
   EquipmentDirectoryRow,
@@ -13,6 +14,10 @@ import {
   EquipmentEvidenceError,
   loadEquipmentEvidence,
 } from "@/features/equipment/server/equipmentEvidence";
+import {
+  EquipmentPmError,
+  loadEquipmentPmSummaries,
+} from "@/features/equipment/server/equipmentPmService";
 import type { CanonicalRole } from "@/features/shared/lib/rbac";
 import { customerAccountDisplayName } from "@/features/vehicles/lib/vehicleWorkspace";
 import { vehicleWorkspacePermissionsForRole } from "@/features/vehicles/server/vehicleWorkspacePermissions";
@@ -140,6 +145,35 @@ export async function loadEquipmentDirectory(input: {
   }
   const customerNames = new Map(customers.map((row) => [row.id, customerAccountDisplayName(row)]));
 
+  // Equipment PM plans (no client grants) for the visible assets only, with
+  // the same meters this row displays (and Asset Health's PM panel uses).
+  let pmPlans: Awaited<ReturnType<typeof loadEquipmentPmSummaries>>;
+  try {
+    pmPlans = await loadEquipmentPmSummaries({
+      admin,
+      shopId,
+      assets: profiles
+        .filter((profile) => vehicles.has(profile.assetId))
+        .map((profile) => {
+          const vehicle = vehicles.get(profile.assetId)!;
+          // The odometer this row displays: the newest dated work-order
+          // reading (km) wins over the undated vehicle value.
+          const workOrderKm = evidence.get(profile.assetId)?.workOrderOdometerKm ?? null;
+          return {
+            id: profile.assetId,
+            engineHours: vehicle.engine_hours,
+            odometer: workOrderKm === null ? vehicle.mileage : String(workOrderKm),
+            odometerUnit: workOrderKm === null ? vehicle.odometer_unit : "km",
+            cycles: profile.currentCycles,
+          };
+        }),
+      now: input.now?.getTime(),
+    });
+  } catch (error) {
+    if (error instanceof EquipmentPmError) throw new EquipmentDirectoryError(error.message);
+    throw error;
+  }
+
   const rows: EquipmentDirectoryRow[] = [];
   for (const profile of profiles) {
     const vehicle = vehicles.get(profile.assetId);
@@ -179,7 +213,12 @@ export async function loadEquipmentDirectory(input: {
         total: findings.length,
         failed: findings.filter((finding) => finding.status === "fail").length,
       },
-      pm: { state: facts.pm.state, dueCount: facts.pm.items.length },
+      // Plans and service suggestions combined; without active plans this is
+      // exactly the suggestion evaluation.
+      pm: {
+        state: combinePmStates(pmPlans.get(profile.assetId)?.state ?? null, facts.pm.state),
+        dueCount: facts.pm.items.length + (pmPlans.get(profile.assetId)?.dueCount ?? 0),
+      },
       lastServiceAt: facts.lastServiceAt ?? vehicle.last_service_date ?? null,
       nextService: facts.nextBooking,
       activeWorkOrder: active

@@ -31,13 +31,18 @@ function fakeClient(tables: Tables, log: string[], name: string) {
           filters.push((row) => values.includes(row[column]));
           return builder;
         },
+        is: (column: string, value: unknown) => {
+          filters.push((row) => (row[column] ?? null) === value);
+          return builder;
+        },
         gte: (column: string, value: string) => {
           filters.push((row) => String(row[column]) >= value);
           return builder;
         },
         order: () => builder,
-        limit: (count: number) => {
-          max = count;
+        // A referenced-table limit applies to embedded rows, not to this table.
+        limit: (count: number, options?: { referencedTable?: string }) => {
+          if (!options?.referencedTable) max = count;
           return builder;
         },
         range: (from: number, to: number) => {
@@ -268,11 +273,13 @@ function setup(extra: Partial<Tables> = {}) {
 }
 
 describe("loadEquipmentDirectory", () => {
-  it("reads profiles with the admin client and every operational fact through the caller's client", async () => {
+  it("reads profiles and PM plans with the admin client and every operational fact through the caller's client", async () => {
     const env = setup();
     await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
+    // Equipment PM plans have no client grants; completions are read only when plans exist.
     expect(env.log.filter((entry) => entry.startsWith("admin:"))).toEqual([
       "admin:equipment_asset_profiles",
+      "admin:equipment_pm_plans",
     ]);
     expect(env.log).toContain("scoped:vehicles");
     expect(env.log).toContain("scoped:work_orders");
@@ -340,6 +347,130 @@ describe("loadEquipmentDirectory", () => {
     expect(rows.find((row) => row.assetId === EX)?.pm).toEqual({
       state: "not_evaluated",
       dueCount: 0,
+    });
+  });
+
+  describe("Equipment PM plans in the PM column", () => {
+    function plan(id: string, vehicleId: string, patch: Row = {}): Row {
+      return {
+        id,
+        shop_id: SHOP,
+        vehicle_id: vehicleId,
+        name: "PM",
+        instructions: null,
+        interval_hours: null,
+        interval_distance: null,
+        distance_unit: null,
+        interval_cycles: null,
+        interval_days: 30,
+        start_date: "2026-08-01",
+        start_hours: null,
+        start_distance: null,
+        start_cycles: null,
+        active: true,
+        version: 1,
+        created_by: null,
+        created_at: "2026-08-01T00:00:00Z",
+        updated_by: null,
+        updated_at: "2026-08-01T00:00:00Z",
+        ...patch,
+      };
+    }
+    function completion(id: string, planId: string, vehicleId: string, patch: Row = {}): Row {
+      return {
+        id,
+        shop_id: SHOP,
+        sequence: 1,
+        plan_id: planId,
+        vehicle_id: vehicleId,
+        completed_on: "2026-10-01",
+        asset_hours: null,
+        distance: null,
+        distance_unit: null,
+        cycles: null,
+        work_order_id: null,
+        notes: null,
+        recorded_by: null,
+        created_at: "2026-10-01T12:00:00Z",
+        voided_at: null,
+        voided_by: null,
+        void_reason: null,
+        ...patch,
+      };
+    }
+
+    it("shows the more urgent of plans and service suggestions", async () => {
+      // EX: suggestions overdue (2 items), plan done on Oct 1 (ok).
+      // BUCKET: no suggestion evidence, calendar plan never done since Aug 1 (overdue).
+      const env = setup({
+        equipment_pm_plans: [
+          plan("p-ex", EX, { equipment_pm_completions: [completion("c-ex", "p-ex", EX)] }),
+          plan("p-bucket", BUCKET),
+        ],
+      });
+      const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
+      expect(rows.find((row) => row.assetId === EX)?.pm).toEqual({ state: "overdue", dueCount: 2 });
+      expect(rows.find((row) => row.assetId === BUCKET)?.pm).toEqual({ state: "overdue", dueCount: 1 });
+      // The latest completion is embedded in the plan read; history is never scanned.
+      expect(env.log).not.toContain("admin:equipment_pm_completions");
+    });
+
+    it("evaluates distance plans against the odometer the row displays", async () => {
+      // EX shows the newest work-order reading (812 km), not the vehicle's 500 mi (≈ 804.7 km).
+      // Due at 900 km: 88 km left is within 10 % of 890 → due; the vehicle value would read ok.
+      const env = setup({
+        equipment_pm_plans: [
+          plan("p-dist", EX, {
+            interval_days: null,
+            interval_distance: 890,
+            distance_unit: "km",
+            start_distance: 10,
+          }),
+        ],
+      });
+      const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
+      const ex = rows.find((row) => row.assetId === EX)!;
+      expect(ex.odometer).toBe("812");
+      expect(ex.pm).toEqual({ state: "overdue", dueCount: 3 });
+    });
+
+    it("lets an up-to-date plan replace 'not evaluated' and ignores voided completions and archived plans", async () => {
+      const env = setup({
+        equipment_pm_plans: [
+          plan("p-bucket", BUCKET, {
+            equipment_pm_completions: [
+              completion("c-void", "p-bucket", BUCKET, {
+                completed_on: "2026-10-10",
+                voided_at: "2026-10-11T00:00:00Z",
+                void_reason: "Wrong unit",
+              }),
+              completion("c-ok", "p-bucket", BUCKET, { completed_on: "2026-10-01" }),
+            ],
+          }),
+          plan("p-archived", BUCKET, { active: false, start_date: "2020-01-01" }),
+        ],
+      });
+      const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
+      expect(rows.find((row) => row.assetId === BUCKET)?.pm).toEqual({ state: "ok", dueCount: 0 });
+    });
+
+    it("never reads plans for assets the caller cannot see", async () => {
+      const env = setup({ equipment_pm_plans: [plan("p-hidden", HIDDEN, { start_date: "2020-01-01" })] });
+      const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
+      expect(rows.map((row) => row.assetId)).not.toContain(HIDDEN);
+      expect(rows.every((row) => row.pm.state !== "overdue" || row.assetId === EX)).toBe(true);
+    });
+
+    it("pages through every active plan instead of stopping at one page", async () => {
+      // 1,000 up-to-date plans fill the first page; the overdue one is on the second.
+      const many = Array.from({ length: 1_000 }, (_, index) =>
+        plan(`p-${String(index).padStart(4, "0")}`, BUCKET, {
+          equipment_pm_completions: [completion(`c-${index}`, `p-${index}`, BUCKET)],
+        }),
+      );
+      const env = setup({ equipment_pm_plans: [...many, plan("p-overdue", BUCKET)] });
+      const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
+      expect(rows.find((row) => row.assetId === BUCKET)?.pm).toEqual({ state: "overdue", dueCount: 1 });
     });
   });
 
