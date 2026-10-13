@@ -15,8 +15,9 @@ import {
   type AssetMeters,
   type MeterReading,
   type MeterReadingSource,
+  type MeterTimelineEntry,
 } from "@/features/equipment/lib/meters";
-import { validateVoidReason } from "@/features/equipment/lib/pm";
+import { evaluatePmPlan, validateVoidReason, type PmMeters } from "@/features/equipment/lib/pm";
 import { authorizeEquipmentAsset } from "@/features/equipment/server/equipmentAssetProfileService";
 import { loadAssetPm } from "@/features/equipment/server/equipmentPmService";
 import type { CanonicalRole } from "@/features/shared/lib/rbac";
@@ -33,7 +34,10 @@ const READING_COLUMNS =
   "id,shop_id,sequence,vehicle_id,read_at,engine_hours,odometer,odometer_unit,cycles,source,notes,recorded_by,created_at,voided_at,voided_by,void_reason";
 const WORK_ORDER_COLUMNS =
   "id,custom_id,status,record_type,estimate_number,estimate_status,created_at,odometer_km";
-const PAGE = 1_000;
+const HISTORY_LIMIT = 200;
+const RATE_LIMIT = 5_000;
+const WORK_ORDER_LIMIT = 1_000;
+const DAY_MS = 86_400_000;
 
 export class EquipmentMeterError extends Error {
   constructor(
@@ -55,6 +59,7 @@ export function mapMeterReading(row: ReadingRow): MeterReading {
   const unit = row.odometer_unit === "km" || row.odometer_unit === "mi" ? row.odometer_unit : null;
   return {
     id: row.id,
+    sequence: Number(row.sequence),
     readAt: row.read_at,
     engineHours: numberOrNull(row.engine_hours),
     odometer: odometer !== null && unit ? { value: odometer, unit } : null,
@@ -69,35 +74,67 @@ export function mapMeterReading(row: ReadingRow): MeterReading {
   };
 }
 
-async function readReadings(
+async function readRecentReadings(
   admin: SupabaseClient<DB>,
   shopId: string,
   assetId: string,
+  limit: number,
 ): Promise<ReadingRow[]> {
-  const rows: ReadingRow[] = [];
-  for (let page = 0; ; page += 1) {
-    const { data, error } = await admin
-      .from("equipment_meter_readings")
-      .select(READING_COLUMNS)
-      .eq("shop_id", shopId)
-      .eq("vehicle_id", assetId)
-      .order("read_at", { ascending: false })
-      .order("sequence", { ascending: false })
-      .range(page * PAGE, page * PAGE + PAGE - 1);
-    if (error) throw new EquipmentMeterError("Unable to load meter readings.", 500);
-    rows.push(...((data ?? []) as ReadingRow[]));
-    if (!data || data.length < PAGE) break;
-  }
-  return rows;
+  const { data, error } = await admin
+    .from("equipment_meter_readings")
+    .select(READING_COLUMNS)
+    .eq("shop_id", shopId)
+    .eq("vehicle_id", assetId)
+    .order("read_at", { ascending: false })
+    .order("sequence", { ascending: false })
+    .limit(limit);
+  if (error) throw new EquipmentMeterError("Unable to load meter readings.", 500);
+  return (data ?? []) as ReadingRow[];
+}
+
+async function readRateReadings(
+  admin: SupabaseClient<DB>,
+  shopId: string,
+  assetId: string,
+  now: number,
+): Promise<ReadingRow[]> {
+  const since = new Date(now - METER_RATE_WINDOW_DAYS * DAY_MS).toISOString();
+  const { data, error } = await admin
+    .from("equipment_meter_readings")
+    .select(READING_COLUMNS)
+    .eq("shop_id", shopId)
+    .eq("vehicle_id", assetId)
+    .gte("read_at", since)
+    .lte("read_at", new Date(now).toISOString())
+    .order("read_at", { ascending: false })
+    .order("sequence", { ascending: false })
+    .limit(RATE_LIMIT);
+  if (error) throw new EquipmentMeterError("Unable to load meter readings.", 500);
+  return (data ?? []) as ReadingRow[];
+}
+
+function latestMeters(profile: PmMeters, timeline: MeterTimelineEntry[]): PmMeters {
+  const live = timeline.filter((entry) => !entry.voided);
+  const hoursEntry = live.find((entry) => entry.hours !== null);
+  const distanceEntry = live.find((entry) => entry.distance !== null);
+  const cyclesEntry = live.find((entry) => entry.cycles !== null);
+  const newest = live.find((entry) => entry.hours !== null || entry.distance !== null || entry.cycles !== null);
+  return {
+    ...profile,
+    hours: hoursEntry?.hours ?? profile.hours,
+    distance: distanceEntry?.distance ?? profile.distance,
+    cycles: cyclesEntry?.cycles ?? profile.cycles,
+    updatedAt: newest?.at ?? profile.updatedAt,
+  };
 }
 
 /**
  * Meter history for an asset: manual readings, PM completion meters and
  * dated work-order odometers, the usage rate over the last
  * METER_RATE_WINDOW_DAYS days, and when each active PM plan would come due at
- * that rate. The asset is authorized (by the PM loader, with the
- * vehicle-workspace rules) before any privileged read; work orders are read
- * through the caller's client. Returns null when the asset is not visible.
+ * that rate. The visible history is intentionally bounded; rate calculations
+ * read the rate window separately so telematics history cannot make the asset
+ * page grow without bound. Returns null when the asset is not visible.
  */
 export async function loadAssetMeters(input: {
   supabase: SupabaseClient<DB>;
@@ -109,50 +146,60 @@ export async function loadAssetMeters(input: {
 }): Promise<AssetMeters | null> {
   const pm = await loadAssetPm(input);
   if (!pm) return null;
+  const now = input.now ?? Date.now();
 
-  const [readingRows, workOrdersResult] = await Promise.all([
-    readReadings(input.admin, input.shopId, input.assetId),
+  const [historyRows, rateRows, workOrdersResult] = await Promise.all([
+    readRecentReadings(input.admin, input.shopId, input.assetId, HISTORY_LIMIT),
+    readRateReadings(input.admin, input.shopId, input.assetId, now),
     input.supabase
       .from("work_orders")
       .select(WORK_ORDER_COLUMNS)
       .eq("shop_id", input.shopId)
       .eq("vehicle_id", input.assetId)
       .order("created_at", { ascending: false })
-      .limit(PAGE),
+      .limit(WORK_ORDER_LIMIT),
   ]);
   if (workOrdersResult.error) throw new EquipmentMeterError("Unable to load work orders.", 500);
 
-  const timeline = buildMeterTimeline({
-    readings: readingRows.map(mapMeterReading),
-    completions: pm.plans.flatMap((status) =>
-      status.history.map((completion) => ({ completion, planName: status.plan.name })),
-    ),
-    // Same dated odometer evidence the canonical current odometer uses.
-    workOrders: (workOrdersResult.data ?? []).map((row) => {
-      const searchRow = row as unknown as SearchWorkOrderRow;
-      return {
-        id: row.id,
-        label: workOrderTitle(searchRow),
-        href: workOrderHref(searchRow),
-        createdAt: row.created_at,
-        odometerKm: row.odometer_km,
-      };
-    }),
+  const workOrders = (workOrdersResult.data ?? []).map((row) => {
+    const searchRow = row as unknown as SearchWorkOrderRow;
+    return {
+      id: row.id,
+      label: workOrderTitle(searchRow),
+      href: workOrderHref(searchRow),
+      createdAt: row.created_at,
+      odometerKm: row.odometer_km,
+    };
   });
-  const distanceUnit = pm.meters.distance?.unit ?? preferredDistanceUnit(timeline);
-  const rates = meterUsageRates(timeline, {
-    now: input.now,
+  const completions = pm.plans.flatMap((status) =>
+    status.history.map((completion) => ({ completion, planName: status.plan.name })),
+  );
+  const timeline = buildMeterTimeline({
+    readings: historyRows.map(mapMeterReading),
+    completions,
+    workOrders,
+  });
+  const rateTimeline = buildMeterTimeline({
+    readings: rateRows.map(mapMeterReading),
+    completions,
+    workOrders,
+  });
+  const current = latestMeters(pm.meters, timeline);
+  const distanceUnit = current.distance?.unit ?? preferredDistanceUnit(rateTimeline);
+  const rates = meterUsageRates(rateTimeline, {
+    now,
     windowDays: METER_RATE_WINDOW_DAYS,
     distanceUnit,
   });
+  const plans = pm.plans.map((status) => evaluatePmPlan(status.plan, status.history, current));
 
   return {
-    current: pm.meters,
+    current,
     timeline,
     distanceUnit,
     windowDays: METER_RATE_WINDOW_DAYS,
     rates,
-    projections: projectPmDue(pm.plans, rates, pm.meters.today),
+    projections: projectPmDue(plans, rates, current.today),
   };
 }
 
