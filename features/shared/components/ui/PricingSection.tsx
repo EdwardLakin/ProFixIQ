@@ -133,7 +133,7 @@ export default function PricingSection({
         {
           source: window.location.pathname,
           destination: "/api/stripe/checkout",
-          packageKey: equipmentAddon ? "complete_operations+equipment" : packageKey,
+          packageKey,
           interval,
           checkoutMode,
           checkoutAttemptId,
