@@ -6,6 +6,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient } from "@supabase/supabase-js";
 import type { NextApiRequest, NextApiResponse } from "next";
 import type { Database } from "@shared/types/types/supabase";
+import { withAuthCookieDomain } from "./auth-cookie-domain";
 import {
   readSupabaseServerEnv,
   readSupabaseServiceRoleKey,
@@ -31,7 +32,7 @@ function createCookieBackedServerClient() {
       setAll(cookiesToSet) {
         try {
           cookiesToSet.forEach(({ name, value, options }) => {
-            cookieStore.set(name, value, options);
+            cookieStore.set(name, value, withAuthCookieDomain(options));
           });
         } catch {
           // Server Components cannot set cookies. Middleware/route handlers that
@@ -78,6 +79,8 @@ export function createServerSupabaseApi(
         const nextCookies = cookiesToSet.map(({ name, value, options }) => {
           const parts = [`${name}=${encodeURIComponent(value)}`, "Path=/"];
           if (options?.maxAge) parts.push(`Max-Age=${options.maxAge}`);
+          const domain = withAuthCookieDomain(options)?.domain;
+          if (domain) parts.push(`Domain=${domain}`);
           if (options?.sameSite) parts.push(`SameSite=${options.sameSite}`);
           if (options?.secure) parts.push("Secure");
           if (options?.httpOnly) parts.push("HttpOnly");
