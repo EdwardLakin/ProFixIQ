@@ -253,6 +253,43 @@ end
 $equipment_pm_wo_anon$;
 reset role;
 
+-- Reassigning a linked work order to another asset unlinks it automatically
+-- (history kept); other work-order updates leave the link alone.
+insert into public.work_orders (id, shop_id, custom_id, vehicle_id, status, record_type, advisor_id)
+values
+  ('7a400000-0000-4000-8000-000000000005', '7a200000-0000-4000-8000-000000000001', 'PMWO-5', '7a300000-0000-4000-8000-000000000001', 'in_progress', 'work_order', '7a100000-0000-4000-8000-000000000001');
+do $equipment_pm_wo_reassign$
+declare
+  v_plan uuid;
+  v_link uuid;
+begin
+  v_plan := (public.equipment_pm_plan_save(
+    '7a200000-0000-4000-8000-000000000001', '7a100000-0000-4000-8000-000000000001',
+    '7a300000-0000-4000-8000-000000000001', null, null,
+    '{"name":"500-hour service","interval_hours":500,"start_date":"2026-09-01","start_hours":2300,"active":true}',
+    '7a500000-0000-4000-8000-000000000061'
+  ) ->> 'id')::uuid;
+  v_link := (public.equipment_pm_work_order_link(
+    '7a200000-0000-4000-8000-000000000001', '7a100000-0000-4000-8000-000000000001',
+    v_plan, '7a400000-0000-4000-8000-000000000005', '7a500000-0000-4000-8000-000000000060'
+  ) ->> 'id')::uuid;
+
+  update public.work_orders set status = 'completed' where id = '7a400000-0000-4000-8000-000000000005';
+  if (select unlinked_at from public.equipment_pm_work_orders where id = v_link) is not null then
+    raise exception 'A status change unlinked a PM work order.';
+  end if;
+
+  update public.work_orders set vehicle_id = '7a300000-0000-4000-8000-000000000002'
+  where id = '7a400000-0000-4000-8000-000000000005';
+  if not exists (
+    select 1 from public.equipment_pm_work_orders
+    where id = v_link and unlinked_at is not null and unlinked_by is null
+  ) then
+    raise exception 'Moving a linked work order to another asset did not unlink it.';
+  end if;
+end
+$equipment_pm_wo_reassign$;
+
 -- Deleting a linked work order removes its links; the plan stays.
 delete from public.work_orders where id = '7a400000-0000-4000-8000-000000000001';
 do $equipment_pm_wo_delete$
