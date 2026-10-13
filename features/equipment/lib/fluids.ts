@@ -151,6 +151,7 @@ function optionalNumber(
   options: { min: number; max: number; integer?: boolean },
 ): Validation<number | null> {
   if (value === undefined || value === null || value === "") return { ok: true, value: null };
+  if (typeof value === "string" && value.trim() === "") return { ok: true, value: null };
   const parsed = typeof value === "number" ? value : typeof value === "string" ? Number(value.trim()) : NaN;
   if (!Number.isFinite(parsed)) return { ok: false, error: `${label} must be a number.` };
   if (options.integer && !Number.isInteger(parsed)) {
@@ -165,11 +166,16 @@ function optionalNumber(
 function sampledAtValue(value: unknown, now: number): Validation<string | null> {
   if (value === undefined || value === null || value === "") return { ok: true, value: null };
   if (typeof value !== "string") return { ok: false, error: "Sample date is invalid." };
+  const trimmed = value.trim();
+  const dateOnly = /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
+  if (dateOnly && trimmed > new Date(now).toISOString().slice(0, 10)) {
+    return { ok: false, error: "A sample cannot be dated in the future." };
+  }
   // A plain date is the sample day (noon UTC keeps it on that day everywhere).
-  const iso = /^\d{4}-\d{2}-\d{2}$/.test(value) ? `${value}T12:00:00.000Z` : value;
+  const iso = dateOnly ? `${trimmed}T12:00:00.000Z` : trimmed;
   const time = Date.parse(iso);
   if (!Number.isFinite(time)) return { ok: false, error: "Sample date is invalid." };
-  if (time > now + 24 * 60 * 60 * 1000) return { ok: false, error: "A sample cannot be dated in the future." };
+  if (!dateOnly && time > now) return { ok: false, error: "A sample cannot be dated in the future." };
   return { ok: true, value: new Date(time).toISOString() };
 }
 
@@ -319,9 +325,9 @@ export type AnalyteTrend = {
   previous: AnalyteTrendPoint | null;
   /** latest − previous; null without a previous value in the same unit. */
   change: number | null;
-  /** Fluid hours between the two samples (only when the fluid was not changed between them). */
+  /** Reserved for a confirmed same-fill boundary. Null until continuity is known. */
   fluidHoursBetween: number | null;
-  /** change ÷ fluid hours between × 100; null when not computable. */
+  /** Null until a confirmed same-fill boundary is persisted. */
   changePer100FluidHours: number | null;
 };
 
@@ -368,10 +374,10 @@ function trendPoint(sample: FluidSample, result: FluidSampleResult): AnalyteTren
 
 /**
  * Per-analyte trend across live samples (newest first): latest value, the
- * previous value of the same analyte, and their plain difference. The rate per
- * 100 fluid hours is given only when both samples carry fluid hours and the
- * hours increased (same fill of fluid); a fluid change resets the count, so no
- * rate is computed across it.
+ * previous value of the same analyte, and their plain difference. A fluid-hour
+ * rate is intentionally not inferred merely because two counters increase:
+ * that does not prove the samples belong to the same fill. Rate fields remain
+ * null until a real fill/change boundary is persisted.
  */
 export function analyteTrends(liveNewestFirst: FluidSample[]): AnalyteTrend[] {
   const order: string[] = [];
@@ -390,19 +396,14 @@ export function analyteTrends(liveNewestFirst: FluidSample[]): AnalyteTrend[] {
     const [latest, previous = null] = points.get(analyte)!;
     const sameUnit = previous !== null && (latest.unit ?? "") === (previous.unit ?? "");
     const change = previous && sameUnit ? round(latest.value - previous.value) : null;
-    const fluidHoursBetween =
-      previous && latest.fluidHours !== null && previous.fluidHours !== null && latest.fluidHours > previous.fluidHours
-        ? round(latest.fluidHours - previous.fluidHours)
-        : null;
     return {
       analyte,
       label: analyteLabel(analyte),
       latest,
       previous,
       change,
-      fluidHoursBetween,
-      changePer100FluidHours:
-        change !== null && fluidHoursBetween !== null ? round((change / fluidHoursBetween) * 100) : null,
+      fluidHoursBetween: null,
+      changePer100FluidHours: null,
     };
   });
 }
