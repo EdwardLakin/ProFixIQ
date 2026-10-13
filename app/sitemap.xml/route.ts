@@ -15,6 +15,7 @@ const sitemapEntries = [
   { path: "/fleet-preventive-maintenance-software", changeFrequency: "monthly", priority: 0.9 },
   { path: "/mobile-truck-repair-software", changeFrequency: "monthly", priority: 0.9 },
   { path: "/service-truck-work-order-software", changeFrequency: "monthly", priority: 0.9 },
+  { path: "/equipment-maintenance-software", changeFrequency: "monthly", priority: 0.95 },
   { path: "/heavy-equipment-repair-software", changeFrequency: "monthly", priority: 0.9 },
   { path: "/off-highway-equipment-repair-software", changeFrequency: "monthly", priority: 0.9 },
   { path: "/compare/fullbay-alternative", changeFrequency: "monthly", priority: 0.8 },
