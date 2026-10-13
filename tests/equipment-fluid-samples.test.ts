@@ -108,17 +108,21 @@ describe("fluid sample validation", () => {
     expect(validateFluidSample({ fluidType: "coolant" }, NOW)).toMatchObject({ ok: true, value: { labStatus: "unknown", results: [] } });
     expect(validateFluidSample({ fluidType: "milk" }, NOW).ok).toBe(false);
     expect(validateFluidSample({ fluidType: "coolant", labStatus: "good" }, NOW).ok).toBe(false);
-    expect(validateFluidSample({ fluidType: "coolant", sampledAt: "2026-11-01" }, NOW)).toMatchObject({
+    expect(validateFluidSample({ fluidType: "coolant", sampledAt: "2026-10-14" }, NOW)).toMatchObject({
       ok: false,
       error: "A sample cannot be dated in the future.",
     });
     expect(validateFluidSample({ fluidType: "coolant", fluidDistance: 500 }, NOW).ok).toBe(false);
     expect(validateFluidSample({ fluidType: "coolant", componentId: "nope" }, NOW).ok).toBe(false);
     expect(validateFluidSample({ fluidType: "coolant", assetHours: 1.5 }, NOW).ok).toBe(false);
+    expect(validateFluidSample({ fluidType: "coolant", fluidHours: "   " }, NOW)).toMatchObject({
+      ok: true,
+      value: { fluidHours: null },
+    });
     expect(
       validateFluidSample({ fluidType: "coolant", results: [{ analyte: "iron", value: 1 }, { analyte: "Iron", value: 2 }] }, NOW),
     ).toMatchObject({ ok: false, error: "Iron (Fe) is entered more than once." });
-    expect(validateFluidSample({ fluidType: "coolant", results: [{ analyte: "iron", value: "" }] }, NOW).ok).toBe(false);
+    expect(validateFluidSample({ fluidType: "coolant", results: [{ analyte: "iron", value: "   " }] }, NOW).ok).toBe(false);
     expect(validateFluidSample({ fluidType: "coolant", results: [{ analyte: "iron", value: 1, labFlag: "bad" }] }, NOW).ok).toBe(false);
     expect(
       validateFluidSample({ fluidType: "coolant", results: Array.from({ length: 101 }, (_, i) => ({ analyte: `a${i}`, value: 1 })) }, NOW).ok,
@@ -150,7 +154,7 @@ describe("fluid sample trends", () => {
     ],
   });
 
-  it("reports latest, previous and plain change per analyte, with the rate per 100 fluid hours", () => {
+  it("reports latest, previous and plain change per analyte without inventing fill continuity", () => {
     const trends = analyteTrends([newer, older]);
     const iron = trends.find((trend) => trend.analyte === "iron")!;
     expect(iron).toMatchObject({
@@ -158,12 +162,10 @@ describe("fluid sample trends", () => {
       latest: { value: 42, labFlag: "caution", sampleId: "new" },
       previous: { value: 20, sampleId: "old" },
       change: 22,
-      fluidHoursBetween: 200,
-      changePer100FluidHours: 11,
+      fluidHoursBetween: null,
+      changePer100FluidHours: null,
     });
-    // A different unit is not compared.
     expect(trends.find((trend) => trend.analyte === "viscosity_100c")).toMatchObject({ change: null, changePer100FluidHours: null });
-    // A first result has nothing to compare.
     expect(trends.find((trend) => trend.analyte === "silicon")).toMatchObject({ previous: null, change: null });
   });
 
@@ -273,7 +275,6 @@ const sampleRow = {
 const resultRows = [
   { id: "r2", shop_id: SHOP, sample_id: "s1", position: 1, analyte: "silicon", value: "9", unit: "ppm", lab_flag: null },
   { id: "r1", shop_id: SHOP, sample_id: "s1", position: 0, analyte: "iron", value: "42", unit: "ppm", lab_flag: "caution" },
-  // Another shop's row is never read.
   { id: "r3", shop_id: "other", sample_id: "s1", position: 2, analyte: "copper", value: "1", unit: "ppm", lab_flag: null },
 ];
 
@@ -284,7 +285,7 @@ describe("fluid sample service", () => {
     mocks.authorize.mockReset();
   });
 
-  it("loads grouped history with results in lab order and installed components", async () => {
+  it("loads grouped history with results in lab order and current or historical components", async () => {
     mocks.authorize.mockResolvedValue(identity);
     const result = await loadAssetFluidSamples({
       supabase: fakeClient({}) as never,
@@ -292,6 +293,7 @@ describe("fluid sample service", () => {
         equipment_fluid_samples: [sampleRow, { ...sampleRow, id: "other-shop", shop_id: "other" }],
         equipment_fluid_sample_results: resultRows,
         equipment_components: [{ id: ENGINE, shop_id: SHOP, label: "Engine", installed_vehicle_id: ASSET }],
+        equipment_component_events: [{ shop_id: SHOP, component_id: ENGINE, vehicle_id: ASSET, event_type: "installed", sequence: 1 }],
       }) as never,
       shopId: SHOP,
       role: "mechanic",
@@ -336,7 +338,7 @@ describe("fluid sample service", () => {
     expect(summaries).toEqual([expect.objectContaining({ sampleId: "s1", labStatus: "caution", label: "Engine oil · Engine" })]);
   });
 
-  it("lets an assigned mechanic record a sample atomically through the RPC", async () => {
+  it("lets an assigned mechanic record a sample atomically through the RPC without injecting mutable meter data", async () => {
     mocks.authorize.mockResolvedValue(identity);
     const rpcs: RpcCall[] = [];
     const result = await recordFluidSample({
@@ -368,8 +370,7 @@ describe("fluid sample service", () => {
             component_id: ENGINE,
             fluid_type: "engine_oil",
             sampled_at: null,
-            // Taken now: the current hour meter.
-            asset_hours: 6300,
+            asset_hours: null,
             fluid_hours: null,
             fluid_distance: null,
             fluid_distance_unit: null,
