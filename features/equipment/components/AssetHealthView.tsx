@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import EquipmentAssetProfilePanel from "@/features/equipment/components/EquipmentAssetProfilePanel";
 import EquipmentComponentPanel from "@/features/equipment/components/EquipmentComponentPanel";
+import EquipmentFluidSamplePanel from "@/features/equipment/components/EquipmentFluidSamplePanel";
 import EquipmentMeasurementPanel from "@/features/equipment/components/EquipmentMeasurementPanel";
 import EquipmentPmPanel from "@/features/equipment/components/EquipmentPmPanel";
 import EquipmentUndercarriagePanel from "@/features/equipment/components/EquipmentUndercarriagePanel";
@@ -15,6 +16,7 @@ import {
 import type { VehicleWorkspaceReference } from "@/features/vehicles/lib/vehicleWorkspace";
 import { EQUIPMENT_PM_STATE_LABELS } from "@/features/equipment/lib/equipmentDirectory";
 import { combinePmStates } from "@/features/equipment/lib/pm";
+import { labStatusLabel } from "@/features/equipment/lib/fluids";
 import {
   WorkspaceEmptyState as EmptyState,
   WorkspaceHeader,
@@ -55,12 +57,6 @@ function SourceLink({
   );
 }
 
-function ComingNext({ children }: { children: React.ReactNode }) {
-  return (
-    <p className="mt-3 text-sm text-[color:var(--theme-text-muted)]">{children}</p>
-  );
-}
-
 /**
  * Asset Health: the neutral record of everything ProFixIQ knows about one
  * machine. Facts only — it surfaces recorded evidence; the technician makes
@@ -74,7 +70,7 @@ export default function AssetHealthView({
   /** Shop-wide (directory) roles may open a component's cross-machine history. */
   canOpenComponentHistory?: boolean;
 }) {
-  const { snapshot, equipment, evidence, pmPlans, attachments, host } = health;
+  const { snapshot, equipment, evidence, pmPlans, fluidSamples, attachments, host } = health;
   const { identity, permissions } = snapshot;
   const profile = equipment.profile;
   const title =
@@ -357,10 +353,41 @@ export default function AssetHealthView({
       {/* 8. Measurements */}
       <EquipmentMeasurementPanel assetId={identity.id} />
 
-      {/* 9. Upcoming Equipment capabilities */}
+      {/* 9. Fluid / sample history: latest lab sample per component and fluid, status as the lab reported it */}
       <WorkspaceSection headingId="asset-fluids" eyebrow="Fluids" title="Fluid / sample history">
-        <ComingNext>Oil and fluid sample history arrives in a later Equipment release.</ComingNext>
+        {fluidSamples.length ? (
+          <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+            {fluidSamples.map((sample) => (
+              <li key={sample.key} className={`${ITEM} p-3 text-sm`}>
+                <div className="flex justify-between gap-2">
+                  <span className="font-semibold">{sample.label}</span>
+                  <span
+                    className={
+                      sample.labStatus === "critical"
+                        ? "text-xs text-red-400"
+                        : sample.labStatus === "caution"
+                          ? "text-xs text-amber-400"
+                          : "text-xs text-[color:var(--theme-text-muted)]"
+                    }
+                  >
+                    Lab: {labStatusLabel(sample.labStatus)}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">
+                  {[formatDate(sample.sampledAt), sample.labName, sample.labReportNumber ? `#${sample.labReportNumber}` : null]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <div className="mt-3">
+            <EmptyState>No lab fluid samples recorded for this asset.</EmptyState>
+          </div>
+        )}
       </WorkspaceSection>
+      <EquipmentFluidSamplePanel assetId={identity.id} />
 
       {/* 9. Service history */}
       <WorkspaceSection
