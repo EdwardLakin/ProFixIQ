@@ -668,6 +668,22 @@
     "riskLevel": "low"
   },
   {
+    "path": "app/api/auth/handoff/failed/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "isMutating": false,
+    "hasRequireShopScopedApiAccess": false,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": false,
+    "hasRoleOrCapabilityReference": false,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [],
+    "riskLevel": "low"
+  },
+  {
     "path": "app/api/auth/handoff/redeem/route.ts",
     "methods": [
       "GET"

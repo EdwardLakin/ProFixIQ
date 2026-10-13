@@ -12,7 +12,15 @@ import {
  * `__Host-` makes the cookie host-only, Secure and Path=/, and stops sibling
  * subdomains from setting or shadowing it (no cookie tossing).
  */
-export const HANDOFF_NONCE_COOKIE = "__Host-profixiq-handoff";
+export const HANDOFF_NONCE_COOKIE_PREFIX = "__Host-profixiq-handoff-";
+
+/**
+ * One cookie per handoff (named by its bind), so concurrent handoffs in
+ * several tabs cannot overwrite or delete each other's nonce.
+ */
+export function handoffNonceCookieName(bind: string): string {
+  return `${HANDOFF_NONCE_COOKIE_PREFIX}${bind.slice(0, 16)}`;
+}
 export const HANDOFF_NONCE_MAX_AGE_SECONDS = 300;
 
 export const HANDOFF_NONCE_COOKIE_OPTIONS = {

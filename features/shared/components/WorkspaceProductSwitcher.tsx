@@ -185,6 +185,7 @@ export default function WorkspaceProductSwitcher({
           <a
             key={product.surface}
             href={href}
+            referrerPolicy="origin"
             title={title}
             className={className}
           >

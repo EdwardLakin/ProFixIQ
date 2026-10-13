@@ -6,6 +6,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import {
   handoffFailureUrl,
   HANDOFF_START_PATH,
+  isTrustedHandoffInitiator,
   isTrustedHandoffNavigation,
   resolveHandoffTarget,
   safeHandoffPath,
@@ -14,7 +15,7 @@ import {
   createHandoffNonce,
   createHandoffState,
   hashHandoffNonce,
-  HANDOFF_NONCE_COOKIE,
+  handoffNonceCookieName,
   HANDOFF_NONCE_COOKIE_OPTIONS,
   HANDOFF_NONCE_MAX_AGE_SECONDS,
 } from "@/features/shared/lib/server/hostHandoffBinding";
@@ -25,7 +26,8 @@ const NO_STORE = {
 };
 
 /**
- * Target side, step 1. Runs on the host the user is entering: bind the handoff
+ * Target side, step 1. Runs on the host the user is entering, and only when
+ * the navigation came from a page on the named source origin: bind the handoff
  * to this browser with a host-only nonce cookie, then send the browser to the
  * source host, which mints the one-time token for the hash of that nonce. The
  * state handed to the source is signed so `start` only acts on what this
@@ -42,7 +44,10 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  if (!isTrustedHandoffNavigation(req.headers)) {
+  if (
+    !isTrustedHandoffNavigation(req.headers) ||
+    !isTrustedHandoffInitiator(req.headers, source)
+  ) {
     return NextResponse.redirect(handoffFailureUrl(self), {
       status: 303,
       headers: NO_STORE,
@@ -63,7 +68,7 @@ export async function GET(req: NextRequest) {
   start.searchParams.set("sig", state.sig);
 
   const res = NextResponse.redirect(start, { status: 303, headers: NO_STORE });
-  res.cookies.set(HANDOFF_NONCE_COOKIE, nonce, {
+  res.cookies.set(handoffNonceCookieName(state.bind), nonce, {
     ...HANDOFF_NONCE_COOKIE_OPTIONS,
     maxAge: HANDOFF_NONCE_MAX_AGE_SECONDS,
   });

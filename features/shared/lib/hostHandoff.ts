@@ -60,12 +60,34 @@ export function isTrustedHandoffNavigation(headers: Headers): boolean {
 }
 
 /**
- * Where every failed handoff goes. Never the requested workspace: the target
- * host may hold a different account's session, and silently opening a
- * protected page under it would be the wrong tenant.
+ * `begin` may only be entered from a page on the exact source origin the
+ * request names. The browser sets Referer and a page cannot forge another
+ * origin's, so a same-site sibling (e.g. shopreel) that navigates the user to
+ * `begin` is refused even though Fetch Metadata calls it "same-site". Fails
+ * closed when the referrer is absent.
+ */
+export function isTrustedHandoffInitiator(
+  headers: Headers,
+  sourceOrigin: string,
+): boolean {
+  const referer = headers.get("referer");
+  if (!referer) return false;
+  try {
+    return new URL(referer).origin === sourceOrigin;
+  } catch {
+    return false;
+  }
+}
+
+export const HANDOFF_FAILED_PATH = "/api/auth/handoff/failed";
+
+/**
+ * Where every failed handoff goes: a neutral page that needs an explicit click.
+ * Never the requested workspace, and never `/sign-in`, which silently resumes
+ * whatever session the host already holds (possibly a different account's).
  */
 export function handoffFailureUrl(origin: string): string {
-  return `${origin}/sign-in?access=handoff_failed`;
+  return `${origin}${HANDOFF_FAILED_PATH}`;
 }
 
 /**

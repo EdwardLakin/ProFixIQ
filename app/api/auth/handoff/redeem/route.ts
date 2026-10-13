@@ -11,8 +11,8 @@ import {
   safeHandoffPath,
 } from "@/features/shared/lib/hostHandoff";
 import {
+  handoffNonceCookieName,
   handoffNonceMatches,
-  HANDOFF_NONCE_COOKIE,
   HANDOFF_NONCE_COOKIE_OPTIONS,
 } from "@/features/shared/lib/server/hostHandoffBinding";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
@@ -33,29 +33,37 @@ const NO_STORE = {
  */
 export async function GET(req: NextRequest) {
   const origin = req.nextUrl.origin;
+  const bind = req.nextUrl.searchParams.get("bind");
+  const cookieName = isValidHandoffBind(bind)
+    ? handoffNonceCookieName(bind)
+    : null;
+
   const respond = (location: string) => {
     const res = NextResponse.redirect(location, {
       status: 303,
       headers: NO_STORE,
     });
-    // The nonce is single-use: clear it whatever happens.
-    res.cookies.set(HANDOFF_NONCE_COOKIE, "", {
-      ...HANDOFF_NONCE_COOKIE_OPTIONS,
-      maxAge: 0,
-    });
+    // Single-use: clear only this handoff's nonce, so a failed or stale attempt
+    // never deletes the nonce of another handoff running in a different tab.
+    if (cookieName) {
+      res.cookies.set(cookieName, "", {
+        ...HANDOFF_NONCE_COOKIE_OPTIONS,
+        maxAge: 0,
+      });
+    }
     return res;
   };
   const failed = () => respond(handoffFailureUrl(origin));
 
   const next = safeHandoffPath(req.nextUrl.searchParams.get("next"));
   const tokenHash = req.nextUrl.searchParams.get("token_hash");
-  const bind = req.nextUrl.searchParams.get("bind");
   if (
     !next ||
+    !cookieName ||
+    !isValidHandoffBind(bind) ||
     !isTrustedHandoffNavigation(req.headers) ||
     !isValidHandoffTokenHash(tokenHash) ||
-    !isValidHandoffBind(bind) ||
-    !handoffNonceMatches(req.cookies.get(HANDOFF_NONCE_COOKIE)?.value, bind)
+    !handoffNonceMatches(req.cookies.get(cookieName)?.value, bind)
   ) {
     return failed();
   }

@@ -7,6 +7,7 @@ import {
   handoffBeginHref,
   handoffFailureUrl,
   isHandoffHref,
+  isTrustedHandoffInitiator,
   isTrustedHandoffNavigation,
   isValidHandoffBind,
   isValidHandoffTokenHash,
@@ -16,8 +17,9 @@ import {
 import {
   createHandoffState,
   handoffNonceMatches,
+  handoffNonceCookieName,
   hashHandoffNonce,
-  HANDOFF_NONCE_COOKIE,
+  HANDOFF_NONCE_COOKIE_PREFIX,
   verifyHandoffState,
 } from "@/features/shared/lib/server/hostHandoffBinding";
 import {
@@ -46,6 +48,7 @@ vi.mock("@/features/shared/lib/supabase/server", () => ({
 import { GET as begin } from "../app/api/auth/handoff/begin/route";
 import { GET as start } from "../app/api/auth/handoff/start/route";
 import { GET as redeem } from "../app/api/auth/handoff/redeem/route";
+import { GET as failedPage } from "../app/api/auth/handoff/failed/route";
 
 const PRIMARY = "https://profixiq.com";
 const FLEET = "https://fleet.profixiq.com";
@@ -106,7 +109,7 @@ describe("handoff helpers", () => {
     }
     expect(isHandoffHref(handoffBeginHref(PRIMARY, FLEET, "/dashboard"))).toBe(true);
     expect(isHandoffHref("/dashboard")).toBe(false);
-    expect(handoffFailureUrl(PRIMARY)).toBe(`${PRIMARY}/sign-in?access=handoff_failed`);
+    expect(handoffFailureUrl(PRIMARY)).toBe(`${PRIMARY}/api/auth/handoff/failed`);
   });
 
   it("matches the nonce cookie to its hash only", () => {
@@ -134,6 +137,33 @@ describe("handoff helpers", () => {
     expect(isTrustedHandoffNavigation(h({ ...NAV, "sec-fetch-dest": "iframe" }))).toBe(false);
     expect(isTrustedHandoffNavigation(h({ ...NAV, "sec-fetch-mode": "cors" }))).toBe(false);
     expect(isTrustedHandoffNavigation(h({}))).toBe(false);
+  });
+});
+
+describe("handoff initiator", () => {
+  const h = (referer?: string) => new Headers(referer ? { referer } : {});
+
+  it("only accepts a referrer on the exact source origin, failing closed", () => {
+    expect(isTrustedHandoffInitiator(h(`${FLEET}/portal/fleet`), FLEET)).toBe(true);
+    expect(isTrustedHandoffInitiator(h(`${FLEET}/`), FLEET)).toBe(true);
+    for (const bad of [
+      undefined,
+      "not a url",
+      "https://shopreel.profixiq.com/page",
+      "https://fleet.profixiq.com.evil.io/",
+      "http://fleet.profixiq.com/",
+      `${PRIMARY}/dashboard`,
+    ]) {
+      expect(isTrustedHandoffInitiator(h(bad), FLEET)).toBe(false);
+    }
+  });
+
+  it("names nonce cookies per handoff with the __Host- prefix", () => {
+    const a = handoffNonceCookieName(hashHandoffNonce("a"));
+    const b = handoffNonceCookieName(hashHandoffNonce("b"));
+    expect(a).not.toBe(b);
+    expect(a.startsWith(HANDOFF_NONCE_COOKIE_PREFIX)).toBe(true);
+    expect(HANDOFF_NONCE_COOKIE_PREFIX.startsWith("__Host-")).toBe(true);
   });
 });
 
@@ -181,7 +211,7 @@ describe("GET /api/auth/handoff/begin", () => {
     source: string,
     next: string,
     origin = PRIMARY,
-    headers: Record<string, string> = NAV,
+    headers: Record<string, string> = { ...NAV, referer: `${FLEET}/portal/fleet` },
   ) =>
     new NextRequest(
       `${origin}/api/auth/handoff/begin?source=${encodeURIComponent(source)}&next=${encodeURIComponent(next)}`,
@@ -191,7 +221,8 @@ describe("GET /api/auth/handoff/begin", () => {
   it("sets a host-only nonce cookie and sends the browser to the source with signed state", async () => {
     const res = await begin(req(FLEET, "/dashboard"));
     const loc = new URL(res.headers.get("location")!);
-    const cookie = res.cookies.get(HANDOFF_NONCE_COOKIE);
+    const bind = loc.searchParams.get("bind")!;
+    const cookie = res.cookies.get(handoffNonceCookieName(bind));
     expect(res.status).toBe(303);
     expect(loc.origin).toBe(FLEET);
     expect(loc.pathname).toBe("/api/auth/handoff/start");
@@ -215,7 +246,7 @@ describe("GET /api/auth/handoff/begin", () => {
     expect(setCookie).toContain("secure");
     expect(setCookie).toContain("path=/");
     expect(setCookie).not.toContain("domain=");
-    expect(HANDOFF_NONCE_COOKIE.startsWith("__Host-")).toBe(true);
+    expect(cookie!.name.startsWith("__Host-")).toBe(true);
   });
 
   it("rejects unknown sources, same-host sources, unsafe paths and unknown hosts", async () => {
@@ -227,7 +258,7 @@ describe("GET /api/auth/handoff/begin", () => {
     ]) {
       const res = await begin(r);
       expect(res.status).toBe(400);
-      expect(res.cookies.get(HANDOFF_NONCE_COOKIE)).toBeUndefined();
+      expect(res.headers.get("set-cookie")).toBeNull();
     }
   });
 
@@ -236,7 +267,31 @@ describe("GET /api/auth/handoff/begin", () => {
       req(FLEET, "/dashboard", PRIMARY, { ...NAV, "sec-fetch-dest": "image" }),
     );
     expect(res.headers.get("location")).toBe(handoffFailureUrl(PRIMARY));
-    expect(res.cookies.get(HANDOFF_NONCE_COOKIE)).toBeUndefined();
+    expect(res.headers.get("set-cookie")).toBeNull();
+  });
+
+  it("refuses to start a handoff from a same-site sibling such as shopreel", async () => {
+    // A script on shopreel assigns top.location to begin: Fetch Metadata says
+    // same-site + navigate + document, but the referrer is not the Fleet origin.
+    for (const referer of [
+      "https://shopreel.profixiq.com/embed",
+      undefined,
+      `${PRIMARY}/dashboard`,
+    ]) {
+      const headers: Record<string, string> = { ...NAV };
+      if (referer) headers.referer = referer;
+      const res = await begin(req(FLEET, "/dashboard", PRIMARY, headers));
+      expect(res.headers.get("location")).toBe(handoffFailureUrl(PRIMARY));
+      expect(res.headers.get("set-cookie")).toBeNull();
+    }
+  });
+
+  it("gives concurrent handoffs separate nonce cookies", async () => {
+    const a = await begin(req(FLEET, "/dashboard"));
+    const b = await begin(req(FLEET, "/equipment"));
+    const nameOf = (r: Response) =>
+      r.headers.get("set-cookie")!.split("=")[0]!;
+    expect(nameOf(a)).not.toBe(nameOf(b));
   });
 });
 
@@ -334,6 +389,7 @@ describe("GET /api/auth/handoff/redeem", () => {
   const NONCE = "victim-nonce";
   const BIND = hashHandoffNonce(NONCE);
   const FAIL = handoffFailureUrl(PRIMARY);
+  const COOKIE = handoffNonceCookieName(BIND);
   const req = (
     query: string,
     opts: { headers?: Record<string, string>; nonce?: string } = {
@@ -344,7 +400,7 @@ describe("GET /api/auth/handoff/redeem", () => {
     new NextRequest(`${PRIMARY}/api/auth/handoff/redeem?${query}`, {
       headers: {
         ...(opts.headers ?? {}),
-        ...(opts.nonce ? { cookie: `${HANDOFF_NONCE_COOKIE}=${opts.nonce}` } : {}),
+        ...(opts.nonce ? { cookie: `${COOKIE}=${opts.nonce}` } : {}),
       },
     });
   const good = `token_hash=tok_1234567890&next=/dashboard&bind=${BIND}`;
@@ -358,7 +414,7 @@ describe("GET /api/auth/handoff/redeem", () => {
       token_hash: "tok_1234567890",
     });
     expect(res.headers.get("location")).toBe(`${PRIMARY}/dashboard`);
-    expect(res.cookies.get(HANDOFF_NONCE_COOKIE)?.value).toBe("");
+    expect(res.cookies.get(COOKIE)?.value).toBe("");
   });
 
   it("does not log a victim in with an attacker-minted token (login CSRF)", async () => {
@@ -386,9 +442,19 @@ describe("GET /api/auth/handoff/redeem", () => {
     ]) {
       const res = await redeem(r);
       expect(res.headers.get("location")).toBe(FAIL);
-      expect(res.cookies.get(HANDOFF_NONCE_COOKIE)?.value).toBe("");
     }
     expect(mocks.verifyOtp).not.toHaveBeenCalled();
+  });
+
+  it("clears only its own handoff's nonce, never another tab's", async () => {
+    const otherBind = hashHandoffNonce("other-tab-nonce");
+    const link = `token_hash=tok_1234567890&next=/dashboard&bind=${otherBind}`;
+    // A stale/mismatched attempt for one handoff...
+    const res = await redeem(req(link, { headers: NAV, nonce: NONCE }));
+    const cleared = res.headers.getSetCookie().map((c) => c.split("=")[0]);
+    // ...touches only that handoff's cookie name, not this tab's.
+    expect(cleared).toEqual([handoffNonceCookieName(otherBind)]);
+    expect(cleared).not.toContain(COOKIE);
   });
 
   it("never opens next when the exchange fails, even if the host holds another session", async () => {
@@ -404,6 +470,19 @@ describe("GET /api/auth/handoff/redeem", () => {
   });
 });
 
+describe("GET /api/auth/handoff/failed", () => {
+  it("is a neutral page that needs a click, not a redirect into a session", async () => {
+    const res = await failedPage();
+    const html = await res.text();
+    expect(res.status).toBe(200);
+    expect(res.headers.get("location")).toBeNull();
+    expect(res.headers.get("cache-control")).toBe("private, no-store");
+    expect(res.headers.get("content-security-policy")).toContain("default-src 'none'");
+    expect(html).toContain('href="/sign-in"');
+    expect(html).toContain("Could not switch products");
+  });
+});
+
 describe("switcher renders handoff links as plain anchors", () => {
   it("does not use a prefetched router Link for handoff hrefs", () => {
     const src = readFileSync(
@@ -411,6 +490,6 @@ describe("switcher renders handoff links as plain anchors", () => {
       "utf8",
     );
     expect(src).toContain("isHandoffHref(href)");
-    expect(src).toMatch(/<a\s+key=\{product\.surface\}\s+href=\{href\}/);
+    expect(src).toMatch(/<a\s+key=\{product\.surface\}\s+href=\{href\}\s+referrerPolicy="origin"/);
   });
 });
