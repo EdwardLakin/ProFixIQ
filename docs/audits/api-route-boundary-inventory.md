@@ -1,16 +1,16 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-10-13T18:38:46.926Z
+Generated: 2026-10-13T19:41:44.525Z
 
 ## Summary
-- Total route count: **564**
-- Routes exporting GET: **211**
-- Routes exporting POST: **380**
+- Total route count: **566**
+- Routes exporting GET: **212**
+- Routes exporting POST: **382**
 - Routes exporting PUT: **15**
 - Routes exporting PATCH: **36**
 - Routes exporting DELETE: **15**
-- Routes with service-role pattern: **218**
-- Routes using requireShopScopedApiAccess: **239**
+- Routes with service-role pattern: **220**
+- Routes using requireShopScopedApiAccess: **241**
 - Routes with auth.getUser references: **121**
 
 ## High-Risk Routes
@@ -162,6 +162,7 @@ Generated: 2026-10-13T18:38:46.926Z
 - `app/api/equipment/assets/[assetId]/components/route.ts` | methods: GET, POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/assets/[assetId]/fluid-samples/route.ts` | methods: GET, POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/assets/[assetId]/measurements/route.ts` | methods: GET, POST | riskFlags: service_role_with_shop_identifier_input_or_reference
+- `app/api/equipment/assets/[assetId]/meters/route.ts` | methods: GET, POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/assets/[assetId]/pm/route.ts` | methods: GET, POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/assets/[assetId]/pm/work-orders/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/assets/[assetId]/profile/route.ts` | methods: GET, PUT | riskFlags: service_role_with_shop_identifier_input_or_reference
@@ -171,6 +172,7 @@ Generated: 2026-10-13T18:38:46.926Z
 - `app/api/equipment/components/[componentId]/wear-limits/route.ts` | methods: PUT | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/fluid-samples/[sampleId]/void/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/measurements/[measurementId]/correct/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
+- `app/api/equipment/meter-readings/[readingId]/void/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/pm-completions/[completionId]/void/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/pm-plans/[planId]/completions/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/pm-plans/[planId]/route.ts` | methods: PUT | riskFlags: service_role_with_shop_identifier_input_or_reference
@@ -341,6 +343,7 @@ Generated: 2026-10-13T18:38:46.926Z
 - `app/api/equipment/assets/[assetId]/components/route.ts` | methods: GET, POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/assets/[assetId]/fluid-samples/route.ts` | methods: GET, POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/assets/[assetId]/measurements/route.ts` | methods: GET, POST | riskFlags: service_role_with_shop_identifier_input_or_reference
+- `app/api/equipment/assets/[assetId]/meters/route.ts` | methods: GET, POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/assets/[assetId]/pm/route.ts` | methods: GET, POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/assets/[assetId]/pm/work-orders/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/assets/[assetId]/profile/route.ts` | methods: GET, PUT | riskFlags: service_role_with_shop_identifier_input_or_reference
@@ -350,6 +353,7 @@ Generated: 2026-10-13T18:38:46.926Z
 - `app/api/equipment/components/[componentId]/wear-limits/route.ts` | methods: PUT | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/fluid-samples/[sampleId]/void/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/measurements/[measurementId]/correct/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
+- `app/api/equipment/meter-readings/[readingId]/void/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/pm-completions/[completionId]/void/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/pm-plans/[planId]/completions/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/pm-plans/[planId]/route.ts` | methods: PUT | riskFlags: service_role_with_shop_identifier_input_or_reference
