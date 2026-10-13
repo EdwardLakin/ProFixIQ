@@ -10,7 +10,7 @@ export const equipmentMaintenancePage = {
   seo: {
     title: "Equipment Maintenance Software | ProFixIQ",
     description:
-      "Equipment maintenance software for off-road and industrial assets, with Asset Health, equipment inspections, components, measurements, wear tracking, active work, and service history.",
+      "Equipment maintenance software for off-road and industrial assets with preventive maintenance by hours, distance, cycles or calendar, Asset Health, inspections, components, wear tracking, active work, and service history.",
     path: "/equipment-maintenance-software",
     keywords: [
       "equipment maintenance software",
@@ -20,6 +20,7 @@ export const equipmentMaintenancePage = {
       "off road equipment maintenance software",
       "industrial equipment maintenance software",
       "mining equipment maintenance software",
+      "equipment preventive maintenance software",
       "equipment inspection software",
     ],
     faqs: [
@@ -29,27 +30,32 @@ export const equipmentMaintenancePage = {
           "ProFixIQ Equipment is built for mixed off-road and industrial asset populations, including excavators, loaders, dozers, haul trucks, forklifts, telehandlers, aerial lifts, compactors, road-building equipment, crushers and screeners, drilling and underground mining equipment, forestry and agricultural machines, oilfield equipment, generators, compressors, pumps, and attachments.",
       },
       {
+        question: "How does preventive maintenance work for equipment?",
+        answer:
+          "Equipment PM plans can be scheduled by engine hours, distance, cycles, calendar days, or multiple intervals on the same plan. ProFixIQ evaluates each interval independently and uses whichever becomes due first, with completion history retained against the asset.",
+      },
+      {
         question: "Is ProFixIQ Equipment a standalone subscription?",
         answer:
-          "No. Equipment is a $149 USD per month, per location premium add-on to Complete Operations. Complete Operations keeps Shop, Field Service, and Fleet Maintenance connected while Equipment adds the equipment-specific asset, inspection, health, component, measurement, and wear workflows.",
+          "No. Equipment is a $149 USD per month, per location premium add-on to Complete Operations. Complete Operations keeps Shop, Field Service, and Fleet Maintenance connected while Equipment adds equipment-specific asset health, preventive maintenance, inspection, component, measurement, and wear workflows.",
       },
       {
         question: "Can equipment repairs be handled in the shop and in the field?",
         answer:
-          "Yes. Complete Operations connects Shop and Field Service so equipment work can follow the appropriate repair workflow while the Equipment layer keeps the machine's asset record, condition evidence, components, measurements, and history together.",
+          "Yes. Complete Operations connects Shop and Field Service so equipment work can follow the appropriate repair workflow while the Equipment layer keeps the machine's asset record, PM status, condition evidence, components, measurements, and history together.",
       },
       {
         question: "Does ProFixIQ Equipment include OEM telematics or machine-control integrations?",
         answer:
-          "ProFixIQ does not claim OEM telematics or machine-control integrations. Equipment focuses on the maintenance and repair record created by your operation: asset identity, inspections, defects, work, components, measurements, wear evidence, and service history.",
+          "ProFixIQ does not claim OEM telematics or machine-control integrations. Equipment focuses on the maintenance and repair record created by your operation: asset identity, meters, PM plans and completions, inspections, defects, work, components, measurements, wear evidence, and service history.",
       },
     ],
   },
   config: {
     eyebrow: "Equipment maintenance software",
-    title: "Know the condition, work, wear, and history of every machine you maintain.",
+    title: "Know what is due, what is wearing, what is open, and what has happened to every machine.",
     lead:
-      "ProFixIQ Equipment adds an equipment-specific asset layer to Complete Operations for off-road, construction, industrial, mining, material-handling, aerial, forestry, agricultural, energy, municipal, stationary, and attachment assets.",
+      "ProFixIQ Equipment adds an equipment-specific maintenance layer to Complete Operations for off-road, construction, industrial, mining, material-handling, aerial, forestry, agricultural, energy, municipal, stationary, and attachment assets.",
     primaryCta: {
       label: "See Equipment pricing",
       href: "/compare-plans#equipment",
@@ -59,7 +65,7 @@ export const equipmentMaintenancePage = {
       href: "/heavy-equipment-repair-software",
     },
     proofPoints: [
-      "Broad off-road equipment catalog",
+      "PM by hours, distance, cycles, or calendar",
       "Asset Health + component history",
       "Shop + Field + Fleet through Complete Operations",
     ],
@@ -68,12 +74,12 @@ export const equipmentMaintenancePage = {
       heading:
         "A machine is more than a vehicle record, and mixed equipment operations need more than a truck-only template.",
       body:
-        "Equipment maintenance depends on machine identity, operating meters, components, wear, inspections, open work, site context, and durable service evidence. Losing those relationships makes every repair harder to understand later.",
+        "Equipment maintenance depends on machine identity, operating meters, preventive-maintenance intervals, components, wear, inspections, open work, site context, and durable service evidence. Losing those relationships makes every maintenance decision harder to understand later.",
       items: [
         {
-          title: "Machine condition is scattered",
+          title: "PM cannot rely on one odometer",
           body:
-            "Defects, active work, inspection findings, measurements, and wear observations should be visible around the same asset instead of reconstructed from separate records.",
+            "A machine may need service by engine hours, kilometres or miles, cycles, calendar time, or whichever interval becomes due first.",
         },
         {
           title: "Equipment classes behave differently",
@@ -81,17 +87,17 @@ export const equipmentMaintenancePage = {
             "Excavators, haul trucks, forklifts, aerial lifts, crushers, drills, generators, and attachments need equipment-aware inspection content and identity rather than one generic road-vehicle form.",
         },
         {
-          title: "Components outlive one repair",
+          title: "Condition and components outlive one repair",
           body:
-            "Tracked undercarriage, major components, mounted assets, measurements, and service evidence need history that stays tied to the machine over time.",
+            "Tracked undercarriage, major components, mounted assets, measurements, wear evidence, PM completions, and service history need to stay tied to the machine over time.",
         },
       ],
     },
     workflow: {
       eyebrow: "Equipment workflow",
-      heading: "Keep the machine record connected from inspection through repair and history.",
+      heading: "Keep preventive maintenance, condition, repair work, and history around the same machine.",
       body:
-        "Equipment sits on top of Complete Operations so the asset-specific record stays connected to the Shop, Field Service, and Fleet workflows that execute and administer the work.",
+        "Equipment sits on top of Complete Operations so the asset-specific maintenance record stays connected to the Shop, Field Service, and Fleet workflows that execute and administer the work.",
       steps: [
         {
           title: "Identify",
@@ -99,19 +105,19 @@ export const equipmentMaintenancePage = {
             "Record equipment class, serial or PIN, make and model, site, operating status, engine identity, and the meter that matters—hours, odometer, or cycles.",
         },
         {
-          title: "Inspect",
+          title: "Plan PM",
           body:
-            "Use off-road inspection content matched to the machine family and keep failed or recommended findings attached to the asset evidence.",
+            "Create preventive-maintenance plans by engine hours, distance, cycles, calendar days, or multiple dimensions where the first interval due should drive service.",
         },
         {
-          title: "Evaluate",
+          title: "Inspect and evaluate",
           body:
-            "See Asset Health, open defects, active work, components, undercarriage wear, measurements, and recorded service evidence in one machine view.",
+            "Use off-road inspection content and Asset Health to see PM state, defects, active work, components, undercarriage wear, measurements, and service evidence together.",
         },
         {
-          title: "Repair and retain",
+          title: "Complete and retain",
           body:
-            "Execute work through Shop or Field Service and keep the resulting repair and service history connected to the asset for the next decision.",
+            "Execute work through Shop or Field Service, record PM completions against the current machine meters, and retain the resulting repair and service history for the next decision.",
         },
       ],
     },
@@ -126,32 +132,32 @@ export const equipmentMaintenancePage = {
         width: 1200,
         height: 630,
         caption:
-          "Equipment is a premium add-on to Complete Operations, connecting equipment-specific asset health and maintenance evidence to Shop, Field Service, and Fleet workflows.",
+          "Equipment is a premium add-on to Complete Operations, connecting equipment-specific PM, asset health, and maintenance evidence to Shop, Field Service, and Fleet workflows.",
       },
       items: [
         {
+          title: "Multi-interval preventive maintenance",
+          body:
+            "Schedule PM by hours, distance, cycles, calendar days, or combinations of those dimensions. ProFixIQ calculates due and overdue state from the latest completion or starting point without pretending to predict failures.",
+        },
+        {
           title: "Asset Health",
           body:
-            "Bring current meters, operating status, inspection defects, active work, service evidence, site information, and recent history into a machine-centered view.",
+            "Bring current meters, operating status, PM state, inspection defects, active work, service evidence, site information, and recent history into a machine-centered view.",
         },
         {
           title: "Components, undercarriage, and measurements",
           body:
             "Track equipment components, mounted relationships, undercarriage condition, measurements, and configured wear limits without flattening every machine into the same record.",
         },
-        {
-          title: "One operating system around the asset",
-          body:
-            "Complete Operations provides the connected Shop, Field Service, and Fleet surfaces; Equipment adds the specialized machine record and off-road maintenance layer.",
-        },
       ],
     },
     faqs: [],
     finalCta: {
       eyebrow: "ProFixIQ Equipment",
-      heading: "Add the equipment layer to Complete Operations.",
+      heading: "Add the equipment maintenance layer to Complete Operations.",
       body:
-        "Equipment is $149 USD per month per location and requires Complete Operations. See the combined subscription or request a walkthrough using your real equipment mix.",
+        "Equipment is $149 USD per month per location and requires Complete Operations. New Complete + Equipment subscriptions are $648 USD per month per location before taxes or added capacity.",
       primary: {
         label: "See Complete + Equipment pricing",
         href: "/compare-plans#equipment",
