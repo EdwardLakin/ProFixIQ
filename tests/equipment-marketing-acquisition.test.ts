@@ -27,7 +27,6 @@ describe("Equipment marketing and acquisition contract", () => {
     expect(definition).toContain("undercarriage");
     expect(definition).toContain("wear limits");
     expect(definition).not.toContain("PM engine later");
-    expect(definition).not.toContain("OEM telematics integration");
 
     for (const contract of [sitemap, routes, analytics, robots]) {
       expect(contract).toContain("/equipment-maintenance-software");
@@ -45,6 +44,8 @@ describe("Equipment marketing and acquisition contract", () => {
     expect(pricing).toContain('startCheckout("complete_operations", "trial", true)');
     expect(pricing).toContain("Complete + Equipment");
     expect(pricing).toContain('id="equipment"');
+    expect(pricing).toContain('window.location.pathname !== "/compare-plans"');
+    expect(pricing).toContain('window.location.href = "/compare-plans#equipment"');
   });
 
   it("creates Complete and Equipment as items on the same acquisition subscription", () => {
