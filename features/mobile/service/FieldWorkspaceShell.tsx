@@ -1,189 +1,54 @@
 "use client";
 
 import {
-  Boxes,
-  BriefcaseBusiness,
   Building2,
   CalendarDays,
   ClipboardCheck,
   Home,
-  Inbox,
   LogOut,
   Menu,
-  PackageOpen,
-  PackagePlus,
   Plus,
-  RadioTower,
-  ReceiptText,
   Settings2,
-  Truck,
-  UserPlus,
   Wrench,
   X,
-  type LucideIcon,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import WorkspaceProductSwitcher from "@/features/shared/components/WorkspaceProductSwitcher";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
-  canUseFieldWorkspaceCapability,
-  EMPTY_FIELD_WORKSPACE_CAPABILITIES,
-  normalizeFieldWorkspaceCapabilities,
-  type FieldWorkspaceCapabilities,
-} from "./fieldWorkspaceCapabilities";
-import { clearFieldSurfaceSession } from "./fieldSurfaceSession";
+  clearFieldSurfaceSession,
+  readFieldSurfaceSession,
+} from "@/features/mobile/service/fieldSurfaceSession";
+import type { FieldWorkspaceCapabilities } from "@/features/mobile/service/fieldWorkspaceCapabilities";
 
-type FieldNavItem = {
-  label: string;
-  href: string;
-  icon: LucideIcon;
-  exact?: boolean;
-  requiredCapability?: keyof FieldWorkspaceCapabilities;
+const DEFAULT_CAPABILITIES: FieldWorkspaceCapabilities = {
+  canManageScheduling: false,
+  canManageParts: false,
+  canManageOperations: false,
+  canManageInspectionTemplates: false,
+  canConfigureFieldService: false,
+  canInviteFleetMembers: false,
+  canSwitchWorkspace: false,
+  canReturnToShop: false,
 };
 
-const WORK_NAV: FieldNavItem[] = [
-  {
-    label: "Today",
-    href: "/mobile/service",
-    icon: Home,
-    exact: true,
-  },
-  {
-    label: "Appointments",
-    href: "/mobile/appointments",
-    icon: CalendarDays,
-    requiredCapability: "canManageScheduling",
-  },
-  {
-    label: "Dispatch",
-    href: "/mobile/service/dispatch",
-    icon: RadioTower,
-    requiredCapability: "canManageScheduling",
-  },
-  {
-    label: "Fleet requests",
-    href: "/mobile/service/fleet-requests",
-    icon: Inbox,
-  },
-  {
-    label: "Work orders",
-    href: "/mobile/work-orders",
-    icon: BriefcaseBusiness,
-  },
-  {
-    label: "Inspections",
-    href: "/mobile/inspections",
-    icon: ClipboardCheck,
-  },
-];
-
-const OPERATIONS_NAV: FieldNavItem[] = [
-  {
-    label: "My Truck",
-    href: "/mobile/service/my-truck",
-    icon: Truck,
-  },
-  {
-    label: "Invoices & history",
-    href: "/mobile/service/invoices",
-    icon: ReceiptText,
-    requiredCapability: "canManageOperations",
-  },
-  {
-    label: "Truck inventory",
-    href: "/mobile/service/truck-inventory",
-    icon: PackageOpen,
-  },
-  {
-    label: "Parts",
-    href: "/mobile/parts",
-    icon: Boxes,
-    exact: true,
-    requiredCapability: "canManageParts",
-  },
-  {
-    label: "Purchase orders",
-    href: "/mobile/service/purchase-orders",
-    icon: PackagePlus,
-    requiredCapability: "canManageParts",
-  },
-  {
-    label: "Follow-ups",
-    href: "/mobile/service/followups",
-    icon: Wrench,
-  },
-  {
-    label: "Invite a fleet",
-    href: "/mobile/service/fleet-invites",
-    icon: UserPlus,
-    requiredCapability: "canInviteFleetMembers",
-  },
-];
-
-function isActive(pathname: string, item: FieldNavItem): boolean {
-  return item.exact
-    ? pathname === item.href
-    : pathname === item.href || pathname.startsWith(`${item.href}/`);
-}
+type FieldWorkspaceShellProps = {
+  children: ReactNode;
+  capabilities?: FieldWorkspaceCapabilities;
+};
 
 function pageTitle(pathname: string): string {
-  if (pathname === "/mobile/service") return "Field Hub";
-  if (pathname.startsWith("/mobile/service/inspection-builder")) {
-    return "Inspection builder";
-  }
-  if (pathname.startsWith("/mobile/service/purchase-orders")) {
-    return "Purchase orders";
-  }
+  if (pathname === "/mobile/service") return "Today";
   if (pathname.startsWith("/mobile/service/new")) return "New service call";
-  if (pathname.startsWith("/mobile/service/jobs")) return "Active field work";
-  if (pathname.startsWith("/mobile/service/dispatch")) return "Dispatch";
-  if (pathname.startsWith("/mobile/service/fleet-requests")) {
-    return "Fleet requests";
-  }
-  if (pathname.startsWith("/mobile/service/invoices")) {
-    return "Invoices & history";
-  }
-  if (pathname.startsWith("/mobile/service/truck-inventory")) {
-    return "Truck inventory";
-  }
-  if (pathname.startsWith("/mobile/service/my-truck")) return "My Truck";
-  if (pathname.startsWith("/mobile/service/followup")) return "Follow-ups";
-  if (pathname.startsWith("/mobile/service/fleet-invites")) {
-    return "Invite a fleet";
-  }
-  if (pathname.startsWith("/mobile/service/closeout")) return "Field closeout";
-  if (pathname.startsWith("/mobile/appointments")) return "Appointments";
-  if (pathname.startsWith("/mobile/work-orders")) return "Work orders";
+  if (pathname.startsWith("/mobile/service/setup")) return "Field setup";
+  if (pathname.startsWith("/mobile/appointments")) return "Schedule";
   if (pathname.startsWith("/mobile/inspections")) return "Inspections";
   if (pathname.startsWith("/mobile/parts")) return "Parts";
-  if (pathname.startsWith("/mobile/fleet")) return "Fleet";
+  if (pathname.startsWith("/mobile/work-orders")) return "Work orders";
   return "Field";
-}
-
-function FieldNavLink({
-  item,
-  pathname,
-  onNavigate,
-}: {
-  item: FieldNavItem;
-  pathname: string;
-  onNavigate?: () => void;
-}) {
-  const Icon = item.icon;
-  return (
-    <Link
-      href={item.href}
-      onClick={onNavigate}
-      className="field-workspace-nav__link"
-      data-active={isActive(pathname, item) ? "true" : "false"}
-    >
-      <Icon aria-hidden className="h-[1.1rem] w-[1.1rem]" />
-      <span>{item.label}</span>
-    </Link>
-  );
 }
 
 function FieldNavigation({
@@ -196,90 +61,129 @@ function FieldNavigation({
   onNavigate?: () => void;
 }) {
   return (
-    <nav aria-label="Field workspace">
-      <div className="field-workspace-nav__section">
-        <div className="field-workspace-nav__label">Work</div>
-        {WORK_NAV.filter((item) =>
-          canUseFieldWorkspaceCapability(capabilities, item.requiredCapability),
-        ).map((item) => (
-          <FieldNavLink
-            key={item.href}
-            item={item}
-            pathname={pathname}
-            onNavigate={onNavigate}
-          />
-        ))}
-      </div>
-      <div className="field-workspace-nav__section">
-        <div className="field-workspace-nav__label">Operations</div>
-        {OPERATIONS_NAV.filter((item) =>
-          canUseFieldWorkspaceCapability(capabilities, item.requiredCapability),
-        ).map((item) => (
-          <FieldNavLink
-            key={item.href}
-            item={item}
-            pathname={pathname}
-            onNavigate={onNavigate}
-          />
-        ))}
-      </div>
+    <nav className="field-workspace-nav" aria-label="Field navigation">
+      <Link
+        href="/mobile/service"
+        onClick={onNavigate}
+        data-active={pathname === "/mobile/service" ? "true" : "false"}
+        className="field-workspace-nav__link"
+      >
+        <Home aria-hidden className="h-[1.1rem] w-[1.1rem]" />
+        <span>Today</span>
+      </Link>
+      {capabilities.canManageScheduling ? (
+        <Link
+          href="/mobile/appointments"
+          onClick={onNavigate}
+          data-active={
+            pathname.startsWith("/mobile/appointments") ? "true" : "false"
+          }
+          className="field-workspace-nav__link"
+        >
+          <CalendarDays aria-hidden className="h-[1.1rem] w-[1.1rem]" />
+          <span>Schedule</span>
+        </Link>
+      ) : null}
+      <Link
+        href="/mobile/inspections"
+        onClick={onNavigate}
+        data-active={
+          pathname.startsWith("/mobile/inspections") ? "true" : "false"
+        }
+        className="field-workspace-nav__link"
+      >
+        <ClipboardCheck aria-hidden className="h-[1.1rem] w-[1.1rem]" />
+        <span>Inspections</span>
+      </Link>
+      {capabilities.canManageParts ? (
+        <Link
+          href="/mobile/parts"
+          onClick={onNavigate}
+          data-active={pathname.startsWith("/mobile/parts") ? "true" : "false"}
+          className="field-workspace-nav__link"
+        >
+          <Wrench aria-hidden className="h-[1.1rem] w-[1.1rem]" />
+          <span>Parts</span>
+        </Link>
+      ) : null}
+      {capabilities.canManageOperations ? (
+        <Link
+          href="/mobile/work-orders"
+          onClick={onNavigate}
+          data-active={
+            pathname.startsWith("/mobile/work-orders") ? "true" : "false"
+          }
+          className="field-workspace-nav__link"
+        >
+          <Building2 aria-hidden className="h-[1.1rem] w-[1.1rem]" />
+          <span>Work orders</span>
+        </Link>
+      ) : null}
     </nav>
   );
 }
 
 export default function FieldWorkspaceShell({
   children,
-}: {
-  children: ReactNode;
-}) {
+  capabilities,
+}: FieldWorkspaceShellProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-  const [workspaceCapabilities, setWorkspaceCapabilities] =
-    useState<FieldWorkspaceCapabilities>(EMPTY_FIELD_WORKSPACE_CAPABILITIES);
+  const [sessionCapabilities, setSessionCapabilities] = useState<
+    FieldWorkspaceCapabilities | null
+  >(null);
 
-  useEffect(() => setMenuOpen(false), [pathname]);
+  const workspaceCapabilities = useMemo(
+    () => capabilities ?? sessionCapabilities ?? DEFAULT_CAPABILITIES,
+    [capabilities, sessionCapabilities],
+  );
+
+  useEffect(() => {
+    if (capabilities) return;
+    const stored = readFieldSurfaceSession();
+    if (stored?.workspaceCapabilities) {
+      setSessionCapabilities(stored.workspaceCapabilities);
+    }
+  }, [capabilities]);
 
   useEffect(() => {
     if (!menuOpen) return;
-    const closeOnEscape = (event: KeyboardEvent) => {
+    const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setMenuOpen(false);
     };
-    window.addEventListener("keydown", closeOnEscape);
-    return () => window.removeEventListener("keydown", closeOnEscape);
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, [menuOpen]);
 
   useEffect(() => {
     let active = true;
+    if (capabilities) return () => { active = false; };
 
-    void fetch("/api/mobile/field-service/access", {
-      credentials: "include",
-      cache: "no-store",
-    })
-      .then(async (response) => {
-        const body = (await response.json().catch(() => null)) as {
-          canAccessFieldService?: boolean;
-          workspaceCapabilities?: unknown;
-        } | null;
-        if (!active) return;
-        if (!response.ok || !body?.canAccessFieldService) {
-          if (response.status < 500) clearFieldSurfaceSession();
-          setWorkspaceCapabilities(EMPTY_FIELD_WORKSPACE_CAPABILITIES);
-          return;
+    const loadCapabilities = async () => {
+      try {
+        const response = await fetch("/api/mobile/service/access", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!active || !response.ok) return;
+        const payload = (await response.json()) as {
+          workspaceCapabilities?: FieldWorkspaceCapabilities;
+        };
+        if (payload.workspaceCapabilities) {
+          setSessionCapabilities(payload.workspaceCapabilities);
         }
-        setWorkspaceCapabilities(
-          normalizeFieldWorkspaceCapabilities(body.workspaceCapabilities),
-        );
-      })
-      .catch(() => {
-        // Keep optional navigation hidden when capabilities cannot be verified.
-      });
+      } catch {
+        // The field route gate remains authoritative; keep conservative controls.
+      }
+    };
 
+    void loadCapabilities();
     return () => {
       active = false;
     };
-  }, []);
+  }, [capabilities]);
 
   const exitField = () => {
     clearFieldSurfaceSession();
@@ -388,7 +292,7 @@ export default function FieldWorkspaceShell({
         </Link>
       </header>
 
-      <div className="border-b border-[color:var(--theme-border-soft)] px-3 py-2 md:hidden">
+      <div className="border-b border-[color:var(--theme-border-soft)] px-3 py-2 lg:hidden">
         <WorkspaceProductSwitcher surface="field" />
       </div>
 
@@ -428,116 +332,40 @@ export default function FieldWorkspaceShell({
         )}
         <Link
           href="/mobile/service/new"
-          className="field-workspace-bottom__new"
+          data-active={pathname.startsWith("/mobile/service/new") ? "true" : "false"}
         >
-          <Plus aria-hidden className="h-6 w-6" />
+          <Plus aria-hidden className="h-5 w-5" />
           <span>New</span>
         </Link>
-        <Link
-          href="/mobile/service/jobs"
-          data-active={
-            pathname.startsWith("/mobile/service/jobs") ||
-            pathname.startsWith("/mobile/work-orders")
-              ? "true"
-              : "false"
-          }
-        >
-          <BriefcaseBusiness aria-hidden className="h-5 w-5" />
-          <span>Work</span>
-        </Link>
-        <button
-          type="button"
-          onClick={() => setMenuOpen(true)}
-          aria-label="Open more Field tools"
-        >
-          <Menu aria-hidden className="h-5 w-5" />
-          <span>More</span>
-        </button>
       </nav>
 
-      <button
-        type="button"
-        aria-label="Close Field navigation"
-        onClick={() => setMenuOpen(false)}
-        className="field-workspace-drawer__backdrop"
-        data-open={menuOpen ? "true" : "false"}
-      />
-      <aside
-        className="field-workspace-drawer"
-        data-open={menuOpen ? "true" : "false"}
-        aria-hidden={!menuOpen}
-        aria-label="Field navigation"
-        aria-modal="true"
-        inert={menuOpen ? undefined : true}
-        role="dialog"
-      >
-        <div className="field-workspace-drawer__header">
-          <div>
-            <strong>ProFixIQ Field</strong>
-            <small>Full operations workspace</small>
-          </div>
+      {menuOpen ? (
+        <div className="field-workspace-drawer" role="dialog" aria-modal="true">
           <button
             type="button"
-            onClick={() => setMenuOpen(false)}
             aria-label="Close Field navigation"
-          >
-            <X aria-hidden className="h-5 w-5" />
-          </button>
-        </div>
-        <div className="field-workspace-drawer__scroll">
-          <Link
-            href="/mobile/service/new"
+            className="field-workspace-drawer__backdrop"
             onClick={() => setMenuOpen(false)}
-            className="field-workspace-new-call"
-          >
-            <Plus aria-hidden className="h-5 w-5" /> New service call
-          </Link>
-          <FieldNavigation
-            pathname={pathname}
-            capabilities={workspaceCapabilities}
-            onNavigate={() => setMenuOpen(false)}
           />
-          <div className="field-workspace-nav__section">
-            <div className="field-workspace-nav__label">Workspace</div>
-            {workspaceCapabilities.canConfigureFieldService ? (
-              <FieldNavLink
-                item={{
-                  label: "Field setup",
-                  href: "/mobile/service/setup",
-                  icon: Settings2,
-                }}
-                pathname={pathname}
-                onNavigate={() => setMenuOpen(false)}
-              />
-            ) : null}
+          <div className="field-workspace-drawer__panel">
+            <div className="field-workspace-drawer__header">
+              <strong>ProFixIQ Field</strong>
+              <button
+                type="button"
+                onClick={() => setMenuOpen(false)}
+                aria-label="Close Field navigation"
+              >
+                <X aria-hidden className="h-5 w-5" />
+              </button>
+            </div>
+            <FieldNavigation
+              pathname={pathname}
+              capabilities={workspaceCapabilities}
+              onNavigate={() => setMenuOpen(false)}
+            />
           </div>
         </div>
-        <div className="field-workspace-drawer__footer">
-          {workspaceCapabilities.canReturnToShop ? (
-            <Link
-              href="/mobile"
-              onClick={exitField}
-              className="field-workspace-return-to-shop"
-            >
-              <Building2 aria-hidden className="h-4 w-4" />
-              Back to Shop Mobile
-            </Link>
-          ) : null}
-          {workspaceCapabilities.canSwitchWorkspace ? (
-            <Link href="/sign-in" onClick={exitField}>
-              Switch workspace
-            </Link>
-          ) : null}
-          <button
-            type="button"
-            onClick={() => void signOut()}
-            disabled={signingOut}
-          >
-            <LogOut aria-hidden className="h-4 w-4" />
-            {signingOut ? "Signing out…" : "Sign out"}
-          </button>
-        </div>
-      </aside>
+      ) : null}
     </div>
   );
 }
