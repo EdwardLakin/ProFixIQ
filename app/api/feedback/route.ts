@@ -270,7 +270,9 @@ export async function POST(req: NextRequest) {
   }
   if (
     context.attachmentIds.some(
-      (path) => !path.startsWith(`${user.id}/`) || path.includes(".."),
+      (path) =>
+        !path.startsWith(`${user.id}/`) ||
+        path.split("/").some((segment) => segment === ".." || segment === "."),
     )
   ) {
     return NextResponse.json(
@@ -278,6 +280,14 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
+  const readiness = await admin.rpc("feedback_ready");
+  if (readiness.error || readiness.data !== true) {
+    return NextResponse.json(
+      { error: "Feedback is temporarily unavailable" },
+      { status: 503 },
+    );
+  }
+
   const { data: replay, error: replayError } = await admin
     .from("agent_requests")
     .select("*")

@@ -71,10 +71,14 @@ beforeEach(() => {
   mocks.replay = null;
   mocks.access.mockResolvedValue({ ok: true });
   mocks.portal.mockResolvedValue({ customer: { shop_id: id } });
-  mocks.rpc.mockResolvedValue({
-    data: { submissionId: id, clusterId: id, replayed: false },
-    error: null,
-  });
+  mocks.rpc.mockImplementation(async (name: string) =>
+    name === "feedback_ready"
+      ? { data: true, error: null }
+      : {
+          data: { submissionId: id, clusterId: id, replayed: false },
+          error: null,
+        },
+  );
   mocks.deliver.mockResolvedValue({
     notified: 0,
     pendingNotifications: 1,
@@ -137,16 +141,24 @@ describe("feedback authorization and durable receipts", () => {
     );
     expect((await response.json()).replayed).toBe(true);
     expect(mocks.triage).not.toHaveBeenCalled();
-    expect(mocks.rpc).not.toHaveBeenCalled();
+    expect(mocks.rpc).toHaveBeenCalledExactlyOnceWith("feedback_ready");
     expect(mocks.deliver).toHaveBeenCalledWith(expect.anything(), id, {
       owner: true,
     });
   });
   it("never returns cross-tenant model output even when triage matches another shop", async () => {
-    mocks.rpc.mockResolvedValue({
-      data: { submissionId: id, clusterId: mocks.user.id, replayed: false },
-      error: null,
-    });
+    mocks.rpc.mockImplementation(async (name: string) =>
+      name === "feedback_ready"
+        ? { data: true, error: null }
+        : {
+            data: {
+              submissionId: id,
+              clusterId: mocks.user.id,
+              replayed: false,
+            },
+            error: null,
+          },
+    );
     const response = await POST(
       request({ description: "Improve it", submissionKey: "privacy-1" }),
     );
@@ -172,11 +184,47 @@ describe("feedback authorization and durable receipts", () => {
     expect(mocks.triage).not.toHaveBeenCalled();
     expect(mocks.rpc).not.toHaveBeenCalled();
   });
+  it("stops before AI while the ledger restriction or schema is not ready", async () => {
+    mocks.rpc.mockResolvedValue({ data: false, error: null });
+    expect(
+      (await POST(request({ description: "Improve it", submissionKey: "key" })))
+        .status,
+    ).toBe(503);
+    expect(mocks.triage).not.toHaveBeenCalled();
+    expect(mocks.deliver).not.toHaveBeenCalled();
+  });
+
+  it("accepts ordinary dotted screenshot filenames but rejects traversal segments", async () => {
+    expect(
+      (
+        await POST(
+          request({
+            description: "x",
+            submissionKey: "key",
+            attachmentIds: [`${mocks.user.id}/screenshot..png`],
+          }),
+        )
+      ).status,
+    ).toBe(200);
+    expect(
+      (
+        await POST(
+          request({
+            description: "x",
+            submissionKey: "key",
+            attachmentIds: [`${mocks.user.id}/../other.png`],
+          }),
+        )
+      ).status,
+    ).toBe(400);
+  });
+
   it("does not acknowledge an uncommitted transaction", async () => {
-    mocks.rpc.mockResolvedValue({
-      data: null,
-      error: { code: "23503", message: "FK failure" },
-    });
+    mocks.rpc.mockImplementation(async (name: string) =>
+      name === "feedback_ready"
+        ? { data: true, error: null }
+        : { data: null, error: { code: "23503", message: "FK failure" } },
+    );
     expect(
       (await POST(request({ description: "x", submissionKey: "key" }))).status,
     ).toBe(503);

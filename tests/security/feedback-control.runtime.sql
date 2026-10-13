@@ -1,13 +1,26 @@
 \set ON_ERROR_STOP on
 begin;
 
-insert into public.shops(id) values ('6f200000-0000-4000-8000-000000000001'), ('6f200000-0000-4000-8000-000000000002');
+insert into auth.users(id, email, raw_user_meta_data) values
+  ('6f100000-0000-4000-8000-000000000003', 'feedback-owner-a@example.test', '{"full_name":"Feedback Owner A"}'),
+  ('6f100000-0000-4000-8000-000000000004', 'feedback-owner-b@example.test', '{"full_name":"Feedback Owner B"}'),
+  ('6f100000-0000-4000-8000-000000000009', 'feedback-portal@example.test', '{"role":"customer"}');
+insert into public.profiles(id, user_id, role, full_name) values
+  ('6f100000-0000-4000-8000-000000000003', '6f100000-0000-4000-8000-000000000003', 'owner', 'Feedback Owner A'),
+  ('6f100000-0000-4000-8000-000000000004', '6f100000-0000-4000-8000-000000000004', 'owner', 'Feedback Owner B')
+on conflict (id) do update set role = excluded.role, full_name = excluded.full_name;
+-- Model the canonical profile-less portal identity, even if an auth hook
+-- provisioned a profile while creating this disposable fixture account.
+delete from public.profiles where id = '6f100000-0000-4000-8000-000000000009';
+insert into public.shops(id, owner_id, business_name, name, user_limit) values
+  ('6f200000-0000-4000-8000-000000000001', '6f100000-0000-4000-8000-000000000003', 'Feedback Shop A', 'Feedback Shop A', 5),
+  ('6f200000-0000-4000-8000-000000000002', '6f100000-0000-4000-8000-000000000004', 'Feedback Shop B', 'Feedback Shop B', 5);
 insert into public.agent_requests(id, description, status)
 values ('6f300000-0000-4000-8000-000000000001', 'Historical request preserved', 'approved');
 
 do $feedback$
 declare
-  actor constant uuid := '6f100000-0000-4000-8000-000000000001';
+  actor constant uuid := '6f100000-0000-4000-8000-000000000009';
   legacy constant uuid := '6f300000-0000-4000-8000-000000000001';
   v_submission jsonb;
   v_receipt jsonb;
