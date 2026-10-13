@@ -1,0 +1,112 @@
+name: Workspace Switcher API Fix
+on:
+  push:
+    branches:
+      - feature/workspace-product-switcher
+permissions:
+  contents: write
+jobs:
+  fix:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          github-token: ${{ github.token }}
+          script: |
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const branch = 'feature/workspace-product-switcher';
+            async function read(path) {
+              const { data } = await github.rest.repos.getContent({ owner, repo, path, ref: branch });
+              return { sha: data.sha, text: Buffer.from(data.content, 'base64').toString('utf8') };
+            }
+            async function write(path, text, message) {
+              const current = await read(path);
+              if (current.text === text) return;
+              await github.rest.repos.createOrUpdateFileContents({
+                owner, repo, path, branch, sha: current.sha, message,
+                content: Buffer.from(text, 'utf8').toString('base64'),
+              });
+            }
+
+            {
+              const path = 'features/shared/lib/workspaceProducts.ts';
+              let { text } = await read(path);
+              if (!text.includes('const PRIMARY_SITE_ORIGIN')) {
+                text = text.replace(
+                  'export const WORKSPACE_PRODUCTS: readonly WorkspaceProductDefinition[] = [',
+                  'const PRIMARY_SITE_ORIGIN =\n  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\\/$/, "") ||\n  "https://profixiq.com";\n\nexport const WORKSPACE_PRODUCTS: readonly WorkspaceProductDefinition[] = ['
+                );
+              }
+              text = text.replace(
+                'export function workspaceProductHref(\n  product: WorkspaceProductDefinition,\n  entitled: boolean,\n): string {\n  return entitled ? product.workspaceHref : product.marketingHref;\n}\n',
+                'export function workspaceProductHref(\n  product: WorkspaceProductDefinition,\n  entitled: boolean,\n  currentSurface?: WorkspaceSurface,\n): string {\n  const href = entitled ? product.workspaceHref : product.marketingHref;\n  if (currentSurface === "fleet" && product.surface !== "fleet") {\n    return `${PRIMARY_SITE_ORIGIN}${href}`;\n  }\n  return href;\n}\n'
+              );
+              await write(path, text, 'Fix Fleet-host workspace switcher destinations');
+            }
+
+            {
+              const path = 'features/shared/components/WorkspaceProductSwitcher.tsx';
+              let { text } = await read(path);
+              if (!text.includes('let entitlementRequest:')) {
+                text = text.replace(
+                  'import { cn } from "@/features/shared/utils/cn";\n\n',
+                  'import { cn } from "@/features/shared/utils/cn";\n\nlet entitlementRequest: Promise<WorkspaceEntitlementsPayload | null> | null = null;\n\nfunction loadWorkspaceEntitlements(): Promise<WorkspaceEntitlementsPayload | null> {\n  if (!entitlementRequest) {\n    entitlementRequest = fetch("/api/workspaces/entitlements", { credentials: "include", cache: "no-store" })\n      .then(async (response) => response.ok ? (await response.json()) as WorkspaceEntitlementsPayload : null)\n      .catch(() => null);\n  }\n  return entitlementRequest;\n}\n\n'
+                );
+              }
+              const start = text.indexOf('  useEffect(() => {');
+              const endMarker = '  }, []);';
+              const end = text.indexOf(endMarker, start);
+              if (start >= 0 && end >= 0 && text.slice(start, end).includes('AbortController')) {
+                text = text.slice(0, start) +
+                  '  useEffect(() => {\n    let active = true;\n    void loadWorkspaceEntitlements().then((payload) => {\n      if (active && payload) setEntitlements(payload);\n    });\n    return () => { active = false; };\n  }, []);' +
+                  text.slice(end + endMarker.length);
+              }
+              text = text.replace(
+                '        const href = active\n          ? product.workspaceHref\n          : verified\n            ? workspaceProductHref(product, entitled)\n            : product.marketingHref;',
+                '        const href = active\n          ? workspaceProductHref(product, true, surface)\n          : workspaceProductHref(product, verified ? entitled : false, surface);'
+              );
+              await write(path, text, 'Share workspace entitlement loading and respect product hosts');
+            }
+
+            {
+              const path = 'features/mobile/service/FieldWorkspaceShell.tsx';
+              let { text } = await read(path);
+              text = text.replace('        <WorkspaceProductSwitcher surface="field" className="hidden md:flex" />\n', '');
+              const anchor = '        </Link>\n\n        <Link href="/mobile/service/new" className="field-workspace-new-call">';
+              const replacement = '        </Link>\n\n        <div className="px-3 pb-2">\n          <WorkspaceProductSwitcher surface="field" />\n        </div>\n\n        <Link href="/mobile/service/new" className="field-workspace-new-call">';
+              if (!text.includes('className="px-3 pb-2"')) text = text.replace(anchor, replacement);
+              await write(path, text, 'Keep Field product switcher visible on desktop');
+            }
+
+            {
+              const path = 'features/shared/components/AppShell.tsx';
+              let { text } = await read(path);
+              const anchor = '          <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden px-3 pb-14 pt-16 md:px-4 md:pb-6 md:pt-16 lg:px-6 lg:pt-[4.25rem] xl:px-8 2xl:px-10">\n            <TabsBridge tabsSubdued={chatOpen}>';
+              const replacement = '          <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden px-3 pb-14 pt-16 md:px-4 md:pb-6 md:pt-16 lg:px-6 lg:pt-[4.25rem] xl:px-8 2xl:px-10">\n            <div className="mb-2 md:hidden">\n              <WorkspaceProductSwitcher surface={pathname.startsWith("/equipment") ? "equipment" : "shop"} />\n            </div>\n            <TabsBridge tabsSubdued={chatOpen}>';
+              if (!text.includes('className="mb-2 md:hidden"')) text = text.replace(anchor, replacement);
+              await write(path, text, 'Add Shop and Equipment switcher to mobile shell');
+            }
+
+            {
+              const path = 'middleware.ts';
+              let { text } = await read(path);
+              const anchor = '    pathname === "/mobile-truck-repair-software" ||\n    pathname === "/service-truck-work-order-software" ||';
+              const replacement = '    pathname === "/mobile-truck-repair-software" ||\n    pathname === "/repair-shop-management-software" ||\n    pathname === "/field-service" ||\n    pathname === "/fleet-maintenance" ||\n    pathname === "/equipment-maintenance-software" ||\n    pathname === "/service-truck-work-order-software" ||';
+              if (!text.includes('pathname === "/repair-shop-management-software"')) text = text.replace(anchor, replacement);
+              await write(path, text, 'Keep workspace acquisition pages public');
+            }
+
+            {
+              const path = 'tests/workspace-product-switcher.test.ts';
+              let { text } = await read(path);
+              if (!text.includes('workspace switcher review regressions')) {
+                text += '\n\ndescribe("workspace switcher review regressions", () => {\n  it("keeps acquisition destinations public", () => {\n    const middleware = source("middleware.ts");\n    for (const route of ["/repair-shop-management-software", "/field-service", "/fleet-maintenance", "/equipment-maintenance-software"]) {\n      expect(middleware).toContain(`pathname === "${route}"`);\n    }\n  });\n\n  it("uses the primary site when leaving the Fleet host", () => {\n    const products = source("features/shared/lib/workspaceProducts.ts");\n    expect(products).toContain("NEXT_PUBLIC_SITE_URL");\n    expect(products).toContain(\'currentSurface === "fleet"\');\n  });\n\n  it("shares entitlement loading across responsive switchers", () => {\n    const switcher = source("features/shared/components/WorkspaceProductSwitcher.tsx");\n    expect(switcher).toContain("let entitlementRequest");\n    expect(switcher).toContain("loadWorkspaceEntitlements");\n  });\n\n  it("keeps Field switching in the persistent desktop sidebar", () => {\n    const field = source("features/mobile/service/FieldWorkspaceShell.tsx");\n    expect(field).toContain(\'className="px-3 pb-2"\');\n  });\n\n  it("renders Shop and Equipment switching on mobile", () => {\n    const shell = source("features/shared/components/AppShell.tsx");\n    expect(shell).toContain(\'className="mb-2 md:hidden"\');\n  });\n});\n';
+              }
+              await write(path, text, 'Cover workspace switcher review regressions');
+            }
+
+            const selfPath = '.github/workflows/workspace-switcher-api-fix.yml';
+            const self = await read(selfPath);
+            await github.rest.repos.deleteFile({ owner, repo, path: selfPath, branch, sha: self.sha, message: 'Remove temporary workspace switcher repair workflow' });
