@@ -30,13 +30,17 @@ describe("repair shop management acquisition page", () => {
     expect(page).toContain("CoreSearchLandingPage");
   });
 
-  it("covers the generic and automotive search intent in one page", () => {
+  it("targets heavy-duty intent first while retaining broader repair-shop coverage", () => {
     const content = source(
       "features/marketing/repairShopManagementPage.tsx",
     ).toLowerCase();
 
     for (const phrase of [
       "repair shop management software",
+      "heavy duty repair shop software",
+      "heavy duty shop management software",
+      "diesel shop management software",
+      "truck repair shop software",
       "auto repair shop management software",
       "automotive shop management software",
       "mechanic shop management software",
@@ -45,9 +49,8 @@ describe("repair shop management acquisition page", () => {
     ]) {
       expect(content).toContain(phrase);
     }
-    expect(content).toContain(
-      "25 years of hands-on shop experience",
-    );
+    expect(content).toContain("heavy-duty-first repair workflows");
+    expect(content).toContain("25 years of hands-on shop experience");
   });
 
   it("links the homepage and shared acquisition-page footer to the category page", () => {
