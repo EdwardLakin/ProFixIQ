@@ -25,7 +25,10 @@ type EquipmentBillingLink = {
   id: string;
   stripe_customer_id: string | null;
   stripe_subscription_id: string | null;
+  billing_entitlement_override: string | null;
 };
+
+const INTERNAL_DEMO_ENTITLEMENT = "internal_demo";
 
 function mustEnv(name: string): string {
   const value = process.env[name];
@@ -40,6 +43,16 @@ function disabledEntitlement(): EquipmentAddonEntitlement {
     hasCompleteBaseItem: false,
     packageKey: null,
     subscriptionStatus: null,
+  };
+}
+
+function internalDemoEntitlement(): EquipmentAddonEntitlement {
+  return {
+    enabled: true,
+    hasAddonItem: true,
+    hasCompleteBaseItem: true,
+    packageKey: "complete_operations",
+    subscriptionStatus: INTERNAL_DEMO_ENTITLEMENT,
   };
 }
 
@@ -86,10 +99,12 @@ export function subscriptionHasEquipmentAddon(
 }
 
 /**
- * Equipment is deliberately not part of Complete Operations itself. Access is
- * granted only when the same canonical subscription contains both a real
- * Complete base-price item and an active Equipment add-on item. Subscription
- * metadata alone cannot grant this premium add-on.
+ * Equipment is deliberately not part of Complete Operations itself. Paying
+ * shops receive access only when the same canonical subscription contains
+ * both a real Complete base-price item and an active Equipment add-on item.
+ * The server-owned `internal_demo` billing override is the sole non-Stripe
+ * exception so the canonical ProFixIQ demo can permanently exercise Equipment
+ * without creating a billable subscription item.
  */
 export function resolveEquipmentAddonEntitlement(
   subscription: Stripe.Subscription,
@@ -123,13 +138,17 @@ export async function resolveEquipmentAddonEntitlementForShop(
   const admin = createAdminSupabase();
   const { data: shop, error: shopError } = await admin
     .from("shops")
-    .select("id,stripe_customer_id,stripe_subscription_id")
+    .select("id,stripe_customer_id,stripe_subscription_id,billing_entitlement_override")
     .eq("id", shopId)
     .maybeSingle<EquipmentBillingLink>();
 
   if (shopError) throw new Error(shopError.message);
   if (!shop || shop.id !== shopId) {
     throw new Error("Equipment billing shop could not be resolved.");
+  }
+
+  if (shop.billing_entitlement_override === INTERNAL_DEMO_ENTITLEMENT) {
+    return internalDemoEntitlement();
   }
 
   const subscriptionId = String(shop.stripe_subscription_id ?? "").trim();
