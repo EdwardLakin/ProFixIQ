@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
-import { withAuthCookieDomain } from "@/features/shared/lib/supabase/auth-cookie-domain";
 import type { AuthError, SupabaseClient, User } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
@@ -142,7 +141,7 @@ function createMiddlewareSupabase(
           .getAll()
           .forEach((cookie) => nextResponse.cookies.set(cookie));
         cookiesToSet.forEach(({ name, value, options }) => {
-          nextResponse.cookies.set(name, value, withAuthCookieDomain(options));
+          nextResponse.cookies.set(name, value, options);
         });
         responseState.current = nextResponse;
       },

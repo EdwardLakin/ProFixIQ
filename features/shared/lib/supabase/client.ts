@@ -4,10 +4,6 @@
 import { createBrowserClient } from "@supabase/ssr";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
-import {
-  migrateHostOnlyAuthCookies,
-  readAuthCookieDomain,
-} from "./auth-cookie-domain";
 import { readSupabasePublicEnv } from "./public-env";
 
 type BrowserSupabaseClient = SupabaseClient<Database>;
@@ -18,13 +14,7 @@ export function createBrowserSupabase(): BrowserSupabaseClient {
   if (_client) return _client;
 
   const { supabaseUrl, supabaseAnonKey } = readSupabasePublicEnv("browser");
-  const domain = readAuthCookieDomain();
-  if (domain) migrateHostOnlyAuthCookies();
-  _client = createBrowserClient<Database>(
-    supabaseUrl,
-    supabaseAnonKey,
-    domain ? { cookieOptions: { domain } } : undefined,
-  );
+  _client = createBrowserClient<Database>(supabaseUrl, supabaseAnonKey);
   return _client;
 }
 
