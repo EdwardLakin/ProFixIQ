@@ -3,7 +3,10 @@ export type WorkspaceSurface = "shop" | "field" | "fleet" | "equipment";
 export type WorkspaceEntitlementsPayload = {
   packageKey: string | null;
   internalDemo: boolean;
-  workspaces: Record<WorkspaceSurface, { entitled: boolean }>;
+  workspaces: Record<
+    WorkspaceSurface,
+    { entitled: boolean; accessible: boolean }
+  >;
 };
 
 export type WorkspaceProductDefinition = {
