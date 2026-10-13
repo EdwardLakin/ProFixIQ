@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 const title = "ProFixIQ Pricing | Heavy-Duty Repair Shop Software";
 const description =
-  "Compare ProFixIQ plans for heavy-duty and diesel repair operations, including Shop Operations, Field Service, Fleet Maintenance, Complete Operations, included capacity, pricing, and trial options.";
+  "Compare ProFixIQ pricing for heavy-duty and diesel operations: Shop Operations, Field Service, Fleet Maintenance, Complete Operations, and the Equipment add-on for off-road and industrial assets.";
 
 export const metadata: Metadata = {
   title,
