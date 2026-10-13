@@ -393,6 +393,25 @@ function scriptKindFor(file) {
   return ts.ScriptKind.TS;
 }
 
+/**
+ * The embedded table named by a supabase-js { referencedTable } (or legacy
+ * { foreignTable }) option, when it is a literal; otherwise null.
+ */
+function referencedTableOption(node) {
+  const options = node ? unwrapExpression(node) : null;
+  if (!options || !ts.isObjectLiteralExpression(options)) return null;
+  for (const property of options.properties) {
+    if (!ts.isPropertyAssignment(property)) continue;
+    const name = ts.isIdentifier(property.name) || ts.isStringLiteral(property.name)
+      ? property.name.text
+      : null;
+    if (name === "referencedTable" || name === "foreignTable") {
+      return literalText(property.initializer);
+    }
+  }
+  return null;
+}
+
 function literalText(node) {
   if (!node) return null;
   let current = node;
@@ -776,15 +795,33 @@ function scanRelationCall({ call, sourceFile, schema, relativeFile }) {
     if (COLUMN_METHODS.has(entry.name) && entry.args[0]) {
       const column = literalText(entry.args[0]);
       if (column !== null) {
-        validateColumn({
-          column,
-          operation: entry.name,
-          relationName,
-          relationContract,
-          relativeFile,
-          line,
-          findings,
-        });
+        // order(column, { referencedTable }) orders an embedded resource: the
+        // column belongs to that table, not to the queried one.
+        const referenced = referencedTableOption(entry.args[1]);
+        const referencedContract = referenced ? schema.relations.get(referenced) : null;
+        if (referenced && !referencedContract) {
+          findings.push(
+            createFinding({
+              rule: "missing-relation",
+              severity: "error",
+              file: relativeFile,
+              line,
+              subject: referenced,
+              operation: entry.name,
+              message: `${entry.name} references missing relation ${referenced}`,
+            }),
+          );
+        } else {
+          validateColumn({
+            column,
+            operation: entry.name,
+            relationName: referenced ?? relationName,
+            relationContract: referencedContract ?? relationContract,
+            relativeFile,
+            line,
+            findings,
+          });
+        }
       }
     }
 

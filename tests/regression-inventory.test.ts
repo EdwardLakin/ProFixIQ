@@ -29,6 +29,42 @@ describe("full-app regression inventory", () => {
     expect(schema.storageBuckets.has("employee_docs")).toBe(true);
   });
 
+  it("checks order() columns against the referenced table when ordering an embedded resource", () => {
+    const scan = (source: string) =>
+      scanSourceText({ file: "app/example.ts", schema: schemaContract(), source }).findings.filter(
+        (finding) => finding.rule === "missing-column" || finding.rule === "missing-relation",
+      );
+
+    // completed_on is a column of the embedded equipment_pm_completions, not of the plans.
+    expect(
+      scan(`
+        await supabase
+          .from("equipment_pm_plans")
+          .select("id,equipment_pm_completions(id,completed_on)")
+          .order("completed_on", { referencedTable: "equipment_pm_completions", ascending: false })
+          .order("sequence", { foreignTable: "equipment_pm_completions" })
+          .limit(1, { referencedTable: "equipment_pm_completions" })
+          .order("id");
+      `),
+    ).toEqual([]);
+
+    // A wrong column on the referenced table, an unknown referenced table and a
+    // wrong column on the queried table are all still reported.
+    const findings = scan(`
+      await supabase
+        .from("equipment_pm_plans")
+        .select("id")
+        .order("finished_on", { referencedTable: "equipment_pm_completions" })
+        .order("completed_on", { referencedTable: "no_such_table" })
+        .order("completed_on");
+    `);
+    expect(findings.map((finding) => finding.message)).toEqual([
+      "order references missing column equipment_pm_completions.finished_on",
+      "order references missing relation no_such_table",
+      "order references missing column equipment_pm_plans.completed_on",
+    ]);
+  });
+
   it("finds a retired column even when the relation is a local constant", () => {
     const result = scanSourceText({
       file: "app/example.ts",
