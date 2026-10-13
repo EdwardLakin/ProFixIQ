@@ -1,0 +1,99 @@
+name: Repair PR 1864 Merge
+
+on:
+  push:
+    branches:
+      - agent/equipment-pm-work-orders
+
+permissions:
+  contents: write
+
+concurrency:
+  group: repair-pr-1864-merge
+  cancel-in-progress: true
+
+jobs:
+  repair:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Check out PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/equipment-pm-work-orders
+          fetch-depth: 0
+
+      - uses: supabase/setup-cli@v2
+        with:
+          version: 2.114.0
+          github-token: ${{ github.token }}
+
+      - name: Restore PM work-order clean replay coverage
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/workflows/supabase-clean-replay-audit.yml')
+          text = path.read_text()
+
+          step = '''      - name: Execute Equipment PM work orders tenant integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \\
+            -f tests/security/equipment-pm-work-orders.runtime.sql \\
+            2>&1 | tee equipment-pm-work-orders-runtime.log
+
+'''
+          anchor = '      - name: Execute Equipment fluid samples tenant integration\n'
+          if 'Execute Equipment PM work orders tenant integration' not in text:
+              if anchor not in text:
+                  raise SystemExit('Could not find Equipment fluid-samples workflow anchor')
+              text = text.replace(anchor, step + anchor, 1)
+
+          artifact_anchor = '            equipment-fluid-samples-runtime.log\n'
+          artifact_line = '            equipment-pm-work-orders-runtime.log\n'
+          if artifact_line not in text:
+              if artifact_anchor not in text:
+                  raise SystemExit('Could not find Equipment fluid-samples artifact anchor')
+              text = text.replace(artifact_anchor, artifact_line + artifact_anchor, 1)
+
+          path.write_text(text)
+          PY
+
+      - name: Regenerate API route inventory
+        shell: bash
+        run: node scripts/audit-api-routes.mjs
+
+      - name: Replay schema and regenerate Supabase types
+        shell: bash
+        run: bash scripts/check-supabase-schema-contract.sh --write
+
+      - name: Commit resolved generated files
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm .github/workflows/repair-pr-1864-merge.yml
+          git add \
+            .github/workflows/supabase-clean-replay-audit.yml \
+            .github/workflows/repair-pr-1864-merge.yml \
+            docs/audits/api-route-boundary-inventory.json \
+            docs/audits/api-route-boundary-inventory.md \
+            features/shared/types/types/supabase.ts
+          if git diff --cached --quiet; then
+            echo 'No generated merge repairs were needed.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m 'Resolve PR 1864 generated merge conflicts'
+          git push origin HEAD:agent/equipment-pm-work-orders
