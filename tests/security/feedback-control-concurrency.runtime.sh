@@ -60,7 +60,7 @@ if [[ "$feedback_status_a" -eq "$feedback_status_b" ]]; then
   echo 'Exactly one concurrent Ops edit must win.' >&2
   exit 1
 fi
-if ! rg -q 'Feedback changed concurrently' "$feedback_test_dir/edit-a" "$feedback_test_dir/edit-b"; then
+if ! grep -q 'Feedback changed concurrently' "$feedback_test_dir/edit-a" "$feedback_test_dir/edit-b"; then
   echo 'Losing Ops edit did not return a conflict.' >&2
   exit 1
 fi
