@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 
+import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDirectory";
 import { resolveEquipmentAddonEntitlementForShop } from "@/features/equipment/server/equipmentAddonEntitlement";
 import { resolveFleetActorContext } from "@/features/fleet/lib/resolveFleetActorContext";
 import { getMobileFieldServiceAccess } from "@/features/mobile/service/server/access";
@@ -81,6 +82,17 @@ export async function GET() {
     }
   }
 
+  // Portal-only accounts (e.g. Fleet invitees) keep a shop-scoped profile but
+  // middleware bounces them off the staff surfaces, so Shop/Field/Equipment
+  // must not advertise as open for them.
+  const {
+    data: { user: authUser },
+  } = await access.supabase.auth.getUser();
+  const portalOnly = authUser?.app_metadata?.profixiq_portal_only === true;
+  const equipmentRoleAllowed = (
+    EQUIPMENT_DIRECTORY_ROLES as readonly string[]
+  ).includes(access.canonicalRole);
+
   const shopEntitled = internalDemo || shopAccess.data === true;
   const fieldEntitled = internalDemo || fieldAccess.data === true;
   const fleetEntitled = internalDemo || fleetAccess.data === true;
@@ -91,10 +103,14 @@ export async function GET() {
       : (shopRow.data?.subscription_package ?? null),
     internalDemo,
     workspaces: {
-      shop: { entitled: shopEntitled, accessible: shopEntitled },
+      shop: {
+        entitled: shopEntitled,
+        accessible: shopEntitled && !portalOnly,
+      },
       field: {
         entitled: fieldEntitled,
-        accessible: internalDemo || (fieldEntitled && fieldActorAccess),
+        accessible:
+          !portalOnly && (internalDemo || (fieldEntitled && fieldActorAccess)),
       },
       fleet: {
         entitled: fleetEntitled,
@@ -102,7 +118,7 @@ export async function GET() {
       },
       equipment: {
         entitled: equipmentEntitled,
-        accessible: equipmentEntitled,
+        accessible: !portalOnly && equipmentEntitled && equipmentRoleAllowed,
       },
     },
   };

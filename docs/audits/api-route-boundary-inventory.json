@@ -10029,7 +10029,7 @@
     "isMutating": false,
     "hasRequireShopScopedApiAccess": true,
     "hasRouteHandlerSupabaseAuthClient": false,
-    "hasAuthGetUser": false,
+    "hasAuthGetUser": true,
     "hasServiceRolePattern": true,
     "hasShopReference": true,
     "hasRoleOrCapabilityReference": true,

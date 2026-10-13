@@ -44,7 +44,7 @@ describe("workspace product switcher", () => {
     expect(route).toContain("resolveFleetActorContext(access.supabase");
     expect(route).toContain("result.canAccessFieldService");
     expect(route).toContain("result.capabilities.canAccessFleetIntake");
-    expect(route).toContain("accessible: internalDemo || (fieldEntitled && fieldActorAccess)");
+    expect(route).toContain("!portalOnly && (internalDemo || (fieldEntitled && fieldActorAccess))");
     expect(route).toContain("accessible: internalDemo || (fleetEntitled && fleetActorAccess)");
   });
 
@@ -61,6 +61,19 @@ describe("workspace product switcher", () => {
 });
 
 describe("workspace switcher review regressions", () => {
+  it("gates Shop/Field/Equipment on portal-only accounts and Equipment on directory roles", () => {
+    const route = source("app/api/workspaces/entitlements/route.ts");
+    expect(route).toContain("profixiq_portal_only");
+    expect(route).toContain("EQUIPMENT_DIRECTORY_ROLES");
+    expect(route).toContain("!portalOnly && equipmentEntitled && equipmentRoleAllowed");
+  });
+
+  it("keeps product links non-actionable until entitlements resolve", () => {
+    const switcher = source("features/shared/components/WorkspaceProductSwitcher.tsx");
+    expect(switcher).toContain("!active && !verified");
+    expect(switcher).toContain('aria-disabled="true"');
+  });
+
   it("keeps acquisition destinations public", () => {
     const middleware = source("middleware.ts");
     for (const route of ["/repair-shop-management-software", "/field-service", "/fleet-maintenance", "/equipment-maintenance-software"]) {
@@ -79,7 +92,7 @@ describe("workspace switcher review regressions", () => {
     expect(switcher).toContain("let entitlementIdentity");
     expect(switcher).toContain("let entitlementRequest");
     expect(switcher).toContain("loadWorkspaceEntitlements(identity)");
-    expect(switcher).toContain("auth.onAuthStateChange");
+    expect(switcher).toContain("onAuthStateChange");
     expect(switcher).toContain("entitlementRequest = null");
     expect(switcher).toContain("isWorkspaceEntitlementsPayload");
   });

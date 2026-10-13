@@ -126,18 +126,35 @@ export default function WorkspaceProductSwitcher({
         const workspace = entitlements?.workspaces?.[product.surface];
         const entitled = active || workspace?.entitled === true;
         const accessible = active || workspace?.accessible === true;
-        const href = active
-          ? workspaceProductHref(product, true, surface)
-          : workspaceProductHref(product, verified ? accessible : false, surface);
+        const href = workspaceProductHref(
+          product,
+          active || accessible,
+          surface,
+        );
         const title = active
           ? `${product.label} workspace`
           : !verified
-            ? `Check ${product.label} access`
+            ? `Checking ${product.label} access`
             : accessible
               ? `Open ${product.label}`
               : entitled
                 ? `${product.label} access is not enabled for this account`
                 : product.upgradeLabel;
+
+        if (!active && !verified) {
+          // Entitlements are still loading (or failed to resolve): do not
+          // route an entitled user to an acquisition page.
+          return (
+            <span
+              key={product.surface}
+              aria-disabled="true"
+              title={title}
+              className="inline-flex h-8 shrink-0 items-center rounded-lg border border-transparent px-2.5 text-xs font-semibold text-[color:var(--theme-text-secondary)] opacity-60"
+            >
+              {product.label}
+            </span>
+          );
+        }
 
         return (
           <Link
