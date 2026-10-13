@@ -101,17 +101,17 @@ describe("premier feedback system", () => {
     expect(route).toContain("isTerminalRow(row)");
     expect(route).toContain('metadata?.status === "completed"');
     expect(route).toContain('metadata?.status === "declined"');
-    expect(route).toContain("historicalMetadata(canonicalRow");
+    expect(read("supabase/migrations/20261013000132_feedback_atomic_control.sql")).toContain("public.feedback_metadata(to_jsonb(v_canonical))");
     expect(route).toContain("feedbackStatusFromLegacy(row.status)");
   });
 
   it("claims owner alert events before sending to prevent concurrent duplicate alerts", () => {
     const route = read("app/api/feedback/route.ts");
-    expect(route).toContain("claimOwnerNotification");
-    expect(route).toContain("ownerNotificationClaimKeys");
-    expect(route.indexOf("claimOwnerNotification(admin")).toBeLessThan(
-      route.indexOf("sendFeedbackAttentionEmail({"),
-    );
+    const migration = read("supabase/migrations/20261013000132_feedback_atomic_control.sql");
+    expect(migration).toContain("ownerPendingNotificationKeys");
+    expect(migration).toContain("for update");
+    expect(route).toContain('admin.rpc("submit_feedback"');
+    expect(route).toContain("deliverFeedbackNotifications");
   });
 
   it("keeps requester completion messaging tenant-neutral and claims delivery per reporter", () => {
@@ -128,10 +128,11 @@ describe("premier feedback system", () => {
       "You asked, we shipped it: ${input.title}",
     );
     expect(notifications).toContain("functions.invoke(\"send-email\"");
-    expect(controlRoute).toContain("claimRequesterNotification");
-    expect(controlRoute).toContain("requesterNotificationClaimedReporterIds");
+    const delivery = read("features/feedback/server/delivery.ts");
+    expect(delivery).toContain("feedback_notification");
+    expect(delivery).toContain("beforeSend");
     expect(controlRoute).not.toContain("&& !deliveryMetadata.requesterNotifiedAt");
-    expect(controlRoute).toContain("sendFeedbackCompletedEmails");
+    expect(delivery).toContain("sendFeedbackCompletedEmails");
     expect(controlRoute).toContain("notifyRequesters");
   });
 

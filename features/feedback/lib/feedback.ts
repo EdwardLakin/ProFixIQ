@@ -27,7 +27,12 @@ export const FEEDBACK_SURFACES = [
   "other",
 ] as const;
 
-export const FEEDBACK_SEVERITIES = ["low", "normal", "high", "critical"] as const;
+export const FEEDBACK_SEVERITIES = [
+  "low",
+  "normal",
+  "high",
+  "critical",
+] as const;
 
 export type FeedbackStatus = (typeof FEEDBACK_STATUSES)[number];
 export type FeedbackKind = (typeof FEEDBACK_KINDS)[number];
@@ -60,7 +65,52 @@ export type FeedbackMetadata = {
   requesterNotifiedReporterIds?: string[];
   requesterNotificationSkippedReporterIds?: string[];
   requesterNotificationClaimedReporterIds?: string[];
+  ownerPendingNotificationKeys?: string[];
+  ownerNotificationClaims?: Record<string, NotificationClaim>;
+  requesterNotificationClaims?: Record<string, NotificationClaim>;
 };
+
+export type NotificationClaim = {
+  token: string;
+  state: "reserved" | "sending" | "unknown";
+  at: string;
+};
+
+function readClaims(value: unknown): Record<string, NotificationClaim> {
+  if (!isRecord(value)) return {};
+  const claims: Record<string, NotificationClaim> = {};
+  for (const [key, item] of Object.entries(value)) {
+    if (
+      isRecord(item) &&
+      typeof item.token === "string" &&
+      typeof item.at === "string" &&
+      (item.state === "reserved" ||
+        item.state === "sending" ||
+        item.state === "unknown")
+    ) {
+      claims[key] = { token: item.token, at: item.at, state: item.state };
+    }
+  }
+  return claims;
+}
+
+export function notificationCounts(
+  keys: string[],
+  delivered: string[],
+  skipped: string[],
+  claims: Record<string, NotificationClaim>,
+  now = Date.now(),
+) {
+  const settled = new Set([...delivered, ...skipped]);
+  const pending = [...new Set(keys)].filter((key) => !settled.has(key));
+  const unknown = pending.filter(
+    (key) =>
+      claims[key] &&
+      claims[key].state !== "reserved" &&
+      Date.parse(claims[key].at) <= now - 5 * 60_000,
+  ).length;
+  return { pending: pending.length, unknown };
+}
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -79,16 +129,27 @@ export function readFeedbackMetadata(value: unknown): FeedbackMetadata | null {
   if (!isRecord(value)) return null;
   const feedback = isRecord(value.feedback) ? value.feedback : null;
   if (!feedback || feedback.version !== 1) return null;
-  if (typeof feedback.title !== "string" || typeof feedback.summary !== "string") return null;
-  const status = FEEDBACK_STATUSES.find((candidate) => candidate === feedback.status);
+  if (
+    typeof feedback.title !== "string" ||
+    typeof feedback.summary !== "string"
+  )
+    return null;
+  const status = FEEDBACK_STATUSES.find(
+    (candidate) => candidate === feedback.status,
+  );
   const kind = FEEDBACK_KINDS.find((candidate) => candidate === feedback.kind);
-  const surface = FEEDBACK_SURFACES.find((candidate) => candidate === feedback.surface);
-  const severity = FEEDBACK_SEVERITIES.find((candidate) => candidate === feedback.severity);
+  const surface = FEEDBACK_SURFACES.find(
+    (candidate) => candidate === feedback.surface,
+  );
+  const severity = FEEDBACK_SEVERITIES.find(
+    (candidate) => candidate === feedback.severity,
+  );
   if (!status || !kind || !surface || !severity) return null;
 
   return {
     version: 1,
-    clusterId: typeof feedback.clusterId === "string" ? feedback.clusterId : null,
+    clusterId:
+      typeof feedback.clusterId === "string" ? feedback.clusterId : null,
     isCanonical: feedback.isCanonical === true,
     status,
     kind,
@@ -97,29 +158,64 @@ export function readFeedbackMetadata(value: unknown): FeedbackMetadata | null {
     summary: feedback.summary,
     severity,
     needsAttention: feedback.needsAttention === true,
-    recommendation: typeof feedback.recommendation === "string" ? feedback.recommendation : "Review when practical.",
+    recommendation:
+      typeof feedback.recommendation === "string"
+        ? feedback.recommendation
+        : "Review when practical.",
     aiMode: feedback.aiMode === "ai" ? "ai" : "fallback",
     aiModel: typeof feedback.aiModel === "string" ? feedback.aiModel : null,
-    duplicateConfidence: typeof feedback.duplicateConfidence === "number" ? feedback.duplicateConfidence : null,
-    internalNotes: typeof feedback.internalNotes === "string" ? feedback.internalNotes : null,
-    firstSeenAt: typeof feedback.firstSeenAt === "string" ? feedback.firstSeenAt : new Date(0).toISOString(),
-    lastSeenAt: typeof feedback.lastSeenAt === "string" ? feedback.lastSeenAt : new Date(0).toISOString(),
-    ownerNotifiedAt: typeof feedback.ownerNotifiedAt === "string" ? feedback.ownerNotifiedAt : null,
+    duplicateConfidence:
+      typeof feedback.duplicateConfidence === "number"
+        ? feedback.duplicateConfidence
+        : null,
+    internalNotes:
+      typeof feedback.internalNotes === "string"
+        ? feedback.internalNotes
+        : null,
+    firstSeenAt:
+      typeof feedback.firstSeenAt === "string"
+        ? feedback.firstSeenAt
+        : new Date(0).toISOString(),
+    lastSeenAt:
+      typeof feedback.lastSeenAt === "string"
+        ? feedback.lastSeenAt
+        : new Date(0).toISOString(),
+    ownerNotifiedAt:
+      typeof feedback.ownerNotifiedAt === "string"
+        ? feedback.ownerNotifiedAt
+        : null,
     ownerNotificationKeys: readStringArray(feedback.ownerNotificationKeys),
-    ownerNotificationClaimKeys: readStringArray(feedback.ownerNotificationClaimKeys),
-    completedAt: typeof feedback.completedAt === "string" ? feedback.completedAt : null,
-    requesterNotifiedAt: typeof feedback.requesterNotifiedAt === "string" ? feedback.requesterNotifiedAt : null,
-    requesterNotifiedReporterIds: readStringArray(feedback.requesterNotifiedReporterIds),
+    ownerNotificationClaimKeys: readStringArray(
+      feedback.ownerNotificationClaimKeys,
+    ),
+    completedAt:
+      typeof feedback.completedAt === "string" ? feedback.completedAt : null,
+    requesterNotifiedAt:
+      typeof feedback.requesterNotifiedAt === "string"
+        ? feedback.requesterNotifiedAt
+        : null,
+    requesterNotifiedReporterIds: readStringArray(
+      feedback.requesterNotifiedReporterIds,
+    ),
     requesterNotificationSkippedReporterIds: readStringArray(
       feedback.requesterNotificationSkippedReporterIds,
     ),
     requesterNotificationClaimedReporterIds: readStringArray(
       feedback.requesterNotificationClaimedReporterIds,
     ),
+    ownerPendingNotificationKeys: readStringArray(
+      feedback.ownerPendingNotificationKeys,
+    ),
+    ownerNotificationClaims: readClaims(feedback.ownerNotificationClaims),
+    requesterNotificationClaims: readClaims(
+      feedback.requesterNotificationClaims,
+    ),
   };
 }
 
-export function inferFeedbackSurface(pathname: string | null | undefined): FeedbackSurface {
+export function inferFeedbackSurface(
+  pathname: string | null | undefined,
+): FeedbackSurface {
   const path = (pathname ?? "").toLowerCase();
   if (path.startsWith("/fleet")) return "fleet";
   if (path.startsWith("/field")) return "field";
@@ -127,11 +223,14 @@ export function inferFeedbackSurface(pathname: string | null | undefined): Feedb
   if (path.startsWith("/mobile")) return "mobile";
   if (path.startsWith("/portal")) return "customer_portal";
   if (path.startsWith("/ops")) return "ops";
-  if (path.startsWith("/dashboard") || path.startsWith("/work-orders")) return "shop";
+  if (path.startsWith("/dashboard") || path.startsWith("/work-orders"))
+    return "shop";
   return "other";
 }
 
-export function feedbackKindToAgentIntent(kind: FeedbackKind):
+export function feedbackKindToAgentIntent(
+  kind: FeedbackKind,
+):
   | "feature_request"
   | "bug_report"
   | "inspection_catalog_add"
@@ -142,7 +241,9 @@ export function feedbackKindToAgentIntent(kind: FeedbackKind):
   return "feature_request";
 }
 
-export function legacyStatusForFeedback(status: FeedbackStatus):
+export function legacyStatusForFeedback(
+  status: FeedbackStatus,
+):
   | "submitted"
   | "in_progress"
   | "awaiting_approval"

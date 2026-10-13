@@ -22,16 +22,19 @@ export async function getOpsDashboardFeedback(): Promise<OpsFeedbackSummary[]> {
 
   const clusters = new Map<string, typeof rows>();
   for (const row of rows) {
-    const clusterId = readFeedbackMetadata(row.normalized_json)?.clusterId ?? row.id;
+    const clusterId =
+      readFeedbackMetadata(row.normalized_json)?.clusterId ?? row.id;
     clusters.set(clusterId, [...(clusters.get(clusterId) ?? []), row]);
   }
 
   return [...clusters.entries()]
     .map(([clusterId, members]) => {
       const canonical =
-        members.find((row) => row.id === clusterId) ?? members[members.length - 1];
+        members.find((row) => row.id === clusterId) ??
+        members[members.length - 1];
       return {
         id: clusterId,
+        submissionCount: members.length,
         description: canonical.description,
         intent: canonical.intent ?? null,
         status: canonical.status,
@@ -42,5 +45,8 @@ export async function getOpsDashboardFeedback(): Promise<OpsFeedbackSummary[]> {
         updated_at: canonical.updated_at,
       } satisfies OpsFeedbackSummary;
     })
-    .sort((left, right) => Date.parse(right.updated_at) - Date.parse(left.updated_at));
+    .sort(
+      (left, right) =>
+        Date.parse(right.updated_at) - Date.parse(left.updated_at),
+    );
 }

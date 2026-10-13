@@ -1,5 +1,6 @@
 import "server-only";
 
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { requireOpsOperatorPageAccess } from "@/features/ops/server/operator-access";
 
 export type DeploymentHealthState = "healthy" | "degraded" | "down";
@@ -76,7 +77,7 @@ type GithubPull = {
 };
 
 const GITHUB_API = "https://api.github.com/repos/EdwardLakin/ProFixIQ";
-const DEFAULT_REQUIRED_CI_CHECKS = ["Supabase Preview"] as const;
+const DEFAULT_REQUIRED_CI_CHECKS = ["checks"] as const;
 
 function text(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -89,11 +90,12 @@ function requiredCiCheckNames(): string[] {
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean);
-  return names.length > 0 ? [...new Set(names)] : [...DEFAULT_REQUIRED_CI_CHECKS];
+  return [...new Set([...DEFAULT_REQUIRED_CI_CHECKS, ...names])];
 }
 
 async function githubJson<T>(path: string): Promise<T | null> {
-  const token = text(process.env.OPS_GITHUB_TOKEN) ?? text(process.env.GITHUB_TOKEN);
+  const token =
+    text(process.env.OPS_GITHUB_TOKEN) ?? text(process.env.GITHUB_TOKEN);
   try {
     const response = await fetch(`${GITHUB_API}${path}`, {
       headers: {
@@ -103,7 +105,7 @@ async function githubJson<T>(path: string): Promise<T | null> {
       },
       next: { revalidate: 60 },
     });
-    return response.ok ? (await response.json()) as T : null;
+    return response.ok ? ((await response.json()) as T) : null;
   } catch {
     return null;
   }
@@ -143,7 +145,9 @@ async function readProductionMigrationVersions(): Promise<string[] | null> {
     if (!response.ok) return null;
     const rows = (await response.json()) as Array<{ version?: unknown }>;
     if (!Array.isArray(rows)) return null;
-    return rows.flatMap((row) => (typeof row.version === "string" ? [row.version] : []));
+    return rows.flatMap((row) =>
+      typeof row.version === "string" ? [row.version] : [],
+    );
   } catch {
     return null;
   }
@@ -160,25 +164,63 @@ function successfulConclusion(value: string | null): boolean {
 }
 
 export async function getOpsDeploymentHealth(): Promise<DeploymentHealthSnapshot> {
-  const access = await requireOpsOperatorPageAccess();
+  await requireOpsOperatorPageAccess();
   const checkedAt = new Date().toISOString();
-  const environment = text(process.env.VERCEL_ENV) ?? text(process.env.NODE_ENV) ?? "unknown";
+  const environment =
+    text(process.env.VERCEL_ENV) ?? text(process.env.NODE_ENV) ?? "unknown";
   const deployedSha = text(process.env.VERCEL_GIT_COMMIT_SHA);
   const deploymentId = text(process.env.VERCEL_DEPLOYMENT_ID);
   const deploymentUrl = text(process.env.VERCEL_URL);
 
-  const [mainCommit, mainMigrationFiles, appliedVersions, pulls] = await Promise.all([
-    githubJson<GithubCommit>("/commits/main"),
-    githubJson<GithubContentItem[]>("/contents/supabase/migrations?ref=main"),
-    readProductionMigrationVersions(),
-    githubJson<GithubPull[]>("/pulls?state=open&base=main&per_page=30&sort=updated&direction=desc"),
-  ]);
+  const [mainCommit, mainMigrationFiles, appliedVersions, pulls] =
+    await Promise.all([
+      githubJson<GithubCommit>("/commits/main"),
+      githubJson<GithubContentItem[]>("/contents/supabase/migrations?ref=main"),
+      readProductionMigrationVersions(),
+      githubJson<GithubPull[]>(
+        "/pulls?state=open&base=main&per_page=30&sort=updated&direction=desc",
+      ),
+    ]);
   const mainSha = text(mainCommit?.sha);
   const matchesMain = deployedSha && mainSha ? deployedSha === mainSha : null;
 
-  const checksPayload = deployedSha
-    ? await githubJson<GithubChecks>(`/commits/${encodeURIComponent(deployedSha)}/check-runs?per_page=100`)
+  let checksPayload = deployedSha
+    ? await githubJson<GithubChecks>(
+        `/commits/${encodeURIComponent(deployedSha)}/check-runs?per_page=100`,
+      )
     : null;
+  if (
+    deployedSha &&
+    !checksPayload?.check_runs?.some((check) => check.name === "checks")
+  ) {
+    // Production is usually a merge commit; bind inherited PR checks to the
+    // exact merge commit rather than accepting an arbitrary recent green PR.
+    const merged = await githubJson<
+      Array<{
+        merged_at?: string;
+        merge_commit_sha?: string;
+        head?: { sha?: string };
+      }>
+    >(`/commits/${encodeURIComponent(deployedSha)}/pulls?per_page=100`);
+    const equivalent = merged?.find(
+      (pull) =>
+        pull.merged_at &&
+        pull.merge_commit_sha === deployedSha &&
+        pull.head?.sha,
+    );
+    if (equivalent?.head?.sha) {
+      const headChecks = await githubJson<GithubChecks>(
+        `/commits/${encodeURIComponent(equivalent.head.sha)}/check-runs?per_page=100`,
+      );
+      if (headChecks)
+        checksPayload = {
+          check_runs: [
+            ...(checksPayload?.check_runs ?? []),
+            ...(headChecks.check_runs ?? []),
+          ],
+        };
+    }
+  }
   const checks = (checksPayload?.check_runs ?? []).map((check) => ({
     name: text(check.name) ?? "Unnamed check",
     status: text(check.status) ?? "unknown",
@@ -205,24 +247,45 @@ export async function getOpsDeploymentHealth(): Promise<DeploymentHealthSnapshot
           successfulConclusion(check.conclusion),
       ),
   );
-  const ciState: DeploymentHealthState = !deployedSha || !checksPayload
-    ? "degraded"
-    : failing > 0
-      ? "down"
-      : pending > 0 || skipped > 0 || missingRequired.length > 0 || checks.length === 0
-        ? "degraded"
-        : "healthy";
+  const ciState: DeploymentHealthState =
+    !deployedSha || !checksPayload
+      ? "degraded"
+      : failing > 0
+        ? "down"
+        : pending > 0 ||
+            skipped > 0 ||
+            missingRequired.length > 0 ||
+            checks.length === 0
+          ? "degraded"
+          : "healthy";
 
   const dbStarted = Date.now();
-  const databaseRead = await access.supabase
-    .from("agent_requests")
-    .select("id", { count: "exact", head: true });
+  let databaseRead: { error: { message: string } | null; count: number | null };
+  try {
+    const admin = createAdminSupabase();
+    const readiness = await admin.rpc("feedback_ready");
+    if (readiness.error || readiness.data !== true)
+      throw new Error("Feedback ledger lockdown is pending");
+    databaseRead = await admin
+      .from("agent_requests")
+      .select("id", { count: "exact", head: true });
+  } catch {
+    databaseRead = {
+      error: { message: "Privileged feedback client is unavailable" },
+      count: null,
+    };
+  }
   const databaseLatency = Date.now() - dbStarted;
-  const databaseState: DeploymentHealthState = databaseRead.error ? "down" : "healthy";
+  const databaseState: DeploymentHealthState = databaseRead.error
+    ? "down"
+    : "healthy";
 
   const repoVersions = mainMigrationFiles
     ? mainMigrationFiles.flatMap((item) => {
-        const version = item.type === "file" && item.name ? migrationVersion(item.name) : null;
+        const version =
+          item.type === "file" && item.name
+            ? migrationVersion(item.name)
+            : null;
         return version ? [version] : [];
       })
     : null;
@@ -239,10 +302,15 @@ export async function getOpsDeploymentHealth(): Promise<DeploymentHealthSnapshot
   } else {
     const applied = new Set(appliedVersions);
     const inRepo = new Set(repoVersions);
-    const productionOnly = appliedVersions.filter((version) => !inRepo.has(version)).sort();
-    const unapplied = repoVersions.filter((version) => !applied.has(version)).sort();
+    const productionOnly = appliedVersions
+      .filter((version) => !inRepo.has(version))
+      .sort();
+    const unapplied = repoVersions
+      .filter((version) => !applied.has(version))
+      .sort();
     migrations = {
-      state: productionOnly.length > 0 || unapplied.length > 0 ? "down" : "healthy",
+      state:
+        productionOnly.length > 0 || unapplied.length > 0 ? "down" : "healthy",
       repoCount: repoVersions.length,
       appliedCount: appliedVersions.length,
       productionOnly,
@@ -254,28 +322,38 @@ export async function getOpsDeploymentHealth(): Promise<DeploymentHealthSnapshot
     };
   }
 
-  const productionState: DeploymentHealthState = environment === "production" && !deployedSha
-    ? "degraded"
-    : matchesMain === false
+  const productionState: DeploymentHealthState =
+    environment === "production" && !deployedSha
       ? "degraded"
-      : mainSha === null
+      : matchesMain === false
         ? "degraded"
-        : "healthy";
+        : mainSha === null
+          ? "degraded"
+          : "healthy";
 
   const normalizedPulls = (pulls ?? []).flatMap((pull) => {
-    if (typeof pull.number !== "number" || typeof pull.title !== "string" || typeof pull.html_url !== "string") return [];
-    return [{
-      number: pull.number,
-      title: pull.title,
-      draft: pull.draft === true,
-      url: pull.html_url,
-      updatedAt: text(pull.updated_at) ?? checkedAt,
-    }];
+    if (
+      typeof pull.number !== "number" ||
+      typeof pull.title !== "string" ||
+      typeof pull.html_url !== "string"
+    )
+      return [];
+    return [
+      {
+        number: pull.number,
+        title: pull.title,
+        draft: pull.draft === true,
+        url: pull.html_url,
+        updatedAt: text(pull.updated_at) ?? checkedAt,
+      },
+    ];
   });
+
+  const overall = overallState([productionState, ciState, migrations.state, databaseState]);
 
   return {
     checkedAt,
-    overall: overallState([productionState, ciState, migrations.state, databaseState]),
+    overall,
     production: {
       state: productionState,
       environment,
@@ -298,7 +376,7 @@ export async function getOpsDeploymentHealth(): Promise<DeploymentHealthSnapshot
     database: {
       state: databaseState,
       latencyMs: databaseLatency,
-      feedbackRecords: databaseRead.error ? null : databaseRead.count ?? 0,
+      feedbackRecords: databaseRead.error ? null : (databaseRead.count ?? 0),
       error: databaseRead.error?.message ?? null,
     },
     pullRequests: {

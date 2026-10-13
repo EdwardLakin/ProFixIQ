@@ -2,11 +2,21 @@ import "server-only";
 
 import type { Database } from "@shared/types/types/supabase";
 import type { createAdminSupabase } from "@/features/shared/lib/supabase/server";
+import { isRecord } from "@/features/feedback/lib/feedback";
 
-export type AgentRequestRow = Database["public"]["Tables"]["agent_requests"]["Row"];
+export type AgentRequestRow =
+  Database["public"]["Tables"]["agent_requests"]["Row"];
 type AdminClient = ReturnType<typeof createAdminSupabase>;
 
 const PAGE_SIZE = 1000;
+
+/** Portal reporters have no staff profile; keep the legacy FK nullable. */
+export function reporterAuthId(row: AgentRequestRow): string | null {
+  return isRecord(row.normalized_json) &&
+    typeof row.normalized_json.reporterAuthId === "string"
+    ? row.normalized_json.reporterAuthId
+    : row.reporter_id;
+}
 
 /** Reads the complete feedback ledger in pages instead of truncating history. */
 export async function fetchAllLedgerRows(
@@ -38,7 +48,9 @@ export async function fetchClusterRows(
     const { data, error } = await admin
       .from("agent_requests")
       .select("*")
-      .or(`id.eq.${clusterId},normalized_json->feedback->>clusterId.eq.${clusterId}`)
+      .or(
+        `id.eq.${clusterId},normalized_json->feedback->>clusterId.eq.${clusterId}`,
+      )
       .order("created_at", { ascending: true })
       .order("id", { ascending: true })
       .range(from, from + PAGE_SIZE - 1);

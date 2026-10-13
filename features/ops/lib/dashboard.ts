@@ -15,6 +15,7 @@ export type OpsFeedbackSummary = {
   shop_id: string | null;
   created_at: string;
   updated_at: string;
+  submissionCount?: number;
 };
 
 export type OpsDashboardMetrics = {
@@ -26,7 +27,10 @@ export type OpsDashboardMetrics = {
 };
 
 export function opsFeedbackStatus(item: OpsFeedbackSummary): FeedbackStatus {
-  return readFeedbackMetadata(item.normalized_json)?.status ?? feedbackStatusFromLegacy(item.status);
+  return (
+    readFeedbackMetadata(item.normalized_json)?.status ??
+    feedbackStatusFromLegacy(item.status)
+  );
 }
 
 export function opsFeedbackNeedsAttention(item: OpsFeedbackSummary): boolean {
@@ -48,15 +52,27 @@ export function opsFeedbackKind(item: OpsFeedbackSummary): string {
   return item.intent === "bug_report" ? "bug" : "feature_request";
 }
 
-export function buildOpsDashboardMetrics(items: OpsFeedbackSummary[]): OpsDashboardMetrics {
+export function buildOpsDashboardMetrics(
+  items: OpsFeedbackSummary[],
+): OpsDashboardMetrics {
   return {
-    totalSubmissions: items.length,
-    newSubmissions: items.filter((item) => opsFeedbackStatus(item) === "new").length,
+    totalSubmissions: items.reduce(
+      (total, item) => total + (item.submissionCount ?? 1),
+      0,
+    ),
+    newSubmissions: items
+      .filter((item) => opsFeedbackStatus(item) === "new")
+      .reduce((total, item) => total + (item.submissionCount ?? 1), 0),
     needsAttention: items.filter(
-      (item) => opsFeedbackNeedsAttention(item) && !["completed", "declined"].includes(opsFeedbackStatus(item)),
+      (item) =>
+        opsFeedbackNeedsAttention(item) &&
+        !["completed", "declined"].includes(opsFeedbackStatus(item)),
     ).length,
-    inProgress: items.filter((item) => opsFeedbackStatus(item) === "in_progress").length,
-    completed: items.filter((item) => opsFeedbackStatus(item) === "completed").length,
+    inProgress: items.filter(
+      (item) => opsFeedbackStatus(item) === "in_progress",
+    ).length,
+    completed: items.filter((item) => opsFeedbackStatus(item) === "completed")
+      .length,
   };
 }
 
@@ -67,11 +83,19 @@ export function attentionFeedback(
   return items
     .filter((item) => {
       const status = opsFeedbackStatus(item);
-      return opsFeedbackNeedsAttention(item) || status === "new" || status === "reviewing";
+      return (
+        opsFeedbackNeedsAttention(item) ||
+        status === "new" ||
+        status === "reviewing"
+      );
     })
-    .filter((item) => !["completed", "declined"].includes(opsFeedbackStatus(item)))
+    .filter(
+      (item) => !["completed", "declined"].includes(opsFeedbackStatus(item)),
+    )
     .sort((left, right) => {
-      const attentionDelta = Number(opsFeedbackNeedsAttention(right)) - Number(opsFeedbackNeedsAttention(left));
+      const attentionDelta =
+        Number(opsFeedbackNeedsAttention(right)) -
+        Number(opsFeedbackNeedsAttention(left));
       if (attentionDelta !== 0) return attentionDelta;
       return Date.parse(right.updated_at) - Date.parse(left.updated_at);
     })

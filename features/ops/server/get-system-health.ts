@@ -39,20 +39,23 @@ function projectRefFromUrl(value: string | null): string | null {
 }
 
 function applicationHealth(): OpsHealthService {
-  const environment = text(process.env.VERCEL_ENV) ?? text(process.env.NODE_ENV) ?? "unknown";
+  const environment =
+    text(process.env.VERCEL_ENV) ?? text(process.env.NODE_ENV) ?? "unknown";
   const commitSha = text(process.env.VERCEL_GIT_COMMIT_SHA);
   const deploymentId = text(process.env.VERCEL_DEPLOYMENT_ID);
   const deploymentUrl = text(process.env.VERCEL_URL);
   const runtimeIdentified = Boolean(commitSha || deploymentId || deploymentUrl);
-  const state: OpsHealthState = environment === "production" && !runtimeIdentified ? "degraded" : "healthy";
+  const state: OpsHealthState =
+    environment === "production" && !runtimeIdentified ? "degraded" : "healthy";
 
   return {
     key: "application",
     label: "ProFixIQ application",
     state,
-    summary: state === "healthy"
-      ? "The Ops server route is executing normally."
-      : "The application is responding, but production deployment identity is unavailable.",
+    summary:
+      state === "healthy"
+        ? "The Ops server route is executing normally."
+        : "The application is responding, but production deployment identity is unavailable.",
     latencyMs: null,
     details: [
       { label: "Environment", value: environment },
@@ -68,7 +71,9 @@ export async function getOpsSystemHealth(): Promise<OpsSystemHealthSnapshot> {
   // we use the same privileged ledger path as Feedback Control itself.
   const access = await requireOpsOperatorPageAccess();
   const application = applicationHealth();
-  const projectRef = projectRefFromUrl(text(process.env.NEXT_PUBLIC_SUPABASE_URL));
+  const projectRef = projectRefFromUrl(
+    text(process.env.NEXT_PUBLIC_SUPABASE_URL),
+  );
 
   const dbStarted = Date.now();
   const shopRead = await access.supabase
@@ -100,9 +105,21 @@ export async function getOpsSystemHealth(): Promise<OpsSystemHealthSnapshot> {
       };
 
   const feedbackStarted = Date.now();
-  const feedbackRead = await createAdminSupabase()
-    .from("agent_requests")
-    .select("id", { count: "exact", head: true });
+  let feedbackRead: { error: { message: string } | null; count: number | null };
+  try {
+    const admin = createAdminSupabase();
+    const readiness = await admin.rpc("feedback_ready");
+    if (readiness.error || readiness.data !== true)
+      throw new Error("Feedback ledger lockdown is pending");
+    feedbackRead = await admin
+      .from("agent_requests")
+      .select("id", { count: "exact", head: true });
+  } catch {
+    feedbackRead = {
+      error: { message: "Privileged feedback client is unavailable" },
+      count: null,
+    };
+  }
   const feedbackLatency = Date.now() - feedbackStarted;
   const feedback: OpsHealthService = feedbackRead.error
     ? {
@@ -127,7 +144,9 @@ export async function getOpsSystemHealth(): Promise<OpsSystemHealthSnapshot> {
       };
 
   const services = [application, database, feedback];
-  const overall: OpsHealthState = services.some((service) => service.state === "down")
+  const overall: OpsHealthState = services.some(
+    (service) => service.state === "down",
+  )
     ? "down"
     : services.some((service) => service.state === "degraded")
       ? "degraded"

@@ -1667,9 +1667,120 @@
     "riskLevel": "low"
   },
   {
+    "path": "app/api/equipment/assets/[assetId]/components/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
+  },
+  {
+    "path": "app/api/equipment/assets/[assetId]/measurements/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
+  },
+  {
     "path": "app/api/equipment/assets/[assetId]/profile/route.ts",
     "methods": [
       "GET",
+      "PUT"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
+  },
+  {
+    "path": "app/api/equipment/assets/[assetId]/undercarriage/route.ts",
+    "methods": [
+      "GET"
+    ],
+    "isMutating": false,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
+  },
+  {
+    "path": "app/api/equipment/components/[componentId]/actions/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
+  },
+  {
+    "path": "app/api/equipment/components/[componentId]/route.ts",
+    "methods": [
+      "GET",
+      "PATCH"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
+  },
+  {
+    "path": "app/api/equipment/components/[componentId]/wear-limits/route.ts",
+    "methods": [
       "PUT"
     ],
     "isMutating": true,
@@ -1702,6 +1813,24 @@
       "has_stronger_boundary_signal"
     ],
     "riskLevel": "low"
+  },
+  {
+    "path": "app/api/equipment/measurements/[measurementId]/correct/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
   },
   {
     "path": "app/api/estimates/[id]/parts-complete/route.ts",
@@ -1848,7 +1977,7 @@
     "hasServiceRolePattern": true,
     "hasShopReference": true,
     "hasRoleOrCapabilityReference": true,
-    "routeClassGuess": "staff_or_admin",
+    "routeClassGuess": "customer_or_portal",
     "riskFlags": [
       "service_role_with_shop_identifier_input_or_reference"
     ],

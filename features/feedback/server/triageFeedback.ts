@@ -37,7 +37,11 @@ export type FeedbackTriage = {
   duplicateConfidence: number | null;
 };
 
-function clampText(value: unknown, fallback: string, maxLength: number): string {
+function clampText(
+  value: unknown,
+  fallback: string,
+  maxLength: number,
+): string {
   if (typeof value !== "string") return fallback;
   const text = value.trim();
   return text ? text.slice(0, maxLength) : fallback;
@@ -59,7 +63,10 @@ function boundedCandidate(candidate: FeedbackCandidate): FeedbackCandidate {
     id: candidate.id.slice(0, 100),
     title: candidate.title.slice(0, 120),
     summary: candidate.summary.slice(0, 500),
-    submissionCount: Math.max(0, Math.min(candidate.submissionCount, 1_000_000)),
+    submissionCount: Math.max(
+      0,
+      Math.min(candidate.submissionCount, 1_000_000),
+    ),
   };
 }
 
@@ -69,12 +76,17 @@ function fallbackTriage(input: {
   pathname: string | null;
 }): FeedbackTriage {
   const lower = input.description.toLowerCase();
-  const looksUrgent = /(cannot|can't|unable|blocked|crash|wrong total|incorrect total|data loss|payment|invoice)/i.test(lower);
+  const looksUrgent =
+    /(cannot|can't|unable|blocked|crash|wrong total|incorrect total|data loss|payment|invoice)/i.test(
+      lower,
+    );
   const severity: FeedbackSeverity =
     input.requestedKind === "bug" && looksUrgent ? "high" : "normal";
   const title =
-    input.description.split(/[.!?\n]/)[0]?.trim().slice(0, 88) ||
-    "Product feedback";
+    input.description
+      .split(/[.!?\n]/)[0]
+      ?.trim()
+      .slice(0, 88) || "Product feedback";
   return {
     title,
     summary: input.description.slice(0, 320),
@@ -102,12 +114,35 @@ export async function triageFeedback(input: {
 }) {
   // Keep the helper safe even if a future caller bypasses the HTTP route's
   // validation. AI budget reservations assume prompt input is bounded.
-  const description = input.description.slice(0, MAX_TRIAGE_DESCRIPTION_LENGTH);
+  let description = input.description.slice(0, MAX_TRIAGE_DESCRIPTION_LENGTH);
   const pathname = input.pathname?.slice(0, MAX_TRIAGE_PATH_LENGTH) ?? null;
   const role = input.role?.slice(0, MAX_TRIAGE_ROLE_LENGTH) ?? null;
-  const candidates = input.candidates
+  let candidates = input.candidates
     .slice(0, MAX_TRIAGE_CANDIDATES)
     .map(boundedCandidate);
+  const system = [
+    "You triage product feedback for ProFixIQ, repair-shop management software.",
+    "Do not propose code, branches, pull requests, or autonomous engineering work.",
+    "Classify the report, make a concise neutral title and summary, identify the product surface, assess bug severity, and recommend a product-management action.",
+    "Only mark needsAttention when the report is plausibly blocking, safety/financial/data-integrity related, or unusually important.",
+    "Use duplicateOf only when an existing candidate describes substantially the same user need or defect. Prefer null over a weak match.",
+    "Return JSON with title, summary, kind, surface, severity, needsAttention, recommendation, duplicateOf, duplicateConfidence.",
+  ].join(" ");
+  const userPayload = () => ({
+    description,
+    requestedKind: input.requestedKind,
+    currentPath: pathname,
+    reporterRole: role,
+    existingCandidates: candidates,
+  });
+  // UTF-8 bytes conservatively bound byte-level BPE tokens. Reserve 1,000
+  // additional tokens for provider framing under the shared 8,000-token hold.
+  const promptBytes = () =>
+    new TextEncoder().encode(system + JSON.stringify(userPayload())).length;
+  while (promptBytes() > 7_000 && candidates.length > 0)
+    candidates = candidates.slice(0, -1);
+  while (promptBytes() > 7_000)
+    description = description.slice(0, Math.max(0, description.length - 250));
   const fallback = fallbackTriage({
     description,
     requestedKind: input.requestedKind,
@@ -126,21 +161,8 @@ export async function triageFeedback(input: {
       shopId: input.shopId,
       userId: input.userId,
     },
-    system: [
-      "You triage product feedback for ProFixIQ, repair-shop management software.",
-      "Do not propose code, branches, pull requests, or autonomous engineering work.",
-      "Classify the report, make a concise neutral title and summary, identify the product surface, assess bug severity, and recommend a product-management action.",
-      "Only mark needsAttention when the report is plausibly blocking, safety/financial/data-integrity related, or unusually important.",
-      "Use duplicateOf only when an existing candidate describes substantially the same user need or defect. Prefer null over a weak match.",
-      "Return JSON with title, summary, kind, surface, severity, needsAttention, recommendation, duplicateOf, duplicateConfidence.",
-    ].join(" "),
-    user: {
-      description,
-      requestedKind: input.requestedKind,
-      currentPath: pathname,
-      reporterRole: role,
-      existingCandidates: candidates,
-    },
+    system,
+    user: userPayload(),
     fallback: () => fallback,
     validate: (candidate) => {
       const record =

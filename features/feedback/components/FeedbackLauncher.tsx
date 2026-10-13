@@ -14,15 +14,17 @@ export default function FeedbackLauncher() {
 
   return (
     <>
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="fixed bottom-20 right-4 z-[70] inline-flex items-center gap-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-xs font-bold text-[color:var(--theme-text-primary)] shadow-lg backdrop-blur transition hover:border-orange-500/50 hover:bg-orange-500/10 sm:bottom-5 sm:right-5"
-        aria-label="Send feedback"
-      >
-        <MessageSquarePlus className="h-4 w-4 text-orange-400" />
-        <span className="hidden sm:inline">Feedback</span>
-      </button>
+      {!open ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="fixed bottom-20 right-4 z-30 inline-flex items-center gap-2 rounded-full border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-overlay)] px-3 py-2 text-xs font-bold text-[color:var(--theme-text-primary)] shadow-lg backdrop-blur transition hover:border-orange-500/50 hover:bg-orange-500/10 sm:bottom-5 sm:right-5"
+          aria-label="Send feedback"
+        >
+          <MessageSquarePlus className="h-4 w-4 text-orange-400" />
+          <span className="hidden sm:inline">Feedback</span>
+        </button>
+      ) : null}
       <FeedbackModal open={open} onOpenChange={setOpen} />
     </>
   );

@@ -48,6 +48,9 @@ type FeedbackItem = {
   firstSeenAt: string;
   lastSeenAt: string;
   completedAt: string | null;
+  updatedAt: string;
+  requesterNotifications: { pending: number; unknown: number };
+  ownerNotifications: { pending: number; unknown: number };
   submissions: FeedbackSubmission[];
 };
 
@@ -209,7 +212,8 @@ export default function FeedbackConsole() {
   const filtered = useMemo(() => {
     const query = search.trim().toLowerCase();
     return items.filter((item) => {
-      if (surfaceFilter !== "all" && item.surface !== surfaceFilter) return false;
+      if (surfaceFilter !== "all" && item.surface !== surfaceFilter)
+        return false;
       if (
         statusFilter === "active" &&
         ["completed", "declined"].includes(item.status)
@@ -260,6 +264,8 @@ export default function FeedbackConsole() {
     status?: FeedbackStatus;
     needsAttention?: boolean;
     saveNotes?: boolean;
+    retryNotifications?: boolean;
+    retryUnknown?: boolean;
   }) {
     if (!selected) return;
     setSaving(true);
@@ -268,26 +274,30 @@ export default function FeedbackConsole() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          expectedUpdatedAt: selected.updatedAt,
+          retryUnknownNotifications: input.retryUnknown,
           status: input.status,
           needsAttention: input.needsAttention,
           internalNotes: input.saveNotes ? internalNotes : undefined,
           notifyRequesters:
-            input.status === "completed" ? notifyRequesters : false,
+            input.status === "completed" || input.retryNotifications
+              ? notifyRequesters
+              : false,
         }),
       });
-      const payload = (await response.json().catch(() => null)) as
-        | { notified?: number; error?: string }
-        | null;
+      const payload = (await response.json().catch(() => null)) as {
+        notified?: number;
+        pendingNotifications?: number;
+        error?: string;
+      } | null;
       if (!response.ok) {
         throw new Error(payload?.error ?? "Update failed");
       }
-      toast.success(
-        input.status === "completed" && payload?.notified
-          ? `Completed and notified ${payload.notified} requester${
-              payload.notified === 1 ? "" : "s"
-            }.`
-          : "Feedback updated",
-      );
+      if (input.retryNotifications || input.status === "completed") {
+        toast.success(
+          `${payload?.notified ?? 0} requester notifications sent; ${payload?.pendingNotifications ?? 0} pending.`,
+        );
+      } else toast.success("Feedback updated");
       await load();
     } catch (error) {
       console.error(error);
@@ -324,9 +334,7 @@ export default function FeedbackConsole() {
           disabled={loading}
           className="gap-2"
         >
-          <RefreshCw
-            className={cn("h-4 w-4", loading && "animate-spin")}
-          />
+          <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
           Refresh
         </Button>
       </div>
@@ -483,8 +491,14 @@ export default function FeedbackConsole() {
 
               <div className="grid gap-3 sm:grid-cols-3">
                 <MiniMetric label="Reports" value={selected.submissionCount} />
-                <MiniMetric label="Unique users" value={selected.uniqueUserCount} />
-                <MiniMetric label="Unique shops" value={selected.uniqueShopCount} />
+                <MiniMetric
+                  label="Unique users"
+                  value={selected.uniqueUserCount}
+                />
+                <MiniMetric
+                  label="Unique shops"
+                  value={selected.uniqueShopCount}
+                />
               </div>
 
               <section className="rounded-xl border border-sky-500/20 bg-sky-500/5 p-4">
@@ -495,8 +509,8 @@ export default function FeedbackConsole() {
                   {selected.recommendation}
                 </p>
                 <p className="mt-2 text-[11px] text-[color:var(--theme-text-muted)]">
-                  Triage mode: {selected.aiMode}. Frequency and shop counts above
-                  are measured from actual submissions.
+                  Triage mode: {selected.aiMode}. Frequency and shop counts
+                  above are measured from actual submissions.
                 </p>
               </section>
 
@@ -509,7 +523,9 @@ export default function FeedbackConsole() {
                     <Button
                       key={status}
                       type="button"
-                      variant={selected.status === status ? "default" : "outline"}
+                      variant={
+                        selected.status === status ? "default" : "outline"
+                      }
                       disabled={saving || selected.status === status}
                       onClick={() => void updateItem({ status })}
                     >
@@ -528,6 +544,64 @@ export default function FeedbackConsole() {
                     />
                     Notify requesters automatically when I mark this Completed
                   </label>
+                ) : (
+                  <div className="mt-3 space-y-2 text-sm text-[color:var(--theme-text-secondary)]">
+                    <p>
+                      {selected.requesterNotifications.pending} requester
+                      notifications pending.
+                    </p>
+                    <Button
+                      variant="outline"
+                      disabled={
+                        saving || selected.requesterNotifications.pending === 0
+                      }
+                      onClick={() =>
+                        void updateItem({ retryNotifications: true })
+                      }
+                    >
+                      Retry requester notifications
+                    </Button>
+                  </div>
+                )}
+                {selected.ownerNotifications.pending > 0 ? (
+                  <div className="mt-3 text-sm">
+                    <p>
+                      {selected.ownerNotifications.pending} owner alerts
+                      pending.
+                    </p>
+                    <Button
+                      variant="outline"
+                      disabled={saving}
+                      onClick={() =>
+                        void updateItem({ retryNotifications: true })
+                      }
+                    >
+                      Retry pending alerts
+                    </Button>
+                  </div>
+                ) : null}
+                {selected.requesterNotifications.unknown +
+                  selected.ownerNotifications.unknown >
+                0 ? (
+                  <div className="mt-3 block text-sm text-amber-300">
+                    Delivery could not be confirmed for{" "}
+                    {selected.requesterNotifications.unknown +
+                      selected.ownerNotifications.unknown}{" "}
+                    notifications. Resending may send a duplicate.
+                    <Button
+                      className="mt-2"
+                      variant="outline"
+                      disabled={saving}
+                      onClick={() =>
+                        void updateItem({
+                          retryNotifications: true,
+                          retryUnknown: true,
+                        })
+                      }
+                    >
+                      Resend unconfirmed notifications
+                    </Button>
+                  </div>
                 ) : null}
               </section>
 
@@ -549,6 +623,7 @@ export default function FeedbackConsole() {
                   value={internalNotes}
                   onChange={(event) => setInternalNotes(event.target.value)}
                   rows={4}
+                  maxLength={12_000}
                   placeholder="Decision, implementation notes, PR number, reason for declining, etc."
                   className="w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel)] p-3 text-sm"
                 />
@@ -588,9 +663,7 @@ export default function FeedbackConsole() {
                             <span>{pretty(submission.reporterRole)}</span>
                           ) : null}
                           {submission.shopId ? (
-                            <span>
-                              Shop {submission.shopId.slice(0, 8)}…
-                            </span>
+                            <span>Shop {submission.shopId.slice(0, 8)}…</span>
                           ) : null}
                         </div>
                         <p className="mt-2 whitespace-pre-wrap text-sm leading-6">
@@ -635,8 +708,8 @@ export default function FeedbackConsole() {
               </section>
 
               <p className="text-xs text-[color:var(--theme-text-muted)]">
-                First reported {formatDate(selected.firstSeenAt)} · Last activity{" "}
-                {formatDate(selected.lastSeenAt)}
+                First reported {formatDate(selected.firstSeenAt)} · Last
+                activity {formatDate(selected.lastSeenAt)}
               </p>
             </div>
           ) : (
@@ -662,7 +735,9 @@ function Metric({
   return (
     <Card className="p-4">
       <div className="flex items-center justify-between text-[color:var(--theme-text-muted)]">
-        <span className="text-xs font-bold uppercase tracking-wider">{label}</span>
+        <span className="text-xs font-bold uppercase tracking-wider">
+          {label}
+        </span>
         {icon}
       </div>
       <p className="mt-2 text-3xl font-bold">{value}</p>

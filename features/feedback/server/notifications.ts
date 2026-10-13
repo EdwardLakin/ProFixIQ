@@ -3,15 +3,25 @@ import "server-only";
 import { defaultOpsOperatorEmails } from "@/features/ops/lib/operatorAccess";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
-async function sendEmail(to: string, subject: string, text: string): Promise<boolean> {
-  const { error } = await createAdminSupabase().functions.invoke("send-email", {
-    body: { to, subject, text },
-  });
-  if (error) {
-    console.error("feedback email delivery failed", { to, subject, error });
-    return false;
+async function sendEmail(
+  to: string,
+  subject: string,
+  text: string,
+): Promise<"delivered" | "unknown"> {
+  try {
+    const admin = createAdminSupabase();
+    const { error } = await admin.functions.invoke("send-email", {
+      body: { to, subject, text },
+    });
+    if (error) {
+      console.error("feedback email delivery failed", { to, subject, error });
+      return "unknown";
+    }
+    return "delivered";
+  } catch (error) {
+    console.error("feedback email outcome unknown", error);
+    return "unknown";
   }
-  return true;
 }
 
 export async function sendFeedbackAttentionEmail(input: {
@@ -24,8 +34,10 @@ export async function sendFeedbackAttentionEmail(input: {
   uniqueShopCount: number;
   recommendation: string;
   feedbackId: string;
-}): Promise<boolean> {
-  const baseUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ?? "https://profixiq.com";
+}): Promise<"delivered" | "unknown"> {
+  const baseUrl =
+    process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ??
+    "https://profixiq.com";
   const subject = `[ProFixIQ Feedback] ${input.title}`;
   const text = [
     "A feedback item needs your attention.",
@@ -46,13 +58,16 @@ export async function sendFeedbackAttentionEmail(input: {
   const results = await Promise.all(
     defaultOpsOperatorEmails.map((email) => sendEmail(email, subject, text)),
   );
-  return results.some(Boolean);
+  return results.every((result) => result === "delivered")
+    ? "delivered"
+    : "unknown";
 }
 
 export type FeedbackCompletionDelivery = {
   deliveredReporterIds: string[];
   retryReporterIds: string[];
   unreachableReporterIds: string[];
+  unknownReporterIds: string[];
 };
 
 /**
@@ -63,18 +78,24 @@ export type FeedbackCompletionDelivery = {
  */
 export async function sendFeedbackCompletedEmails(input: {
   reporterIds: string[];
+  beforeSend?: () => Promise<boolean>;
 }): Promise<FeedbackCompletionDelivery> {
   const admin = createAdminSupabase();
   const uniqueReporterIds = [...new Set(input.reporterIds.filter(Boolean))];
   const reportersByEmail = new Map<string, string[]>();
   const retryReporterIds: string[] = [];
+  const unknownReporterIds: string[] = [];
   const unreachableReporterIds: string[] = [];
 
   for (const reporterId of uniqueReporterIds) {
     const { data, error } = await admin.auth.admin.getUserById(reporterId);
     if (error) {
-      console.warn("feedback completion reporter lookup failed", { reporterId, error });
-      retryReporterIds.push(reporterId);
+      console.warn("feedback completion reporter lookup failed", {
+        reporterId,
+        error,
+      });
+      if (error.status === 404) unreachableReporterIds.push(reporterId);
+      else retryReporterIds.push(reporterId);
       continue;
     }
     const email = data.user?.email?.trim().toLowerCase();
@@ -99,15 +120,20 @@ export async function sendFeedbackCompletedEmails(input: {
 
   const deliveredReporterIds: string[] = [];
   for (const [email, reporterIds] of reportersByEmail) {
-    if (await sendEmail(email, subject, text)) {
+    if (input.beforeSend && !(await input.beforeSend())) {
+      retryReporterIds.push(...reporterIds);
+      continue;
+    }
+    if ((await sendEmail(email, subject, text)) === "delivered") {
       deliveredReporterIds.push(...reporterIds);
     } else {
-      retryReporterIds.push(...reporterIds);
+      unknownReporterIds.push(...reporterIds);
     }
   }
 
   return {
     deliveredReporterIds: [...new Set(deliveredReporterIds)],
+    unknownReporterIds: [...new Set(unknownReporterIds)],
     retryReporterIds: [...new Set(retryReporterIds)],
     unreachableReporterIds: [...new Set(unreachableReporterIds)],
   };

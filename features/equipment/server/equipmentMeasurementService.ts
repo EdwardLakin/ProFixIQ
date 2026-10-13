@@ -112,14 +112,17 @@ async function readMeasurements(
   admin: SupabaseClient<DB>,
   shopId: string,
   filter: { column: "vehicle_id" | "component_id"; id: string },
+  componentIds?: string[],
 ): Promise<MeasurementRow[]> {
   const rows: MeasurementRow[] = [];
   for (let page = 0; page < MAX_PAGES; page += 1) {
-    const { data, error } = await admin
+    let query = admin
       .from("equipment_measurements")
       .select(MEASUREMENT_COLUMNS)
       .eq("shop_id", shopId)
-      .eq(filter.column, filter.id)
+      .eq(filter.column, filter.id);
+    if (componentIds) query = query.in("component_id", componentIds);
+    const { data, error } = await query
       .order("measured_at", { ascending: false })
       .order("sequence", { ascending: false })
       .range(page * PAGE, page * PAGE + PAGE - 1);
@@ -254,6 +257,32 @@ export async function loadComponentMeasurements(input: {
     column: "component_id",
     id: input.componentId,
   });
+  return toSeries(input.supabase, input.admin, input.shopId, rows);
+}
+
+/**
+ * Measurements recorded on an already-authorized asset against the given
+ * components only (callers authorize the asset first). Corrections keep their
+ * original's component, so correction chains stay complete.
+ */
+export async function loadAssetComponentMeasurements(input: {
+  supabase: SupabaseClient<DB>;
+  admin: SupabaseClient<DB>;
+  shopId: string;
+  assetId: string;
+  componentIds: string[];
+}): Promise<MeasurementSeries[]> {
+  const rows: MeasurementRow[] = [];
+  for (let offset = 0; offset < input.componentIds.length; offset += 100) {
+    rows.push(
+      ...(await readMeasurements(
+        input.admin,
+        input.shopId,
+        { column: "vehicle_id", id: input.assetId },
+        input.componentIds.slice(offset, offset + 100),
+      )),
+    );
+  }
   return toSeries(input.supabase, input.admin, input.shopId, rows);
 }
 

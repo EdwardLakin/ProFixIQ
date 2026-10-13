@@ -3,6 +3,7 @@ import Link from "next/link";
 import EquipmentAssetProfilePanel from "@/features/equipment/components/EquipmentAssetProfilePanel";
 import EquipmentComponentPanel from "@/features/equipment/components/EquipmentComponentPanel";
 import EquipmentMeasurementPanel from "@/features/equipment/components/EquipmentMeasurementPanel";
+import EquipmentUndercarriagePanel from "@/features/equipment/components/EquipmentUndercarriagePanel";
 import { ASSET_OPERATING_STATUS_LABELS } from "@/features/equipment/lib/assetProfile";
 import type { AssetHealth } from "@/features/equipment/server/loadAssetHealth";
 import {
@@ -342,10 +343,13 @@ export default function AssetHealthView({
       {/* 6. Component hierarchy */}
       <EquipmentComponentPanel assetId={identity.id} canOpenHistory={canOpenComponentHistory} />
 
-      {/* 7. Measurements */}
+      {/* 7. Undercarriage wear (tracked machines with undercarriage components) */}
+      <EquipmentUndercarriagePanel assetId={identity.id} />
+
+      {/* 8. Measurements */}
       <EquipmentMeasurementPanel assetId={identity.id} />
 
-      {/* 8. Upcoming Equipment capabilities */}
+      {/* 9. Upcoming Equipment capabilities */}
       <WorkspaceSection headingId="asset-fluids" eyebrow="Fluids" title="Fluid / sample history">
         <ComingNext>Oil and fluid sample history arrives in a later Equipment release.</ComingNext>
       </WorkspaceSection>

@@ -8,15 +8,19 @@ import {
   inferFeedbackSurface,
   isRecord,
   readFeedbackMetadata,
+  notificationCounts,
   type FeedbackKind,
   type FeedbackMetadata,
 } from "@/features/feedback/lib/feedback";
-import { sendFeedbackAttentionEmail } from "@/features/feedback/server/notifications";
-import { triageFeedback, type FeedbackCandidate } from "@/features/feedback/server/triageFeedback";
+import { deliverFeedbackNotifications } from "@/features/feedback/server/delivery";
+import {
+  triageFeedback,
+  type FeedbackCandidate,
+} from "@/features/feedback/server/triageFeedback";
 import {
   fetchAllLedgerRows,
-  fetchClusterRows,
   type AgentRequestRow,
+  reporterAuthId,
 } from "@/features/feedback/server/ledger";
 import { requireOpsOperatorApiAccess } from "@/features/ops/server/operator-access";
 import {
@@ -34,16 +38,6 @@ const MAX_LOCATION_LENGTH = 500;
 const MAX_DEVICE_LENGTH = 1_000;
 const MAX_ATTACHMENTS = 20;
 const MAX_ATTACHMENT_PATH_LENGTH = 500;
-
-const REPORT_MILESTONES = new Set([3, 5, 10, 25, 50, 100]);
-const SHOP_MILESTONES = new Set([2, 3, 5, 10, 25, 50]);
-
-const SEVERITY_RANK: Record<string, number> = {
-  low: 0,
-  normal: 1,
-  high: 2,
-  critical: 3,
-};
 
 type FeedbackContext = {
   location: string | null;
@@ -71,6 +65,7 @@ type CreateFeedbackBody = {
 
 type ReporterIdentity = {
   id: string;
+  profileId: string | null;
   shopId: string | null;
   role: string | null;
 };
@@ -81,19 +76,22 @@ function boundedText(value: unknown, maxLength: number): string | null {
 }
 
 function normalizeKind(value: unknown): FeedbackKind {
-  return typeof value === "string" && FEEDBACK_KINDS.includes(value as FeedbackKind)
+  return typeof value === "string" &&
+    FEEDBACK_KINDS.includes(value as FeedbackKind)
     ? (value as FeedbackKind)
     : "other";
 }
 
 function contextFromBody(body: CreateFeedbackBody): FeedbackContext {
   const attachmentIds = Array.isArray(body.attachmentIds)
-    ? [...new Set(
-        body.attachmentIds
-          .filter((value): value is string => typeof value === "string")
-          .map((value) => value.trim())
-          .filter(Boolean),
-      )]
+    ? [
+        ...new Set(
+          body.attachmentIds
+            .filter((value): value is string => typeof value === "string")
+            .map((value) => value.trim())
+            .filter(Boolean),
+        ),
+      ]
         .slice(0, MAX_ATTACHMENTS)
         .map((value) => value.slice(0, MAX_ATTACHMENT_PATH_LENGTH))
     : [];
@@ -168,35 +166,6 @@ function buildCandidates(rows: AgentRequestRow[]): FeedbackCandidate[] {
     .slice(0, 18);
 }
 
-function replayResponse(row: Pick<AgentRequestRow, "id" | "normalized_json">) {
-  const existingMeta = readFeedbackMetadata(row.normalized_json);
-  return NextResponse.json({
-    ok: true,
-    submissionId: row.id,
-    matchedExisting: existingMeta ? existingMeta.clusterId !== row.id : false,
-    replayed: true,
-  });
-}
-
-async function findReplay(
-  admin: ReturnType<typeof createAdminSupabase>,
-  reporterId: string,
-  submissionKey: string,
-): Promise<Pick<AgentRequestRow, "id" | "normalized_json"> | null> {
-  const { data, error } = await admin
-    .from("agent_requests")
-    .select("id, normalized_json")
-    .eq("reporter_id", reporterId)
-    .eq("normalized_json->>submissionKey", submissionKey)
-    .limit(1)
-    .maybeSingle();
-  if (error) {
-    console.warn("feedback replay lookup failed", error);
-    return null;
-  }
-  return data as Pick<AgentRequestRow, "id" | "normalized_json"> | null;
-}
-
 async function resolveReporterIdentity(
   supabase: ReturnType<typeof createServerSupabaseRoute>,
   user: { id: string; email?: string | null },
@@ -209,12 +178,16 @@ async function resolveReporterIdentity(
 
   if (profileError) {
     console.error("feedback profile lookup failed", profileError);
-    return NextResponse.json({ error: "Could not resolve feedback identity" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Could not resolve feedback identity" },
+      { status: 500 },
+    );
   }
 
   if (profile) {
     return {
-      id: profile.id,
+      id: user.id,
+      profileId: profile.id,
       shopId: profile.shop_id,
       role: profile.role,
     };
@@ -222,186 +195,32 @@ async function resolveReporterIdentity(
 
   const email = user.email?.trim().toLowerCase() ?? "";
   if (!email) {
-    return NextResponse.json({ error: "Feedback identity not found" }, { status: 403 });
+    return NextResponse.json(
+      { error: "Feedback identity not found" },
+      { status: 403 },
+    );
   }
 
   try {
     const portal = await requirePortalCustomerAccess(user.id, email);
     return {
       id: user.id,
+      profileId: null,
       shopId: portal.customer.shop_id,
       role: "customer",
     };
   } catch (error) {
     if (error instanceof PortalAccessError) {
-      return NextResponse.json({ error: "Feedback identity not found" }, { status: error.status });
+      return NextResponse.json(
+        { error: "Feedback identity not found" },
+        { status: error.status },
+      );
     }
     console.error("feedback portal identity lookup failed", error);
-    return NextResponse.json({ error: "Could not resolve feedback identity" }, { status: 500 });
-  }
-}
-
-function historicalMetadata(
-  row: AgentRequestRow,
-  input: {
-    now: string;
-    kind: FeedbackKind;
-    surface: FeedbackMetadata["surface"];
-    severity: FeedbackMetadata["severity"];
-    needsAttention: boolean;
-    recommendation: string;
-  },
-): FeedbackMetadata {
-  const legacyStatus = feedbackStatusFromLegacy(row.status);
-  const context = rowContext(row);
-  return {
-    version: 1,
-    clusterId: row.id,
-    isCanonical: true,
-    status: legacyStatus,
-    kind: row.intent === "bug_report" ? "bug" : input.kind,
-    surface: inferFeedbackSurface(
-      typeof context.location === "string" ? context.location : null,
-    ) === "other"
-      ? input.surface
-      : inferFeedbackSurface(
-          typeof context.location === "string" ? context.location : null,
-        ),
-    title: row.description.slice(0, 100),
-    summary: row.description.slice(0, 500),
-    severity: input.severity,
-    needsAttention: row.status === "failed" || input.needsAttention,
-    recommendation: row.llm_notes ?? input.recommendation,
-    aiMode: "fallback",
-    aiModel: row.llm_model,
-    duplicateConfidence: null,
-    internalNotes: null,
-    firstSeenAt: row.created_at,
-    lastSeenAt: input.now,
-    ownerNotifiedAt: null,
-    ownerNotificationKeys: [],
-    ownerNotificationClaimKeys: [],
-    completedAt: legacyStatus === "completed" ? row.updated_at : null,
-    requesterNotifiedAt: null,
-    requesterNotifiedReporterIds: [],
-    requesterNotificationSkippedReporterIds: [],
-    requesterNotificationClaimedReporterIds: [],
-  };
-}
-
-function ownerNotificationKey(input: {
-  isNew: boolean;
-  attentionEscalated: boolean;
-  submissionCount: number;
-  uniqueShopCount: number;
-  addedNewShop: boolean;
-}): string | null {
-  if (input.isNew) return "created";
-  if (input.attentionEscalated) return "attention";
-  if (REPORT_MILESTONES.has(input.submissionCount)) {
-    return `reports:${input.submissionCount}`;
-  }
-  if (input.addedNewShop && SHOP_MILESTONES.has(input.uniqueShopCount)) {
-    return `shops:${input.uniqueShopCount}`;
-  }
-  return null;
-}
-
-async function claimOwnerNotification(
-  admin: ReturnType<typeof createAdminSupabase>,
-  canonicalId: string,
-  key: string,
-): Promise<boolean> {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const { data, error } = await admin
-      .from("agent_requests")
-      .select("*")
-      .eq("id", canonicalId)
-      .maybeSingle();
-    if (error || !data) {
-      console.warn("feedback owner notification claim reload failed", error);
-      return false;
-    }
-    const row = data as AgentRequestRow;
-    const metadata = readFeedbackMetadata(row.normalized_json);
-    if (!metadata) return false;
-    const delivered = new Set(metadata.ownerNotificationKeys ?? []);
-    const claims = new Set(metadata.ownerNotificationClaimKeys ?? []);
-    if (delivered.has(key) || claims.has(key)) return false;
-    claims.add(key);
-    const updatedAt = new Date().toISOString();
-    const { data: updated, error: updateError } = await admin
-      .from("agent_requests")
-      .update({
-        normalized_json: {
-          ...rowContext(row),
-          feedback: {
-            ...metadata,
-            ownerNotificationClaimKeys: [...claims],
-          },
-        } as Json,
-        updated_at: updatedAt,
-      })
-      .eq("id", canonicalId)
-      .eq("updated_at", row.updated_at)
-      .select("id")
-      .maybeSingle();
-    if (updateError) {
-      console.warn("feedback owner notification claim failed", updateError);
-      return false;
-    }
-    if (updated) return true;
-  }
-  return false;
-}
-
-async function settleOwnerNotification(
-  admin: ReturnType<typeof createAdminSupabase>,
-  canonicalId: string,
-  key: string,
-  delivered: boolean,
-): Promise<void> {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const { data, error } = await admin
-      .from("agent_requests")
-      .select("*")
-      .eq("id", canonicalId)
-      .maybeSingle();
-    if (error || !data) {
-      console.warn("feedback owner notification settlement reload failed", error);
-      return;
-    }
-    const row = data as AgentRequestRow;
-    const metadata = readFeedbackMetadata(row.normalized_json);
-    if (!metadata) return;
-    const claims = new Set(metadata.ownerNotificationClaimKeys ?? []);
-    claims.delete(key);
-    const sent = new Set(metadata.ownerNotificationKeys ?? []);
-    if (delivered) sent.add(key);
-    const updatedAt = new Date().toISOString();
-    const { data: updated, error: updateError } = await admin
-      .from("agent_requests")
-      .update({
-        normalized_json: {
-          ...rowContext(row),
-          feedback: {
-            ...metadata,
-            ownerNotificationClaimKeys: [...claims],
-            ownerNotificationKeys: [...sent],
-            ownerNotifiedAt: delivered ? updatedAt : metadata.ownerNotifiedAt ?? null,
-          },
-        } as Json,
-        updated_at: updatedAt,
-      })
-      .eq("id", canonicalId)
-      .eq("updated_at", row.updated_at)
-      .select("id")
-      .maybeSingle();
-    if (updateError) {
-      console.warn("feedback owner notification settlement failed", updateError);
-      return;
-    }
-    if (updated) return;
+    return NextResponse.json(
+      { error: "Could not resolve feedback identity" },
+      { status: 500 },
+    );
   }
 }
 
@@ -410,16 +229,25 @@ export async function POST(req: NextRequest) {
   const {
     data: { user },
   } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!user)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = (await req.json().catch(() => null)) as CreateFeedbackBody | null;
-  const description = typeof body?.description === "string" ? body.description.trim() : "";
+  const body = (await req
+    .json()
+    .catch(() => null)) as CreateFeedbackBody | null;
+  const description =
+    typeof body?.description === "string" ? body.description.trim() : "";
   if (!description) {
-    return NextResponse.json({ error: "description is required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "description is required" },
+      { status: 400 },
+    );
   }
   if (description.length > MAX_DESCRIPTION_LENGTH) {
     return NextResponse.json(
-      { error: `description must be ${MAX_DESCRIPTION_LENGTH} characters or fewer` },
+      {
+        error: `description must be ${MAX_DESCRIPTION_LENGTH} characters or fewer`,
+      },
       { status: 400 },
     );
   }
@@ -431,9 +259,48 @@ export async function POST(req: NextRequest) {
   const context = contextFromBody(body ?? {});
   const admin = createAdminSupabase();
 
-  if (context.submissionKey) {
-    const existing = await findReplay(admin, identity.id, context.submissionKey);
-    if (existing) return replayResponse(existing);
+  if (
+    !context.submissionKey ||
+    !/^[a-zA-Z0-9_-]{1,100}$/.test(context.submissionKey)
+  ) {
+    return NextResponse.json(
+      { error: "A valid submissionKey is required" },
+      { status: 400 },
+    );
+  }
+  if (
+    context.attachmentIds.some(
+      (path) => !path.startsWith(`${user.id}/`) || path.includes(".."),
+    )
+  ) {
+    return NextResponse.json(
+      { error: "Invalid screenshot owner" },
+      { status: 400 },
+    );
+  }
+  const { data: replay, error: replayError } = await admin
+    .from("agent_requests")
+    .select("*")
+    .or(
+      `normalized_json->>reporterAuthId.eq.${user.id},reporter_id.eq.${user.id}`,
+    )
+    .eq("normalized_json->>submissionKey", context.submissionKey)
+    .maybeSingle();
+  if (replayError)
+    return NextResponse.json(
+      { error: "Could not check feedback receipt" },
+      { status: 503 },
+    );
+  if (replay) {
+    // The receipt and all aggregate/notification work were committed atomically.
+    const clusterId = clusterIdFor(replay);
+    await deliverFeedbackNotifications(admin, clusterId, { owner: true });
+    return NextResponse.json({
+      ok: true,
+      submissionId: replay.id,
+      matchedExisting: clusterId !== replay.id,
+      replayed: true,
+    });
   }
 
   const { data: recentRows, error: recentError } = await admin
@@ -485,189 +352,39 @@ export async function POST(req: NextRequest) {
     requesterNotificationClaimedReporterIds: [],
   };
 
-  const normalizedJson: Json = {
-    ...context,
-    feedback: initialFeedback,
-  };
-
-  const { data: inserted, error: insertError } = await admin
-    .from("agent_requests")
-    .insert({
-      shop_id: identity.shopId,
-      reporter_id: identity.id,
-      reporter_role: identity.role,
+  const { data, error } = await admin.rpc("submit_feedback", {
+    p_submission: {
+      reporterAuthId: identity.id,
+      profileId: identity.profileId,
+      shopId: identity.shopId,
+      role: identity.role,
       description,
       intent: feedbackKindToAgentIntent(triage.output.kind),
-      normalized_json: normalizedJson,
-      status: "submitted",
-      llm_model: triage.mode === "ai" ? triage.model : null,
-      llm_confidence: triage.output.duplicateConfidence,
-      llm_notes: `${triage.output.summary}\n\nRecommendation: ${triage.output.recommendation}`,
-    })
-    .select("*")
-    .single();
-
-  if (insertError || !inserted) {
-    if (insertError?.code === "23505" && context.submissionKey) {
-      const winner = await findReplay(admin, identity.id, context.submissionKey);
-      if (winner) return replayResponse(winner);
-    }
-    console.error("feedback insert failed", insertError);
-    return NextResponse.json({ error: "Failed to save feedback" }, { status: 500 });
-  }
-
-  const canonicalId = duplicateId ?? inserted.id;
-  let canonicalRow: AgentRequestRow | null = duplicateId
-    ? rows.find((row) => row.id === duplicateId) ?? null
-    : (inserted as AgentRequestRow);
-
-  if (duplicateId) {
-    const { data: canonicalLookup, error: canonicalLookupError } = await admin
-      .from("agent_requests")
-      .select("*")
-      .eq("id", duplicateId)
-      .maybeSingle();
-    if (canonicalLookupError) {
-      console.warn("feedback canonical lookup failed", canonicalLookupError);
-    }
-    canonicalRow = (canonicalLookup as AgentRequestRow | null) ?? canonicalRow;
-  }
-
-  const previousCanonicalMeta = canonicalRow
-    ? readFeedbackMetadata(canonicalRow.normalized_json)
-    : null;
-
-  if (!duplicateId) {
-    const selfMetadata: FeedbackMetadata = {
-      ...initialFeedback,
-      clusterId: inserted.id,
-      isCanonical: true,
-    };
-    const { data: updated, error } = await admin
-      .from("agent_requests")
-      .update({
-        normalized_json: {
-          ...rowContext(inserted as AgentRequestRow),
-          feedback: selfMetadata,
-        } as Json,
-      })
-      .eq("id", inserted.id)
-      .select("*")
-      .single();
-    if (error) console.warn("feedback canonical self-link update failed", error);
-    if (updated) canonicalRow = updated as AgentRequestRow;
-  } else if (canonicalRow) {
-    for (let attempt = 0; attempt < 5 && canonicalRow; attempt += 1) {
-      const existingMeta = readFeedbackMetadata(canonicalRow.normalized_json);
-      const canonicalMeta = existingMeta ?? historicalMetadata(canonicalRow, {
-        now,
-        kind: triage.output.kind,
-        surface: triage.output.surface,
-        severity: triage.output.severity,
-        needsAttention: triage.output.needsAttention,
-        recommendation: triage.output.recommendation,
-      });
-      const severity =
-        (SEVERITY_RANK[triage.output.severity] ?? 0) >
-        (SEVERITY_RANK[canonicalMeta.severity] ?? 0)
-          ? triage.output.severity
-          : canonicalMeta.severity;
-      const nextMeta: FeedbackMetadata = {
-        ...canonicalMeta,
-        clusterId: canonicalId,
-        isCanonical: true,
-        lastSeenAt: now > canonicalMeta.lastSeenAt ? now : canonicalMeta.lastSeenAt,
-        needsAttention: canonicalMeta.needsAttention || triage.output.needsAttention,
-        severity,
-      };
-      const aggregateUpdatedAt = new Date().toISOString();
-      const { data: updated, error } = await admin
-        .from("agent_requests")
-        .update({
-          normalized_json: {
-            ...rowContext(canonicalRow),
-            feedback: nextMeta,
-          } as Json,
-          updated_at: aggregateUpdatedAt,
-        })
-        .eq("id", canonicalId)
-        .eq("updated_at", canonicalRow.updated_at)
-        .select("*")
-        .maybeSingle();
-      if (error) {
-        console.warn("feedback canonical aggregate update failed", error);
-        break;
-      }
-      if (updated) {
-        canonicalRow = updated as AgentRequestRow;
-        break;
-      }
-      const { data: latest } = await admin
-        .from("agent_requests")
-        .select("*")
-        .eq("id", canonicalId)
-        .maybeSingle();
-      if (!latest) break;
-      canonicalRow = latest as AgentRequestRow;
-    }
-  }
-
-  const { rows: clusterRows, error: clusterError } = await fetchClusterRows(
-    admin,
-    canonicalId,
-  );
-  if (clusterError) console.warn("feedback cluster load failed", clusterError);
-  const groupRows = [
-    ...clusterRows,
-    inserted as AgentRequestRow,
-  ].filter(
-    (row, index, all) => all.findIndex((candidate) => candidate.id === row.id) === index,
-  );
-  const uniqueShops = new Set(groupRows.map((row) => row.shop_id).filter(Boolean));
-  const priorShops = new Set(
-    groupRows
-      .filter((row) => row.id !== inserted.id)
-      .map((row) => row.shop_id)
-      .filter(Boolean),
-  );
-  const addedNewShop = inserted.shop_id !== null && !priorShops.has(inserted.shop_id);
-  const attentionEscalated =
-    triage.output.needsAttention && previousCanonicalMeta?.needsAttention !== true;
-  const notificationKey = ownerNotificationKey({
-    isNew: duplicateId === null,
-    attentionEscalated,
-    submissionCount: groupRows.length,
-    uniqueShopCount: uniqueShops.size,
-    addedNewShop,
+      submissionKey: context.submissionKey,
+      context,
+      feedback: initialFeedback,
+    } as Json,
   });
-
+  const receipt: unknown = data;
   if (
-    notificationKey &&
-    (await claimOwnerNotification(admin, canonicalId, notificationKey))
+    error ||
+    !isRecord(receipt) ||
+    typeof receipt.clusterId !== "string" ||
+    typeof receipt.submissionId !== "string" ||
+    typeof receipt.replayed !== "boolean"
   ) {
-    const delivered = await sendFeedbackAttentionEmail({
-      title: triage.output.title,
-      summary: triage.output.summary,
-      surface: triage.output.surface,
-      kind: triage.output.kind,
-      severity: triage.output.severity,
-      submissionCount: groupRows.length,
-      uniqueShopCount: uniqueShops.size,
-      recommendation: triage.output.recommendation,
-      feedbackId: canonicalId,
-    });
-    await settleOwnerNotification(
-      admin,
-      canonicalId,
-      notificationKey,
-      delivered,
+    console.error("feedback transaction failed", error);
+    return NextResponse.json(
+      { error: "Failed to save feedback" },
+      { status: 503 },
     );
   }
-
+  await deliverFeedbackNotifications(admin, receipt.clusterId, { owner: true });
   return NextResponse.json({
     ok: true,
-    submissionId: inserted.id,
-    matchedExisting: duplicateId !== null,
+    submissionId: receipt.submissionId,
+    matchedExisting: receipt.clusterId !== receipt.submissionId,
+    replayed: receipt.replayed,
   });
 }
 
@@ -727,19 +444,33 @@ export async function GET() {
       internalNotes: meta?.internalNotes ?? null,
       aiMode: meta?.aiMode ?? "fallback",
       submissionCount: submissions.length,
-      uniqueUserCount: new Set(
-        submissions.map((row) => row.reporter_id).filter(Boolean),
-      ).size,
+      uniqueUserCount: new Set(submissions.map(reporterAuthId).filter(Boolean))
+        .size,
       uniqueShopCount: new Set(
         submissions.map((row) => row.shop_id).filter(Boolean),
       ).size,
       firstSeenAt: meta?.firstSeenAt ?? first.created_at,
       lastSeenAt: meta?.lastSeenAt ?? last.created_at,
       completedAt: meta?.completedAt ?? null,
+      updatedAt: canonical.updated_at,
+      requesterNotifications: notificationCounts(
+        submissions
+          .map(reporterAuthId)
+          .filter((id): id is string => Boolean(id)),
+        meta?.requesterNotifiedReporterIds ?? [],
+        meta?.requesterNotificationSkippedReporterIds ?? [],
+        meta?.requesterNotificationClaims ?? {},
+      ),
+      ownerNotifications: notificationCounts(
+        meta?.ownerPendingNotificationKeys ?? [],
+        meta?.ownerNotificationKeys ?? [],
+        [],
+        meta?.ownerNotificationClaims ?? {},
+      ),
       submissions: sorted.map((row) => ({
         id: row.id,
         description: row.description,
-        reporterId: row.reporter_id,
+        reporterId: reporterAuthId(row),
         reporterRole: row.reporter_role,
         shopId: row.shop_id,
         createdAt: row.created_at,

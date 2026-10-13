@@ -88,3 +88,57 @@ This retirement does **not** remove or replace:
 - other product AI capabilities.
 
 Those systems have separate responsibilities and remain in place.
+
+## Reliability and access boundary
+
+All intake inserts, duplicate target revalidation, historical promotion, severity
+aggregation, measured count changes, and owner alert events commit in one
+`submit_feedback` transaction. Reporter identity comes from authenticated staff
+or verified Customer Portal access. Portal users keep `reporter_id` null (the
+legacy profile FK remains intact); the authenticated user is retained in
+`normalized_json.reporterAuthId`. A unique index and operation lock enforce one
+receipt per authenticated user and submission key.
+
+The browser retains a versioned, user-scoped draft and immutable pending payload
+until it receives a confirmed receipt. Reloading or reopening retries that same
+operation. The payload contains its uploaded screenshot paths, so retries do not
+re-upload screenshots. File blobs for an unsent draft require re-selection after
+a reload.
+
+Ops lifecycle writes use `update_feedback` with the displayed row version and
+lock the canonical row before changing the entire cluster atomically. Stale
+edits receive a conflict; they never partially change member statuses.
+
+Owner milestones and per-requester completion delivery use fenced notification
+reservations. Pre-dispatch reservations expire after five minutes. A crash or
+uncertain response after dispatch is shown as an unconfirmed outcome; Ops can
+explicitly resend with a possible duplicate disclosed. Successful and permanently
+unreachable recipients retain receipts; ordinary retry sends only unsettled
+recipients. Owner alerts remain durable and retryable from Ops even when the
+original submission invocation ends. Requester emails contain generic product
+text, never another shop's canonical report or internal notes.
+
+The approved ledger restriction removes browser-role access to `agent_requests`.
+Authenticated reporters use the verified submission route; only the Ops operator
+can read or mutate feedback through privileged server routes. Existing rows,
+foreign keys, enums, policies and triggers are preserved. Other product AI does
+not use this retired engineering-request table.
+
+## Staged rollout for PR 1854
+
+1. Apply `20261012201500_feedback_submission_idempotency` and
+   `20261013000132_feedback_atomic_control` after final schema and clean-replay
+   validation. These expand the schema and preserve the currently deployed agent
+   routes' permissions.
+2. Merge PR 1854 and verify the production deployment uses its native Feedback
+   Control routes. The new mutation RPCs fail closed while browser ledger access
+   is still enabled; Ops health reports the pending restriction.
+3. Apply `20261013001520_feedback_ledger_lockdown` only after that deployment.
+   Verify `feedback_ready()` is true and browser-role table/RPC denial. This is
+   the approved contract phase. Applying it before the native app is deployed
+   would break the old authenticated engineering-request routes.
+4. Verify main/production migration parity and run security/performance advisors.
+
+Rollback of the app alone after the contract phase requires an explicitly
+reviewed forward permission repair; do not silently restore the old browser
+access. No historical reports or screenshots are deleted by this rollout.

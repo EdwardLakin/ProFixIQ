@@ -65,7 +65,7 @@ export default function OpsDashboard({
     {
       label: "Needs attention",
       value: metrics.needsAttention,
-      detail: "High-impact or urgent reports",
+      detail: "Feedback themes requiring review",
       tone: "text-amber-300",
     },
     {
