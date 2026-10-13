@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import ProFixIQLanding from "@shared/components/ProFixIQLanding";
 
 const description =
-  "Heavy-duty repair shop software for diesel and commercial vehicle operations, with connected inspections, technician-built repairs, parts, approvals, field service, fleet maintenance, and automotive support.";
+  "Heavy-duty repair shop software for diesel and commercial operations, with voice inspections, technician-built repairs, parts, approvals, field service, fleet maintenance, and optional Equipment workflows.";
 
 export const metadata: Metadata = {
   title: "ProFixIQ | Heavy-Duty Repair Shop Software",
@@ -35,14 +35,15 @@ const structuredData = [
     url: "https://profixiq.com",
     description,
     featureList: [
-      "Heavy-duty and diesel work orders",
+      "Heavy-duty repair work orders",
       "Voice inspections",
       "Technician-built repair recommendations",
       "Parts workflows",
       "Customer approvals",
       "Field service workflows",
       "Fleet maintenance management",
-      "Automotive repair support",
+      "Optional off-road and industrial Equipment maintenance workflows",
+      "Automotive repair workflows supported",
     ],
   },
 ];
