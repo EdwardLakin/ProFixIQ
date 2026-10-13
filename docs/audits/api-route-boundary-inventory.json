@@ -1686,7 +1686,7 @@
     "riskLevel": "medium"
   },
   {
-    "path": "app/api/equipment/assets/[assetId]/measurements/route.ts",
+    "path": "app/api/equipment/assets/[assetId]/fluid-samples/route.ts",
     "methods": [
       "GET",
       "POST"
@@ -1705,7 +1705,7 @@
     "riskLevel": "medium"
   },
   {
-    "path": "app/api/equipment/assets/[assetId]/meters/route.ts",
+    "path": "app/api/equipment/assets/[assetId]/measurements/route.ts",
     "methods": [
       "GET",
       "POST"
@@ -1853,7 +1853,7 @@
     "riskLevel": "low"
   },
   {
-    "path": "app/api/equipment/measurements/[measurementId]/correct/route.ts",
+    "path": "app/api/equipment/fluid-samples/[sampleId]/void/route.ts",
     "methods": [
       "POST"
     ],
@@ -1871,7 +1871,7 @@
     "riskLevel": "medium"
   },
   {
-    "path": "app/api/equipment/meter-readings/[readingId]/void/route.ts",
+    "path": "app/api/equipment/measurements/[measurementId]/correct/route.ts",
     "methods": [
       "POST"
     ],

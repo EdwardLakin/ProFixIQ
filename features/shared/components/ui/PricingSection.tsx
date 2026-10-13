@@ -8,6 +8,7 @@ import {
   trackMarketingEvent,
 } from "@/features/analytics/marketingEvents";
 import {
+  EQUIPMENT_ADDON_MONTHLY_CENTS,
   PRODUCT_PACKAGE_PRICING,
   type ProductPackageKey,
 } from "@/features/stripe/lib/stripe/product-packages";
@@ -20,6 +21,7 @@ export type CheckoutPayload = {
   interval: BillingInterval;
   checkoutAttemptId: string;
   checkoutMode: "trial" | "paid";
+  equipmentAddon?: boolean;
 };
 
 export type PricingSectionProps = {
@@ -104,14 +106,21 @@ export default function PricingSection({
   surface,
   paidOnly = false,
 }: PricingSectionProps) {
-  const [busyKey, setBusyKey] = useState<ProductPackageKey | null>(null);
+  const [busyKey, setBusyKey] = useState<string | null>(null);
 
   const startCheckout = async (
     packageKey: ProductPackageKey,
     checkoutMode: "trial" | "paid",
+    equipmentAddon = false,
   ) => {
     if (busyKey) return;
-    setBusyKey(packageKey);
+    if (equipmentAddon && window.location.pathname !== "/compare-plans") {
+      window.location.href = "/compare-plans#equipment";
+      return;
+    }
+
+    const checkoutKey = equipmentAddon ? "complete_operations+equipment" : packageKey;
+    setBusyKey(checkoutKey);
     const checkoutAttemptId = crypto.randomUUID();
     const interval: BillingInterval = "monthly";
     const isAcquisition = isAcquisitionMarketingPath(window.location.pathname);
@@ -138,6 +147,7 @@ export default function PricingSection({
         interval,
         checkoutAttemptId,
         checkoutMode,
+        ...(equipmentAddon ? { equipmentAddon: true } : {}),
       });
     } catch (error) {
       console.error("[PricingSection] checkout failed", error);
@@ -146,6 +156,10 @@ export default function PricingSection({
       setBusyKey(null);
     }
   };
+
+  const equipmentPrice = EQUIPMENT_ADDON_MONTHLY_CENTS / 100;
+  const completePrice = PRODUCT_PACKAGE_PRICING.complete_operations.monthlyCents / 100;
+  const equipmentCheckoutBusy = busyKey === "complete_operations+equipment";
 
   return (
     <section
@@ -244,6 +258,70 @@ export default function PricingSection({
           );
         })}
       </div>
+
+      {!paidOnly ? (
+        <div id="equipment" className="mx-auto mt-6 max-w-[88rem] scroll-mt-24">
+          <article className={`${styles.card} rounded-[1.5rem] border p-6 sm:p-7`}>
+            <div className="grid gap-7 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
+              <div>
+                <div className={`${styles.accentText} text-sm font-bold`}>Equipment add-on</div>
+                <div className="mt-4 flex flex-wrap items-end gap-x-2 gap-y-1">
+                  <span className={`${styles.primaryText} text-4xl font-semibold tracking-[-0.045em]`}>
+                    +${equipmentPrice}
+                  </span>
+                  <span className={`${styles.mutedText} pb-1 text-xs`}>USD / month / location</span>
+                </div>
+                <p className={`${styles.mutedText} mt-4 max-w-3xl text-sm leading-6`}>
+                  Add the Equipment workspace to Complete Operations for preventive maintenance, Asset Health, inspections, wear tracking, and repair history across off-road and industrial assets—from excavators and haul trucks to forklifts, aerial lifts, mining equipment, generators, and attachments.
+                </p>
+                <div className={`${styles.boundary} mt-4 rounded-xl border px-3.5 py-3 text-xs font-semibold leading-5`}>
+                  Requires Complete Operations. New subscriptions are ${completePrice + equipmentPrice} USD / month / location for Complete + Equipment before taxes or added capacity.
+                </div>
+                <ul className="mt-5 grid gap-3 text-sm md:grid-cols-2">
+                  {[
+                    "PM by engine hours, distance, cycles, or calendar",
+                    "Equipment directory, Asset Health, and off-road inspections",
+                    "Components, mounted assets, and service history",
+                    "Undercarriage wear, measurements, and wear limits",
+                  ].map((feature) => (
+                    <li key={feature} className={`${styles.primaryText} flex items-start gap-3 leading-5`}>
+                      <span className={`${styles.featureIcon} mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full`}>
+                        <Check aria-hidden="true" size={12} />
+                      </span>
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="grid gap-2">
+                <button
+                  type="button"
+                  onClick={() => void startCheckout("complete_operations", "trial", true)}
+                  disabled={Boolean(busyKey)}
+                  aria-busy={equipmentCheckoutBusy}
+                  className={`${styles.button} ${styles.primaryButton} rounded-xl border px-4 py-3 text-sm font-bold transition`}
+                >
+                  {equipmentCheckoutBusy ? "Starting…" : "Start Complete + Equipment trial"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void startCheckout("complete_operations", "paid", true)}
+                  disabled={Boolean(busyKey)}
+                  className={`${styles.button} ${styles.secondaryButton} rounded-xl border px-4 py-3 text-sm font-bold transition`}
+                >
+                  Subscribe to Complete + Equipment
+                </button>
+                <a
+                  href="/equipment-maintenance-software"
+                  className={`${styles.mutedText} mt-2 text-center text-xs font-semibold underline underline-offset-4`}
+                >
+                  Explore Equipment capabilities
+                </a>
+              </div>
+            </div>
+          </article>
+        </div>
+      ) : null}
 
       <div
         className={`${styles.notice} mx-auto mt-6 flex max-w-[88rem] flex-col gap-2 rounded-2xl border px-5 py-4 text-xs leading-5 md:flex-row md:items-center md:justify-between`}

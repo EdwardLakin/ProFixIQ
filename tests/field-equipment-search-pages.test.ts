@@ -46,8 +46,12 @@ describe("field and equipment search acquisition pages", () => {
   it("preserves Shop, Field, and Fleet product boundaries in the copy", () => {
     const content = source("features/marketing/fieldEquipmentSearchPages.ts");
     expect(content).toContain("Field Service is a dedicated service-truck surface");
-    expect(content).toContain("Shop work-order creation belongs to the Shop product");
-    expect(content).toContain("Fleet stays administrative");
+    expect(content).toContain(
+      "Move repair work through the appropriate Shop or Field Service workflow",
+    );
+    expect(content).toContain(
+      "without collapsing their operational roles into one screen",
+    );
   });
 
   it("does not claim unsupported integrations or compliance", () => {

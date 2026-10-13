@@ -4901,6 +4901,214 @@ export type Database = {
           },
         ]
       }
+      equipment_fluid_sample_operations: {
+        Row: {
+          created_at: string
+          kind: string
+          operation_key: string
+          request_hash: string
+          result: Json | null
+          shop_id: string
+          vehicle_id: string
+        }
+        Insert: {
+          created_at?: string
+          kind: string
+          operation_key: string
+          request_hash: string
+          result?: Json | null
+          shop_id: string
+          vehicle_id: string
+        }
+        Update: {
+          created_at?: string
+          kind?: string
+          operation_key?: string
+          request_hash?: string
+          result?: Json | null
+          shop_id?: string
+          vehicle_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_fluid_sample_operations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_fluid_sample_operations_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_fluid_sample_operations_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipment_fluid_sample_results: {
+        Row: {
+          analyte: string
+          created_at: string
+          id: string
+          lab_flag: string | null
+          position: number
+          sample_id: string
+          shop_id: string
+          unit: string | null
+          value: number
+        }
+        Insert: {
+          analyte: string
+          created_at?: string
+          id?: string
+          lab_flag?: string | null
+          position: number
+          sample_id: string
+          shop_id: string
+          unit?: string | null
+          value: number
+        }
+        Update: {
+          analyte?: string
+          created_at?: string
+          id?: string
+          lab_flag?: string | null
+          position?: number
+          sample_id?: string
+          shop_id?: string
+          unit?: string | null
+          value?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_fluid_sample_results_sample_id_fkey"
+            columns: ["sample_id"]
+            isOneToOne: false
+            referencedRelation: "equipment_fluid_samples"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_fluid_sample_results_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_fluid_sample_results_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipment_fluid_samples: {
+        Row: {
+          asset_hours: number | null
+          component_id: string | null
+          created_at: string
+          fluid_distance: number | null
+          fluid_distance_unit: string | null
+          fluid_hours: number | null
+          fluid_type: string
+          id: string
+          lab_name: string | null
+          lab_report_number: string | null
+          lab_status: string
+          notes: string | null
+          recorded_by: string | null
+          sampled_at: string
+          sequence: number
+          shop_id: string
+          vehicle_id: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          asset_hours?: number | null
+          component_id?: string | null
+          created_at?: string
+          fluid_distance?: number | null
+          fluid_distance_unit?: string | null
+          fluid_hours?: number | null
+          fluid_type: string
+          id?: string
+          lab_name?: string | null
+          lab_report_number?: string | null
+          lab_status?: string
+          notes?: string | null
+          recorded_by?: string | null
+          sampled_at: string
+          sequence?: never
+          shop_id: string
+          vehicle_id: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          asset_hours?: number | null
+          component_id?: string | null
+          created_at?: string
+          fluid_distance?: number | null
+          fluid_distance_unit?: string | null
+          fluid_hours?: number | null
+          fluid_type?: string
+          id?: string
+          lab_name?: string | null
+          lab_report_number?: string | null
+          lab_status?: string
+          notes?: string | null
+          recorded_by?: string | null
+          sampled_at?: string
+          sequence?: never
+          shop_id?: string
+          vehicle_id?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_fluid_samples_component_id_fkey"
+            columns: ["component_id"]
+            isOneToOne: false
+            referencedRelation: "equipment_components"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_fluid_samples_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_fluid_samples_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_fluid_samples_vehicle_id_fkey"
+            columns: ["vehicle_id"]
+            isOneToOne: false
+            referencedRelation: "vehicles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       equipment_measurement_operations: {
         Row: {
           created_at: string
@@ -5099,137 +5307,6 @@ export type Database = {
             columns: ["work_order_id"]
             isOneToOne: false
             referencedRelation: "work_orders"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      equipment_meter_operations: {
-        Row: {
-          created_at: string
-          kind: string
-          operation_key: string
-          request_hash: string
-          result: Json | null
-          shop_id: string
-          vehicle_id: string
-        }
-        Insert: {
-          created_at?: string
-          kind: string
-          operation_key: string
-          request_hash: string
-          result?: Json | null
-          shop_id: string
-          vehicle_id: string
-        }
-        Update: {
-          created_at?: string
-          kind?: string
-          operation_key?: string
-          request_hash?: string
-          result?: Json | null
-          shop_id?: string
-          vehicle_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "equipment_meter_operations_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shop_public_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "equipment_meter_operations_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shops"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "equipment_meter_operations_vehicle_id_fkey"
-            columns: ["vehicle_id"]
-            isOneToOne: false
-            referencedRelation: "vehicles"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      equipment_meter_readings: {
-        Row: {
-          created_at: string
-          cycles: number | null
-          engine_hours: number | null
-          id: string
-          notes: string | null
-          odometer: number | null
-          odometer_unit: string | null
-          read_at: string
-          recorded_by: string | null
-          sequence: number
-          shop_id: string
-          source: string
-          vehicle_id: string
-          void_reason: string | null
-          voided_at: string | null
-          voided_by: string | null
-        }
-        Insert: {
-          created_at?: string
-          cycles?: number | null
-          engine_hours?: number | null
-          id?: string
-          notes?: string | null
-          odometer?: number | null
-          odometer_unit?: string | null
-          read_at: string
-          recorded_by?: string | null
-          sequence?: never
-          shop_id: string
-          source?: string
-          vehicle_id: string
-          void_reason?: string | null
-          voided_at?: string | null
-          voided_by?: string | null
-        }
-        Update: {
-          created_at?: string
-          cycles?: number | null
-          engine_hours?: number | null
-          id?: string
-          notes?: string | null
-          odometer?: number | null
-          odometer_unit?: string | null
-          read_at?: string
-          recorded_by?: string | null
-          sequence?: never
-          shop_id?: string
-          source?: string
-          vehicle_id?: string
-          void_reason?: string | null
-          voided_at?: string | null
-          voided_by?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "equipment_meter_readings_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shop_public_profiles"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "equipment_meter_readings_shop_id_fkey"
-            columns: ["shop_id"]
-            isOneToOne: false
-            referencedRelation: "shops"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "equipment_meter_readings_vehicle_id_fkey"
-            columns: ["vehicle_id"]
-            isOneToOne: false
-            referencedRelation: "vehicles"
             referencedColumns: ["id"]
           },
         ]
@@ -31395,6 +31472,27 @@ export type Database = {
         }
         Returns: number
       }
+      equipment_fluid_sample_record: {
+        Args: {
+          p_actor_user_id: string
+          p_operation_key: string
+          p_results: Json
+          p_sample: Json
+          p_shop_id: string
+          p_vehicle_id: string
+        }
+        Returns: Json
+      }
+      equipment_fluid_sample_void: {
+        Args: {
+          p_actor_user_id: string
+          p_operation_key: string
+          p_reason: string
+          p_sample_id: string
+          p_shop_id: string
+        }
+        Returns: Json
+      }
       equipment_measurement_correct: {
         Args: {
           p_actor_user_id: string
@@ -31421,26 +31519,6 @@ export type Database = {
           p_shop_id: string
           p_vehicle_id: string
           p_work_order_id?: string
-        }
-        Returns: Json
-      }
-      equipment_meter_reading_record: {
-        Args: {
-          p_actor_user_id: string
-          p_operation_key: string
-          p_reading: Json
-          p_shop_id: string
-          p_vehicle_id: string
-        }
-        Returns: Json
-      }
-      equipment_meter_reading_void: {
-        Args: {
-          p_actor_user_id: string
-          p_operation_key: string
-          p_reading_id: string
-          p_reason: string
-          p_shop_id: string
         }
         Returns: Json
       }

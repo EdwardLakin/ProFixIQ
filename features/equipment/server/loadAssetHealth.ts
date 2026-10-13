@@ -9,6 +9,8 @@ import {
   loadEquipmentEvidence,
   type EquipmentAssetEvidence,
 } from "@/features/equipment/server/equipmentEvidence";
+import { loadFluidSampleSummaries } from "@/features/equipment/server/equipmentFluidSampleService";
+import type { FluidSampleSummary } from "@/features/equipment/lib/fluids";
 import {
   loadEquipmentPmSummaries,
   type EquipmentPmSummary,
@@ -34,6 +36,8 @@ export type AssetHealth = {
   evidence: EquipmentAssetEvidence;
   /** Equipment PM plan status (null without active plans) — same loader as the directory. */
   pmPlans: EquipmentPmSummary | null;
+  /** Latest live lab fluid sample per component and fluid type (lab status as reported). */
+  fluidSamples: FluidSampleSummary[];
   attachments: MountedAttachment[];
   host: { assetId: string; href: string; label: string } | null;
 };
@@ -165,5 +169,12 @@ export async function loadAssetHealth(input: {
       })
     ).get(input.assetId) ?? null;
 
-  return { snapshot, equipment, evidence, pmPlans, attachments, host };
+  // The asset is authorized above (canonical workspace snapshot).
+  const fluidSamples = await loadFluidSampleSummaries({
+    admin: input.admin,
+    shopId: input.shopId,
+    assetId: input.assetId,
+  });
+
+  return { snapshot, equipment, evidence, pmPlans, fluidSamples, attachments, host };
 }
