@@ -14,6 +14,10 @@ export type WorkspaceProductDefinition = {
   upgradeLabel: string;
 };
 
+const PRIMARY_SITE_ORIGIN =
+  process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") ||
+  "https://profixiq.com";
+
 export const WORKSPACE_PRODUCTS: readonly WorkspaceProductDefinition[] = [
   {
     surface: "shop",
@@ -48,6 +52,11 @@ export const WORKSPACE_PRODUCTS: readonly WorkspaceProductDefinition[] = [
 export function workspaceProductHref(
   product: WorkspaceProductDefinition,
   entitled: boolean,
+  currentSurface?: WorkspaceSurface,
 ): string {
-  return entitled ? product.workspaceHref : product.marketingHref;
+  const href = entitled ? product.workspaceHref : product.marketingHref;
+  if (currentSurface === "fleet" && product.surface !== "fleet") {
+    return `${PRIMARY_SITE_ORIGIN}${href}`;
+  }
+  return href;
 }
