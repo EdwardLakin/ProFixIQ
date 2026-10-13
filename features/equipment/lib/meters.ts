@@ -43,11 +43,13 @@ export const METER_READING_SOURCE_LABELS: Record<MeterReadingSource, string> = {
 export const METER_RATE_WINDOW_DAYS = 90;
 
 const DAY_MS = 86_400_000;
+const MAX_DATE_MS = 8.64e15;
 
 export type MeterDistance = { value: number; unit: PmDistanceUnit };
 
 export type MeterReading = {
   id: string;
+  sequence: number;
   readAt: string;
   engineHours: number | null;
   odometer: MeterDistance | null;
@@ -64,6 +66,8 @@ export type MeterTimelineOrigin = "reading" | "pm_completion" | "work_order";
 export type MeterTimelineEntry = {
   key: string;
   origin: MeterTimelineOrigin;
+  /** Stable order for observations that share the same timestamp. */
+  observationOrder: number;
   /** "Read on site", "PM: 250-hour service", "WO-1042" */
   label: string;
   /** Manual reading id (for voiding); null for other origins. */
@@ -101,8 +105,14 @@ function dayToIso(day: string): string {
   return `${day.slice(0, 10)}T12:00:00.000Z`;
 }
 
-function addDays(day: string, days: number): string {
-  return new Date(Date.parse(`${day}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
+function addDays(day: string, days: number): string | null {
+  const start = Date.parse(`${day}T00:00:00Z`);
+  const target = start + days * DAY_MS;
+  if (!Number.isFinite(start) || !Number.isFinite(days) || !Number.isFinite(target) || Math.abs(target) > MAX_DATE_MS) {
+    return null;
+  }
+  const date = new Date(target);
+  return Number.isNaN(date.getTime()) ? null : date.toISOString().slice(0, 10);
 }
 
 function meterValue(entry: MeterTimelineEntry, kind: MeterKind, unit: PmDistanceUnit): number | null {
@@ -127,6 +137,7 @@ export function buildMeterTimeline(input: {
     entries.push({
       key: `reading:${reading.id}`,
       origin: "reading",
+      observationOrder: reading.sequence,
       label: METER_READING_SOURCE_LABELS[reading.source] ?? "Reading",
       readingId: reading.id,
       href: null,
@@ -148,6 +159,7 @@ export function buildMeterTimeline(input: {
     entries.push({
       key: `pm:${completion.id}`,
       origin: "pm_completion",
+      observationOrder: 0,
       label: `PM: ${planName}`,
       readingId: null,
       href: completion.workOrder?.href ?? null,
@@ -167,6 +179,7 @@ export function buildMeterTimeline(input: {
     entries.push({
       key: `wo:${workOrder.id}`,
       origin: "work_order",
+      observationOrder: 0,
       label: workOrder.label,
       readingId: null,
       href: workOrder.href,
@@ -180,8 +193,12 @@ export function buildMeterTimeline(input: {
     });
   }
 
-  // Oldest first (key breaks ties) to compare each value with the one before it.
-  entries.sort((a, b) => timeOf(a.at) - timeOf(b.at) || a.key.localeCompare(b.key));
+  // Oldest first. Reading sequence preserves insertion order when date-only
+  // inputs normalize to the same timestamp; key is only the final stable tie-break.
+  entries.sort(
+    (a, b) =>
+      timeOf(a.at) - timeOf(b.at) || a.observationOrder - b.observationOrder || a.key.localeCompare(b.key),
+  );
   const previous: Record<MeterKind, number | null> = { hours: null, distance: null, cycles: null };
   for (const entry of entries) {
     if (entry.voided) continue;
@@ -201,8 +218,10 @@ export type MeterUsageRate =
   | {
       meter: MeterKind;
       status: "ok";
-      /** Change per day (h, km/mi or cycles). */
+      /** Display rate, rounded to two decimals. */
       perDay: number;
+      /** Unrounded rate used for arithmetic so low-but-real usage is preserved. */
+      rawPerDay: number;
       unit: string;
       from: { at: string; value: number };
       to: { at: string; value: number };
@@ -242,15 +261,13 @@ export function meterUsageRate(
   const distanceUnit = options.distanceUnit ?? "km";
   const unit = meter === "hours" ? "h" : meter === "cycles" ? "cycles" : distanceUnit;
   const since = now - windowDays * DAY_MS;
-  // One day of grace for readings dated slightly ahead (time zones).
-  const until = now + DAY_MS;
 
   const points = timeline
     .filter((entry) => !entry.voided)
     .map((entry) => ({ at: entry.at, time: timeOf(entry.at), value: meterValue(entry, meter, distanceUnit) }))
     .filter(
       (point): point is { at: string; time: number; value: number } =>
-        point.value !== null && point.time >= since && point.time <= until,
+        point.value !== null && point.time >= since && point.time <= now,
     )
     .sort((a, b) => a.time - b.time);
 
@@ -266,10 +283,12 @@ export function meterUsageRate(
   if (last.value < first.value) {
     return { meter, status: "decreasing", unit, from, to, days: roundedDays, readings: points.length };
   }
+  const rawPerDay = (last.value - first.value) / days;
   return {
     meter,
     status: "ok",
-    perDay: Math.round(((last.value - first.value) / days) * 100) / 100,
+    perDay: Math.round(rawPerDay * 100) / 100,
+    rawPerDay,
     unit,
     from,
     to,
@@ -340,21 +359,25 @@ export function projectPmDue(
         if (entry.remaining <= 0) return { ...base, status: "reached", perDay: null, days: 0, date: today };
         const rate = rates[entry.dimension as MeterKind];
         if (!rate || rate.status !== "ok") return { ...base, status: "no_rate", perDay: null, days: null, date: null };
-        let perDay = rate.perDay;
+        let perDay = rate.rawPerDay;
         if (entry.dimension === "distance") {
           const from = normalizeDistanceUnit(rate.unit);
           const to = normalizeDistanceUnit(entry.unit);
           if (!from || !to) return { ...base, status: "no_rate", perDay: null, days: null, date: null };
-          perDay = convertDistance(rate.perDay, from, to);
+          perDay = convertDistance(rate.rawPerDay, from, to);
         }
         if (perDay <= 0) return { ...base, status: "no_usage", perDay: 0, days: null, date: null };
         const days = Math.ceil(entry.remaining / perDay);
+        const projectedDate = addDays(today, days);
+        if (!projectedDate) {
+          return { ...base, status: "no_rate", perDay: Math.round(perDay * 100) / 100, days: null, date: null };
+        }
         return {
           ...base,
           status: "projected",
           perDay: Math.round(perDay * 100) / 100,
           days,
-          date: addDays(today, days),
+          date: projectedDate,
         };
       });
       const dates = dimensions.map((entry) => entry.date).filter((date): date is string => Boolean(date));
@@ -431,20 +454,24 @@ function meterNumber(
   return { ok: true, value: whole ? parsed : round1(parsed) };
 }
 
-/** Accepts YYYY-MM-DD (midday UTC) or an ISO date-time; not more than a day ahead. */
+/** Accepts YYYY-MM-DD (midday UTC) or an ISO date-time; never future-dated. */
 function parseReadAt(value: unknown, now: number): Validation<string> {
   if (value === undefined || value === null || value === "") {
     return { ok: true, value: new Date(now).toISOString() };
   }
   if (typeof value !== "string") return { ok: false, error: "Reading date is invalid." };
   const trimmed = value.trim();
-  const iso = /^\d{4}-\d{2}-\d{2}$/.test(trimmed) ? dayToIso(trimmed) : trimmed;
+  const isDateOnly = /^\d{4}-\d{2}-\d{2}$/.test(trimmed);
+  if (isDateOnly && trimmed > new Date(now).toISOString().slice(0, 10)) {
+    return { ok: false, error: "Reading date cannot be in the future." };
+  }
+  const iso = isDateOnly ? dayToIso(trimmed) : trimmed;
   if (!/^\d{4}-\d{2}-\d{2}T/.test(iso)) return { ok: false, error: "Reading date is invalid." };
   const time = Date.parse(iso);
   if (!Number.isFinite(time) || time < Date.parse("1950-01-01T00:00:00Z")) {
     return { ok: false, error: "Reading date is invalid." };
   }
-  if (time > now + DAY_MS) return { ok: false, error: "Reading date cannot be in the future." };
+  if (!isDateOnly && time > now) return { ok: false, error: "Reading date cannot be in the future." };
   return { ok: true, value: new Date(time).toISOString() };
 }
 
