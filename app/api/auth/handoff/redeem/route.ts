@@ -5,9 +5,15 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import {
   isTrustedHandoffNavigation,
+  isValidHandoffBind,
   isValidHandoffTokenHash,
   safeHandoffPath,
 } from "@/features/shared/lib/hostHandoff";
+import {
+  handoffNonceMatches,
+  HANDOFF_NONCE_COOKIE,
+  HANDOFF_NONCE_COOKIE_OPTIONS,
+} from "@/features/shared/lib/server/hostHandoffBinding";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
 
 const NO_STORE = {
@@ -16,7 +22,9 @@ const NO_STORE = {
 };
 
 /**
- * Target side of the cross-host handoff: exchange the single-use OTP for a
+ * Target side (step 3) of the cross-host handoff. The token only redeems in
+ * the browser that began the handoff (nonce cookie matches `bind`), so a token
+ * minted elsewhere and planted in a link cannot log a victim in as someone else: exchange the single-use OTP for a
  * session on this host. On any failure the user still lands on `next`, where
  * normal sign-in applies; the token is never echoed back.
  */
@@ -27,8 +35,21 @@ export async function GET(req: NextRequest) {
     headers: NO_STORE,
   });
 
+  // The nonce is single-use: clear it whatever happens below.
+  const nonce = req.cookies.get(HANDOFF_NONCE_COOKIE)?.value;
+  destination.cookies.set(HANDOFF_NONCE_COOKIE, "", {
+    ...HANDOFF_NONCE_COOKIE_OPTIONS,
+    maxAge: 0,
+  });
+
   const tokenHash = req.nextUrl.searchParams.get("token_hash");
-  if (!isTrustedHandoffNavigation(req.headers) || !isValidHandoffTokenHash(tokenHash)) {
+  const bind = req.nextUrl.searchParams.get("bind");
+  if (
+    !isTrustedHandoffNavigation(req.headers) ||
+    !isValidHandoffTokenHash(tokenHash) ||
+    !isValidHandoffBind(bind) ||
+    !handoffNonceMatches(nonce, bind)
+  ) {
     return destination;
   }
 

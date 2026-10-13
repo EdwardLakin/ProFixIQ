@@ -1,10 +1,10 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-10-13T21:58:15.408Z
+Generated: 2026-10-13T22:13:38.985Z
 
 ## Summary
-- Total route count: **569**
-- Routes exporting GET: **215**
+- Total route count: **570**
+- Routes exporting GET: **216**
 - Routes exporting POST: **382**
 - Routes exporting PUT: **15**
 - Routes exporting PATCH: **36**
@@ -527,6 +527,7 @@ Generated: 2026-10-13T21:58:15.408Z
 - `app/api/ai/suggest/route.ts` | methods: none | riskFlags: none
 - `app/api/assistant/answer/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/assistant/suggested-actions/route.ts` | methods: GET, POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/auth/handoff/begin/route.ts` | methods: GET | riskFlags: none
 - `app/api/auth/handoff/redeem/route.ts` | methods: GET | riskFlags: none
 - `app/api/auth/resolve-login/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/auth/send-reset-email/route.ts` | methods: none | riskFlags: none

@@ -5,6 +5,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import {
   HANDOFF_REDEEM_PATH,
+  isValidHandoffBind,
   resolveHandoffTarget,
   safeHandoffPath,
 } from "@/features/shared/lib/hostHandoff";
@@ -19,7 +20,7 @@ const NO_STORE = {
 };
 
 /**
- * Source side of the cross-host handoff: for the signed-in user, mint a
+ * Source side (step 2) of the cross-host handoff: for the signed-in user, mint a
  * single-use Supabase OTP and send the browser to the target host's redeem
  * route. If anything prevents minting, fall through to a plain navigation so
  * the target host's own sign-in handles the user.
@@ -27,7 +28,8 @@ const NO_STORE = {
 export async function GET(req: NextRequest) {
   const target = resolveHandoffTarget(req.nextUrl.searchParams.get("target"));
   const next = safeHandoffPath(req.nextUrl.searchParams.get("next"));
-  if (!target || !next) {
+  const bind = req.nextUrl.searchParams.get("bind");
+  if (!target || !next || !isValidHandoffBind(bind)) {
     return NextResponse.json(
       { error: "Invalid handoff request." },
       { status: 400, headers: NO_STORE },
@@ -55,6 +57,7 @@ export async function GET(req: NextRequest) {
     const redeem = new URL(HANDOFF_REDEEM_PATH, target);
     redeem.searchParams.set("token_hash", tokenHash);
     redeem.searchParams.set("next", next);
+    redeem.searchParams.set("bind", bind);
     return NextResponse.redirect(redeem, { status: 303, headers: NO_STORE });
   } catch {
     return plain;

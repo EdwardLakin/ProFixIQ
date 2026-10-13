@@ -6,6 +6,7 @@ import { FLEET_PRODUCT_ORIGIN } from "@/features/fleet/lib/fleetProductRouting";
  * host and redeems it into a fresh host-only session on the target host.
  */
 
+export const HANDOFF_BEGIN_PATH = "/api/auth/handoff/begin";
 export const HANDOFF_START_PATH = "/api/auth/handoff/start";
 export const HANDOFF_REDEEM_PATH = "/api/auth/handoff/redeem";
 
@@ -34,6 +35,11 @@ export function safeHandoffPath(raw: string | null): string | null {
   return raw;
 }
 
+/** Hex SHA-256 of the target-host nonce; carried through the source host. */
+export function isValidHandoffBind(raw: string | null): raw is string {
+  return !!raw && /^[a-f0-9]{64}$/.test(raw);
+}
+
 export function isValidHandoffTokenHash(raw: string | null): raw is string {
   return !!raw && TOKEN_HASH_PATTERN.test(raw);
 }
@@ -47,8 +53,21 @@ export function isTrustedHandoffNavigation(headers: Headers): boolean {
   return site === "same-origin" || site === "same-site";
 }
 
-/** Relative link a page on the current host uses to leave it with its session. */
-export function handoffStartHref(targetOrigin: string, nextPath: string): string {
-  const params = new URLSearchParams({ target: targetOrigin, next: nextPath });
-  return `${HANDOFF_START_PATH}?${params.toString()}`;
+/**
+ * Link a page on `sourceOrigin` uses to enter `targetOrigin` with its session.
+ * It begins on the TARGET so the target can bind the handoff to this browser
+ * before the source mints anything. Render it as a plain `<a>` (never a
+ * prefetched router Link): visiting it has side effects.
+ */
+export function handoffBeginHref(
+  targetOrigin: string,
+  sourceOrigin: string,
+  nextPath: string,
+): string {
+  const params = new URLSearchParams({ source: sourceOrigin, next: nextPath });
+  return `${targetOrigin}${HANDOFF_BEGIN_PATH}?${params.toString()}`;
+}
+
+export function isHandoffHref(href: string): boolean {
+  return href.includes("/api/auth/handoff/");
 }

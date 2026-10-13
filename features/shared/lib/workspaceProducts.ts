@@ -1,4 +1,5 @@
-import { handoffStartHref } from "@/features/shared/lib/hostHandoff";
+import { FLEET_PRODUCT_ORIGIN } from "@/features/fleet/lib/fleetProductRouting";
+import { handoffBeginHref } from "@/features/shared/lib/hostHandoff";
 
 export type WorkspaceSurface = "shop" | "field" | "fleet" | "equipment";
 
@@ -64,7 +65,7 @@ export function workspaceProductHref(
     // Auth cookies are host-only, so entering a workspace from the Fleet host
     // goes through the session handoff; public acquisition pages do not.
     return entitled
-      ? handoffStartHref(PRIMARY_SITE_ORIGIN, href)
+      ? handoffBeginHref(PRIMARY_SITE_ORIGIN, FLEET_PRODUCT_ORIGIN, href)
       : `${PRIMARY_SITE_ORIGIN}${href}`;
   }
   return href;
