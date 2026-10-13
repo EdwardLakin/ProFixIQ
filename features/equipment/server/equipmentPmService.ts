@@ -37,8 +37,6 @@ const COMPLETION_COLUMNS =
   "id,shop_id,sequence,plan_id,vehicle_id,completed_on,asset_hours,distance,distance_unit,cycles,work_order_id,notes,recorded_by,created_at,voided_at,voided_by,void_reason";
 const WORK_ORDER_COLUMNS = "id,custom_id,status,record_type,estimate_number,estimate_status,created_at";
 const PAGE = 1_000;
-/** Completions shown per plan; the due point only needs the latest. */
-const HISTORY_PER_PLAN = 10;
 
 export class EquipmentPmError extends Error {
   constructor(
@@ -196,10 +194,9 @@ export async function loadAssetPm(input: {
     completionsByPlan.set(row.plan_id, list);
   }
 
-  const plans = ((plansResult.data ?? []) as PlanRow[]).map((row) => {
-    const status = evaluatePmPlan(mapPlan(row), completionsByPlan.get(row.id) ?? [], meters);
-    return { ...status, history: status.history.slice(0, HISTORY_PER_PLAN) };
-  });
+  const plans = ((plansResult.data ?? []) as PlanRow[]).map((row) =>
+    evaluatePmPlan(mapPlan(row), completionsByPlan.get(row.id) ?? [], meters),
+  );
 
   return {
     meters,
@@ -360,13 +357,16 @@ export async function recordPmCompletion(
   if (completion.workOrderId) {
     const { data: workOrder, error: workOrderError } = await context.supabase
       .from("work_orders")
-      .select("id")
+      .select("id,record_type,estimate_number")
       .eq("shop_id", context.shopId)
       .eq("vehicle_id", planRow.vehicle_id)
       .eq("id", completion.workOrderId)
       .maybeSingle();
     if (workOrderError) throw new EquipmentPmError("Unable to load the work order.", 500);
-    if (!workOrder) throw new EquipmentPmError("Select one of this asset's work orders.", 400);
+    // Estimates are not work done; only the asset's work orders can be linked.
+    if (!workOrder || isEstimateRecord(workOrder)) {
+      throw new EquipmentPmError("Select one of this asset's work orders.", 400);
+    }
   }
 
   const { data, error: rpcError } = await context.admin.rpc("equipment_pm_complete", {

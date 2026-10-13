@@ -125,19 +125,31 @@ export function normalizeDistanceUnit(unit: string | null | undefined): PmDistan
 }
 
 /**
- * The asset's odometer (vehicles.mileage is text such as "42,000") in a known
- * unit. Null when the value or the unit is unknown, so distance is not
- * evaluated rather than guessed.
+ * The asset's odometer in a known unit. vehicles.mileage is text such as
+ * "42,000" or "42,000 km"; a unit written in the text must agree with
+ * odometer_unit when both are present. Null when the value or the unit is
+ * unknown or ambiguous, so distance is not evaluated rather than guessed.
  */
 export function parseOdometer(
   value: string | number | null | undefined,
   unit: string | null | undefined,
 ): { value: number; unit: PmDistanceUnit } | null {
-  const known = normalizeDistanceUnit(unit);
-  if (!known || value === null || value === undefined) return null;
-  const numeric = typeof value === "number" ? value : Number(String(value).replace(/[,\s]/g, ""));
+  if (value === null || value === undefined) return null;
+  const columnUnit = normalizeDistanceUnit(unit);
+  if (typeof value === "number") {
+    return columnUnit && Number.isFinite(value) && value >= 0 ? { value, unit: columnUnit } : null;
+  }
+  const match = /^([\d][\d,\s]*(?:\.\d+)?)\s*([a-z.]*)$/i.exec(value.trim());
+  if (!match) return null;
+  const numeric = Number(match[1].replace(/[,\s]/g, ""));
   if (!Number.isFinite(numeric) || numeric < 0) return null;
-  return { value: numeric, unit: known };
+  let known = columnUnit;
+  if (match[2]) {
+    const textUnit = normalizeDistanceUnit(match[2]);
+    if (!textUnit || (columnUnit && columnUnit !== textUnit)) return null;
+    known = textUnit;
+  }
+  return known ? { value: numeric, unit: known } : null;
 }
 
 export function convertDistance(value: number, from: PmDistanceUnit, to: PmDistanceUnit): number {
@@ -162,19 +174,19 @@ function stateFor(remaining: number, interval: number): EquipmentPmState {
   return remaining <= interval * PM_DUE_WINDOW ? "due" : "ok";
 }
 
+// An interval that cannot be evaluated may already be due, so it ranks above
+// "ok": a plan is only up to date when every interval is known to be.
 const STATE_RANK: Record<EquipmentPmState, number> = {
-  overdue: 3,
-  due: 2,
+  overdue: 4,
+  due: 3,
+  not_evaluated: 2,
   ok: 1,
-  not_evaluated: 0,
 };
 
-/** The most urgent state (overdue > due > ok); not evaluated only when nothing else is. */
+/** The most urgent state: overdue > due > not evaluated > ok (not evaluated when empty). */
 export function worstPmState(states: EquipmentPmState[]): EquipmentPmState {
-  return states.reduce<EquipmentPmState>(
-    (worst, state) => (STATE_RANK[state] > STATE_RANK[worst] ? state : worst),
-    "not_evaluated",
-  );
+  if (!states.length) return "not_evaluated";
+  return states.reduce((worst, state) => (STATE_RANK[state] > STATE_RANK[worst] ? state : worst));
 }
 
 /** Latest completion that is not voided; input may be in any order. */
@@ -208,9 +220,10 @@ function meterDimension(
 }
 
 /**
- * Status of one plan against the asset's meters. The interval counts from the
- * latest non-voided completion, or the plan's starting point before the
- * first completion. Each interval is evaluated on its own; the plan is as
+ * Status of one plan against the asset's meters. Each interval counts from the
+ * latest non-voided completion, or from the plan's starting point before the
+ * first completion (or when that completion has no reading for an interval
+ * added to the plan later). Each interval is evaluated on its own; the plan is as
  * urgent as its most urgent interval (whichever comes first).
  */
 export function evaluatePmPlan(
@@ -222,21 +235,16 @@ export function evaluatePmPlan(
   const dimensions: PmDimensionStatus[] = [];
 
   if (plan.intervalHours !== null) {
-    const from = last ? last.assetHours : plan.startHours;
+    const from = last?.assetHours ?? plan.startHours;
     dimensions.push(meterDimension("hours", plan.intervalHours, from, meters.hours, "h"));
   }
 
   if (plan.intervalDistance !== null && plan.distanceUnit) {
     const unit = plan.distanceUnit;
-    let from: number | null = null;
-    if (last) {
-      from =
-        last.distance !== null && last.distanceUnit
-          ? convertDistance(last.distance, last.distanceUnit, unit)
-          : null;
-    } else {
-      from = plan.startDistance;
-    }
+    const from =
+      last && last.distance !== null && last.distanceUnit
+        ? convertDistance(last.distance, last.distanceUnit, unit)
+        : plan.startDistance;
     const current = meters.distance ? convertDistance(meters.distance.value, meters.distance.unit, unit) : null;
     const interval = plan.intervalDistance;
     if (from === null || current === null) {
@@ -266,7 +274,7 @@ export function evaluatePmPlan(
   }
 
   if (plan.intervalCycles !== null) {
-    const from = last ? last.cycles : plan.startCycles;
+    const from = last?.cycles ?? plan.startCycles;
     dimensions.push(meterDimension("cycles", plan.intervalCycles, from, meters.cycles, "cycles"));
   }
 

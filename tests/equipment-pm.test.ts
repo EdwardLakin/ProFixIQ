@@ -133,6 +133,40 @@ describe("PM due arithmetic", () => {
     expect(evaluatePmPlan(plan, [], meters({ distance: null })).state).toBe("not_evaluated");
   });
 
+  it("parses canonical odometer text with a unit and treats blank text as unknown", () => {
+    expect(parseOdometer("42,000 km", "km")).toEqual({ value: 42000, unit: "km" });
+    expect(parseOdometer("42,000km", null)).toEqual({ value: 42000, unit: "km" });
+    expect(parseOdometer("26,100.5 miles", "mi")).toEqual({ value: 26100.5, unit: "mi" });
+    expect(parseOdometer("42,000 mi", "km")).toBeNull();
+    expect(parseOdometer("42,000 hrs", "km")).toBeNull();
+    expect(parseOdometer("", "km")).toBeNull();
+    expect(parseOdometer("   ", "km")).toBeNull();
+  });
+
+  it("never reports a plan as up to date while an interval cannot be evaluated", () => {
+    const plan: PmPlan = { ...basePlan, intervalDistance: 5000, distanceUnit: "km", startDistance: 1000 };
+    // Hours are fine, but the odometer is unknown, so the distance interval may already be due.
+    const status = evaluatePmPlan(plan, [], meters({ distance: null }));
+    expect(status.dimensions.map((entry) => entry.state)).toEqual(["ok", "not_evaluated"]);
+    expect(status.state).toBe("not_evaluated");
+    expect(worstPmState(["ok", "not_evaluated"])).toBe("not_evaluated");
+    expect(worstPmState(["not_evaluated", "due"])).toBe("due");
+    expect(worstPmState(["not_evaluated", "overdue"])).toBe("overdue");
+  });
+
+  it("counts an interval added after the last completion from the plan's starting point", () => {
+    // Cycles were added to the plan after a completion that had no cycle reading.
+    const plan: PmPlan = { ...basePlan, intervalCycles: 1000, startCycles: 4000 };
+    const status = evaluatePmPlan(plan, [completion({ assetHours: 2390, cycles: null })], meters({ cycles: 4600 }));
+    expect(status.dimensions.find((entry) => entry.dimension === "cycles")).toMatchObject({
+      from: 4000,
+      dueAt: 5000,
+      remaining: 400,
+      state: "ok",
+    });
+    expect(status.dimensions.find((entry) => entry.dimension === "hours")).toMatchObject({ from: 2390 });
+  });
+
   it("does not evaluate archived plans", () => {
     expect(evaluatePmPlan({ ...basePlan, active: false }, [], meters({ hours: 9999 })).state).toBe("not_evaluated");
   });
@@ -296,6 +330,26 @@ describe("PM service", () => {
     expect(result?.workOrders).toEqual([{ id: WO, label: "WO-1042", status: "completed", createdAt: "2026-10-01T00:00:00Z" }]);
   });
 
+  it("returns the full completion history, not just the latest page", async () => {
+    mocks.authorize.mockResolvedValue(identity);
+    const many = Array.from({ length: 12 }, (_, index) => ({
+      ...completionRow,
+      id: `c${index}`,
+      sequence: index,
+      work_order_id: null,
+      completed_on: `2026-09-${String(index + 1).padStart(2, "0")}`,
+    }));
+    const result = await loadAssetPm({
+      supabase: fakeClient({}) as never,
+      admin: fakeClient({ equipment_pm_plans: [planRow], equipment_pm_completions: many }) as never,
+      shopId: SHOP,
+      role: "manager",
+      assetId: ASSET,
+      now: NOW,
+    });
+    expect(result!.plans[0].history).toHaveLength(12);
+  });
+
   it("hides the linked work order of a completion the caller cannot see", async () => {
     mocks.authorize.mockResolvedValue(identity);
     const result = await loadAssetPm({
@@ -394,6 +448,15 @@ describe("PM service", () => {
     await expect(
       recordPmCompletion({ ...context, supabase: fakeClient({}) as never, body: { operationKey: KEY } }),
     ).rejects.toMatchObject({ status: 400 });
+    // A visible estimate for the same asset is not a work order and cannot be linked.
+    await expect(
+      recordPmCompletion({
+        ...context,
+        supabase: fakeClient({ work_orders: [{ id: WO, shop_id: SHOP, vehicle_id: ASSET, record_type: "estimate" }] }) as never,
+        body: { assetHours: 2510, workOrderId: WO, operationKey: KEY },
+      }),
+    ).rejects.toMatchObject({ status: 400 });
+    expect(rpcs).toHaveLength(1);
     mocks.authorize.mockResolvedValue(null);
     await expect(
       recordPmCompletion({ ...context, supabase: fakeClient({}) as never, body: { assetHours: 2510, operationKey: KEY } }),

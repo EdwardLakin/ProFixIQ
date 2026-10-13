@@ -31,6 +31,9 @@ const BUTTON =
 const PRIMARY_BUTTON =
   "min-h-9 rounded-lg bg-[color:var(--accent-copper)] px-3 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-50";
 
+/** Completions listed before "Show all". */
+const HISTORY_PREVIEW = 10;
+
 const STATE_CLASS: Record<EquipmentPmState, string> = {
   overdue: "text-red-400",
   due: "text-amber-400",
@@ -402,6 +405,8 @@ function PlanCard({
   const [mode, setMode] = useState<"view" | "edit" | "complete">("view");
   const [voiding, setVoiding] = useState<string | null>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [showAllHistory, setShowAllHistory] = useState(false);
+  const visibleHistory = showAllHistory ? status.history : status.history.slice(0, HISTORY_PREVIEW);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const operationKeyFor = useOperationKey();
@@ -493,7 +498,7 @@ function PlanCard({
       ) : null}
       {showHistory ? (
         <ul className="mt-2 grid gap-2 border-t border-[color:var(--theme-border-soft)] pt-2 text-xs">
-          {status.history.map((completion) => (
+          {visibleHistory.map((completion) => (
             <li key={completion.id}>
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <span className={completion.voided ? "line-through text-[color:var(--theme-text-muted)]" : ""}>
@@ -526,6 +531,13 @@ function PlanCard({
               ) : null}
             </li>
           ))}
+          {status.history.length > HISTORY_PREVIEW ? (
+            <li>
+              <button type="button" className={BUTTON} onClick={() => setShowAllHistory((current) => !current)}>
+                {showAllHistory ? "Show recent only" : `Show all ${status.history.length}`}
+              </button>
+            </li>
+          ) : null}
         </ul>
       ) : null}
     </li>
