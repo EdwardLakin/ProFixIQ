@@ -19,6 +19,7 @@ describe("public SEO foundation", () => {
     expect(sitemap).toContain("/compare-plans");
     expect(sitemap).toContain("/field-service");
     expect(sitemap).toContain("/fleet-maintenance");
+    expect(sitemap).toContain("/equipment-maintenance-software");
     expect(sitemap).toContain("/request-demo");
     expect(sitemap).not.toContain("lastModified: new Date");
   });
@@ -48,12 +49,13 @@ describe("public SEO foundation", () => {
     expect(robots).toContain('sitemap: "https://profixiq.com/sitemap.xml"');
   });
 
-  it("describes ProFixIQ as repair shop software instead of a diagnostics assistant", () => {
+  it("describes ProFixIQ as heavy-duty-first repair shop software instead of a diagnostics assistant", () => {
     const rootLayout = source("app/layout.tsx");
     const landingLayout = source("app/(landing)/layout.tsx");
     const homePage = source("app/page.tsx");
 
-    expect(rootLayout).toContain("Heavy-Duty & Automotive Repair Shop Software");
+    expect(rootLayout).toContain("Heavy-Duty Repair Shop Software");
+    expect(rootLayout).not.toContain("Heavy-Duty & Automotive Repair Shop Software");
     expect(landingLayout).not.toContain("AI-powered vehicle diagnostics and repair assistant");
     expect(homePage).toContain('"@type": "Organization"');
     expect(homePage).toContain('"@type": "SoftwareApplication"');
@@ -71,6 +73,7 @@ describe("public SEO foundation", () => {
 
     expect(rootLayout).not.toContain('openGraph: {\n    type: "website",\n    siteName: "ProFixIQ",\n    title:');
     expect(pricing).toContain("ProFixIQ Pricing");
+    expect(pricing).toContain("Equipment add-on");
     expect(pricing).toContain('url: "/compare-plans"');
     expect(field).toContain('url: "/field-service"');
     expect(fleet).toContain('url: "/fleet-maintenance"');

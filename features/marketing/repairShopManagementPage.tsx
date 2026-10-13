@@ -4,10 +4,14 @@ export const repairShopManagementPage = {
   seo: {
     title: "Repair Shop Management Software | ProFixIQ",
     description:
-      "Auto repair shop management software for inspections, work orders, parts requests, approvals, invoicing, and fleet or field workflows.",
+      "Heavy-duty repair shop management software for inspections, work orders, parts requests, approvals, invoicing, field service, and fleet workflows.",
     path: "/repair-shop-management-software",
     keywords: [
       "repair shop management software",
+      "heavy duty repair shop software",
+      "heavy duty shop management software",
+      "diesel shop management software",
+      "truck repair shop software",
       "auto repair shop management software",
       "automotive shop management software",
       "mechanic shop management software",
@@ -21,9 +25,9 @@ export const repairShopManagementPage = {
           "It connects the day-to-day work of a repair shop, including work orders, technician inspections, repair details, parts activity, customer decisions, completion, and service history.",
       },
       {
-        question: "Does ProFixIQ support automotive and heavy-duty repair shops?",
+        question: "Is ProFixIQ built for heavy-duty repair shops?",
         answer:
-          "Yes. ProFixIQ supports automotive and heavy-duty shop workflows, with technician inspections, work orders, parts requests, advisor review, approvals, invoicing, and optional Field Service and Fleet workspaces.",
+          "Yes. ProFixIQ is built around heavy-duty repair workflows, including technician inspections, work orders, parts requests, advisor review, customer approvals, invoicing, field service, and fleet-facing maintenance workflows. Automotive repair is supported as well.",
       },
       {
         question: "Can a technician's inspection findings move into a repair order?",
@@ -31,7 +35,7 @@ export const repairShopManagementPage = {
           "Technician findings and recommendations can carry repair details such as notes, parts, and labor into the work order workflow for shop review and customer approval.",
       },
       {
-        question: "How should I compare mechanic shop management software?",
+        question: "How should I compare repair shop management software?",
         answer:
           "Walk through a real job from intake to invoice. Check how the system handles technician findings, parts requests, quote review, customer approvals, mobile use, and the handoffs between roles.",
       },
@@ -41,13 +45,13 @@ export const repairShopManagementPage = {
     eyebrow: "Repair shop management software",
     title: "Run the repair from the first inspection to the final invoice.",
     lead:
-      "ProFixIQ is automotive shop management software for teams that need the work order, technician findings, parts, approvals, and completion to stay connected. It supports both auto repair and heavy-duty shop workflows.",
+      "ProFixIQ is heavy-duty repair shop management software built to keep work orders, technician findings, parts, approvals, and completion connected. Automotive repair shops can use the same workflow without changing the heavy-duty-first operating model.",
     secondaryCta: {
       label: "See heavy-duty shop workflows",
       href: "/heavy-duty-shop-management-software",
     },
     proofPoints: [
-      "Automotive and heavy-duty workflows",
+      "Heavy-duty-first repair workflows",
       "Technician-authored repair detail",
       "Parts, approvals, and invoicing stay connected",
     ],
@@ -105,11 +109,11 @@ export const repairShopManagementPage = {
         "Built by a heavy-duty mechanic with 25 years of hands-on shop experience, ProFixIQ brings the technician, parts, advisor, and customer steps together around the same repair record. See how those handoffs work in a product walkthrough.",
       media: {
         src: "/opengraph-image",
-        alt: "ProFixIQ repair shop management software overview",
+        alt: "ProFixIQ heavy-duty repair shop management software overview",
         width: 1200,
         height: 630,
         caption:
-          "ProFixIQ connects shop operations with optional Field Service and Fleet workspaces. Request a walkthrough to see the live product.",
+          "ProFixIQ connects heavy-duty shop operations with optional Field Service and Fleet workspaces. Request a walkthrough to see the live product.",
       },
       items: [
         {
@@ -134,7 +138,7 @@ export const repairShopManagementPage = {
       eyebrow: "See the workflow in ProFixIQ",
       heading: "Choose shop software by walking through a real repair.",
       body:
-        "Review how ProFixIQ handles inspections, work orders, parts, approvals, and invoicing for your operation.",
+        "Review how ProFixIQ handles inspections, work orders, parts, approvals, and invoicing for your heavy-duty repair operation.",
       primary: {
         label: "Compare plans",
         href: "/compare-plans",

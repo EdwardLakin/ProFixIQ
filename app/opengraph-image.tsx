@@ -1,7 +1,7 @@
 import { ImageResponse } from "next/og";
 
 export const runtime = "edge";
-export const alt = "ProFixIQ heavy-duty and automotive repair shop software";
+export const alt = "ProFixIQ heavy-duty repair shop software for diesel, fleet, field service, and equipment operations";
 export const size = {
   width: 1200,
   height: 630,
@@ -57,7 +57,7 @@ export default function OpenGraphImage() {
               maxWidth: 940,
             }}
           >
-            The operating system for modern repair shops.
+            The operating system for heavy-duty repair shops.
           </div>
           <div
             style={{
@@ -68,7 +68,7 @@ export default function OpenGraphImage() {
               maxWidth: 930,
             }}
           >
-            Heavy-Duty • Automotive • Fleet — voice inspections, technician-built repairs, parts, approvals, field service, and fleet maintenance.
+            Heavy-Duty • Diesel • Fleet • Field • Equipment — inspections, technician-built repairs, parts, approvals, and maintenance history.
           </div>
         </div>
 

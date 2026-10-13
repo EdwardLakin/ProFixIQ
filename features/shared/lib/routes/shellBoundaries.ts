@@ -26,6 +26,7 @@ const STANDALONE_PUBLIC_PREFIXES = [
   "/fleet-preventive-maintenance-software",
   "/mobile-truck-repair-software",
   "/service-truck-work-order-software",
+  "/equipment-maintenance-software",
   "/heavy-equipment-repair-software",
   "/off-highway-equipment-repair-software",
   "/repair-shop-management-software",
