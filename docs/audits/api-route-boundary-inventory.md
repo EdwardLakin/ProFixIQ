@@ -1,17 +1,17 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-10-13T19:41:44.525Z
+Generated: 2026-10-13T20:36:51.267Z
 
 ## Summary
-- Total route count: **566**
-- Routes exporting GET: **212**
+- Total route count: **567**
+- Routes exporting GET: **213**
 - Routes exporting POST: **382**
 - Routes exporting PUT: **15**
 - Routes exporting PATCH: **36**
 - Routes exporting DELETE: **15**
-- Routes with service-role pattern: **220**
-- Routes using requireShopScopedApiAccess: **241**
-- Routes with auth.getUser references: **121**
+- Routes with service-role pattern: **221**
+- Routes using requireShopScopedApiAccess: **242**
+- Routes with auth.getUser references: **122**
 
 ## High-Risk Routes
 - `app/api/analytics/marketing-events/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary
@@ -295,6 +295,7 @@ Generated: 2026-10-13T19:41:44.525Z
 - `app/api/workforce/job-time/corrections/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/workforce/me/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/workforce/overview/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
+- `app/api/workspaces/entitlements/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 
 ## Service-Role Route List
 - `app/api/admin/create-user/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
@@ -517,6 +518,7 @@ Generated: 2026-10-13T19:41:44.525Z
 - `app/api/workforce/job-time/corrections/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/workforce/me/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/workforce/overview/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
+- `app/api/workspaces/entitlements/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 
 ## Routes Missing Obvious Auth Markers (staff/admin guess)
 - `app/api/agent/events/route.ts` | methods: GET | riskFlags: none
