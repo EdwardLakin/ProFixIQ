@@ -272,15 +272,15 @@ export default function PricingSection({
                   <span className={`${styles.mutedText} pb-1 text-xs`}>USD / month / location</span>
                 </div>
                 <p className={`${styles.mutedText} mt-4 max-w-3xl text-sm leading-6`}>
-                  Add the Equipment workspace to Complete Operations for off-road and industrial assets—from excavators, loaders and haul trucks to forklifts, aerial lifts, mining equipment, generators and attachments.
+                  Add the Equipment workspace to Complete Operations for preventive maintenance, Asset Health, inspections, wear tracking, and repair history across off-road and industrial assets—from excavators and haul trucks to forklifts, aerial lifts, mining equipment, generators, and attachments.
                 </p>
                 <div className={`${styles.boundary} mt-4 rounded-xl border px-3.5 py-3 text-xs font-semibold leading-5`}>
                   Requires Complete Operations. New subscriptions are ${completePrice + equipmentPrice} USD / month / location for Complete + Equipment before taxes or added capacity.
                 </div>
                 <ul className="mt-5 grid gap-3 text-sm md:grid-cols-2">
                   {[
-                    "Equipment directory and Asset Health",
-                    "Off-road equipment inspection catalog",
+                    "PM by engine hours, distance, cycles, or calendar",
+                    "Equipment directory, Asset Health, and off-road inspections",
                     "Components, mounted assets, and service history",
                     "Undercarriage wear, measurements, and wear limits",
                   ].map((feature) => (
