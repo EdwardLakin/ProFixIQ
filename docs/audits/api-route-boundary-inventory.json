@@ -1813,6 +1813,25 @@
     "riskLevel": "medium"
   },
   {
+    "path": "app/api/equipment/assets/[assetId]/pm/route.ts",
+    "methods": [
+      "GET",
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
+  },
+  {
     "path": "app/api/equipment/assets/[assetId]/profile/route.ts",
     "methods": [
       "GET",
@@ -1926,6 +1945,60 @@
     "path": "app/api/equipment/measurements/[measurementId]/correct/route.ts",
     "methods": [
       "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
+  },
+  {
+    "path": "app/api/equipment/pm-completions/[completionId]/void/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
+  },
+  {
+    "path": "app/api/equipment/pm-plans/[planId]/completions/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": true,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": true,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "service_role_with_shop_identifier_input_or_reference"
+    ],
+    "riskLevel": "medium"
+  },
+  {
+    "path": "app/api/equipment/pm-plans/[planId]/route.ts",
+    "methods": [
+      "PUT"
     ],
     "isMutating": true,
     "hasRequireShopScopedApiAccess": true,
