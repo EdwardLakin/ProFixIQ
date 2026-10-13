@@ -16,6 +16,10 @@ const groups = [
         label: "Repair Shop Management Software",
         href: "/repair-shop-management-software",
       },
+      {
+        label: "Equipment Maintenance Software",
+        href: "/equipment-maintenance-software",
+      },
       { label: "Resources", href: "/resources" },
       { label: "Shop Boost", href: "/#shop-boost" },
       { label: "Pricing", href: "/#pricing" },
