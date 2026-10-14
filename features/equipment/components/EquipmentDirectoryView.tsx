@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 
 import EquipmentSetupDialog, {
-  type EquipmentAdoptionCandidate,
   type EquipmentCustomerOption,
   type EquipmentSetupMode,
 } from "@/features/equipment/components/EquipmentSetupDialog";
@@ -82,13 +81,11 @@ export default function EquipmentDirectoryView({
   rows,
   truncated,
   canManage,
-  candidates,
   customers,
 }: {
   rows: EquipmentDirectoryRow[];
   truncated: boolean;
   canManage: boolean;
-  candidates: EquipmentAdoptionCandidate[];
   customers: EquipmentCustomerOption[];
 }) {
   const [query, setQuery] = useState("");
@@ -247,9 +244,7 @@ export default function EquipmentDirectoryView({
                         {row.serialNumber ? ` · S/N ${row.serialNumber}` : ""}
                       </p>
                     </div>
-                    <span
-                      className={`text-xs font-semibold ${STATUS_TONE[row.operatingStatus]}`}
-                    >
+                    <span className={`text-xs font-semibold ${STATUS_TONE[row.operatingStatus]}`}>
                       {ASSET_OPERATING_STATUS_LABELS[row.operatingStatus]}
                     </span>
                   </div>
@@ -276,83 +271,39 @@ export default function EquipmentDirectoryView({
             <table className="w-full min-w-[1100px] text-left text-sm">
               <thead className="text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
                 <tr>
-                  {[
-                    "Unit",
-                    "Make / model",
-                    "Serial",
-                    "Meter",
-                    "Customer / site",
-                    "Status",
-                    "Defects",
-                    "PM",
-                    "Last service",
-                    "Next service",
-                    "Active WO",
-                  ].map((heading) => (
-                    <th key={heading} className="px-3 py-2 font-semibold">
-                      {heading}
-                    </th>
+                  {["Unit", "Make / model", "Serial", "Meter", "Customer / site", "Status", "Defects", "PM", "Last service", "Next service", "Active WO"].map((heading) => (
+                    <th key={heading} className="px-3 py-2 font-semibold">{heading}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {filtered.map((row) => (
-                  <tr
-                    key={row.assetId}
-                    className="border-t border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-overlay)]"
-                  >
-                    <td className="px-3 py-2 font-semibold">
-                      <Link href={row.href} className="hover:underline">
-                        {row.unitNumber ?? "—"}
-                      </Link>
-                    </td>
+                  <tr key={row.assetId} className="border-t border-[color:var(--theme-border-soft)] hover:bg-[color:var(--theme-surface-overlay)]">
+                    <td className="px-3 py-2 font-semibold"><Link href={row.href} className="hover:underline">{row.unitNumber ?? "—"}</Link></td>
                     <td className="px-3 py-2">
-                      <Link href={row.href} className="hover:underline">
-                        {[row.year, row.make, row.model].filter(Boolean).join(" ") || "—"}
-                      </Link>
-                      <div className="text-xs text-[color:var(--theme-text-muted)]">
-                        {row.equipmentClassLabel}
-                      </div>
+                      <Link href={row.href} className="hover:underline">{[row.year, row.make, row.model].filter(Boolean).join(" ") || "—"}</Link>
+                      <div className="text-xs text-[color:var(--theme-text-muted)]">{row.equipmentClassLabel}</div>
                     </td>
                     <td className="px-3 py-2">{row.serialNumber ?? "—"}</td>
                     <td className="px-3 py-2">{meterText(row)}</td>
                     <td className="px-3 py-2">
                       <div>{row.customerName ?? "—"}</div>
-                      {row.siteName ? (
-                        <div className="text-xs text-[color:var(--theme-text-muted)]">
-                          {row.siteName}
-                        </div>
-                      ) : null}
+                      {row.siteName ? <div className="text-xs text-[color:var(--theme-text-muted)]">{row.siteName}</div> : null}
                     </td>
-                    <td
-                      className={`px-3 py-2 font-semibold ${STATUS_TONE[row.operatingStatus]}`}
-                    >
-                      {ASSET_OPERATING_STATUS_LABELS[row.operatingStatus]}
-                    </td>
+                    <td className={`px-3 py-2 font-semibold ${STATUS_TONE[row.operatingStatus]}`}>{ASSET_OPERATING_STATUS_LABELS[row.operatingStatus]}</td>
                     <td className="px-3 py-2">{defectsText(row)}</td>
                     <td className={`px-3 py-2 ${PM_TONE[row.pm.state]}`}>{pmText(row)}</td>
                     <td className="px-3 py-2">{formatDate(row.lastServiceAt)}</td>
-                    <td className="px-3 py-2">
-                      {formatDate(row.nextService?.startsAt ?? null)}
-                    </td>
+                    <td className="px-3 py-2">{formatDate(row.nextService?.startsAt ?? null)}</td>
                     <td className="px-3 py-2">
                       {row.activeWorkOrder?.href ? (
                         <Link href={row.activeWorkOrder.href} className="hover:underline">
                           {row.activeWorkOrder.title}
-                          <span className="block text-xs text-[color:var(--theme-text-muted)]">
-                            {row.activeWorkOrder.status}
-                          </span>
+                          <span className="block text-xs text-[color:var(--theme-text-muted)]">{row.activeWorkOrder.status}</span>
                         </Link>
                       ) : row.activeWorkOrder ? (
-                        <span>
-                          {row.activeWorkOrder.title}
-                          <span className="block text-xs text-[color:var(--theme-text-muted)]">
-                            {row.activeWorkOrder.status}
-                          </span>
-                        </span>
-                      ) : (
-                        "—"
-                      )}
+                        <span>{row.activeWorkOrder.title}<span className="block text-xs text-[color:var(--theme-text-muted)]">{row.activeWorkOrder.status}</span></span>
+                      ) : "—"}
                     </td>
                   </tr>
                 ))}
@@ -365,7 +316,6 @@ export default function EquipmentDirectoryView({
       {setupMode ? (
         <EquipmentSetupDialog
           mode={setupMode}
-          candidates={candidates}
           customers={customers}
           onClose={() => setSetupMode(null)}
         />
