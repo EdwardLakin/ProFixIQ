@@ -59,8 +59,11 @@ export default async function EquipmentDirectoryPage() {
         .limit(250),
       supabase
         .from("customers")
-        .select("id,name,business_name,first_name,last_name")
+        .select("id,name,business_name,first_name,last_name,active,archived_at,merged_into_customer_id")
         .eq("shop_id", profile.shop_id)
+        .eq("active", true)
+        .is("archived_at", null)
+        .is("merged_into_customer_id", null)
         .order("name", { ascending: true })
         .limit(500),
     ]);
@@ -68,6 +71,10 @@ export default async function EquipmentDirectoryPage() {
     if (vehicleResult.error) {
       console.error("[equipment/page] vehicle candidate load failed", vehicleResult.error);
       throw new Error("Equipment adoption candidates could not be loaded.");
+    }
+    if (customerResult.error) {
+      console.error("[equipment/page] customer load failed", customerResult.error);
+      throw new Error("Equipment customer options could not be loaded.");
     }
 
     const visibleVehicles = vehicleResult.data ?? [];
@@ -101,18 +108,14 @@ export default async function EquipmentDirectoryPage() {
         engineHours: row.engine_hours,
       }));
 
-    if (customerResult.error) {
-      console.error("[equipment/page] customer load failed", customerResult.error);
-    } else {
-      customers = (customerResult.data ?? []).map((row) => ({
-        id: row.id,
-        name:
-          row.business_name?.trim() ||
-          row.name?.trim() ||
-          [row.first_name, row.last_name].filter(Boolean).join(" ").trim() ||
-          "Customer",
-      }));
-    }
+    customers = (customerResult.data ?? []).map((row) => ({
+      id: row.id,
+      name:
+        row.business_name?.trim() ||
+        row.name?.trim() ||
+        [row.first_name, row.last_name].filter(Boolean).join(" ").trim() ||
+        "Customer",
+    }));
   }
 
   return (
