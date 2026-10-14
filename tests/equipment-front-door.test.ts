@@ -21,13 +21,16 @@ describe("Equipment front door", () => {
     expect(setup).toContain("Add existing asset");
   });
 
-  it("loads adoption candidates with canonical columns and bounded profile exclusion", () => {
+  it("loads adoption candidates and only active canonical customers", () => {
     const page = source("app/equipment/page.tsx");
 
     expect(page).toContain('.order("created_at"');
     expect(page).not.toContain('.order("updated_at"');
     expect(page).toContain('.in("vehicle_id", visibleVehicleIds)');
-    expect(page).toContain("Equipment adoption candidates could not be loaded.");
+    expect(page).toContain('.eq("active", true)');
+    expect(page).toContain('.is("archived_at", null)');
+    expect(page).toContain('.is("merged_into_customer_id", null)');
+    expect(page).toContain("Equipment customer options could not be loaded.");
   });
 
   it("makes existing-asset adoption create-only and preserves canonical meter state", () => {
@@ -42,27 +45,37 @@ describe("Equipment front door", () => {
     expect(profileRoute).toContain("Equipment is already enabled for this asset.");
   });
 
-  it("creates canonical assets retry-safely and keeps VIN separate from Equipment PIN", () => {
+  it("uses normal asset UUIDs and checks canonical unit/VIN duplicates before and after insert", () => {
     const setup = source("features/equipment/components/EquipmentSetupDialog.tsx");
     const route = source("app/api/equipment/assets/route.ts");
 
     expect(setup).toContain("value={form.vin}");
     expect(setup).toContain("Equipment PIN");
-    expect(route).toContain('import { createHash } from "node:crypto"');
-    expect(route).toContain("deterministicEquipmentAssetId");
-    expect(route).toContain("id: assetId");
+    expect(route).toContain('import { randomUUID } from "node:crypto"');
+    expect(route).not.toContain("deterministicEquipmentAssetId");
+    expect(route).toContain("normalizeVinInput");
+    expect(route).toContain("DUPLICATE_VIN_MESSAGE");
+    expect(route).toContain("const before = await loadDuplicates()");
+    expect(route).toContain("const after = await loadDuplicates()");
+    expect(route).toContain("const assetId = randomUUID()");
     expect(route).toContain("vin,");
-    expect(route).toContain('rpc(\n    "save_equipment_asset_profile"');
-    expect(route).toContain('error: DUPLICATE_UNIT_MESSAGE }, 409');
   });
 
-  it("verifies profile persistence before compensating deletion", () => {
+  it("rejects archived or merged customer assignments at the write boundary", () => {
+    const route = source("app/api/equipment/assets/route.ts");
+
+    expect(route).toContain('select("id,active,archived_at,merged_into_customer_id")');
+    expect(route).toContain("!customer.active || customer.archived_at || customer.merged_into_customer_id");
+    expect(route).toContain("Choose an active customer account before creating Equipment.");
+  });
+
+  it("verifies profile persistence before profile-failure compensation", () => {
     const route = source("app/api/equipment/assets/route.ts");
     const verifyIndex = route.indexOf("persistedProfile");
-    const deleteIndex = route.indexOf('.from("vehicles")\n    .delete()');
+    const profileFailureIndex = route.indexOf("profile creation failed");
 
     expect(verifyIndex).toBeGreaterThan(-1);
-    expect(deleteIndex).toBeGreaterThan(verifyIndex);
+    expect(profileFailureIndex).toBeGreaterThan(verifyIndex);
     expect(route).toContain("profile persistence could not be verified");
   });
 
