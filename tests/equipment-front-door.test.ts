@@ -46,7 +46,7 @@ describe("Equipment front door", () => {
     const setup = source("features/equipment/components/EquipmentSetupDialog.tsx");
     const route = source("app/api/equipment/assets/route.ts");
 
-    expect(setup).toContain(">VIN<");
+    expect(setup).toContain("value={form.vin}");
     expect(setup).toContain("Equipment PIN");
     expect(route).toContain('import { createHash } from "node:crypto"');
     expect(route).toContain("deterministicEquipmentAssetId");
