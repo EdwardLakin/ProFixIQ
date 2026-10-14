@@ -1,11 +1,17 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { requireOpsOperatorApiAccess } from "@/features/ops/server/operator-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import {
+  deleteMarketingMediaAsset,
+  getMarketingMediaAsset,
+  getMarketingMediaUsageMap,
   MARKETING_MEDIA_BUCKET,
   MARKETING_MEDIA_CONTENT_BUCKET,
+  updateMarketingMediaAssetMetadata,
 } from "@/features/marketing/media/server";
 import {
+  MARKETING_PAGE_REGISTRY,
   MarketingMediaAssetSchema,
   type MarketingMediaAsset,
 } from "@/features/marketing/media/types";
@@ -16,6 +22,7 @@ export const runtime = "nodejs";
 
 const MAX_MEDIA_BYTES = 50 * 1024 * 1024;
 const PAGE_SIZE = 100;
+const STALE_PENDING_MS = 24 * 60 * 60 * 1000;
 const MEDIA_TYPES: Record<string, { extension: string; kind: "image" | "video" }> = {
   "image/jpeg": { extension: "jpg", kind: "image" },
   "image/png": { extension: "png", kind: "image" },
@@ -43,14 +50,14 @@ async function readAssetMetadata(path: string): Promise<MarketingMediaAsset | nu
   }
 }
 
-async function listAssets(): Promise<MarketingMediaAsset[]> {
+async function listJsonItems(folder: "assets" | "pending"): Promise<Array<{ name: string }>> {
   const admin = createAdminSupabase();
   const items: Array<{ name: string }> = [];
 
   for (let offset = 0; ; offset += PAGE_SIZE) {
     const { data, error } = await admin.storage
       .from(MARKETING_MEDIA_CONTENT_BUCKET)
-      .list("assets", {
+      .list(folder, {
         limit: PAGE_SIZE,
         offset,
         sortBy: { column: "created_at", order: "desc" },
@@ -61,6 +68,11 @@ async function listAssets(): Promise<MarketingMediaAsset[]> {
     if (page.length < PAGE_SIZE) break;
   }
 
+  return items;
+}
+
+async function listAssets(): Promise<MarketingMediaAsset[]> {
+  const items = await listJsonItems("assets");
   const assets = await Promise.all(
     items.map((item) => readAssetMetadata(`assets/${item.name}`)),
   );
@@ -69,12 +81,55 @@ async function listAssets(): Promise<MarketingMediaAsset[]> {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+async function cleanupStalePendingUploads(): Promise<number> {
+  const items = await listJsonItems("pending");
+  const cutoff = Date.now() - STALE_PENDING_MS;
+  const admin = createAdminSupabase();
+  let cleaned = 0;
+
+  for (const item of items) {
+    const pendingPath = `pending/${item.name}`;
+    const asset = await readAssetMetadata(pendingPath);
+    if (!asset || new Date(asset.createdAt).getTime() > cutoff) continue;
+
+    const { error: mediaError } = await admin.storage
+      .from(MARKETING_MEDIA_BUCKET)
+      .remove([asset.storagePath]);
+    if (mediaError) {
+      console.warn("stale marketing media object cleanup failed", {
+        assetId: asset.id,
+        error: mediaError,
+      });
+      continue;
+    }
+
+    const { error: metadataError } = await admin.storage
+      .from(MARKETING_MEDIA_CONTENT_BUCKET)
+      .remove([pendingPath]);
+    if (metadataError) {
+      console.warn("stale marketing media metadata cleanup failed", {
+        assetId: asset.id,
+        error: metadataError,
+      });
+      continue;
+    }
+    cleaned += 1;
+  }
+
+  return cleaned;
+}
+
 export async function GET() {
   const access = await requireOpsOperatorApiAccess();
   if (!access.ok) return access.response;
 
   try {
-    return NextResponse.json({ assets: await listAssets() });
+    const cleanedPending = await cleanupStalePendingUploads();
+    const [assets, usages] = await Promise.all([
+      listAssets(),
+      getMarketingMediaUsageMap(),
+    ]);
+    return NextResponse.json({ assets, usages, cleanedPending });
   } catch (error) {
     console.error("ops marketing media listing failed", error);
     return NextResponse.json({ error: "Unable to load marketing media" }, { status: 500 });
@@ -88,6 +143,60 @@ export async function POST(request: Request) {
   const payload = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!payload || typeof payload.action !== "string") {
     return NextResponse.json({ error: "Invalid marketing media request" }, { status: 400 });
+  }
+
+  if (payload.action === "update-metadata") {
+    if (!validUuid(payload.id)) {
+      return NextResponse.json({ error: "Invalid marketing media asset" }, { status: 400 });
+    }
+    const alt = typeof payload.alt === "string" ? payload.alt.trim() : "";
+    const caption = typeof payload.caption === "string" ? payload.caption.trim() : "";
+    if (!alt || alt.length > 240 || caption.length > 300) {
+      return NextResponse.json({ error: "Alt text is required and metadata must fit the allowed limits" }, { status: 400 });
+    }
+
+    try {
+      const asset = await updateMarketingMediaAssetMetadata(payload.id, {
+        alt,
+        caption: caption || null,
+      });
+      if (!asset) {
+        return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
+      }
+      const usages = (await getMarketingMediaUsageMap())[asset.id] ?? [];
+      for (const usage of usages) {
+        if (usage.state !== "published") continue;
+        revalidatePath(`/api/public/marketing/pages/${usage.pageKey}`);
+        revalidatePath(MARKETING_PAGE_REGISTRY[usage.pageKey].href);
+      }
+      return NextResponse.json({ asset, usages });
+    } catch (error) {
+      console.error("ops marketing media metadata update failed", error);
+      return NextResponse.json({ error: "Unable to update marketing media" }, { status: 500 });
+    }
+  }
+
+  if (payload.action === "delete") {
+    if (!validUuid(payload.id)) {
+      return NextResponse.json({ error: "Invalid marketing media asset" }, { status: 400 });
+    }
+    try {
+      const asset = await getMarketingMediaAsset(payload.id);
+      if (!asset) {
+        return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
+      }
+      const result = await deleteMarketingMediaAsset(payload.id);
+      if (!result.deleted) {
+        return NextResponse.json(
+          { error: "This media is still used by a landing page", usages: result.usages },
+          { status: 409 },
+        );
+      }
+      return NextResponse.json({ deleted: true, id: payload.id });
+    } catch (error) {
+      console.error("ops marketing media delete failed", error);
+      return NextResponse.json({ error: "Unable to delete marketing media" }, { status: 500 });
+    }
   }
 
   if (payload.action === "prepare-upload") {
