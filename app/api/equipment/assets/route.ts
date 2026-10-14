@@ -1,7 +1,6 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import {
@@ -45,6 +44,11 @@ export async function POST(request: Request) {
   if (!body || typeof body !== "object" || Array.isArray(body)) {
     return json({ error: "Equipment details are required." }, 400);
   }
+
+  if (!isAssetId(body.operationId)) {
+    return json({ error: "Equipment creation request is invalid. Reopen the dialog and try again." }, 400);
+  }
+  const assetId = body.operationId;
 
   let unitNumber: string | null;
   let make: string | null;
@@ -122,7 +126,6 @@ export async function POST(request: Request) {
   if (!profileValidation.ok) return json({ error: profileValidation.error }, 400);
 
   const mutation = profileValidation.value;
-  const assetId = randomUUID();
   const admin = createAdminSupabase();
   const { data, error } = await admin.rpc("create_equipment_asset_atomic", {
     p_shop_id: access.profile.shop_id,
@@ -166,6 +169,16 @@ export async function POST(request: Request) {
   }
   if (error?.code === "23514" && /customer/i.test(error.message)) {
     return json({ error: "Choose an active customer account before creating Equipment." }, 409);
+  }
+  if (error?.code === "23514" && /operation_incomplete/i.test(error.message)) {
+    return json(
+      {
+        error: "The canonical asset exists but Equipment setup did not finish. Use Add existing asset to complete setup.",
+        assetId,
+        partial: true,
+      },
+      409,
+    );
   }
   if (error?.code === "22023") {
     return json({ error: "One or more Equipment fields are invalid." }, 400);
