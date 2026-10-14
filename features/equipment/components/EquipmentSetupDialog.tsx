@@ -127,9 +127,12 @@ export default function EquipmentSetupDialog({
           setError(payload.error ?? "Equipment adoption candidates could not be loaded.");
           return;
         }
-        setCandidates((current) => (append ? [...current, ...payload.candidates!] : payload.candidates!));
+        const nextCandidates = payload.candidates;
+        setCandidates((current) => (append ? [...current, ...nextCandidates] : nextCandidates));
         setCandidateNextOffset(payload.nextOffset ?? null);
-        if (!append) update({ candidateId: "" });
+        if (!append) {
+          setForm((current) => ({ ...current, candidateId: "" }));
+        }
       } catch {
         setError("Equipment adoption candidates could not be loaded. Check your connection and try again.");
       } finally {
