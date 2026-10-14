@@ -27,7 +27,9 @@ export type MarketingMediaUsage = {
 
 type MarketingMediaDeletionMarker = {
   assetId: string;
-  createdAt: string;
+  asset: MarketingMediaAsset;
+  state: "deleting" | "deleted" | "failed";
+  updatedAt: string;
 };
 
 export function isMarketingPageKey(value: string): value is MarketingPageKey {
@@ -113,18 +115,46 @@ function parseDeletionMarker(
 ): { success: true; data: MarketingMediaDeletionMarker } | { success: false } {
   if (!value || typeof value !== "object") return { success: false };
   const candidate = value as Partial<MarketingMediaDeletionMarker>;
-  if (typeof candidate.assetId !== "string" || typeof candidate.createdAt !== "string") {
+  const parsedAsset = MarketingMediaAssetSchema.safeParse(candidate.asset);
+  if (
+    typeof candidate.assetId !== "string" ||
+    !parsedAsset.success ||
+    !["deleting", "deleted", "failed"].includes(String(candidate.state)) ||
+    typeof candidate.updatedAt !== "string"
+  ) {
     return { success: false };
   }
   return {
     success: true,
-    data: { assetId: candidate.assetId, createdAt: candidate.createdAt },
+    data: {
+      assetId: candidate.assetId,
+      asset: parsedAsset.data,
+      state: candidate.state as MarketingMediaDeletionMarker["state"],
+      updatedAt: candidate.updatedAt,
+    },
   };
 }
 
-async function isMarketingMediaAssetDeleting(assetId: string): Promise<boolean> {
+async function getDeletionMarker(assetId: string): Promise<MarketingMediaDeletionMarker | null> {
   const marker = await readStoredJson(deletionMarkerPath(assetId), parseDeletionMarker);
-  return marker?.assetId === assetId;
+  return marker?.assetId === assetId ? marker : null;
+}
+
+async function writeDeletionMarker(
+  asset: MarketingMediaAsset,
+  state: MarketingMediaDeletionMarker["state"],
+): Promise<void> {
+  await writeStoredJson(deletionMarkerPath(asset.id), {
+    assetId: asset.id,
+    asset,
+    state,
+    updatedAt: new Date().toISOString(),
+  } satisfies MarketingMediaDeletionMarker);
+}
+
+async function isMarketingMediaAssetUnavailable(assetId: string): Promise<boolean> {
+  const marker = await getDeletionMarker(assetId);
+  return marker?.state === "deleting" || marker?.state === "deleted";
 }
 
 async function readMarketingMediaSlotRaw(
@@ -151,7 +181,15 @@ async function hydrateCanonicalAsset(
   asset: MarketingMediaAsset | null,
 ): Promise<MarketingMediaAsset | null> {
   if (!asset) return null;
-  return getMarketingMediaAsset(asset.id);
+  try {
+    return (await getMarketingMediaAsset(asset.id)) ?? asset;
+  } catch (error) {
+    console.warn("marketing media canonical hydration failed; using embedded slot asset", {
+      assetId: asset.id,
+      error,
+    });
+    return asset;
+  }
 }
 
 async function readMarketingMediaSlot(
@@ -210,10 +248,10 @@ export async function getMarketingMediaAsset(
 }
 
 async function getAssignableMarketingMediaAsset(assetId: string): Promise<MarketingMediaAsset | null> {
-  if (await isMarketingMediaAssetDeleting(assetId)) return null;
+  if (await isMarketingMediaAssetUnavailable(assetId)) return null;
   const asset = await getMarketingMediaAsset(assetId);
   if (!asset) return null;
-  if (await isMarketingMediaAssetDeleting(assetId)) return null;
+  if (await isMarketingMediaAssetUnavailable(assetId)) return null;
   return asset;
 }
 
@@ -262,39 +300,64 @@ export async function updateMarketingMediaAssetMetadata(
     caption: input.caption,
   });
 
-  // Canonical metadata is the source of truth. Slot reads hydrate by asset id,
-  // so one atomic object write updates every draft/published placement.
   await writeStoredJson(`assets/${assetId}.json`, updated);
+
+  // A successful deletion leaves a permanent tombstone. If deletion raced this
+  // write, compensate by removing any canonical metadata recreated by the edit.
+  if (await isMarketingMediaAssetUnavailable(assetId)) {
+    await removeStoredJson(`assets/${assetId}.json`);
+    return null;
+  }
   return updated;
 }
 
 export async function deleteMarketingMediaAsset(assetId: string): Promise<{
   deleted: boolean;
   usages: MarketingMediaUsage[];
+  asset: MarketingMediaAsset | null;
 }> {
-  const asset = await getMarketingMediaAsset(assetId);
-  if (!asset) return { deleted: false, usages: [] };
-
-  await writeStoredJson(deletionMarkerPath(assetId), {
-    assetId,
-    createdAt: new Date().toISOString(),
-  } satisfies MarketingMediaDeletionMarker);
-
-  const usageMap = await getMarketingMediaUsageMap();
-  const usages = usageMap[assetId] ?? [];
-  if (usages.length > 0) {
-    await removeStoredJson(deletionMarkerPath(assetId));
-    return { deleted: false, usages };
+  const existingMarker = await getDeletionMarker(assetId);
+  const canonical = await getMarketingMediaAsset(assetId);
+  const asset = canonical ?? existingMarker?.asset ?? null;
+  if (!asset) return { deleted: false, usages: [], asset: null };
+  if (existingMarker?.state === "deleted") {
+    return { deleted: true, usages: [], asset };
   }
 
-  const admin = createAdminSupabase();
-  const { error } = await admin.storage.from(MARKETING_MEDIA_BUCKET).remove([asset.storagePath]);
-  if (error && !isStorageObjectMissing(error)) {
-    throw new Error(`Marketing media object delete failed: ${error.message}`);
+  await writeDeletionMarker(asset, "deleting");
+  let mediaRemoved = false;
+
+  try {
+    const usageMap = await getMarketingMediaUsageMap();
+    const usages = usageMap[assetId] ?? [];
+    if (usages.length > 0) {
+      await writeDeletionMarker(asset, "failed");
+      return { deleted: false, usages, asset };
+    }
+
+    const admin = createAdminSupabase();
+    const { error } = await admin.storage.from(MARKETING_MEDIA_BUCKET).remove([asset.storagePath]);
+    if (error && !isStorageObjectMissing(error)) {
+      throw new Error(`Marketing media object delete failed: ${error.message}`);
+    }
+    mediaRemoved = true;
+
+    await removeStoredJson(`assets/${assetId}.json`);
+    await writeDeletionMarker(asset, "deleted");
+    return { deleted: true, usages: [], asset };
+  } catch (error) {
+    if (!mediaRemoved) {
+      try {
+        await writeDeletionMarker(asset, "failed");
+      } catch (markerError) {
+        console.error("marketing media deletion recovery marker write failed", {
+          assetId,
+          markerError,
+        });
+      }
+    }
+    throw error;
   }
-  await removeStoredJson(`assets/${assetId}.json`);
-  await removeStoredJson(deletionMarkerPath(assetId));
-  return { deleted: true, usages: [] };
 }
 
 export async function saveMarketingPageMediaDraft(
@@ -313,7 +376,6 @@ export async function saveMarketingPageMediaDraft(
   const path = draftSlotPath(pageKey, slotKey);
   await writeStoredJson(path, record);
 
-  // Recheck after the write to close the race with reference-aware deletion.
   const stillAvailable = await getAssignableMarketingMediaAsset(asset.id);
   if (!stillAvailable) {
     await removeStoredJson(path);
