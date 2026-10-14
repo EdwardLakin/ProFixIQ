@@ -43,7 +43,7 @@ describe("managed acquisition landing media", () => {
     expect(MARKETING_PAGE_REGISTRY.home.slots.hero).toBeDefined();
   });
 
-  it("resolves managed media by pathname and preserves the authored fallback", () => {
+  it("resolves managed media by pathname and preserves a responsive authored fallback", () => {
     const renderer = read(
       "features/marketing/components/ManagedMarketingMedia.tsx",
     );
@@ -55,13 +55,18 @@ describe("managed acquisition landing media", () => {
     expect(renderer).toContain("getMarketingPageKeyForHref(pathname)");
     expect(renderer).toContain("/api/public/marketing/pages/${resolvedPageKey}");
     expect(renderer).toContain("if (!asset) return <>{fallback}</>");
+    expect(renderer).toContain('autoPlayVideo = false');
+    expect(renderer).toContain('aspect-[16/10]');
     expect(renderer).toContain("controls");
+    expect(landing).toContain('import Image from "next/image"');
+    expect(landing).toContain("<Image");
+    expect(landing).toContain('sizes="(min-width: 1024px) 54vw, 100vw"');
     expect(landing).toContain("<ManagedMarketingMedia");
     expect(landing).toContain('slotKey="product-proof"');
     expect(landing).toContain("<ProductProofFallback media={section.media} />");
   });
 
-  it("drives Ops page and slot selection from the registry", () => {
+  it("drives Ops page and slot selection from the registry and ignores stale page loads", () => {
     const editor = read(
       "features/ops/components/OpsMarketingMediaManager.tsx",
     );
@@ -71,6 +76,8 @@ describe("managed acquisition landing media", () => {
     expect(editor).toContain("Object.entries(MARKETING_PAGE_REGISTRY)");
     expect(editor).toContain("Object.entries(definition.slots)");
     expect(editor).toContain("/api/ops/marketing/pages/${pageKey}");
+    expect(editor).toContain("pageRequestRef");
+    expect(editor).toContain("requestId !== pageRequestRef.current");
     expect(editor).not.toContain('/api/ops/marketing/pages/home", {');
   });
 });
