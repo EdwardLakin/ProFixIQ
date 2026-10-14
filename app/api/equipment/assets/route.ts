@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 
 import {
@@ -8,15 +9,12 @@ import {
   validateEquipmentAssetProfileMutation,
 } from "@/features/equipment/lib/assetProfile";
 import { resolveEquipmentAddonEntitlementForShop } from "@/features/equipment/server/equipmentAddonEntitlement";
-import {
-  EquipmentAssetProfileError,
-  saveEquipmentAssetProfile,
-} from "@/features/equipment/server/equipmentAssetProfileService";
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 const NO_STORE = { "Cache-Control": "private, no-store" };
+const DUPLICATE_UNIT_MESSAGE = "That unit # already exists. Use ‘Add existing asset’ instead.";
 
 function json(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: NO_STORE });
@@ -30,13 +28,36 @@ function optionalText(value: unknown, max: number): string | null {
   return trimmed || null;
 }
 
-function serviceFailure(error: unknown) {
-  if (error instanceof EquipmentAssetProfileError) {
-    return json({ error: error.message }, error.status);
-  }
-  console.error("[equipment/assets] create failed", error);
-  return json({ error: "Equipment could not be created." }, 500);
+function deterministicEquipmentAssetId(shopId: string, unitNumber: string): string {
+  const digest = createHash("sha256")
+    .update(`equipment-asset:${shopId}:${unitNumber.trim().toLowerCase()}`)
+    .digest();
+  const bytes = Buffer.from(digest.subarray(0, 16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }
+
+type RpcError = { code?: string | null; message: string };
+
+type EquipmentProfileRpc = {
+  rpc: (
+    fn: "save_equipment_asset_profile",
+    args: {
+      p_shop_id: string;
+      p_vehicle_id: string;
+      p_actor_user_id: string;
+      p_profile: Record<string, unknown>;
+      p_set_engine_hours: boolean;
+      p_engine_hours: number | null;
+      p_expected_engine_hours: number | null;
+      p_set_odometer: boolean;
+      p_odometer: string | null;
+      p_expected_odometer: string | null;
+    },
+  ) => Promise<{ error: RpcError | null }>;
+};
 
 export async function POST(request: Request) {
   const access = await requireShopScopedApiAccess({
@@ -68,6 +89,7 @@ export async function POST(request: Request) {
   let unitNumber: string | null;
   let make: string | null;
   let model: string | null;
+  let vin: string | null;
   let serialNumber: string | null;
   let pin: string | null;
   let siteName: string | null;
@@ -75,6 +97,7 @@ export async function POST(request: Request) {
     unitNumber = optionalText(body.unitNumber, 80);
     make = optionalText(body.make, 120);
     model = optionalText(body.model, 120);
+    vin = optionalText(body.vin, 120);
     serialNumber = optionalText(body.serialNumber, 120);
     pin = optionalText(body.pin, 120);
     siteName = optionalText(body.siteName, 200);
@@ -135,56 +158,119 @@ export async function POST(request: Request) {
     .eq("shop_id", access.profile.shop_id)
     .eq("unit_number", unitNumber)
     .limit(1);
-  if (duplicateError) return json({ error: "Equipment could not be checked for duplicates." }, 500);
-  if (existing?.length) {
-    return json(
-      { error: "That unit # already exists. Use ‘Add existing asset’ instead." },
-      409,
-    );
+  if (duplicateError) {
+    return json({ error: "Equipment could not be checked for duplicates." }, 500);
   }
+  if (existing?.length) return json({ error: DUPLICATE_UNIT_MESSAGE }, 409);
 
+  const assetId = deterministicEquipmentAssetId(access.profile.shop_id, unitNumber);
   const { data: created, error: createError } = await admin
     .from("vehicles")
     .insert({
+      id: assetId,
       shop_id: access.profile.shop_id,
       customer_id: customerId,
       unit_number: unitNumber,
       year,
       make,
       model,
+      vin,
       engine_hours: engineHours,
     })
     .select("id")
     .single();
 
+  if (createError?.code === "23505") {
+    return json({ error: DUPLICATE_UNIT_MESSAGE }, 409);
+  }
   if (createError || !created) {
     console.error("[equipment/assets] canonical asset create failed", createError);
     return json({ error: "Equipment could not be created." }, 500);
   }
 
-  try {
-    await saveEquipmentAssetProfile({
-      supabase: access.supabase,
-      admin,
-      shopId: access.profile.shop_id,
-      role: access.canonicalRole,
-      actorUserId: access.authUserId,
+  const mutation = profileValidation.value;
+  const rpcArgs = {
+    p_shop_id: access.profile.shop_id,
+    p_vehicle_id: created.id,
+    p_actor_user_id: access.authUserId,
+    p_profile: {
+      equipment_class: mutation.equipmentClass,
+      equipment_family: mutation.equipmentFamily,
+      serial_number: mutation.serialNumber,
+      pin: mutation.pin,
+      engine_make: mutation.engineMake,
+      engine_model: mutation.engineModel,
+      engine_serial: mutation.engineSerial,
+      primary_meter: mutation.primaryMeter,
+      current_cycles: mutation.currentCycles,
+      site_name: mutation.siteName,
+      operating_status: mutation.operatingStatus,
+      mounted_on_vehicle_id: null,
+      attributes: mutation.attributes,
+    },
+    p_set_engine_hours: false,
+    p_engine_hours: null,
+    p_expected_engine_hours: null,
+    p_set_odometer: false,
+    p_odometer: null,
+    p_expected_odometer: null,
+  };
+
+  const { error: profileError } = await (admin as unknown as EquipmentProfileRpc).rpc(
+    "save_equipment_asset_profile",
+    rpcArgs,
+  );
+  if (!profileError) return json({ assetId: created.id }, 201);
+
+  // The RPC may have committed even if the client lost the readback. Never
+  // compensate by deleting until persistence has been checked definitively.
+  const { data: persistedProfile, error: verificationError } = await admin
+    .from("equipment_asset_profiles")
+    .select("vehicle_id")
+    .eq("shop_id", access.profile.shop_id)
+    .eq("vehicle_id", created.id)
+    .maybeSingle();
+
+  if (persistedProfile) {
+    console.warn("[equipment/assets] profile RPC reported failure after persistence", {
       assetId: created.id,
-      mutation: profileValidation.value,
+      code: profileError.code ?? null,
+      message: profileError.message,
     });
     return json({ assetId: created.id }, 201);
-  } catch (error) {
-    const { error: cleanupError } = await admin
-      .from("vehicles")
-      .delete()
-      .eq("shop_id", access.profile.shop_id)
-      .eq("id", created.id);
-    if (cleanupError) {
-      console.error("[equipment/assets] failed to clean up incomplete asset", {
-        assetId: created.id,
-        cleanupError,
-      });
-    }
-    return serviceFailure(error);
   }
+
+  if (verificationError) {
+    console.error("[equipment/assets] profile persistence could not be verified", {
+      assetId: created.id,
+      profileError,
+      verificationError,
+    });
+    return json(
+      {
+        error:
+          "Equipment creation status could not be verified. Reload Equipment before trying again.",
+      },
+      500,
+    );
+  }
+
+  const { error: cleanupError } = await admin
+    .from("vehicles")
+    .delete()
+    .eq("shop_id", access.profile.shop_id)
+    .eq("id", created.id);
+  if (cleanupError) {
+    console.error("[equipment/assets] failed to clean up incomplete asset", {
+      assetId: created.id,
+      cleanupError,
+    });
+  }
+
+  console.error("[equipment/assets] profile creation failed", {
+    assetId: created.id,
+    code: profileError.code ?? null,
+    message: profileError.message,
+  });
+  return json({ error: "Equipment could not be created." }, 500);
 }
