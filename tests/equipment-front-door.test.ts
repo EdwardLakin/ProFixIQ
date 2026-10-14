@@ -21,14 +21,19 @@ describe("Equipment front door", () => {
     expect(setup).toContain("Add existing asset");
   });
 
-  it("loads adoption candidates and all active canonical customers", () => {
+  it("pages every adoption candidate and all active canonical customers", () => {
     const page = source("app/equipment/page.tsx");
 
     expect(page).toContain('.select("id,unit_number,year,make,model,vin,customer_id,engine_hours,status")');
     expect(page).toContain("RETIRED_VEHICLE_STATUSES");
-    expect(page).toContain('.order("created_at"');
-    expect(page).not.toContain('.order("updated_at"');
-    expect(page).toContain('.in("vehicle_id", visibleVehicleIds)');
+    expect(page).toContain("VEHICLE_PAGE_SIZE");
+    expect(page).toContain("PROFILE_BATCH_SIZE");
+    expect(page).toContain('.order("created_at", { ascending: false })');
+    expect(page).toContain('.order("id", { ascending: false })');
+    expect(page).toContain(".range(offset, offset + VEHICLE_PAGE_SIZE - 1)");
+    expect(page).not.toContain(".limit(250)");
+    expect(page).toContain("visibleVehicleIds.slice(index, index + PROFILE_BATCH_SIZE)");
+    expect(page).toContain('.in("vehicle_id", batchIds)');
     expect(page).toContain('.eq("active", true)');
     expect(page).toContain('.is("archived_at", null)');
     expect(page).toContain('.is("merged_into_customer_id", null)');
@@ -58,7 +63,7 @@ describe("Equipment front door", () => {
     expect(migration).toContain("equipment_profile_exists");
   });
 
-  it("creates canonical Equipment assets atomically under a shop lock", () => {
+  it("serializes canonical vehicle identity across every writer", () => {
     const setup = source("features/equipment/components/EquipmentSetupDialog.tsx");
     const route = source("app/api/equipment/assets/route.ts");
     const migration = source("supabase/migrations/20261014141000_atomic_equipment_asset_creation.sql");
@@ -73,7 +78,10 @@ describe("Equipment front door", () => {
     expect(route).toContain("const assetId = randomUUID()");
     expect(route).not.toContain("loadDuplicates");
     expect(route).not.toContain("partial: true");
-    expect(migration).toContain("pg_advisory_xact_lock");
+    expect(migration).toContain("vehicles_enforce_normalized_identity_unique");
+    expect(migration).toContain("vehicles_normalized_identity_unique");
+    expect(migration).toContain("before insert or update of shop_id, unit_number, vin");
+    expect(migration).toContain("canonical_vehicle_identity:");
     expect(migration).toContain("lower(pg_catalog.btrim(coalesce(v.unit_number, ''))) = v_unit_normalized");
     expect(migration).toContain("equipment_unit_duplicate");
     expect(migration).toContain("equipment_vin_duplicate");
@@ -90,6 +98,13 @@ describe("Equipment front door", () => {
     expect(migration).toContain("c.active = true");
     expect(migration).toContain("c.archived_at is null");
     expect(migration).toContain("c.merged_into_customer_id is null");
+  });
+
+  it("disambiguates every adoption candidate with a stable asset identifier", () => {
+    const setup = source("features/equipment/components/EquipmentSetupDialog.tsx");
+
+    expect(setup).toContain('primary || "Unnamed asset"');
+    expect(setup).toContain("Asset ${candidate.id.slice(0, 8)}");
   });
 
   it("prevents dismissing the setup dialog while a mutation is in flight", () => {
