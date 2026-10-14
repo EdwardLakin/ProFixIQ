@@ -31291,16 +31291,9 @@ export type Database = {
       create_equipment_asset_atomic: {
         Args: {
           p_actor_user_id: string
-          p_customer_id: string
-          p_engine_hours: number
-          p_make: string
-          p_model: string
-          p_profile: Json
+          p_input: Json
           p_shop_id: string
-          p_unit_number: string
           p_vehicle_id: string
-          p_vin: string
-          p_year: number
         }
         Returns: string
       }
