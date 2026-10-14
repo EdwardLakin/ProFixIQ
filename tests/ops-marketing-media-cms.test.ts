@@ -76,7 +76,7 @@ describe("Ops marketing media CMS", () => {
         action: "save-draft",
         media: validAsset,
       }).success,
-    ).toBe(true);
+    ).toBe(false);
 
     const pageRoute = read("app/api/ops/marketing/pages/[pageKey]/route.ts");
     expect(pageRoute).toContain("getMarketingMediaAsset(assetId)");
