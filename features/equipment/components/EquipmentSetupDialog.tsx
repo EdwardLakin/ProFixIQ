@@ -69,11 +69,14 @@ const EMPTY_FORM: SetupForm = {
 
 function candidateLabel(candidate: EquipmentAdoptionCandidate): string {
   const identity = [candidate.year, candidate.make, candidate.model].filter(Boolean).join(" ");
-  return (
-    [candidate.unitNumber ? `Unit ${candidate.unitNumber}` : null, identity || null, candidate.vin]
-      .filter(Boolean)
-      .join(" · ") || "Unnamed asset"
-  );
+  const primary = [
+    candidate.unitNumber ? `Unit ${candidate.unitNumber}` : null,
+    identity || null,
+    candidate.vin,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+  return `${primary || "Unnamed asset"} · Asset ${candidate.id.slice(0, 8)}`;
 }
 
 export default function EquipmentSetupDialog({
@@ -278,7 +281,7 @@ export default function EquipmentSetupDialog({
           </label>
         </div>
 
-        {mode === "adopt" && candidates.length === 0 ? <p className="mt-4 text-sm text-[color:var(--theme-text-muted)]">All visible Shop assets already have Equipment enabled.</p> : null}
+        {mode === "adopt" && candidates.length === 0 ? <p className="mt-4 text-sm text-[color:var(--theme-text-muted)]">All active Shop assets already have Equipment enabled.</p> : null}
         {error ? <p className="mt-4 text-sm font-semibold text-red-400" role="alert">{error}</p> : null}
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" className={BUTTON} disabled={saving} onClick={onClose}>Cancel</button>
