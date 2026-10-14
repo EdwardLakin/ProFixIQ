@@ -6,7 +6,7 @@ import {
 } from "@/features/workspace/components";
 
 export type EquipmentSetupState = {
-  meterRecorded: boolean;
+  meterRecorded: boolean | null;
   componentsConfigured: boolean | null;
   pmConfigured: boolean;
   inspectionRecorded: boolean;
