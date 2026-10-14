@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -227,8 +228,14 @@ function ProductProofFallback({ media }: { media?: SearchLandingMedia }) {
   if (media) {
     return (
       <>
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={media.src} alt={media.alt} width={media.width} height={media.height} className="h-auto w-full" />
+        <Image
+          src={media.src}
+          alt={media.alt}
+          width={media.width}
+          height={media.height}
+          sizes="(min-width: 1024px) 54vw, 100vw"
+          className="h-auto w-full"
+        />
         {media.caption ? <p className="border-t border-white/10 px-5 py-4 text-xs leading-5 text-slate-400">{media.caption}</p> : null}
       </>
     );
