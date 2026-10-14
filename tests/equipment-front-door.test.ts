@@ -41,61 +41,55 @@ describe("Equipment front door", () => {
     expect(page).toContain("Acct ${row.id.slice(0, 8)}");
   });
 
-  it("makes existing-asset adoption create-only and preserves canonical meter state", () => {
+  it("uses an atomic create-only adoption boundary and preserves canonical meters", () => {
     const setup = source("features/equipment/components/EquipmentSetupDialog.tsx");
     const profileRoute = source("app/api/equipment/assets/[assetId]/profile/route.ts");
+    const migration = source("supabase/migrations/20261014141000_atomic_equipment_asset_creation.sql");
 
     expect(setup).toContain("createOnly: true");
     expect(setup).not.toContain("expectedEngineHours: null");
     expect(setup).toContain("Existing asset values stay canonical");
     expect(profileRoute).toContain("body?.createOnly === true");
     expect(profileRoute).toContain("mutation.currentCycles !== null");
-    expect(profileRoute).toContain('.from("equipment_asset_profiles").insert(');
-    expect(profileRoute).toContain("Equipment is already enabled for this asset.");
+    expect(profileRoute).toContain('"adopt_equipment_asset_atomic"');
+    expect(migration).toContain("for update");
+    expect(migration).toContain("equipment_asset_retired");
+    expect(migration).toContain("equipment_customer_inactive");
+    expect(migration).toContain("equipment_profile_exists");
   });
 
-  it("validates VINs and escapes wildcard unit duplicate queries", () => {
+  it("creates canonical Equipment assets atomically under a shop lock", () => {
     const setup = source("features/equipment/components/EquipmentSetupDialog.tsx");
     const route = source("app/api/equipment/assets/route.ts");
+    const migration = source("supabase/migrations/20261014141000_atomic_equipment_asset_creation.sql");
 
     expect(setup).toContain("value={form.vin}");
     expect(setup).toContain("Equipment PIN");
     expect(route).toContain('import { randomUUID } from "node:crypto"');
     expect(route).toContain("vinResult.isValid");
     expect(route).toContain("vinResult.message");
-    expect(route).toContain("escapeLikePattern");
-    expect(route).toContain('.ilike("unit_number", escapeLikePattern(unitNumber!))');
-    expect(route).toContain("isExactDuplicate");
+    expect(route).toContain('"create_equipment_asset_atomic"');
     expect(route).toContain("DUPLICATE_VIN_MESSAGE");
     expect(route).toContain("const assetId = randomUUID()");
+    expect(route).not.toContain("loadDuplicates");
+    expect(route).not.toContain("partial: true");
+    expect(migration).toContain("pg_advisory_xact_lock");
+    expect(migration).toContain("lower(pg_catalog.btrim(coalesce(v.unit_number, ''))) = v_unit_normalized");
+    expect(migration).toContain("equipment_unit_duplicate");
+    expect(migration).toContain("equipment_vin_duplicate");
+    expect(migration).toContain("perform public.save_equipment_asset_profile");
   });
 
-  it("rejects archived or merged customer assignments at the write boundary", () => {
+  it("rejects archived or merged customer assignments at both create boundaries", () => {
     const route = source("app/api/equipment/assets/route.ts");
+    const migration = source("supabase/migrations/20261014141000_atomic_equipment_asset_creation.sql");
 
     expect(route).toContain('select("id,active,archived_at,merged_into_customer_id")');
     expect(route).toContain("!customer.active || customer.archived_at || customer.merged_into_customer_id");
     expect(route).toContain("Choose an active customer account before creating Equipment.");
-  });
-
-  it("records initial hours through the atomic profile meter write", () => {
-    const route = source("app/api/equipment/assets/route.ts");
-
-    expect(route).toContain("engine_hours: null");
-    expect(route).toContain("p_set_engine_hours: engineHours !== null");
-    expect(route).toContain("p_engine_hours: engineHours");
-    expect(route).toContain("p_expected_engine_hours: null");
-  });
-
-  it("surfaces and consumes recoverable partial state", () => {
-    const route = source("app/api/equipment/assets/route.ts");
-    const setup = source("features/equipment/components/EquipmentSetupDialog.tsx");
-
-    expect(route).toContain("partial: true");
-    expect(route).toContain("Use Add existing asset");
-    expect(setup).toContain("payload.partial && payload.assetId");
-    expect(setup).toContain("router.refresh()");
-    expect(setup).toContain("close this dialog and use Add existing asset");
+    expect(migration).toContain("c.active = true");
+    expect(migration).toContain("c.archived_at is null");
+    expect(migration).toContain("c.merged_into_customer_id is null");
   });
 
   it("prevents dismissing the setup dialog while a mutation is in flight", () => {
@@ -106,13 +100,13 @@ describe("Equipment front door", () => {
     expect(setup).toContain('className={BUTTON} disabled={saving} onClick={onClose}');
   });
 
-  it("lands newly configured machines in Asset Health with guided next steps", () => {
+  it("shows setup completion only for an actual Equipment profile", () => {
     const setup = source("features/equipment/components/EquipmentSetupDialog.tsx");
     const page = source("app/equipment/[assetId]/page.tsx");
     const guide = source("features/equipment/components/EquipmentSetupGuide.tsx");
 
     expect(setup).toContain("/equipment/${assetId}?setup=1");
-    expect(page).toContain('query.setup === "1"');
+    expect(page).toContain('query.setup === "1" && health.equipment.profile');
     expect(guide).toContain("Add standard components");
     expect(guide).toContain("Create PM plan");
     expect(guide).toContain("Record current meter");
