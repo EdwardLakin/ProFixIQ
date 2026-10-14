@@ -37,11 +37,13 @@ export type MarketingPageMediaDocument = z.infer<
   typeof MarketingPageMediaDocumentSchema
 >;
 
-export const MarketingMediaUpdateSchema = z.object({
-  slotKey: z.string().regex(/^[a-z0-9-]+$/),
-  action: z.enum(["save-draft", "publish", "clear-draft"]),
-  assetId: z.string().uuid().optional(),
-});
+export const MarketingMediaUpdateSchema = z
+  .object({
+    slotKey: z.string().regex(/^[a-z0-9-]+$/),
+    action: z.enum(["save-draft", "publish", "clear-draft"]),
+    assetId: z.string().uuid().optional(),
+  })
+  .strict();
 
 export const MARKETING_PAGE_REGISTRY = {
   home: {
