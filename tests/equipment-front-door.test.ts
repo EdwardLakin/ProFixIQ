@@ -59,14 +59,14 @@ describe("Equipment front door", () => {
     expect(profileRoute).toContain("body?.createOnly === true");
     expect(profileRoute).toContain("mutation.currentCycles !== null");
     expect(profileRoute).toContain('"adopt_equipment_asset_atomic"');
-    expect(migration).toContain("for update");
+    expect(migration).toContain("for update;");
     expect(migration).toContain("lower(pg_catalog.btrim(coalesce(v_vehicle.status, '')))");
     expect(migration).toContain("equipment_asset_retired");
     expect(migration).toContain("equipment_customer_inactive");
     expect(migration).toContain("equipment_profile_exists");
   });
 
-  it("serializes new canonical vehicle creation without changing authoritative updates", () => {
+  it("keeps canonical vehicle contracts additive while serializing Equipment creation", () => {
     const setup = source("features/equipment/components/EquipmentSetupDialog.tsx");
     const route = source("app/api/equipment/assets/route.ts");
     const migration = source("supabase/migrations/20261014141000_atomic_equipment_asset_creation.sql");
@@ -78,26 +78,27 @@ describe("Equipment front door", () => {
     expect(route).toContain("const assetId = body.operationId");
     expect(route).toContain("vinResult.isValid");
     expect(route).toContain('"create_equipment_asset_atomic"');
-    expect(migration).toContain("vehicles_enforce_normalized_identity_unique");
-    expect(migration).toContain("vehicles_normalized_identity_unique");
-    expect(migration).toContain("before insert\non public.vehicles");
-    expect(migration).not.toContain("before insert or update of shop_id, unit_number, vin");
-    expect(migration).toContain("canonical_vehicle_identity:");
+    expect(migration).not.toContain("create trigger vehicles_normalized_identity_unique");
+    expect(migration).not.toContain("vehicles_enforce_normalized_identity_unique");
+    expect(migration).toContain("lock table public.vehicles in share row exclusive mode");
     expect(migration).toContain("equipment_unit_duplicate");
     expect(migration).toContain("equipment_vin_duplicate");
     expect(migration).toContain("perform public.save_equipment_asset_profile");
   });
 
-  it("serializes Equipment customer validation with customer merges", () => {
+  it("serializes Equipment customer validation with lifecycle mutations", () => {
     const migration = source("supabase/migrations/20261014141000_atomic_equipment_asset_creation.sql");
 
     expect(migration).toContain("select c.active, c.archived_at, c.merged_into_customer_id");
     expect(migration).toContain("for update;");
     expect(migration).toContain("v_customer_active is distinct from true");
     expect(migration).toContain("v_customer_merged_into is not null");
+    expect(migration).toContain("v_initial_customer_id");
+    expect(migration).toContain("v_vehicle.customer_id is distinct from v_initial_customer_id");
+    expect(migration).toContain("equipment_asset_changed");
   });
 
-  it("makes successful create retries return the original Equipment asset", () => {
+  it("makes successful create retries idempotent but rejects changed replay payloads", () => {
     const setup = source("features/equipment/components/EquipmentSetupDialog.tsx");
     const migration = source("supabase/migrations/20261014141000_atomic_equipment_asset_creation.sql");
 
@@ -105,8 +106,13 @@ describe("Equipment front door", () => {
     expect(setup).toContain("operationId: creationOperationId");
     expect(migration).toContain("durable operation identity");
     expect(migration).toContain("where v.id = p_vehicle_id");
+    expect(migration).toContain("v_existing.customer_id is distinct from v_customer_id");
+    expect(migration).toContain("v_existing.year is distinct from v_year");
+    expect(migration).toContain("v_existing.engine_hours is distinct from v_engine_hours");
+    expect(migration).toContain("v_existing_profile.equipment_class is distinct from");
+    expect(migration).toContain("v_existing_profile.attributes");
+    expect(migration).toContain("equipment_operation_conflict");
     expect(migration).toContain("return p_vehicle_id;");
-    expect(migration).toContain("equipment_operation_incomplete");
   });
 
   it("rejects archived or merged customer assignments at both create boundaries", () => {
