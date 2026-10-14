@@ -50,17 +50,13 @@ export default async function EquipmentDirectoryPage() {
   let customers: Array<{ id: string; name: string }> = [];
 
   if (canManage) {
-    const [vehicleResult, profileResult, customerResult] = await Promise.all([
+    const [vehicleResult, customerResult] = await Promise.all([
       supabase
         .from("vehicles")
         .select("id,unit_number,year,make,model,vin,customer_id,engine_hours")
         .eq("shop_id", profile.shop_id)
-        .order("updated_at", { ascending: false })
+        .order("created_at", { ascending: false })
         .limit(250),
-      admin
-        .from("equipment_asset_profiles")
-        .select("vehicle_id")
-        .eq("shop_id", profile.shop_id),
       supabase
         .from("customers")
         .select("id,name,business_name,first_name,last_name")
@@ -71,26 +67,39 @@ export default async function EquipmentDirectoryPage() {
 
     if (vehicleResult.error) {
       console.error("[equipment/page] vehicle candidate load failed", vehicleResult.error);
-    } else {
-      const profiled = new Set((profileResult.data ?? []).map((row) => row.vehicle_id));
-      candidates = (vehicleResult.data ?? [])
-        .filter((row) => !profiled.has(row.id))
-        .map((row) => ({
-          id: row.id,
-          unitNumber: row.unit_number,
-          year: row.year,
-          make: row.make,
-          model: row.model,
-          vin: row.vin,
-          customerId: row.customer_id,
-          engineHours: row.engine_hours,
-        }));
+      throw new Error("Equipment adoption candidates could not be loaded.");
     }
 
-    if (profileResult.error) {
-      console.error("[equipment/page] profile candidate load failed", profileResult.error);
-      candidates = [];
+    const visibleVehicles = vehicleResult.data ?? [];
+    const visibleVehicleIds = visibleVehicles.map((row) => row.id);
+    let profiled = new Set<string>();
+
+    if (visibleVehicleIds.length > 0) {
+      const profileResult = await admin
+        .from("equipment_asset_profiles")
+        .select("vehicle_id")
+        .eq("shop_id", profile.shop_id)
+        .in("vehicle_id", visibleVehicleIds);
+
+      if (profileResult.error) {
+        console.error("[equipment/page] profile candidate load failed", profileResult.error);
+        throw new Error("Equipment adoption candidates could not be loaded.");
+      }
+      profiled = new Set((profileResult.data ?? []).map((row) => row.vehicle_id));
     }
+
+    candidates = visibleVehicles
+      .filter((row) => !profiled.has(row.id))
+      .map((row) => ({
+        id: row.id,
+        unitNumber: row.unit_number,
+        year: row.year,
+        make: row.make,
+        model: row.model,
+        vin: row.vin,
+        customerId: row.customer_id,
+        engineHours: row.engine_hours,
+      }));
 
     if (customerResult.error) {
       console.error("[equipment/page] customer load failed", customerResult.error);
