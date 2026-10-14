@@ -2,6 +2,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { getPublishedMarketingSlots } from "@/features/marketing/components/publicMarketingMedia";
 import type { MarketingMediaAsset } from "@/features/marketing/media/types";
 
 export default function ManagedHomepageHeroMedia() {
@@ -9,18 +10,9 @@ export default function ManagedHomepageHeroMedia() {
 
   useEffect(() => {
     let active = true;
-    void fetch("/api/public/marketing/pages/home")
-      .then(async (response) => {
-        if (!response.ok) return null;
-        const payload = (await response.json()) as {
-          slots?: Record<string, MarketingMediaAsset>;
-        };
-        return payload.slots?.hero ?? null;
-      })
-      .then((nextAsset) => {
-        if (active && nextAsset) setAsset(nextAsset);
-      })
-      .catch(() => undefined);
+    void getPublishedMarketingSlots("home").then((slots) => {
+      if (active) setAsset(slots.hero ?? null);
+    });
 
     return () => {
       active = false;
