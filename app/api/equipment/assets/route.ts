@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 import { NextResponse } from "next/server";
 
 import {
+  isAssetId,
   validateEquipmentAssetProfileMutation,
 } from "@/features/equipment/lib/assetProfile";
 import { resolveEquipmentAddonEntitlementForShop } from "@/features/equipment/server/equipmentAddonEntitlement";
@@ -91,7 +92,7 @@ export async function POST(request: Request) {
   }
 
   const customerId = body.customerId === null || body.customerId === "" ? null : body.customerId;
-  if (customerId !== null && typeof customerId !== "string") {
+  if (customerId !== null && !isAssetId(customerId)) {
     return json({ error: "Customer is invalid." }, 400);
   }
 
