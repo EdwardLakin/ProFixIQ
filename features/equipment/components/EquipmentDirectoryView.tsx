@@ -82,11 +82,13 @@ export default function EquipmentDirectoryView({
   truncated,
   canManage,
   customers,
+  customerOptionsError,
 }: {
   rows: EquipmentDirectoryRow[];
   truncated: boolean;
   canManage: boolean;
   customers: EquipmentCustomerOption[];
+  customerOptionsError: string | null;
 }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"" | AssetOperatingStatus>("");
@@ -317,6 +319,7 @@ export default function EquipmentDirectoryView({
         <EquipmentSetupDialog
           mode={setupMode}
           customers={customers}
+          customerOptionsError={customerOptionsError}
           onClose={() => setSetupMode(null)}
         />
       ) : null}
