@@ -83,10 +83,12 @@ function candidateLabel(candidate: EquipmentAdoptionCandidate): string {
 export default function EquipmentSetupDialog({
   mode,
   customers,
+  customerOptionsError,
   onClose,
 }: {
   mode: EquipmentSetupMode;
   customers: EquipmentCustomerOption[];
+  customerOptionsError: string | null;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -159,9 +161,14 @@ export default function EquipmentSetupDialog({
       unitNumber: form.unitNumber,
       customerId: form.customerId || null,
     });
-    if (duplicateCheck.matches.length > 0) {
+    const blockingMatch = duplicateCheck.matches.find(
+      (match) =>
+        match.same_customer === true ||
+        (match.match_type === "vin" && match.same_customer === false),
+    );
+    if (blockingMatch) {
       setError(
-        "A matching Shop asset already exists. Close this dialog and use Add existing asset so Equipment attaches to the canonical vehicle record.",
+        "A matching Shop asset already exists for this customer or VIN. Close this dialog and use Add existing asset so Equipment attaches to the canonical vehicle record.",
       );
       return null;
     }
@@ -352,7 +359,7 @@ export default function EquipmentSetupDialog({
                 <select
                   className={`${INPUT} w-full`}
                   value={form.customerId}
-                  disabled={saving}
+                  disabled={saving || Boolean(customerOptionsError)}
                   onChange={(event) => update({ customerId: event.target.value })}
                 >
                   <option value="">No customer assigned</option>
@@ -360,6 +367,9 @@ export default function EquipmentSetupDialog({
                     <option key={customer.id} value={customer.id}>{customer.name}</option>
                   ))}
                 </select>
+                {customerOptionsError ? (
+                  <span className="block text-xs text-amber-300">{customerOptionsError}</span>
+                ) : null}
               </label>
               <label className="space-y-1">
                 <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">Unit # *</span>
