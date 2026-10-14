@@ -43,11 +43,14 @@ describe("marketing media library management", () => {
     expect(route).toContain("revalidatePath(MARKETING_PAGE_REGISTRY[usage.pageKey].href)");
   });
 
-  it("adds searchable, filterable usage-aware controls to the Ops media page", () => {
+  it("adds searchable, filterable usage-aware controls without double-loading the editor", () => {
     const page = read("app/ops/marketing/page.tsx");
+    const libraryPage = read("app/ops/marketing/library/page.tsx");
     const library = read("features/ops/components/OpsMarketingMediaLibraryManager.tsx");
 
-    expect(page).toContain("<OpsMarketingMediaLibraryManager />");
+    expect(page).toContain('href="/ops/marketing/library"');
+    expect(page).not.toContain("<OpsMarketingMediaLibraryManager />");
+    expect(libraryPage).toContain("<OpsMarketingMediaLibraryManager />");
     expect(library).toContain("Search filename, alt text, or caption");
     expect(library).toContain("All media");
     expect(library).toContain("All usage");
