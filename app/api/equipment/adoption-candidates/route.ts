@@ -37,7 +37,7 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const query = (url.searchParams.get("q") ?? "").trim().slice(0, 80);
   const rawOffset = Number(url.searchParams.get("offset") ?? "0");
-  const offset = Number.isInteger(rawOffset) && rawOffset >= 0 ? Math.min(rawOffset, 20000) : 0;
+  const offset = Number.isSafeInteger(rawOffset) && rawOffset >= 0 ? rawOffset : 0;
 
   let vehicleQuery = access.supabase
     .from("vehicles")
@@ -95,7 +95,7 @@ export async function GET(request: Request) {
       engineHours: row.engine_hours,
     }));
 
-  const hasMore = vehicleRows.length === PAGE_SIZE && offset + PAGE_SIZE < 20000;
+  const hasMore = vehicleRows.length === PAGE_SIZE;
   return json({
     candidates,
     nextOffset: hasMore ? offset + PAGE_SIZE : null,
