@@ -77,12 +77,14 @@ export default function OpsMarketingMediaManager() {
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const pageRequestRef = useRef(0);
 
   const definition = MARKETING_PAGE_REGISTRY[pageKey] as PageDefinition;
   const slotDefinition = definition.slots[slotKey];
   const slot = document?.slots[slotKey];
 
   const loadPage = useCallback(async (nextPageKey: MarketingPageKey) => {
+    const requestId = ++pageRequestRef.current;
     setLoadingPage(true);
     setError(null);
     setMessage(null);
@@ -91,6 +93,7 @@ export default function OpsMarketingMediaManager() {
         cache: "no-store",
       });
       const payload = (await response.json()) as PagePayload;
+      if (requestId !== pageRequestRef.current) return;
       if (!response.ok || !payload.document) {
         throw new Error(payload.error ?? "Unable to load landing page media");
       }
@@ -100,11 +103,12 @@ export default function OpsMarketingMediaManager() {
       setSlotKey(firstSlotKey);
       setSelected(payload.document.slots[firstSlotKey]?.draft ?? null);
     } catch (caught) {
+      if (requestId !== pageRequestRef.current) return;
       setError(caught instanceof Error ? caught.message : "Unable to load landing page media");
       setDocument(null);
       setSelected(null);
     } finally {
-      setLoadingPage(false);
+      if (requestId === pageRequestRef.current) setLoadingPage(false);
     }
   }, []);
 
