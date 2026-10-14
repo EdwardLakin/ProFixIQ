@@ -9,7 +9,7 @@ export default function ManagedHomepageHeroMedia() {
 
   useEffect(() => {
     let active = true;
-    void fetch("/api/public/marketing/pages/home", { cache: "no-store" })
+    void fetch("/api/public/marketing/pages/home")
       .then(async (response) => {
         if (!response.ok) return null;
         const payload = (await response.json()) as {
@@ -35,22 +35,23 @@ export default function ManagedHomepageHeroMedia() {
         <video
           src={asset.url}
           aria-label={asset.alt}
-          className="h-full w-full object-cover object-top"
+          className="h-full w-full object-contain object-top"
           muted
           autoPlay
           loop
           playsInline
+          controls
           preload="metadata"
         />
       ) : (
         <img
           src={asset.url}
           alt={asset.alt}
-          className="h-full w-full object-cover object-top"
+          className="h-full w-full object-contain object-top"
         />
       )}
       {asset.caption ? (
-        <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent px-5 pb-4 pt-12 text-xs leading-5 text-white/85">
+        <div className="pointer-events-none absolute left-4 top-4 max-w-[75%] rounded-lg bg-black/70 px-3 py-2 text-xs leading-5 text-white/90">
           {asset.caption}
         </div>
       ) : null}
