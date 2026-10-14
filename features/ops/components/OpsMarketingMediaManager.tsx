@@ -16,7 +16,9 @@ import {
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   MARKETING_MEDIA_PUBLIC_BUCKET,
+  MARKETING_PAGE_REGISTRY,
   type MarketingMediaAsset,
+  type MarketingPageKey,
   type MarketingPageMediaDocument,
 } from "@/features/marketing/media/types";
 
@@ -28,7 +30,6 @@ type PageDefinition = {
 
 type PagePayload = {
   document?: MarketingPageMediaDocument;
-  definition?: PageDefinition;
   error?: string;
 };
 
@@ -61,13 +62,15 @@ function MediaPreview({ asset, compact = false }: { asset: MarketingMediaAsset; 
 }
 
 export default function OpsMarketingMediaManager() {
+  const [pageKey, setPageKey] = useState<MarketingPageKey>("home");
+  const [slotKey, setSlotKey] = useState("hero");
   const [document, setDocument] = useState<MarketingPageMediaDocument | null>(null);
-  const [definition, setDefinition] = useState<PageDefinition | null>(null);
   const [assets, setAssets] = useState<MarketingMediaAsset[]>([]);
   const [selected, setSelected] = useState<MarketingMediaAsset | null>(null);
   const [alt, setAlt] = useState("");
   const [caption, setCaption] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [loadingPage, setLoadingPage] = useState(true);
+  const [loadingLibrary, setLoadingLibrary] = useState(true);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [dragging, setDragging] = useState(false);
@@ -75,39 +78,57 @@ export default function OpsMarketingMediaManager() {
   const [error, setError] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const slotKey = "hero";
+  const definition = MARKETING_PAGE_REGISTRY[pageKey] as PageDefinition;
+  const slotDefinition = definition.slots[slotKey];
   const slot = document?.slots[slotKey];
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const loadPage = useCallback(async (nextPageKey: MarketingPageKey) => {
+    setLoadingPage(true);
     setError(null);
+    setMessage(null);
     try {
-      const [pageResponse, libraryResponse] = await Promise.all([
-        fetch("/api/ops/marketing/pages/home", { cache: "no-store" }),
-        fetch("/api/ops/marketing/media", { cache: "no-store" }),
-      ]);
-      const pagePayload = (await pageResponse.json()) as PagePayload;
-      const libraryPayload = (await libraryResponse.json()) as LibraryPayload;
-      if (!pageResponse.ok || !pagePayload.document || !pagePayload.definition) {
-        throw new Error(pagePayload.error ?? "Unable to load homepage media");
+      const response = await fetch(`/api/ops/marketing/pages/${nextPageKey}`, {
+        cache: "no-store",
+      });
+      const payload = (await response.json()) as PagePayload;
+      if (!response.ok || !payload.document) {
+        throw new Error(payload.error ?? "Unable to load landing page media");
       }
-      if (!libraryResponse.ok) {
-        throw new Error(libraryPayload.error ?? "Unable to load media library");
-      }
-      setDocument(pagePayload.document);
-      setDefinition(pagePayload.definition);
-      setAssets(libraryPayload.assets ?? []);
-      setSelected(pagePayload.document.slots[slotKey]?.draft ?? null);
+      setDocument(payload.document);
+      const nextDefinition = MARKETING_PAGE_REGISTRY[nextPageKey] as PageDefinition;
+      const firstSlotKey = Object.keys(nextDefinition.slots)[0];
+      setSlotKey(firstSlotKey);
+      setSelected(payload.document.slots[firstSlotKey]?.draft ?? null);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load marketing media");
+      setError(caught instanceof Error ? caught.message : "Unable to load landing page media");
+      setDocument(null);
+      setSelected(null);
     } finally {
-      setLoading(false);
+      setLoadingPage(false);
+    }
+  }, []);
+
+  const loadLibrary = useCallback(async () => {
+    setLoadingLibrary(true);
+    try {
+      const response = await fetch("/api/ops/marketing/media", { cache: "no-store" });
+      const payload = (await response.json()) as LibraryPayload;
+      if (!response.ok) throw new Error(payload.error ?? "Unable to load media library");
+      setAssets(payload.assets ?? []);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to load media library");
+    } finally {
+      setLoadingLibrary(false);
     }
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadLibrary();
+  }, [loadLibrary]);
+
+  useEffect(() => {
+    void loadPage(pageKey);
+  }, [loadPage, pageKey]);
 
   const selectedId = selected?.id;
   const selectedMatchesDraft = Boolean(selectedId && selectedId === slot?.draft?.id);
@@ -115,6 +136,13 @@ export default function OpsMarketingMediaManager() {
     () => Boolean(slot?.draft && slot.draft.id !== slot.published?.id),
     [slot],
   );
+
+  function chooseSlot(nextSlotKey: string) {
+    setSlotKey(nextSlotKey);
+    setSelected(document?.slots[nextSlotKey]?.draft ?? null);
+    setMessage(null);
+    setError(null);
+  }
 
   function chooseAsset(asset: MarketingMediaAsset) {
     setSelected(asset);
@@ -175,7 +203,7 @@ export default function OpsMarketingMediaManager() {
       setSelected(finalized.asset);
       setAlt("");
       setCaption("");
-      setMessage("Uploaded to the media library. Save it as the homepage draft when ready.");
+      setMessage(`Uploaded to the library. Save it to ${definition.label} → ${slotDefinition?.label ?? slotKey} when ready.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to upload media");
     } finally {
@@ -198,7 +226,7 @@ export default function OpsMarketingMediaManager() {
     setError(null);
     setMessage(null);
     try {
-      const response = await fetch("/api/ops/marketing/pages/home", {
+      const response = await fetch(`/api/ops/marketing/pages/${pageKey}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -209,25 +237,20 @@ export default function OpsMarketingMediaManager() {
       });
       const payload = (await response.json()) as PagePayload;
       if (!response.ok || !payload.document) {
-        throw new Error(payload.error ?? "Unable to update homepage media");
+        throw new Error(payload.error ?? "Unable to update landing page media");
       }
       setDocument(payload.document);
       setSelected(payload.document.slots[slotKey]?.draft ?? selected);
-      setMessage(action === "publish" ? "Homepage hero published." : "Homepage hero draft saved.");
+      const target = `${definition.label} → ${slotDefinition?.label ?? slotKey}`;
+      setMessage(action === "publish" ? `${target} published.` : `${target} draft saved.`);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to update homepage media");
+      setError(caught instanceof Error ? caught.message : "Unable to update landing page media");
     } finally {
       setSaving(false);
     }
   }
 
-  if (loading) {
-    return (
-      <div className="flex min-h-[320px] items-center justify-center text-sm text-[color:var(--theme-text-secondary)]">
-        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading marketing editor…
-      </div>
-    );
-  }
+  const loading = loadingPage || loadingLibrary;
 
   return (
     <div className="space-y-6">
@@ -236,131 +259,160 @@ export default function OpsMarketingMediaManager() {
           <div className="text-xs font-bold uppercase tracking-[0.18em] text-orange-300">Marketing content</div>
           <h1 className="mt-2 text-3xl font-semibold tracking-[-0.035em]">Landing page media</h1>
           <p className="mt-2 max-w-2xl text-sm leading-6 text-[color:var(--theme-text-secondary)]">
-            Upload screenshots or short reels, preview them, save a draft, and publish without a code deployment.
+            Choose a public page and media slot, upload or reuse a screenshot/reel, preview the exact crop, then save and publish without a code deployment.
           </p>
         </div>
-        {definition ? (
-          <Link
-            href={definition.href}
-            target="_blank"
-            className="inline-flex items-center justify-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] px-4 py-2.5 text-sm font-semibold"
-          >
-            View live page <ExternalLink className="h-4 w-4" />
-          </Link>
-        ) : null}
+        <Link
+          href={definition.href}
+          target="_blank"
+          className="inline-flex items-center justify-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] px-4 py-2.5 text-sm font-semibold"
+        >
+          View live page <ExternalLink className="h-4 w-4" />
+        </Link>
       </div>
+
+      <section className="grid gap-4 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5 md:grid-cols-2">
+        <label className="text-sm font-semibold">
+          Page
+          <select
+            value={pageKey}
+            onChange={(event) => setPageKey(event.target.value as MarketingPageKey)}
+            className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2.5 text-sm"
+          >
+            {Object.entries(MARKETING_PAGE_REGISTRY).map(([key, page]) => (
+              <option key={key} value={key}>{page.label}</option>
+            ))}
+          </select>
+        </label>
+        <label className="text-sm font-semibold">
+          Media slot
+          <select
+            value={slotKey}
+            onChange={(event) => chooseSlot(event.target.value)}
+            className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2.5 text-sm"
+          >
+            {Object.entries(definition.slots).map(([key, slotOption]) => (
+              <option key={key} value={key}>{slotOption.label}</option>
+            ))}
+          </select>
+        </label>
+      </section>
 
       {error ? <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div> : null}
       {message ? <div className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3 text-sm text-emerald-200">{message}</div> : null}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
-        <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <div className="text-xs font-bold uppercase tracking-[0.16em] text-orange-300">Homepage</div>
-              <h2 className="mt-2 text-xl font-semibold">{definition?.slots.hero?.label ?? "Hero product media"}</h2>
-              <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">{definition?.slots.hero?.description}</p>
-            </div>
-            <div className="flex gap-2">
-              <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2.5 py-1 text-xs font-semibold text-[color:var(--theme-text-secondary)]">
-                {slot?.published ? "Published" : "Using built-in fallback"}
-              </span>
-              {hasUnpublishedChange ? <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-200">Draft changed</span> : null}
-            </div>
-          </div>
-
-          <div className="mt-5 rounded-2xl border border-[color:var(--theme-border-soft)] bg-black/20 p-4">
-            {selected ? <MediaPreview asset={selected} /> : (
-              <div className="flex min-h-[300px] items-center justify-center text-center text-sm text-[color:var(--theme-text-muted)]">
-                Choose media from the library or upload a new screenshot/reel.
+      {loading ? (
+        <div className="flex min-h-[260px] items-center justify-center text-sm text-[color:var(--theme-text-secondary)]">
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading marketing editor…
+        </div>
+      ) : (
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_minmax(360px,0.85fr)]">
+          <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
+            <div className="flex flex-wrap items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-bold uppercase tracking-[0.16em] text-orange-300">{definition.label}</div>
+                <h2 className="mt-2 text-xl font-semibold">{slotDefinition?.label ?? slotKey}</h2>
+                <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">{slotDefinition?.description}</p>
               </div>
-            )}
-            {selected?.caption ? <p className="mt-3 text-xs text-[color:var(--theme-text-secondary)]">{selected.caption}</p> : null}
-          </div>
+              <div className="flex gap-2">
+                <span className="rounded-full border border-[color:var(--theme-border-soft)] px-2.5 py-1 text-xs font-semibold text-[color:var(--theme-text-secondary)]">
+                  {slot?.published ? "Published" : "Using built-in fallback"}
+                </span>
+                {hasUnpublishedChange ? <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2.5 py-1 text-xs font-semibold text-amber-200">Draft changed</span> : null}
+              </div>
+            </div>
 
-          <div className="mt-5 flex flex-wrap gap-3">
-            <button
-              type="button"
-              onClick={() => void updateSlot("save-draft")}
-              disabled={saving || !selected}
-              className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] px-4 py-2.5 text-sm font-bold disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save draft
-            </button>
-            <button
-              type="button"
-              onClick={() => void updateSlot("publish")}
-              disabled={saving || !slot?.draft || !selectedMatchesDraft}
-              className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-orange-400 disabled:opacity-50"
-            >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Publish
-            </button>
-          </div>
-        </section>
+            <div className="mt-5 rounded-2xl border border-[color:var(--theme-border-soft)] bg-black/20 p-4">
+              {selected ? <MediaPreview asset={selected} /> : (
+                <div className="flex min-h-[300px] items-center justify-center text-center text-sm text-[color:var(--theme-text-muted)]">
+                  Choose media from the library or upload a new screenshot/reel.
+                </div>
+              )}
+              {selected?.caption ? <p className="mt-3 text-xs text-[color:var(--theme-text-secondary)]">{selected.caption}</p> : null}
+            </div>
 
-        <aside className="space-y-6">
-          <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
-            <h2 className="text-lg font-semibold">Upload media</h2>
-            <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">JPG, PNG, WebP, AVIF, MP4, or WebM. Maximum 50 MB. Large files upload directly to media storage.</p>
-            <label className="mt-4 block text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">Alt text</label>
-            <input value={alt} onChange={(event) => setAlt(event.target.value)} placeholder="ProFixIQ work order workspace showing…" className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2.5 text-sm" />
-            <label className="mt-4 block text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">Caption <span className="font-normal normal-case">(optional)</span></label>
-            <input value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="Short supporting caption" className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2.5 text-sm" />
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/avif,video/mp4,video/webm"
-              className="hidden"
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                if (file) void upload(file);
-              }}
-            />
-            <button
-              type="button"
-              onClick={() => inputRef.current?.click()}
-              onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
-              onDragOver={(event) => event.preventDefault()}
-              onDragLeave={() => setDragging(false)}
-              onDrop={(event) => {
-                event.preventDefault();
-                setDragging(false);
-                const file = event.dataTransfer.files?.[0];
-                if (file) void upload(file);
-              }}
-              disabled={uploading}
-              className={`mt-4 flex min-h-32 w-full flex-col items-center justify-center rounded-2xl border border-dashed px-4 text-center transition ${dragging ? "border-orange-400 bg-orange-500/10" : "border-[color:var(--theme-border-soft)] hover:border-orange-400/60"}`}
-            >
-              {uploading ? <Loader2 className="h-6 w-6 animate-spin" /> : <UploadCloud className="h-6 w-6 text-orange-300" />}
-              <span className="mt-2 text-sm font-bold">{uploading ? "Uploading…" : "Drop media here or choose a file"}</span>
-            </button>
+            <div className="mt-5 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => void updateSlot("save-draft")}
+                disabled={saving || !selected}
+                className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] px-4 py-2.5 text-sm font-bold disabled:opacity-50"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save draft
+              </button>
+              <button
+                type="button"
+                onClick={() => void updateSlot("publish")}
+                disabled={saving || !slot?.draft || !selectedMatchesDraft}
+                className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-orange-400 disabled:opacity-50"
+              >
+                {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Publish
+              </button>
+            </div>
           </section>
 
-          <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
-            <div className="flex items-center justify-between">
+          <aside className="space-y-6">
+            <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
+              <h2 className="text-lg font-semibold">Upload media</h2>
+              <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">JPG, PNG, WebP, AVIF, MP4, or WebM. Maximum 50 MB. Large files upload directly to media storage.</p>
+              <label className="mt-4 block text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">Alt text</label>
+              <input value={alt} onChange={(event) => setAlt(event.target.value)} placeholder="ProFixIQ work order workspace showing…" className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2.5 text-sm" />
+              <label className="mt-4 block text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">Caption <span className="font-normal normal-case">(optional)</span></label>
+              <input value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="Short supporting caption" className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2.5 text-sm" />
+              <input
+                ref={inputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/avif,video/mp4,video/webm"
+                className="hidden"
+                onChange={(event) => {
+                  const file = event.target.files?.[0];
+                  if (file) void upload(file);
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => inputRef.current?.click()}
+                onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
+                onDragOver={(event) => event.preventDefault()}
+                onDragLeave={() => setDragging(false)}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  setDragging(false);
+                  const file = event.dataTransfer.files?.[0];
+                  if (file) void upload(file);
+                }}
+                disabled={uploading}
+                className={`mt-4 flex min-h-32 w-full flex-col items-center justify-center rounded-2xl border border-dashed px-4 text-center transition ${dragging ? "border-orange-400 bg-orange-500/10" : "border-[color:var(--theme-border-soft)] hover:border-orange-400/60"}`}
+              >
+                {uploading ? <Loader2 className="h-6 w-6 animate-spin" /> : <UploadCloud className="h-6 w-6 text-orange-300" />}
+                <span className="mt-2 text-sm font-bold">{uploading ? "Uploading…" : "Drop media here or choose a file"}</span>
+              </button>
+            </section>
+
+            <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
               <div><h2 className="text-lg font-semibold">Media library</h2><p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">{assets.length} asset{assets.length === 1 ? "" : "s"}</p></div>
-            </div>
-            <div className="mt-4 grid max-h-[520px] gap-3 overflow-y-auto sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-              {assets.map((asset) => (
-                <button
-                  key={asset.id}
-                  type="button"
-                  onClick={() => chooseAsset(asset)}
-                  className={`relative rounded-2xl border p-2 text-left transition ${selectedId === asset.id ? "border-orange-400 bg-orange-500/10" : "border-[color:var(--theme-border-soft)] hover:border-orange-400/50"}`}
-                >
-                  <MediaPreview asset={asset} compact />
-                  <div className="mt-2 flex items-start gap-2 px-1 pb-1">
-                    {asset.kind === "video" ? <Film className="mt-0.5 h-4 w-4 shrink-0" /> : <ImageIcon className="mt-0.5 h-4 w-4 shrink-0" />}
-                    <div className="min-w-0"><div className="truncate text-xs font-bold">{asset.filename}</div><div className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-[color:var(--theme-text-secondary)]">{asset.alt}</div></div>
-                    {selectedId === asset.id ? <Check className="ml-auto h-4 w-4 shrink-0 text-orange-300" /> : null}
-                  </div>
-                </button>
-              ))}
-              {assets.length === 0 ? <p className="text-sm text-[color:var(--theme-text-muted)]">No marketing media uploaded yet.</p> : null}
-            </div>
-          </section>
-        </aside>
-      </div>
+              <div className="mt-4 grid max-h-[520px] gap-3 overflow-y-auto sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+                {assets.map((asset) => (
+                  <button
+                    key={asset.id}
+                    type="button"
+                    onClick={() => chooseAsset(asset)}
+                    className={`relative rounded-2xl border p-2 text-left transition ${selectedId === asset.id ? "border-orange-400 bg-orange-500/10" : "border-[color:var(--theme-border-soft)] hover:border-orange-400/50"}`}
+                  >
+                    <MediaPreview asset={asset} compact />
+                    <div className="mt-2 flex items-start gap-2 px-1 pb-1">
+                      {asset.kind === "video" ? <Film className="mt-0.5 h-4 w-4 shrink-0" /> : <ImageIcon className="mt-0.5 h-4 w-4 shrink-0" />}
+                      <div className="min-w-0"><div className="truncate text-xs font-bold">{asset.filename}</div><div className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-[color:var(--theme-text-secondary)]">{asset.alt}</div></div>
+                      {selectedId === asset.id ? <Check className="ml-auto h-4 w-4 shrink-0 text-orange-300" /> : null}
+                    </div>
+                  </button>
+                ))}
+                {assets.length === 0 ? <p className="text-sm text-[color:var(--theme-text-muted)]">No marketing media uploaded yet.</p> : null}
+              </div>
+            </section>
+          </aside>
+        </div>
+      )}
     </div>
   );
 }
