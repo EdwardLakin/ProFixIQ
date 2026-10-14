@@ -126,8 +126,17 @@ export default function EquipmentSetupDialog({
         const payload = (await response.json().catch(() => ({}))) as {
           assetId?: string;
           error?: string;
+          partial?: boolean;
         };
         if (!response.ok || !payload.assetId) {
+          if (payload.partial && payload.assetId) {
+            router.refresh();
+            setError(
+              payload.error ??
+                "The canonical asset was retained. Refresh completed; close this dialog and use Add existing asset to finish setup.",
+            );
+            return;
+          }
           setError(payload.error ?? "Equipment could not be created.");
           return;
         }
