@@ -1,11 +1,12 @@
 -- Atomic Equipment front-door creation and adoption.
 --
--- Canonical vehicle identity writes are serialized per shop at the vehicles
--- table boundary, so Equipment creation and every other canonical vehicle
--- writer share the same duplicate-protection mechanism. Equipment creation
--- then creates the canonical vehicle + Equipment profile/meter state in one
--- transaction. Adoption locks and revalidates the canonical asset and owning
--- customer immediately before inserting the Equipment profile.
+-- New canonical vehicle inserts are serialized per shop at the vehicles table
+-- boundary, so Equipment creation and every other canonical vehicle creator
+-- share the same duplicate-protection mechanism. Existing authoritative-ID
+-- update/import semantics remain unchanged. Equipment creation then creates the
+-- canonical vehicle + Equipment profile/meter state in one transaction.
+-- Adoption locks and revalidates the canonical asset and owning customer
+-- immediately before inserting the Equipment profile.
 
 create or replace function public.vehicles_enforce_normalized_identity_unique()
 returns trigger
@@ -66,7 +67,7 @@ revoke all on function public.vehicles_enforce_normalized_identity_unique()
 
 drop trigger if exists vehicles_normalized_identity_unique on public.vehicles;
 create trigger vehicles_normalized_identity_unique
-before insert or update of shop_id, unit_number, vin
+before insert
 on public.vehicles
 for each row
 execute function public.vehicles_enforce_normalized_identity_unique();
@@ -84,6 +85,9 @@ set search_path = ''
 as $$
 declare
   v_customer_id uuid;
+  v_customer_active boolean;
+  v_customer_archived_at timestamptz;
+  v_customer_merged_into uuid;
   v_unit_number text;
   v_unit_normalized text;
   v_year integer;
@@ -92,6 +96,7 @@ declare
   v_vin text;
   v_engine_hours integer;
   v_profile jsonb;
+  v_existing public.vehicles%rowtype;
 begin
   if p_shop_id is null
      or p_vehicle_id is null
@@ -123,22 +128,58 @@ begin
     raise exception 'equipment_create_invalid' using errcode = '22023';
   end if;
 
-  -- Use the same lock as the vehicles trigger so Equipment creation serializes
-  -- with every canonical vehicle writer, not just other Equipment requests.
+  -- Use the same lock as the vehicles insert trigger so Equipment creation
+  -- serializes with every canonical vehicle creator, not only Equipment calls.
   perform pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended('canonical_vehicle_identity:' || p_shop_id::text, 0)
   );
 
-  if v_customer_id is not null and not exists (
-    select 1
+  -- p_vehicle_id is also the durable operation identity. If the first request
+  -- committed but its response was lost, the same retry returns the completed
+  -- asset instead of reporting a false duplicate.
+  select * into v_existing
+  from public.vehicles v
+  where v.id = p_vehicle_id;
+
+  if found then
+    if v_existing.shop_id is distinct from p_shop_id
+       or pg_catalog.lower(pg_catalog.btrim(coalesce(v_existing.unit_number, ''))) <> v_unit_normalized
+       or coalesce(
+         pg_catalog.regexp_replace(pg_catalog.upper(coalesce(v_existing.vin, '')), '[^A-Z0-9]', '', 'g'),
+         ''
+       ) <> coalesce(v_vin, '') then
+      raise exception 'equipment_operation_conflict' using errcode = '23505';
+    end if;
+
+    if exists (
+      select 1
+      from public.equipment_asset_profiles e
+      where e.vehicle_id = p_vehicle_id
+        and e.shop_id = p_shop_id
+    ) then
+      return p_vehicle_id;
+    end if;
+
+    raise exception 'equipment_operation_incomplete' using errcode = '23514';
+  end if;
+
+  -- Lock the lifecycle row using the same row lock that customer merges must
+  -- acquire. A concurrent merge therefore finishes before we validate/insert,
+  -- preventing a new vehicle from being stranded on the retired source account.
+  if v_customer_id is not null then
+    select c.active, c.archived_at, c.merged_into_customer_id
+      into v_customer_active, v_customer_archived_at, v_customer_merged_into
     from public.customers c
     where c.id = v_customer_id
       and c.shop_id = p_shop_id
-      and c.active = true
-      and c.archived_at is null
-      and c.merged_into_customer_id is null
-  ) then
-    raise exception 'equipment_customer_inactive' using errcode = '23514';
+    for update;
+
+    if not found
+       or v_customer_active is distinct from true
+       or v_customer_archived_at is not null
+       or v_customer_merged_into is not null then
+      raise exception 'equipment_customer_inactive' using errcode = '23514';
+    end if;
   end if;
 
   if exists (
@@ -233,7 +274,7 @@ begin
     raise exception 'equipment_asset_not_found' using errcode = 'P0002';
   end if;
 
-  if pg_catalog.lower(coalesce(v_vehicle.status, '')) in ('archived', 'merged', 'duplicate', 'inactive') then
+  if pg_catalog.lower(pg_catalog.btrim(coalesce(v_vehicle.status, ''))) in ('archived', 'merged', 'duplicate', 'inactive') then
     raise exception 'equipment_asset_retired' using errcode = '23514';
   end if;
 
