@@ -30,14 +30,6 @@ function optionalText(value: unknown, max: number): string | null {
   return trimmed || null;
 }
 
-type RpcError = { code?: string | null; message: string };
-type AtomicEquipmentCreateRpc = {
-  rpc: (
-    fn: "create_equipment_asset_atomic",
-    args: Record<string, unknown>,
-  ) => Promise<{ data: string | null; error: RpcError | null }>;
-};
-
 export async function POST(request: Request) {
   const access = await requireShopScopedApiAccess({ allowRoles: ROLE_GROUPS.billingOperators });
   if (!access.ok) return access.response;
@@ -132,20 +124,19 @@ export async function POST(request: Request) {
   const mutation = profileValidation.value;
   const assetId = randomUUID();
   const admin = createAdminSupabase();
-  const { data, error } = await (admin as unknown as AtomicEquipmentCreateRpc).rpc(
-    "create_equipment_asset_atomic",
-    {
-      p_shop_id: access.profile.shop_id,
-      p_vehicle_id: assetId,
-      p_customer_id: customerId,
-      p_unit_number: unitNumber,
-      p_year: year,
-      p_make: make,
-      p_model: model,
-      p_vin: vin,
-      p_engine_hours: engineHours,
-      p_actor_user_id: access.authUserId,
-      p_profile: {
+  const { data, error } = await admin.rpc("create_equipment_asset_atomic", {
+    p_shop_id: access.profile.shop_id,
+    p_vehicle_id: assetId,
+    p_actor_user_id: access.authUserId,
+    p_input: {
+      customer_id: customerId,
+      unit_number: unitNumber,
+      year,
+      make,
+      model,
+      vin,
+      engine_hours: engineHours,
+      profile: {
         equipment_class: mutation.equipmentClass,
         equipment_family: mutation.equipmentFamily,
         serial_number: mutation.serialNumber,
@@ -161,7 +152,7 @@ export async function POST(request: Request) {
         attributes: mutation.attributes,
       },
     },
-  );
+  });
 
   if (!error && data) return json({ assetId: data }, 201);
 
