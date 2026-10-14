@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 
 import {
@@ -32,7 +33,6 @@ const BUTTON =
 const PRIMARY_BUTTON =
   "min-h-9 rounded-lg bg-[color:var(--accent-copper)] px-3 text-xs font-semibold text-white transition hover:opacity-90 disabled:opacity-50";
 
-/** A fresh idempotency key per submission attempt-set (kept across retries). */
 function newOperationKey(): string {
   return crypto.randomUUID();
 }
@@ -55,7 +55,10 @@ async function readError(response: Response): Promise<string> {
   return payload?.error ?? "The request could not be completed.";
 }
 
-function flatten(nodes: EquipmentComponentNode[], depth = 0): Array<{ node: EquipmentComponentNode; depth: number }> {
+function flatten(
+  nodes: EquipmentComponentNode[],
+  depth = 0,
+): Array<{ node: EquipmentComponentNode; depth: number }> {
   return nodes.flatMap((node) => [{ node, depth }, ...flatten(node.children, depth + 1)]);
 }
 
@@ -75,7 +78,6 @@ function ActionForm({
   const [targetStatus, setTargetStatus] = useState<"in_stock" | "in_repair">("in_stock");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Same key for retries of this form, so a lost response cannot double-record.
   const [operationKey] = useState(newOperationKey);
 
   const submit = async () => {
@@ -244,19 +246,14 @@ function AddComponentForm({
   );
 }
 
-/**
- * Component hierarchy installed on an asset. Facts only: identity, life in
- * hours and the last recorded event. Renders nothing for shops without the
- * Equipment add-on.
- */
 export default function EquipmentComponentPanel({
   assetId,
   canOpenHistory,
 }: {
   assetId: string;
-  /** Cross-machine history is a shop-wide view; assigned-only roles get none. */
   canOpenHistory: boolean;
 }) {
+  const router = useRouter();
   const [state, setState] = useState<LoadState>({ kind: "loading" });
   const [adding, setAdding] = useState(false);
   const [seeding, setSeeding] = useState(false);
@@ -285,6 +282,11 @@ export default function EquipmentComponentPanel({
     });
   }, [assetId]);
 
+  const reloadSetupState = useCallback(async () => {
+    await load();
+    router.refresh();
+  }, [load, router]);
+
   useEffect(() => {
     void load();
   }, [load]);
@@ -303,7 +305,7 @@ export default function EquipmentComponentPanel({
     if (!response.ok) return setNotice(await readError(response));
     const { created } = (await response.json()) as { created: number };
     setNotice(created ? `Added ${created} standard components.` : "Standard components are already present.");
-    await load();
+    await reloadSetupState();
   };
 
   if (state.kind === "hidden") return null;
@@ -349,7 +351,7 @@ export default function EquipmentComponentPanel({
               onCancel={() => setAdding(false)}
               onDone={() => {
                 setAdding(false);
-                void load();
+                void reloadSetupState();
               }}
             />
           ) : null}
@@ -395,8 +397,8 @@ export default function EquipmentComponentPanel({
                         {(Object.keys(ACTION_LABELS) as RecordAction[])
                           .filter((action) => state.canEdit || action !== "remove")
                           .map((action) => (
-                          <option key={action} value={action}>{ACTION_LABELS[action]}</option>
-                        ))}
+                            <option key={action} value={action}>{ACTION_LABELS[action]}</option>
+                          ))}
                       </select>
                     ) : null}
                   </div>
@@ -407,7 +409,7 @@ export default function EquipmentComponentPanel({
                       onCancel={() => setActive(null)}
                       onDone={() => {
                         setActive(null);
-                        void load();
+                        void reloadSetupState();
                       }}
                     />
                   ) : null}
