@@ -1,4 +1,3 @@
-import Image from "next/image";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -8,6 +7,7 @@ import {
   Quote,
 } from "lucide-react";
 
+import ManagedMarketingMedia from "@/features/marketing/components/ManagedMarketingMedia";
 import {
   ProFixIQMark,
   ProFixIQWordmark,
@@ -91,11 +91,7 @@ function MarketingHeader() {
   return (
     <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-[#07111f]/95 text-white backdrop-blur-xl">
       <div className="mx-auto flex h-[72px] max-w-[1400px] items-center justify-between px-5 sm:px-8">
-        <Link
-          href="/"
-          className="flex items-center gap-3"
-          aria-label="ProFixIQ home"
-        >
+        <Link href="/" className="flex items-center gap-3" aria-label="ProFixIQ home">
           <span className="grid h-10 w-10 place-items-center rounded-xl border border-white/10 bg-white/5">
             <ProFixIQMark className="h-7 w-7" />
           </span>
@@ -178,38 +174,21 @@ export function SearchHero({
   );
 }
 
-export function SearchPainPoints({
-  section,
-}: {
-  section: SearchLandingConfig["painPoints"];
-}) {
+export function SearchPainPoints({ section }: { section: SearchLandingConfig["painPoints"] }) {
   return (
     <section className="border-b border-[color:var(--marketing-border)] bg-white py-20 sm:py-28">
       <div className="mx-auto max-w-[1280px] px-5 sm:px-8">
         <div className="max-w-3xl">
-          <div className="marketing-eyebrow">
-            {section.eyebrow ?? "Why shops look for a better system"}
-          </div>
+          <div className="marketing-eyebrow">{section.eyebrow ?? "Why shops look for a better system"}</div>
           <h2 className="marketing-heading mt-4">{section.heading}</h2>
-          {section.body ? (
-            <p className="mt-5 text-base leading-7 text-[color:var(--marketing-muted)]">
-              {section.body}
-            </p>
-          ) : null}
+          {section.body ? <p className="mt-5 text-base leading-7 text-[color:var(--marketing-muted)]">{section.body}</p> : null}
         </div>
         <div className="mt-10 grid gap-5 md:grid-cols-2 lg:grid-cols-3">
           {section.items.map((item) => (
-            <article
-              key={item.title}
-              className="rounded-2xl border border-[color:var(--marketing-border)] bg-[color:var(--marketing-stone)] p-6"
-            >
+            <article key={item.title} className="rounded-2xl border border-[color:var(--marketing-border)] bg-[color:var(--marketing-stone)] p-6">
               <CircleCheckBig className="h-6 w-6 text-sky-700" />
-              <h3 className="mt-6 text-xl font-bold tracking-[-0.025em]">
-                {item.title}
-              </h3>
-              <p className="mt-3 text-sm leading-6 text-[color:var(--marketing-muted)]">
-                {item.body}
-              </p>
+              <h3 className="mt-6 text-xl font-bold tracking-[-0.025em]">{item.title}</h3>
+              <p className="mt-3 text-sm leading-6 text-[color:var(--marketing-muted)]">{item.body}</p>
             </article>
           ))}
         </div>
@@ -218,43 +197,24 @@ export function SearchPainPoints({
   );
 }
 
-export function SearchWorkflow({
-  section,
-}: {
-  section: SearchLandingConfig["workflow"];
-}) {
+export function SearchWorkflow({ section }: { section: SearchLandingConfig["workflow"] }) {
   return (
     <section className="py-20 sm:py-28">
       <div className="mx-auto max-w-[1280px] px-5 sm:px-8">
         <div className="max-w-3xl">
-          <div className="marketing-eyebrow">
-            {section.eyebrow ?? "Workflow"}
-          </div>
+          <div className="marketing-eyebrow">{section.eyebrow ?? "Workflow"}</div>
           <h2 className="marketing-heading mt-4">{section.heading}</h2>
-          {section.body ? (
-            <p className="mt-5 text-base leading-7 text-[color:var(--marketing-muted)]">
-              {section.body}
-            </p>
-          ) : null}
+          {section.body ? <p className="mt-5 text-base leading-7 text-[color:var(--marketing-muted)]">{section.body}</p> : null}
         </div>
         <ol className="mt-10 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
           {section.steps.map((step, index) => (
-            <li
-              key={step.title}
-              className="relative rounded-2xl border border-[color:var(--marketing-border)] bg-white p-6 shadow-sm"
-            >
+            <li key={step.title} className="relative rounded-2xl border border-[color:var(--marketing-border)] bg-white p-6 shadow-sm">
               <div className="flex items-center justify-between">
-                <span className="text-sm font-black tracking-[0.12em] text-sky-700">
-                  {String(index + 1).padStart(2, "0")}
-                </span>
-                {index < section.steps.length - 1 ? (
-                  <ChevronRight className="hidden h-5 w-5 text-slate-300 xl:block" />
-                ) : null}
+                <span className="text-sm font-black tracking-[0.12em] text-sky-700">{String(index + 1).padStart(2, "0")}</span>
+                {index < section.steps.length - 1 ? <ChevronRight className="hidden h-5 w-5 text-slate-300 xl:block" /> : null}
               </div>
               <h3 className="mt-8 text-xl font-bold">{step.title}</h3>
-              <p className="mt-3 text-sm leading-6 text-[color:var(--marketing-muted)]">
-                {step.body}
-              </p>
+              <p className="mt-3 text-sm leading-6 text-[color:var(--marketing-muted)]">{step.body}</p>
             </li>
           ))}
         </ol>
@@ -263,121 +223,83 @@ export function SearchWorkflow({
   );
 }
 
-export function SearchProductProof({
-  section,
-}: {
-  section: SearchLandingConfig["productProof"];
-}) {
+function ProductProofFallback({ media }: { media?: SearchLandingMedia }) {
+  if (media) {
+    return (
+      <>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={media.src} alt={media.alt} width={media.width} height={media.height} className="h-auto w-full" />
+        {media.caption ? <p className="border-t border-white/10 px-5 py-4 text-xs leading-5 text-slate-400">{media.caption}</p> : null}
+      </>
+    );
+  }
+
+  return (
+    <div className="flex min-h-[360px] items-center justify-center p-8 text-center">
+      <div>
+        <ProFixIQMark className="mx-auto h-14 w-14" />
+        <div className="mt-6 text-sm font-bold uppercase tracking-[0.18em] text-sky-300">Product media slot</div>
+        <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-slate-400">
+          Add a real ProFixIQ screenshot or workflow image when the search page is authored.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+export function SearchProductProof({ section }: { section: SearchLandingConfig["productProof"] }) {
   return (
     <section className="border-y border-[color:var(--marketing-border)] bg-white py-20 sm:py-28">
       <div className="mx-auto grid max-w-[1280px] gap-12 px-5 sm:px-8 lg:grid-cols-[0.92fr_1.08fr] lg:items-center">
         <div>
-          <div className="marketing-eyebrow">
-            {section.eyebrow ?? "Product proof"}
-          </div>
+          <div className="marketing-eyebrow">{section.eyebrow ?? "Product proof"}</div>
           <h2 className="marketing-heading mt-4">{section.heading}</h2>
-          {section.body ? (
-            <p className="mt-5 text-base leading-7 text-[color:var(--marketing-muted)]">
-              {section.body}
-            </p>
-          ) : null}
+          {section.body ? <p className="mt-5 text-base leading-7 text-[color:var(--marketing-muted)]">{section.body}</p> : null}
           <div className="mt-8 space-y-4">
             {section.items.map((item) => (
               <article key={item.title} className="flex gap-4">
-                <span className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-sky-100 text-sky-800">
-                  <Check size={16} />
-                </span>
+                <span className="mt-1 grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-sky-100 text-sky-800"><Check size={16} /></span>
                 <div>
                   <h3 className="font-bold">{item.title}</h3>
-                  <p className="mt-1 text-sm leading-6 text-[color:var(--marketing-muted)]">
-                    {item.body}
-                  </p>
+                  <p className="mt-1 text-sm leading-6 text-[color:var(--marketing-muted)]">{item.body}</p>
                 </div>
               </article>
             ))}
           </div>
         </div>
         <div className="overflow-hidden rounded-[1.75rem] border border-slate-200 bg-[#07111f] shadow-[0_28px_70px_rgba(15,23,42,0.18)]">
-          {section.media ? (
-            <>
-              <Image
-                src={section.media.src}
-                alt={section.media.alt}
-                width={section.media.width}
-                height={section.media.height}
-                className="h-auto w-full"
-              />
-              {section.media.caption ? (
-                <p className="border-t border-white/10 px-5 py-4 text-xs leading-5 text-slate-400">
-                  {section.media.caption}
-                </p>
-              ) : null}
-            </>
-          ) : (
-            <div className="flex min-h-[360px] items-center justify-center p-8 text-center">
-              <div>
-                <ProFixIQMark className="mx-auto h-14 w-14" />
-                <div className="mt-6 text-sm font-bold uppercase tracking-[0.18em] text-sky-300">
-                  Product media slot
-                </div>
-                <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-slate-400">
-                  Add a real ProFixIQ screenshot or workflow image when the search
-                  page is authored.
-                </p>
-              </div>
-            </div>
-          )}
+          <ManagedMarketingMedia
+            slotKey="product-proof"
+            fallback={<ProductProofFallback media={section.media} />}
+          />
         </div>
       </div>
     </section>
   );
 }
 
-export function SearchComparison({
-  section,
-}: {
-  section: NonNullable<SearchLandingConfig["comparison"]>;
-}) {
+export function SearchComparison({ section }: { section: NonNullable<SearchLandingConfig["comparison"]> }) {
   return (
     <section className="py-20 sm:py-28">
       <div className="mx-auto max-w-[1180px] px-5 sm:px-8">
         <div className="max-w-3xl">
-          <div className="marketing-eyebrow">
-            {section.eyebrow ?? "Compare the workflow"}
-          </div>
+          <div className="marketing-eyebrow">{section.eyebrow ?? "Compare the workflow"}</div>
           <h2 className="marketing-heading mt-4">{section.heading}</h2>
-          {section.body ? (
-            <p className="mt-5 text-base leading-7 text-[color:var(--marketing-muted)]">
-              {section.body}
-            </p>
-          ) : null}
+          {section.body ? <p className="mt-5 text-base leading-7 text-[color:var(--marketing-muted)]">{section.body}</p> : null}
         </div>
         <div className="mt-10 overflow-hidden rounded-2xl border border-[color:var(--marketing-border)] bg-white shadow-sm">
           <div className="grid grid-cols-[1.15fr_1fr_1fr] border-b border-[color:var(--marketing-border)] bg-[color:var(--marketing-stone)] text-sm font-bold">
-            <div className="p-4 sm:p-5">Capability</div>
-            <div className="p-4 sm:p-5">ProFixIQ</div>
-            <div className="p-4 sm:p-5">{section.alternativeLabel}</div>
+            <div className="p-4 sm:p-5">Capability</div><div className="p-4 sm:p-5">ProFixIQ</div><div className="p-4 sm:p-5">{section.alternativeLabel}</div>
           </div>
           {section.rows.map((row) => (
-            <div
-              key={row.capability}
-              className="grid grid-cols-[1.15fr_1fr_1fr] border-b border-[color:var(--marketing-border)] text-sm last:border-b-0"
-            >
+            <div key={row.capability} className="grid grid-cols-[1.15fr_1fr_1fr] border-b border-[color:var(--marketing-border)] text-sm last:border-b-0">
               <div className="p-4 font-semibold sm:p-5">{row.capability}</div>
-              <div className="p-4 text-[color:var(--marketing-muted)] sm:p-5">
-                {row.profixiq}
-              </div>
-              <div className="p-4 text-[color:var(--marketing-muted)] sm:p-5">
-                {row.alternative}
-              </div>
+              <div className="p-4 text-[color:var(--marketing-muted)] sm:p-5">{row.profixiq}</div>
+              <div className="p-4 text-[color:var(--marketing-muted)] sm:p-5">{row.alternative}</div>
             </div>
           ))}
         </div>
-        {section.note ? (
-          <p className="mt-4 text-xs leading-5 text-[color:var(--marketing-muted)]">
-            {section.note}
-          </p>
-        ) : null}
+        {section.note ? <p className="mt-4 text-xs leading-5 text-[color:var(--marketing-muted)]">{section.note}</p> : null}
       </div>
     </section>
   );
@@ -393,9 +315,7 @@ export function SearchFaq({ faqs }: { faqs: SearchLandingFaq[] }) {
           {faqs.map((faq) => (
             <article key={faq.question} className="py-6">
               <h3 className="text-lg font-bold">{faq.question}</h3>
-              <p className="mt-3 text-sm leading-7 text-[color:var(--marketing-muted)]">
-                {faq.answer}
-              </p>
+              <p className="mt-3 text-sm leading-7 text-[color:var(--marketing-muted)]">{faq.answer}</p>
             </article>
           ))}
         </div>
@@ -404,39 +324,19 @@ export function SearchFaq({ faqs }: { faqs: SearchLandingFaq[] }) {
   );
 }
 
-export function SearchFinalCta({
-  section,
-}: {
-  section: SearchLandingConfig["finalCta"];
-}) {
+export function SearchFinalCta({ section }: { section: SearchLandingConfig["finalCta"] }) {
   const primary = section.primary ?? defaultPrimaryCta;
   const secondary = section.secondary ?? defaultSecondaryCta;
 
   return (
     <section className="bg-[#07111f] py-20 text-white sm:py-24">
       <div className="mx-auto max-w-[980px] px-5 text-center sm:px-8">
-        <div className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-sky-300">
-          <Quote size={16} /> {section.eyebrow ?? "See the workflow in ProFixIQ"}
-        </div>
-        <h2 className="mt-5 text-4xl font-semibold tracking-[-0.05em] sm:text-5xl">
-          {section.heading}
-        </h2>
-        <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-slate-300">
-          {section.body}
-        </p>
+        <div className="flex items-center justify-center gap-2 text-xs font-bold uppercase tracking-[0.2em] text-sky-300"><Quote size={16} /> {section.eyebrow ?? "See the workflow in ProFixIQ"}</div>
+        <h2 className="mt-5 text-4xl font-semibold tracking-[-0.05em] sm:text-5xl">{section.heading}</h2>
+        <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-slate-300">{section.body}</p>
         <div className="mt-8 flex flex-wrap justify-center gap-3">
-          <Link
-            href={primary.href}
-            className="inline-flex items-center gap-2 rounded-xl bg-sky-300 px-5 py-3.5 text-sm font-bold text-[#07111f]"
-          >
-            {primary.label} <ArrowRight size={16} />
-          </Link>
-          <Link
-            href={secondary.href}
-            className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-5 py-3.5 text-sm font-bold"
-          >
-            {secondary.label}
-          </Link>
+          <Link href={primary.href} className="inline-flex items-center gap-2 rounded-xl bg-sky-300 px-5 py-3.5 text-sm font-bold text-[#07111f]">{primary.label} <ArrowRight size={16} /></Link>
+          <Link href={secondary.href} className="inline-flex items-center gap-2 rounded-xl border border-white/15 px-5 py-3.5 text-sm font-bold">{secondary.label}</Link>
         </div>
       </div>
     </section>
@@ -455,9 +355,7 @@ export default function SearchLandingPage({
       {structuredData ? (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{
-            __html: JSON.stringify(structuredData).replace(/</g, "\\u003c"),
-          }}
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData).replace(/</g, "\\u003c") }}
         />
       ) : null}
       <MarketingHeader />
@@ -466,9 +364,7 @@ export default function SearchLandingPage({
         <SearchPainPoints section={config.painPoints} />
         <SearchWorkflow section={config.workflow} />
         <SearchProductProof section={config.productProof} />
-        {config.comparison ? (
-          <SearchComparison section={config.comparison} />
-        ) : null}
+        {config.comparison ? <SearchComparison section={config.comparison} /> : null}
         <SearchFaq faqs={config.faqs} />
         <SearchFinalCta section={config.finalCta} />
       </main>
