@@ -36,6 +36,14 @@ function validUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
 
+function isStorageObjectMissing(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { statusCode?: string | number; message?: string };
+  const statusCode = String(candidate.statusCode ?? "");
+  const message = String(candidate.message ?? "").toLowerCase();
+  return statusCode === "404" || message.includes("object not found");
+}
+
 async function readAssetMetadata(path: string): Promise<MarketingMediaAsset | null> {
   const admin = createAdminSupabase();
   const { data, error } = await admin.storage
@@ -47,6 +55,45 @@ async function readAssetMetadata(path: string): Promise<MarketingMediaAsset | nu
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
+  }
+}
+
+async function contentObjectExists(path: string): Promise<boolean> {
+  const admin = createAdminSupabase();
+  const { data, error } = await admin.storage
+    .from(MARKETING_MEDIA_CONTENT_BUCKET)
+    .download(path);
+  if (error) {
+    if (isStorageObjectMissing(error)) return false;
+    throw new Error(`Marketing media coordination read failed for ${path}: ${error.message}`);
+  }
+  return Boolean(data);
+}
+
+async function writeContentJson(
+  path: string,
+  value: unknown,
+  options: { upsert?: boolean } = {},
+): Promise<void> {
+  const admin = createAdminSupabase();
+  const body = Buffer.from(`${JSON.stringify(value, null, 2)}\n`, "utf8");
+  const { error } = await admin.storage
+    .from(MARKETING_MEDIA_CONTENT_BUCKET)
+    .upload(path, body, {
+      contentType: "application/json",
+      cacheControl: "0",
+      upsert: options.upsert ?? true,
+    });
+  if (error) throw new Error(`Marketing media coordination write failed for ${path}: ${error.message}`);
+}
+
+async function removeContentObject(path: string): Promise<void> {
+  const admin = createAdminSupabase();
+  const { error } = await admin.storage
+    .from(MARKETING_MEDIA_CONTENT_BUCKET)
+    .remove([path]);
+  if (error && !isStorageObjectMissing(error)) {
+    throw new Error(`Marketing media coordination delete failed for ${path}: ${error.message}`);
   }
 }
 
@@ -81,22 +128,24 @@ async function listAssets(): Promise<MarketingMediaAsset[]> {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+function pendingCleanupPath(assetId: string): string {
+  return `pending-cleanup/${assetId}.json`;
+}
+
 async function removePendingMarker(
   pendingPath: string,
   assetId: string,
 ): Promise<boolean> {
-  const admin = createAdminSupabase();
-  const { error } = await admin.storage
-    .from(MARKETING_MEDIA_CONTENT_BUCKET)
-    .remove([pendingPath]);
-  if (error) {
+  try {
+    await removeContentObject(pendingPath);
+    return true;
+  } catch (error) {
     console.warn("marketing media pending marker cleanup failed", {
       assetId,
       error,
     });
     return false;
   }
-  return true;
 }
 
 async function cleanupStalePendingUploads(): Promise<number> {
@@ -111,17 +160,25 @@ async function cleanupStalePendingUploads(): Promise<number> {
     const asset = await readAssetMetadata(pendingPath);
     if (!asset || new Date(asset.createdAt).getTime() > cutoff) continue;
 
+    const cleanupPath = pendingCleanupPath(asset.id);
+    await writeContentJson(cleanupPath, {
+      assetId: asset.id,
+      storagePath: asset.storagePath,
+      cancelledAt: new Date().toISOString(),
+    });
+
     const canonical = await getMarketingMediaAsset(asset.id);
     const usages = usageMap[asset.id] ?? [];
     if (canonical || usages.length > 0) {
       if (await removePendingMarker(pendingPath, asset.id)) cleaned += 1;
+      await removeContentObject(cleanupPath);
       continue;
     }
 
     const { error: mediaError } = await admin.storage
       .from(MARKETING_MEDIA_BUCKET)
       .remove([asset.storagePath]);
-    if (mediaError) {
+    if (mediaError && !isStorageObjectMissing(mediaError)) {
       console.warn("stale marketing media object cleanup failed", {
         assetId: asset.id,
         error: mediaError,
@@ -130,9 +187,34 @@ async function cleanupStalePendingUploads(): Promise<number> {
     }
 
     if (await removePendingMarker(pendingPath, asset.id)) cleaned += 1;
+    // Keep the cancellation marker permanently. A late finalize request can no
+    // longer recreate canonical metadata for an object cleanup already removed.
   }
 
   return cleaned;
+}
+
+async function writeMediaDeletionAudit(input: {
+  operatorId: string;
+  operatorEmail: string;
+  asset: MarketingMediaAsset;
+}): Promise<void> {
+  const timestamp = new Date().toISOString();
+  const safeTimestamp = timestamp.replace(/[:.]/g, "-");
+  await writeContentJson(
+    `audit/media-deletions/${safeTimestamp}-${crypto.randomUUID()}.json`,
+    {
+      action: "marketing_media_deleted",
+      occurredAt: timestamp,
+      operatorId: input.operatorId,
+      operatorEmail: input.operatorEmail,
+      assetId: input.asset.id,
+      filename: input.asset.filename,
+      storagePath: input.asset.storagePath,
+      contentType: input.asset.contentType,
+    },
+    { upsert: false },
+  );
 }
 
 export async function GET() {
@@ -197,17 +279,21 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid marketing media asset" }, { status: 400 });
     }
     try {
-      const asset = await getMarketingMediaAsset(payload.id);
-      if (!asset) {
+      const result = await deleteMarketingMediaAsset(payload.id);
+      if (!result.asset) {
         return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
       }
-      const result = await deleteMarketingMediaAsset(payload.id);
       if (!result.deleted) {
         return NextResponse.json(
           { error: "This media is still used by a landing page", usages: result.usages },
           { status: 409 },
         );
       }
+      await writeMediaDeletionAudit({
+        operatorId: access.user.id,
+        operatorEmail: access.operatorEmail,
+        asset: result.asset,
+      });
       return NextResponse.json({ deleted: true, id: payload.id });
     } catch (error) {
       console.error("ops marketing media delete failed", error);
@@ -291,6 +377,11 @@ export async function POST(request: Request) {
 
     const id = payload.id;
     const pendingPath = `pending/${id}.json`;
+    const cleanupPath = pendingCleanupPath(id);
+    if (await contentObjectExists(cleanupPath)) {
+      return NextResponse.json({ error: "Prepared marketing media upload has expired" }, { status: 409 });
+    }
+
     const asset = await readAssetMetadata(pendingPath);
     if (!asset || asset.id !== id) {
       return NextResponse.json({ error: "Prepared marketing media upload was not found" }, { status: 404 });
@@ -321,6 +412,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Uploaded media did not match the prepared file" }, { status: 400 });
     }
 
+    if (await contentObjectExists(cleanupPath)) {
+      return NextResponse.json({ error: "Prepared marketing media upload has expired" }, { status: 409 });
+    }
+
     const metadataBody = Buffer.from(`${JSON.stringify(asset, null, 2)}\n`, "utf8");
     const { error: metadataError } = await admin.storage
       .from(MARKETING_MEDIA_CONTENT_BUCKET)
@@ -332,6 +427,11 @@ export async function POST(request: Request) {
     if (metadataError) {
       console.error("ops marketing media metadata write failed", metadataError);
       return NextResponse.json({ error: "Unable to save marketing media metadata" }, { status: 500 });
+    }
+
+    if (await contentObjectExists(cleanupPath)) {
+      await removeContentObject(`assets/${id}.json`);
+      return NextResponse.json({ error: "Prepared marketing media upload expired during finalization" }, { status: 409 });
     }
 
     await removePendingMarker(pendingPath, id);
