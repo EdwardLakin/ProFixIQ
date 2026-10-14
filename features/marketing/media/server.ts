@@ -16,6 +16,15 @@ import {
 export const MARKETING_MEDIA_CONTENT_BUCKET = "marketing-page-content";
 export const MARKETING_MEDIA_BUCKET = MARKETING_MEDIA_PUBLIC_BUCKET;
 
+export type MarketingMediaUsage = {
+  pageKey: MarketingPageKey;
+  pageLabel: string;
+  href: string;
+  slotKey: string;
+  slotLabel: string;
+  state: "draft" | "published";
+};
+
 export function isMarketingPageKey(value: string): value is MarketingPageKey {
   return Object.prototype.hasOwnProperty.call(MARKETING_PAGE_REGISTRY, value);
 }
@@ -151,6 +160,101 @@ export async function getMarketingMediaAsset(
   return readStoredJson(`assets/${assetId}.json`, (value) =>
     MarketingMediaAssetSchema.safeParse(value),
   );
+}
+
+export async function getMarketingMediaUsageMap(): Promise<Record<string, MarketingMediaUsage[]>> {
+  const usageMap: Record<string, MarketingMediaUsage[]> = {};
+
+  await Promise.all(
+    (Object.keys(MARKETING_PAGE_REGISTRY) as MarketingPageKey[]).map(async (pageKey) => {
+      const definition = MARKETING_PAGE_REGISTRY[pageKey];
+      const document = await getMarketingPageMediaDocument(pageKey);
+      for (const [slotKey, slot] of Object.entries(document.slots)) {
+        const slotDefinition = definition.slots[slotKey as keyof typeof definition.slots] as
+          | { label: string }
+          | undefined;
+        const common = {
+          pageKey,
+          pageLabel: definition.label,
+          href: definition.href,
+          slotKey,
+          slotLabel: slotDefinition?.label ?? slotKey,
+        };
+        if (slot.draft) {
+          (usageMap[slot.draft.id] ??= []).push({ ...common, state: "draft" });
+        }
+        if (slot.published) {
+          (usageMap[slot.published.id] ??= []).push({ ...common, state: "published" });
+        }
+      }
+    }),
+  );
+
+  return usageMap;
+}
+
+export async function updateMarketingMediaAssetMetadata(
+  assetId: string,
+  input: { alt: string; caption: string | null },
+): Promise<MarketingMediaAsset | null> {
+  const current = await getMarketingMediaAsset(assetId);
+  if (!current) return null;
+
+  const updated = MarketingMediaAssetSchema.parse({
+    ...current,
+    alt: input.alt,
+    caption: input.caption,
+  });
+  const usageMap = await getMarketingMediaUsageMap();
+  const usages = usageMap[assetId] ?? [];
+
+  await writeStoredJson(`assets/${assetId}.json`, updated);
+  await Promise.all(
+    usages.map(async (usage) => {
+      if (usage.state === "draft") {
+        const record = MarketingMediaSlotSchema.parse({
+          draft: updated,
+          published: null,
+          publishedAt: null,
+        });
+        await writeStoredJson(draftSlotPath(usage.pageKey, usage.slotKey), record);
+        return;
+      }
+
+      const existing = await readStoredJson(
+        publishedSlotPath(usage.pageKey, usage.slotKey),
+        (value) => MarketingMediaSlotSchema.safeParse(value),
+      );
+      const record = MarketingMediaSlotSchema.parse({
+        draft: null,
+        published: updated,
+        publishedAt: existing?.publishedAt ?? new Date().toISOString(),
+      });
+      await writeStoredJson(publishedSlotPath(usage.pageKey, usage.slotKey), record);
+    }),
+  );
+
+  return updated;
+}
+
+export async function deleteMarketingMediaAsset(assetId: string): Promise<{
+  deleted: boolean;
+  usages: MarketingMediaUsage[];
+}> {
+  const asset = await getMarketingMediaAsset(assetId);
+  if (!asset) return { deleted: false, usages: [] };
+
+  const usageMap = await getMarketingMediaUsageMap();
+  const usages = usageMap[assetId] ?? [];
+  if (usages.length > 0) return { deleted: false, usages };
+
+  const admin = createAdminSupabase();
+  const { error } = await admin.storage.from(MARKETING_MEDIA_BUCKET).remove([asset.storagePath]);
+  if (error && !isStorageObjectMissing(error)) {
+    throw new Error(`Marketing media object delete failed: ${error.message}`);
+  }
+  await removeStoredJson(`assets/${assetId}.json`);
+  return { deleted: true, usages: [] };
 }
 
 export async function saveMarketingPageMediaDraft(
