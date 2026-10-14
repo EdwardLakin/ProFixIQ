@@ -4,22 +4,19 @@
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { usePathname } from "next/navigation";
+import { getPublishedMarketingSlots } from "@/features/marketing/components/publicMarketingMedia";
 import {
   getMarketingPageKeyForHref,
   type MarketingMediaAsset,
   type MarketingPageKey,
 } from "@/features/marketing/media/types";
 
-type PublicPayload = {
-  slots?: Record<string, MarketingMediaAsset>;
-};
-
 export default function ManagedMarketingMedia({
   slotKey,
   pageKey,
   fallback = null,
   mediaClassName = "h-full w-full object-contain object-top",
-  captionClassName = "border-t border-white/10 px-5 py-4 text-xs leading-5 text-slate-400",
+  captionClassName,
   autoPlayVideo = false,
 }: {
   slotKey: string;
@@ -41,16 +38,9 @@ export default function ManagedMarketingMedia({
     setAsset(null);
     if (!resolvedPageKey) return () => { active = false; };
 
-    void fetch(`/api/public/marketing/pages/${resolvedPageKey}`)
-      .then(async (response) => {
-        if (!response.ok) return null;
-        const payload = (await response.json()) as PublicPayload;
-        return payload.slots?.[slotKey] ?? null;
-      })
-      .then((nextAsset) => {
-        if (active) setAsset(nextAsset);
-      })
-      .catch(() => undefined);
+    void getPublishedMarketingSlots(resolvedPageKey).then((slots) => {
+      if (active) setAsset(slots[slotKey] ?? null);
+    });
 
     return () => {
       active = false;
@@ -59,8 +49,14 @@ export default function ManagedMarketingMedia({
 
   if (!asset) return <>{fallback}</>;
 
+  const resolvedCaptionClassName =
+    captionClassName ??
+    (resolvedPageKey === "home"
+      ? "px-1 pt-3 text-xs leading-5 text-slate-600"
+      : "border-t border-white/10 px-5 py-4 text-xs leading-5 text-slate-400");
+
   return (
-    <>
+    <div>
       <div className="aspect-[16/10] w-full overflow-hidden bg-[#07111f]">
         {asset.kind === "video" ? (
           <video
@@ -78,7 +74,7 @@ export default function ManagedMarketingMedia({
           <img src={asset.url} alt={asset.alt} className={mediaClassName} />
         )}
       </div>
-      {asset.caption ? <p className={captionClassName}>{asset.caption}</p> : null}
-    </>
+      {asset.caption ? <p className={resolvedCaptionClassName}>{asset.caption}</p> : null}
+    </div>
   );
 }
