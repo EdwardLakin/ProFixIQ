@@ -7,10 +7,7 @@ import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDir
 import { loadEquipmentWorkOrders } from "@/features/equipment/server/loadEquipmentWorkOrders";
 import { resolveEquipmentPageEntitlement } from "@/features/equipment/server/pageEntitlement";
 import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
-import {
-  createAdminSupabase,
-  createServerSupabaseRSC,
-} from "@/features/shared/lib/supabase/server";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -28,7 +25,6 @@ export default async function EquipmentWorkOrdersPage() {
   }
 
   const workOrders = await loadEquipmentWorkOrders({
-    supabase: createServerSupabaseRSC(),
     admin: createAdminSupabase(),
     shopId: profile.shop_id,
     role: canonicalRole,
