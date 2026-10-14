@@ -25,6 +25,11 @@ export type MarketingMediaUsage = {
   state: "draft" | "published";
 };
 
+type MarketingMediaDeletionMarker = {
+  assetId: string;
+  createdAt: string;
+};
+
 export function isMarketingPageKey(value: string): value is MarketingPageKey {
   return Object.prototype.hasOwnProperty.call(MARKETING_PAGE_REGISTRY, value);
 }
@@ -99,7 +104,30 @@ function publishedSlotPath(pageKey: MarketingPageKey, slotKey: string): string {
   return `pages/${pageKey}/${slotKey}/published.json`;
 }
 
-async function readMarketingMediaSlot(
+function deletionMarkerPath(assetId: string): string {
+  return `deleting/${assetId}.json`;
+}
+
+function parseDeletionMarker(
+  value: unknown,
+): { success: true; data: MarketingMediaDeletionMarker } | { success: false } {
+  if (!value || typeof value !== "object") return { success: false };
+  const candidate = value as Partial<MarketingMediaDeletionMarker>;
+  if (typeof candidate.assetId !== "string" || typeof candidate.createdAt !== "string") {
+    return { success: false };
+  }
+  return {
+    success: true,
+    data: { assetId: candidate.assetId, createdAt: candidate.createdAt },
+  };
+}
+
+async function isMarketingMediaAssetDeleting(assetId: string): Promise<boolean> {
+  const marker = await readStoredJson(deletionMarkerPath(assetId), parseDeletionMarker);
+  return marker?.assetId === assetId;
+}
+
+async function readMarketingMediaSlotRaw(
   pageKey: MarketingPageKey,
   slotKey: string,
 ): Promise<MarketingMediaSlot> {
@@ -117,6 +145,25 @@ async function readMarketingMediaSlot(
     published: publishedRecord?.published ?? null,
     publishedAt: publishedRecord?.publishedAt ?? null,
   };
+}
+
+async function hydrateCanonicalAsset(
+  asset: MarketingMediaAsset | null,
+): Promise<MarketingMediaAsset | null> {
+  if (!asset) return null;
+  return getMarketingMediaAsset(asset.id);
+}
+
+async function readMarketingMediaSlot(
+  pageKey: MarketingPageKey,
+  slotKey: string,
+): Promise<MarketingMediaSlot> {
+  const raw = await readMarketingMediaSlotRaw(pageKey, slotKey);
+  const [draft, published] = await Promise.all([
+    hydrateCanonicalAsset(raw.draft),
+    hydrateCanonicalAsset(raw.published),
+  ]);
+  return { draft, published, publishedAt: raw.publishedAt };
 }
 
 export function emptyMarketingPageDocument(
@@ -162,23 +209,32 @@ export async function getMarketingMediaAsset(
   );
 }
 
+async function getAssignableMarketingMediaAsset(assetId: string): Promise<MarketingMediaAsset | null> {
+  if (await isMarketingMediaAssetDeleting(assetId)) return null;
+  const asset = await getMarketingMediaAsset(assetId);
+  if (!asset) return null;
+  if (await isMarketingMediaAssetDeleting(assetId)) return null;
+  return asset;
+}
+
 export async function getMarketingMediaUsageMap(): Promise<Record<string, MarketingMediaUsage[]>> {
   const usageMap: Record<string, MarketingMediaUsage[]> = {};
 
   await Promise.all(
     (Object.keys(MARKETING_PAGE_REGISTRY) as MarketingPageKey[]).map(async (pageKey) => {
       const definition = MARKETING_PAGE_REGISTRY[pageKey];
-      const document = await getMarketingPageMediaDocument(pageKey);
-      for (const [slotKey, slot] of Object.entries(document.slots)) {
-        const slotDefinition = definition.slots[slotKey as keyof typeof definition.slots] as
-          | { label: string }
-          | undefined;
+      const slotDefinitions = definition.slots as Record<string, { label: string }>;
+      const slotKeys = Object.keys(slotDefinitions);
+      const slots = await Promise.all(
+        slotKeys.map(async (slotKey) => [slotKey, await readMarketingMediaSlotRaw(pageKey, slotKey)] as const),
+      );
+      for (const [slotKey, slot] of slots) {
         const common = {
           pageKey,
           pageLabel: definition.label,
           href: definition.href,
           slotKey,
-          slotLabel: slotDefinition?.label ?? slotKey,
+          slotLabel: slotDefinitions[slotKey]?.label ?? slotKey,
         };
         if (slot.draft) {
           (usageMap[slot.draft.id] ??= []).push({ ...common, state: "draft" });
@@ -197,7 +253,7 @@ export async function updateMarketingMediaAssetMetadata(
   assetId: string,
   input: { alt: string; caption: string | null },
 ): Promise<MarketingMediaAsset | null> {
-  const current = await getMarketingMediaAsset(assetId);
+  const current = await getAssignableMarketingMediaAsset(assetId);
   if (!current) return null;
 
   const updated = MarketingMediaAssetSchema.parse({
@@ -205,35 +261,10 @@ export async function updateMarketingMediaAssetMetadata(
     alt: input.alt,
     caption: input.caption,
   });
-  const usageMap = await getMarketingMediaUsageMap();
-  const usages = usageMap[assetId] ?? [];
 
+  // Canonical metadata is the source of truth. Slot reads hydrate by asset id,
+  // so one atomic object write updates every draft/published placement.
   await writeStoredJson(`assets/${assetId}.json`, updated);
-  await Promise.all(
-    usages.map(async (usage) => {
-      if (usage.state === "draft") {
-        const record = MarketingMediaSlotSchema.parse({
-          draft: updated,
-          published: null,
-          publishedAt: null,
-        });
-        await writeStoredJson(draftSlotPath(usage.pageKey, usage.slotKey), record);
-        return;
-      }
-
-      const existing = await readStoredJson(
-        publishedSlotPath(usage.pageKey, usage.slotKey),
-        (value) => MarketingMediaSlotSchema.safeParse(value),
-      );
-      const record = MarketingMediaSlotSchema.parse({
-        draft: null,
-        published: updated,
-        publishedAt: existing?.publishedAt ?? new Date().toISOString(),
-      });
-      await writeStoredJson(publishedSlotPath(usage.pageKey, usage.slotKey), record);
-    }),
-  );
-
   return updated;
 }
 
@@ -244,9 +275,17 @@ export async function deleteMarketingMediaAsset(assetId: string): Promise<{
   const asset = await getMarketingMediaAsset(assetId);
   if (!asset) return { deleted: false, usages: [] };
 
+  await writeStoredJson(deletionMarkerPath(assetId), {
+    assetId,
+    createdAt: new Date().toISOString(),
+  } satisfies MarketingMediaDeletionMarker);
+
   const usageMap = await getMarketingMediaUsageMap();
   const usages = usageMap[assetId] ?? [];
-  if (usages.length > 0) return { deleted: false, usages };
+  if (usages.length > 0) {
+    await removeStoredJson(deletionMarkerPath(assetId));
+    return { deleted: false, usages };
+  }
 
   const admin = createAdminSupabase();
   const { error } = await admin.storage.from(MARKETING_MEDIA_BUCKET).remove([asset.storagePath]);
@@ -254,6 +293,7 @@ export async function deleteMarketingMediaAsset(assetId: string): Promise<{
     throw new Error(`Marketing media object delete failed: ${error.message}`);
   }
   await removeStoredJson(`assets/${assetId}.json`);
+  await removeStoredJson(deletionMarkerPath(assetId));
   return { deleted: true, usages: [] };
 }
 
@@ -262,12 +302,23 @@ export async function saveMarketingPageMediaDraft(
   slotKey: string,
   asset: MarketingMediaAsset,
 ): Promise<void> {
+  const canonical = await getAssignableMarketingMediaAsset(asset.id);
+  if (!canonical) throw new Error("Marketing media asset is unavailable");
+
   const record = MarketingMediaSlotSchema.parse({
-    draft: asset,
+    draft: canonical,
     published: null,
     publishedAt: null,
   });
-  await writeStoredJson(draftSlotPath(pageKey, slotKey), record);
+  const path = draftSlotPath(pageKey, slotKey);
+  await writeStoredJson(path, record);
+
+  // Recheck after the write to close the race with reference-aware deletion.
+  const stillAvailable = await getAssignableMarketingMediaAsset(asset.id);
+  if (!stillAvailable) {
+    await removeStoredJson(path);
+    throw new Error("Marketing media asset became unavailable while saving the draft");
+  }
 }
 
 export async function clearMarketingPageMediaDraft(
@@ -284,7 +335,10 @@ export async function publishMarketingPageMediaDraft(
   const draftRecord = await readStoredJson(draftSlotPath(pageKey, slotKey), (value) =>
     MarketingMediaSlotSchema.safeParse(value),
   );
-  const asset = draftRecord?.draft ?? null;
+  const draftAsset = draftRecord?.draft ?? null;
+  if (!draftAsset) return null;
+
+  const asset = await getAssignableMarketingMediaAsset(draftAsset.id);
   if (!asset) return null;
 
   const record = MarketingMediaSlotSchema.parse({
