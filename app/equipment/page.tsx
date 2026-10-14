@@ -105,16 +105,20 @@ export default async function EquipmentDirectoryPage() {
       business_name: string | null;
       first_name: string | null;
       last_name: string | null;
+      email: string | null;
+      phone: string | null;
+      phone_number: string | null;
     }> = [];
     for (let offset = 0; ; offset += CUSTOMER_PAGE_SIZE) {
       const customerResult = await supabase
         .from("customers")
-        .select("id,name,business_name,first_name,last_name")
+        .select("id,name,business_name,first_name,last_name,email,phone,phone_number")
         .eq("shop_id", profile.shop_id)
         .eq("active", true)
         .is("archived_at", null)
         .is("merged_into_customer_id", null)
         .order("name", { ascending: true })
+        .order("id", { ascending: true })
         .range(offset, offset + CUSTOMER_PAGE_SIZE - 1);
 
       if (customerResult.error) {
@@ -127,14 +131,19 @@ export default async function EquipmentDirectoryPage() {
       if (batch.length < CUSTOMER_PAGE_SIZE) break;
     }
 
-    customers = customerRows.map((row) => ({
-      id: row.id,
-      name:
+    customers = customerRows.map((row) => {
+      const displayName =
         row.business_name?.trim() ||
         row.name?.trim() ||
         [row.first_name, row.last_name].filter(Boolean).join(" ").trim() ||
-        "Customer",
-    }));
+        "Customer";
+      const secondary =
+        row.email?.trim() ||
+        row.phone?.trim() ||
+        row.phone_number?.trim() ||
+        `Acct ${row.id.slice(0, 8)}`;
+      return { id: row.id, name: `${displayName} · ${secondary}` };
+    });
   }
 
   return (
