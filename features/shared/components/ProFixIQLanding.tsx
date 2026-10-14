@@ -20,6 +20,7 @@ import {
   Wrench,
   X,
 } from "lucide-react";
+import ManagedMarketingMedia from "@/features/marketing/components/ManagedMarketingMedia";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import LandingHero from "@shared/components/ui/LandingHero";
 import PricingSection from "@shared/components/ui/PricingSection";
@@ -130,6 +131,25 @@ function ProductVisual({ type }: { type: (typeof stories)[number]["visual"] }) {
     </div>
   );
 }
+
+function ShopBoostFallback() {
+  return (
+    <div className="grid gap-4 sm:grid-cols-3">
+      {[
+        { n: "01", t: "Profile", b: "Tell us how your bays, people, and workflow operate.", icon: Building2 },
+        { n: "02", t: "Import", b: "Upload customers, vehicles, history, parts, and services.", icon: Upload },
+        { n: "03", t: "Preview", b: "Review the shop blueprint before anything is activated.", icon: Sparkles },
+      ].map(({ n, t, b, icon: Icon }) => (
+        <div key={n} className="rounded-2xl border border-[color:var(--marketing-border)] bg-[color:var(--marketing-stone)] p-5">
+          <div className="flex items-center justify-between"><span className="text-xs font-bold text-[color:var(--marketing-copper-dark)]">{n}</span><Icon size={18} className="text-[color:var(--marketing-steel)]" /></div>
+          <h3 className="mt-10 text-xl font-bold">{t}</h3>
+          <p className="mt-3 text-sm leading-6 text-[color:var(--marketing-muted)]">{b}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export default function ProFixIQLanding() {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const [sessionExists, setSessionExists] = useState(false);
@@ -247,7 +267,7 @@ export default function ProFixIQLanding() {
           <div className="mx-auto max-w-[1400px] px-5 sm:px-8">
             <div className="mx-auto max-w-3xl text-center"><div className="marketing-eyebrow">Built around the repair</div><h2 className="marketing-heading mt-4">From technician evidence to a complete business record.</h2><p className="mt-5 text-lg leading-8 text-[color:var(--marketing-muted)]">The product follows how a real shop works—then removes the re-entry, blind spots, and disconnected handoffs.</p></div>
             <div className="mt-16 space-y-24">
-              {stories.map((story, index) => <div key={story.eyebrow} className="grid items-center gap-12 lg:grid-cols-2 lg:gap-20"><div className={index % 2 === 1 ? "lg:order-2" : ""}><div className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[color:var(--marketing-border)] bg-white text-[color:var(--marketing-copper-dark)] shadow-sm"><story.icon size={20} /></div><div className="marketing-eyebrow mt-6">{story.eyebrow}</div><h3 className="mt-3 text-3xl font-semibold leading-tight tracking-[-0.035em] sm:text-4xl">{story.title}</h3><p className="mt-5 text-base leading-7 text-[color:var(--marketing-muted)]">{story.body}</p><ul className="mt-6 space-y-3">{story.points.map((point) => <li key={point} className="flex items-center gap-3 text-sm font-semibold"><span className="grid h-5 w-5 place-items-center rounded-full bg-[color:var(--marketing-copper-soft)] text-[color:var(--marketing-copper-dark)]"><Check size={12} /></span>{point}</li>)}</ul></div><div className={index % 2 === 1 ? "lg:order-1" : ""}><ProductVisual type={story.visual} /></div></div>)}
+              {stories.map((story, index) => <div key={story.eyebrow} className="grid items-center gap-12 lg:grid-cols-2 lg:gap-20"><div className={index % 2 === 1 ? "lg:order-2" : ""}><div className="inline-flex h-11 w-11 items-center justify-center rounded-xl border border-[color:var(--marketing-border)] bg-white text-[color:var(--marketing-copper-dark)] shadow-sm"><story.icon size={20} /></div><div className="marketing-eyebrow mt-6">{story.eyebrow}</div><h3 className="mt-3 text-3xl font-semibold leading-tight tracking-[-0.035em] sm:text-4xl">{story.title}</h3><p className="mt-5 text-base leading-7 text-[color:var(--marketing-muted)]">{story.body}</p><ul className="mt-6 space-y-3">{story.points.map((point) => <li key={point} className="flex items-center gap-3 text-sm font-semibold"><span className="grid h-5 w-5 place-items-center rounded-full bg-[color:var(--marketing-copper-soft)] text-[color:var(--marketing-copper-dark)]"><Check size={12} /></span>{point}</li>)}</ul></div><div className={index % 2 === 1 ? "lg:order-1" : ""}><ManagedMarketingMedia pageKey="home" slotKey={story.visual} fallback={<ProductVisual type={story.visual} />} /></div></div>)}
             </div>
           </div>
         </section>
@@ -257,7 +277,7 @@ export default function ProFixIQLanding() {
         </section>
 
         <section id="shop-boost" className="scroll-mt-24 bg-white py-20 sm:py-28">
-          <div className="mx-auto max-w-[1400px] px-5 sm:px-8"><div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:items-center"><div><div className="marketing-eyebrow">Shop Boost onboarding</div><h2 className="marketing-heading mt-4">Bring the shop you already have. Start with a system built around it.</h2><p className="mt-5 text-lg leading-8 text-[color:var(--marketing-muted)]">Import your existing data, preview what ProFixIQ understands, and activate a clean operational foundation with guided review at every important decision.</p><Link href="/demo/instant-shop-analysis" className="mt-7 inline-flex items-center gap-2 text-sm font-bold text-[color:var(--marketing-copper-dark)]">Run Instant Shop Analysis <ArrowRight size={15} /></Link></div><div className="grid gap-4 sm:grid-cols-3">{[{ n: "01", t: "Profile", b: "Tell us how your bays, people, and workflow operate.", icon: Building2 }, { n: "02", t: "Import", b: "Upload customers, vehicles, history, parts, and services.", icon: Upload }, { n: "03", t: "Preview", b: "Review the shop blueprint before anything is activated.", icon: Sparkles }].map(({ n, t, b, icon: Icon }) => <div key={n} className="rounded-2xl border border-[color:var(--marketing-border)] bg-[color:var(--marketing-stone)] p-5"><div className="flex items-center justify-between"><span className="text-xs font-bold text-[color:var(--marketing-copper-dark)]">{n}</span><Icon size={18} className="text-[color:var(--marketing-steel)]" /></div><h3 className="mt-10 text-xl font-bold">{t}</h3><p className="mt-3 text-sm leading-6 text-[color:var(--marketing-muted)]">{b}</p></div>)}</div></div></div>
+          <div className="mx-auto max-w-[1400px] px-5 sm:px-8"><div className="grid gap-12 lg:grid-cols-[0.8fr_1.2fr] lg:items-center"><div><div className="marketing-eyebrow">Shop Boost onboarding</div><h2 className="marketing-heading mt-4">Bring the shop you already have. Start with a system built around it.</h2><p className="mt-5 text-lg leading-8 text-[color:var(--marketing-muted)]">Import your existing data, preview what ProFixIQ understands, and activate a clean operational foundation with guided review at every important decision.</p><Link href="/demo/instant-shop-analysis" className="mt-7 inline-flex items-center gap-2 text-sm font-bold text-[color:var(--marketing-copper-dark)]">Run Instant Shop Analysis <ArrowRight size={15} /></Link></div><ManagedMarketingMedia pageKey="home" slotKey="onboarding" fallback={<ShopBoostFallback />} /></div></div>
         </section>
 
         <section id="modules" className="border-y border-[color:var(--marketing-border)] py-20 sm:py-24">
