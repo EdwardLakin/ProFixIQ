@@ -73,12 +73,11 @@ export default async function AssetHealthPage({ params }: AssetHealthPageProps) 
   const meterRecorded =
     asset.engineHours !== null ||
     (asset.odometer !== null && String(asset.odometer).trim() !== "") ||
-    equipmentProfile?.currentCycles !== null && equipmentProfile?.currentCycles !== undefined;
+    (equipmentProfile?.currentCycles !== null && equipmentProfile?.currentCycles !== undefined);
 
   return (
     <>
       <EquipmentSetupChecklist
-        assetId={assetId}
         state={{
           meterRecorded,
           componentsConfigured: componentError ? null : Boolean(installedComponents?.length),
