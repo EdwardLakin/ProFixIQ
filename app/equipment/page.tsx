@@ -2,6 +2,7 @@ import { unstable_noStore as noStore } from "next/cache";
 
 import EquipmentAccessState from "@/features/equipment/components/EquipmentAccessState";
 import EquipmentDirectoryView from "@/features/equipment/components/EquipmentDirectoryView";
+import EquipmentSectionNav from "@/features/equipment/components/EquipmentSectionNav";
 import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDirectory";
 import { loadEquipmentDirectory } from "@/features/equipment/server/loadEquipmentDirectory";
 import { resolveEquipmentPageEntitlement } from "@/features/equipment/server/pageEntitlement";
@@ -96,12 +97,15 @@ export default async function EquipmentDirectoryPage() {
   }
 
   return (
-    <EquipmentDirectoryView
-      rows={directory.rows}
-      truncated={directory.truncated}
-      canManage={canManage}
-      customers={customers}
-      customerOptionsError={customerOptionsError}
-    />
+    <>
+      <EquipmentSectionNav current="assets" />
+      <EquipmentDirectoryView
+        rows={directory.rows}
+        truncated={directory.truncated}
+        canManage={canManage}
+        customers={customers}
+        customerOptionsError={customerOptionsError}
+      />
+    </>
   );
 }
