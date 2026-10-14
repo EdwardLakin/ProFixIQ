@@ -15,6 +15,9 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const RETIRED_VEHICLE_STATUSES = new Set(["archived", "merged", "duplicate", "inactive"]);
+const CUSTOMER_PAGE_SIZE = 500;
+
 export default async function EquipmentDirectoryPage() {
   noStore();
 
@@ -50,34 +53,22 @@ export default async function EquipmentDirectoryPage() {
   let customers: Array<{ id: string; name: string }> = [];
 
   if (canManage) {
-    const [vehicleResult, customerResult] = await Promise.all([
-      supabase
-        .from("vehicles")
-        .select("id,unit_number,year,make,model,vin,customer_id,engine_hours")
-        .eq("shop_id", profile.shop_id)
-        .order("created_at", { ascending: false })
-        .limit(250),
-      supabase
-        .from("customers")
-        .select("id,name,business_name,first_name,last_name,active,archived_at,merged_into_customer_id")
-        .eq("shop_id", profile.shop_id)
-        .eq("active", true)
-        .is("archived_at", null)
-        .is("merged_into_customer_id", null)
-        .order("name", { ascending: true })
-        .limit(500),
-    ]);
+    const vehicleResult = await supabase
+      .from("vehicles")
+      .select("id,unit_number,year,make,model,vin,customer_id,engine_hours,status")
+      .eq("shop_id", profile.shop_id)
+      .order("created_at", { ascending: false })
+      .limit(250);
 
     if (vehicleResult.error) {
       console.error("[equipment/page] vehicle candidate load failed", vehicleResult.error);
       throw new Error("Equipment adoption candidates could not be loaded.");
     }
-    if (customerResult.error) {
-      console.error("[equipment/page] customer load failed", customerResult.error);
-      throw new Error("Equipment customer options could not be loaded.");
-    }
 
-    const visibleVehicles = vehicleResult.data ?? [];
+    const visibleVehicles = (vehicleResult.data ?? []).filter((row) => {
+      const status = String(row.status ?? "").trim().toLowerCase();
+      return !RETIRED_VEHICLE_STATUSES.has(status);
+    });
     const visibleVehicleIds = visibleVehicles.map((row) => row.id);
     let profiled = new Set<string>();
 
@@ -108,7 +99,35 @@ export default async function EquipmentDirectoryPage() {
         engineHours: row.engine_hours,
       }));
 
-    customers = (customerResult.data ?? []).map((row) => ({
+    const customerRows: Array<{
+      id: string;
+      name: string | null;
+      business_name: string | null;
+      first_name: string | null;
+      last_name: string | null;
+    }> = [];
+    for (let offset = 0; ; offset += CUSTOMER_PAGE_SIZE) {
+      const customerResult = await supabase
+        .from("customers")
+        .select("id,name,business_name,first_name,last_name")
+        .eq("shop_id", profile.shop_id)
+        .eq("active", true)
+        .is("archived_at", null)
+        .is("merged_into_customer_id", null)
+        .order("name", { ascending: true })
+        .range(offset, offset + CUSTOMER_PAGE_SIZE - 1);
+
+      if (customerResult.error) {
+        console.error("[equipment/page] customer load failed", customerResult.error);
+        throw new Error("Equipment customer options could not be loaded.");
+      }
+
+      const batch = customerResult.data ?? [];
+      customerRows.push(...batch);
+      if (batch.length < CUSTOMER_PAGE_SIZE) break;
+    }
+
+    customers = customerRows.map((row) => ({
       id: row.id,
       name:
         row.business_name?.trim() ||
