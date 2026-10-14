@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import AssetHealthView from "@/features/equipment/components/AssetHealthView";
 import EquipmentAccessState from "@/features/equipment/components/EquipmentAccessState";
 import EquipmentSetupChecklist from "@/features/equipment/components/EquipmentSetupChecklist";
+import EquipmentWorkOrderActions from "@/features/equipment/components/EquipmentWorkOrderActions";
 import { isAssetId } from "@/features/equipment/lib/assetProfile";
 import {
   canManageComponents,
@@ -13,6 +14,7 @@ import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDir
 import { loadAssetHealth } from "@/features/equipment/server/loadAssetHealth";
 import { resolveEquipmentPageEntitlement } from "@/features/equipment/server/pageEntitlement";
 import { VEHICLE_WORKSPACE_READER_ROLES } from "@/features/vehicles/lib/vehicleWorkspace";
+import { vehicleWorkspaceCreateWorkOrderHref } from "@/features/vehicles/server/loadVehicleWorkspaceSnapshot";
 import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
 import {
   createAdminSupabase,
@@ -133,6 +135,9 @@ export default async function AssetHealthPage({ params }: AssetHealthPageProps) 
           }}
         />
       ) : null}
+      <EquipmentWorkOrderActions
+        createWorkOrderHref={vehicleWorkspaceCreateWorkOrderHref(health.snapshot)}
+      />
       <AssetHealthView
         health={health}
         canOpenComponentHistory={(EQUIPMENT_DIRECTORY_ROLES as readonly string[]).includes(
