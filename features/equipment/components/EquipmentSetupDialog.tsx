@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import {
   ASSET_EQUIPMENT_CLASS_OPTIONS,
@@ -81,12 +81,10 @@ function candidateLabel(candidate: EquipmentAdoptionCandidate): string {
 
 export default function EquipmentSetupDialog({
   mode,
-  candidates,
   customers,
   onClose,
 }: {
   mode: EquipmentSetupMode;
-  candidates: EquipmentAdoptionCandidate[];
   customers: EquipmentCustomerOption[];
   onClose: () => void;
 }) {
@@ -94,11 +92,56 @@ export default function EquipmentSetupDialog({
   const [form, setForm] = useState<SetupForm>(EMPTY_FORM);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [creationOperationId] = useState(() => crypto.randomUUID());
+  const [candidates, setCandidates] = useState<EquipmentAdoptionCandidate[]>([]);
+  const [candidateSearch, setCandidateSearch] = useState("");
+  const [candidateQuery, setCandidateQuery] = useState("");
+  const [candidateNextOffset, setCandidateNextOffset] = useState<number | null>(null);
+  const [candidateLoading, setCandidateLoading] = useState(false);
+
   const selectedCandidate =
     candidates.find((candidate) => candidate.id === form.candidateId) ?? null;
 
   const update = (patch: Partial<SetupForm>) =>
     setForm((current) => ({ ...current, ...patch }));
+
+  const loadCandidates = useCallback(
+    async (query: string, offset: number, append: boolean) => {
+      if (mode !== "adopt") return;
+      setCandidateLoading(true);
+      setError(null);
+      try {
+        const params = new URLSearchParams();
+        if (query) params.set("q", query);
+        params.set("offset", String(offset));
+        const response = await fetch(`/api/equipment/adoption-candidates?${params.toString()}`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const payload = (await response.json().catch(() => ({}))) as {
+          candidates?: EquipmentAdoptionCandidate[];
+          nextOffset?: number | null;
+          error?: string;
+        };
+        if (!response.ok || !Array.isArray(payload.candidates)) {
+          setError(payload.error ?? "Equipment adoption candidates could not be loaded.");
+          return;
+        }
+        setCandidates((current) => (append ? [...current, ...payload.candidates!] : payload.candidates!));
+        setCandidateNextOffset(payload.nextOffset ?? null);
+        if (!append) update({ candidateId: "" });
+      } catch {
+        setError("Equipment adoption candidates could not be loaded. Check your connection and try again.");
+      } finally {
+        setCandidateLoading(false);
+      }
+    },
+    [mode],
+  );
+
+  useEffect(() => {
+    if (mode === "adopt") void loadCandidates("", 0, false);
+  }, [loadCandidates, mode]);
 
   const submit = async () => {
     if (saving) return;
@@ -112,6 +155,7 @@ export default function EquipmentSetupDialog({
           credentials: "include",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
+            operationId: creationOperationId,
             customerId: form.customerId || null,
             unitNumber: form.unitNumber,
             equipmentClass: form.equipmentClass,
@@ -215,6 +259,36 @@ export default function EquipmentSetupDialog({
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           {mode === "adopt" ? (
             <>
+              <div className="sm:col-span-2 flex gap-2">
+                <input
+                  className={`${INPUT} min-w-0 flex-1`}
+                  value={candidateSearch}
+                  disabled={saving || candidateLoading}
+                  onChange={(event) => setCandidateSearch(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter") {
+                      event.preventDefault();
+                      const nextQuery = candidateSearch.trim();
+                      setCandidateQuery(nextQuery);
+                      void loadCandidates(nextQuery, 0, false);
+                    }
+                  }}
+                  placeholder="Search existing assets by unit #"
+                  aria-label="Search existing Shop assets by unit number"
+                />
+                <button
+                  type="button"
+                  className={BUTTON}
+                  disabled={saving || candidateLoading}
+                  onClick={() => {
+                    const nextQuery = candidateSearch.trim();
+                    setCandidateQuery(nextQuery);
+                    void loadCandidates(nextQuery, 0, false);
+                  }}
+                >
+                  Search
+                </button>
+              </div>
               <label className="space-y-1 sm:col-span-2">
                 <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">
                   Existing asset *
@@ -222,10 +296,10 @@ export default function EquipmentSetupDialog({
                 <select
                   className={`${INPUT} w-full`}
                   value={form.candidateId}
-                  disabled={saving}
+                  disabled={saving || candidateLoading}
                   onChange={(event) => update({ candidateId: event.target.value })}
                 >
-                  <option value="">Select asset…</option>
+                  <option value="">{candidateLoading ? "Loading assets…" : "Select asset…"}</option>
                   {candidates.map((candidate) => (
                     <option key={candidate.id} value={candidate.id}>
                       {candidateLabel(candidate)}
@@ -242,6 +316,18 @@ export default function EquipmentSetupDialog({
                       ? "—"
                       : `${selectedCandidate.engineHours.toLocaleString()} h`}
                   </p>
+                </div>
+              ) : null}
+              {candidateNextOffset !== null ? (
+                <div className="sm:col-span-2">
+                  <button
+                    type="button"
+                    className={BUTTON}
+                    disabled={saving || candidateLoading}
+                    onClick={() => void loadCandidates(candidateQuery, candidateNextOffset, true)}
+                  >
+                    {candidateLoading ? "Loading…" : "Load more assets"}
+                  </button>
                 </div>
               ) : null}
             </>
@@ -281,11 +367,15 @@ export default function EquipmentSetupDialog({
           </label>
         </div>
 
-        {mode === "adopt" && candidates.length === 0 ? <p className="mt-4 text-sm text-[color:var(--theme-text-muted)]">All active Shop assets already have Equipment enabled.</p> : null}
+        {mode === "adopt" && !candidateLoading && candidates.length === 0 && candidateNextOffset === null ? (
+          <p className="mt-4 text-sm text-[color:var(--theme-text-muted)]">
+            No eligible Shop assets match this search.
+          </p>
+        ) : null}
         {error ? <p className="mt-4 text-sm font-semibold text-red-400" role="alert">{error}</p> : null}
         <div className="mt-5 flex justify-end gap-2">
           <button type="button" className={BUTTON} disabled={saving} onClick={onClose}>Cancel</button>
-          <button type="button" className={PRIMARY_BUTTON} disabled={saving || (mode === "adopt" && candidates.length === 0)} onClick={() => void submit()}>
+          <button type="button" className={PRIMARY_BUTTON} disabled={saving || candidateLoading || (mode === "adopt" && !selectedCandidate)} onClick={() => void submit()}>
             {saving ? "Saving…" : mode === "create" ? "Create equipment" : "Enable Equipment"}
           </button>
         </div>
