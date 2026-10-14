@@ -20,7 +20,7 @@ type SetupItem = {
   action: string;
 };
 
-const ITEMS = (assetId: string): SetupItem[] => [
+const ITEMS: SetupItem[] = [
   {
     key: "meterRecorded",
     label: "Record current meter",
@@ -46,21 +46,19 @@ const ITEMS = (assetId: string): SetupItem[] => [
     key: "inspectionRecorded",
     label: "Complete the first inspection",
     description: "Use the existing ProFixIQ inspection workflow to establish the machine's first recorded condition baseline.",
-    href: `/inspections?vehicleId=${encodeURIComponent(assetId)}`,
+    href: "/inspections",
     action: "Open inspections",
   },
 ];
 
 export default function EquipmentSetupChecklist({
-  assetId,
   state,
 }: {
   assetId: string;
   state: EquipmentSetupState;
 }) {
-  const items = ITEMS(assetId);
-  const completeCount = items.filter((item) => state[item.key] === true).length;
-  if (completeCount === items.length) return null;
+  const completeCount = ITEMS.filter((item) => state[item.key] === true).length;
+  if (completeCount === ITEMS.length) return null;
 
   return (
     <section className={`${PANEL} p-4`} aria-labelledby="equipment-setup-title">
@@ -75,12 +73,12 @@ export default function EquipmentSetupChecklist({
           </p>
         </div>
         <p className="text-sm font-semibold">
-          {completeCount} of {items.length} complete
+          {completeCount} of {ITEMS.length} complete
         </p>
       </div>
 
       <ul className="mt-4 grid gap-2 md:grid-cols-2">
-        {items.map((item) => {
+        {ITEMS.map((item) => {
           const value = state[item.key];
           const complete = value === true;
           const unknown = value === null;
