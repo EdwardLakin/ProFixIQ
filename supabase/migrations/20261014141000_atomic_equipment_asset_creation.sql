@@ -1,12 +1,75 @@
 -- Atomic Equipment front-door creation and adoption.
 --
--- Creation is serialized per shop, evaluates duplicate ownership using the
--- same trimmed/case-normalized unit semantics used by the application, and
--- creates the canonical vehicle + Equipment profile/meter state in one
--- transaction. Adoption locks and revalidates the canonical asset/customer
--- immediately before inserting the Equipment profile. Both RPCs are
--- service-role only; API routes authenticate/authorize callers and verify
--- Equipment entitlement before invocation.
+-- Canonical vehicle identity writes are serialized per shop at the vehicles
+-- table boundary, so Equipment creation and every other active canonical
+-- vehicle writer share the same duplicate-protection mechanism. Equipment
+-- creation then creates the canonical vehicle + Equipment profile/meter state
+-- in one transaction. Adoption locks and revalidates the canonical asset and
+-- owning customer immediately before inserting the Equipment profile.
+
+create or replace function public.vehicles_enforce_normalized_identity_unique()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_unit_normalized text;
+  v_vin_normalized text;
+begin
+  if new.shop_id is null then
+    return new;
+  end if;
+
+  perform pg_catalog.pg_advisory_xact_lock(
+    pg_catalog.hashtextextended('canonical_vehicle_identity:' || new.shop_id::text, 0)
+  );
+
+  v_unit_normalized := pg_catalog.lower(pg_catalog.btrim(coalesce(new.unit_number, '')));
+  if v_unit_normalized <> '' and exists (
+    select 1
+    from public.vehicles v
+    where v.shop_id = new.shop_id
+      and v.id <> new.id
+      and pg_catalog.lower(pg_catalog.btrim(coalesce(v.unit_number, ''))) = v_unit_normalized
+  ) then
+    raise exception 'vehicle_unit_duplicate' using errcode = '23505';
+  end if;
+
+  v_vin_normalized := pg_catalog.regexp_replace(
+    pg_catalog.upper(coalesce(new.vin, '')),
+    '[^A-Z0-9]',
+    '',
+    'g'
+  );
+  if v_vin_normalized <> '' and exists (
+    select 1
+    from public.vehicles v
+    where v.shop_id = new.shop_id
+      and v.id <> new.id
+      and pg_catalog.regexp_replace(
+        pg_catalog.upper(coalesce(v.vin, '')),
+        '[^A-Z0-9]',
+        '',
+        'g'
+      ) = v_vin_normalized
+  ) then
+    raise exception 'vehicle_vin_duplicate' using errcode = '23505';
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke all on function public.vehicles_enforce_normalized_identity_unique()
+  from public, anon, authenticated;
+
+drop trigger if exists vehicles_normalized_identity_unique on public.vehicles;
+create trigger vehicles_normalized_identity_unique
+before insert or update of shop_id, unit_number, vin
+on public.vehicles
+for each row
+execute function public.vehicles_enforce_normalized_identity_unique();
 
 create or replace function public.create_equipment_asset_atomic(
   p_shop_id uuid,
@@ -42,8 +105,10 @@ begin
     raise exception 'equipment_unit_required' using errcode = '22023';
   end if;
 
+  -- Use the same lock as the vehicles trigger so Equipment creation serializes
+  -- with every canonical vehicle writer, not just other Equipment requests.
   perform pg_catalog.pg_advisory_xact_lock(
-    pg_catalog.hashtextextended('equipment_asset_create:' || p_shop_id::text, 0)
+    pg_catalog.hashtextextended('canonical_vehicle_identity:' || p_shop_id::text, 0)
   );
 
   if p_customer_id is not null and not exists (
