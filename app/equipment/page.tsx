@@ -40,6 +40,7 @@ export default async function EquipmentDirectoryPage() {
 
   const canManage = (ROLE_GROUPS.billingOperators as readonly string[]).includes(canonicalRole);
   let customers: Array<{ id: string; name: string }> = [];
+  let customerOptionsError: string | null = null;
 
   if (canManage) {
     const customerRows: Array<{
@@ -67,7 +68,9 @@ export default async function EquipmentDirectoryPage() {
 
       if (customerResult.error) {
         console.error("[equipment/page] customer load failed", customerResult.error);
-        throw new Error("Equipment customer options could not be loaded.");
+        customerOptionsError =
+          "Customer options could not be loaded. You can still browse Equipment; retry before assigning a customer during setup.";
+        break;
       }
 
       const batch = customerResult.data ?? [];
@@ -75,19 +78,21 @@ export default async function EquipmentDirectoryPage() {
       if (batch.length < CUSTOMER_PAGE_SIZE) break;
     }
 
-    customers = customerRows.map((row) => {
-      const displayName =
-        row.business_name?.trim() ||
-        row.name?.trim() ||
-        [row.first_name, row.last_name].filter(Boolean).join(" ").trim() ||
-        "Customer";
-      const secondary =
-        row.email?.trim() ||
-        row.phone?.trim() ||
-        row.phone_number?.trim() ||
-        `Acct ${row.id.slice(0, 8)}`;
-      return { id: row.id, name: `${displayName} · ${secondary}` };
-    });
+    if (!customerOptionsError) {
+      customers = customerRows.map((row) => {
+        const displayName =
+          row.business_name?.trim() ||
+          row.name?.trim() ||
+          [row.first_name, row.last_name].filter(Boolean).join(" ").trim() ||
+          "Customer";
+        const secondary =
+          row.email?.trim() ||
+          row.phone?.trim() ||
+          row.phone_number?.trim() ||
+          `Acct ${row.id.slice(0, 8)}`;
+        return { id: row.id, name: `${displayName} · ${secondary}` };
+      });
+    }
   }
 
   return (
@@ -96,6 +101,7 @@ export default async function EquipmentDirectoryPage() {
       truncated={directory.truncated}
       canManage={canManage}
       customers={customers}
+      customerOptionsError={customerOptionsError}
     />
   );
 }
