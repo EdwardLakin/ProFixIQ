@@ -21,15 +21,20 @@ describe("Equipment front door", () => {
     expect(setup).toContain("Add existing asset");
   });
 
-  it("loads adoption candidates and only active canonical customers", () => {
+  it("loads adoption candidates and all active canonical customers", () => {
     const page = source("app/equipment/page.tsx");
 
+    expect(page).toContain('.select("id,unit_number,year,make,model,vin,customer_id,engine_hours,status")');
+    expect(page).toContain("RETIRED_VEHICLE_STATUSES");
     expect(page).toContain('.order("created_at"');
     expect(page).not.toContain('.order("updated_at"');
     expect(page).toContain('.in("vehicle_id", visibleVehicleIds)');
     expect(page).toContain('.eq("active", true)');
     expect(page).toContain('.is("archived_at", null)');
     expect(page).toContain('.is("merged_into_customer_id", null)');
+    expect(page).toContain("CUSTOMER_PAGE_SIZE");
+    expect(page).toContain(".range(offset, offset + CUSTOMER_PAGE_SIZE - 1)");
+    expect(page).not.toContain(".limit(500)");
     expect(page).toContain("Equipment customer options could not be loaded.");
   });
 
@@ -45,20 +50,20 @@ describe("Equipment front door", () => {
     expect(profileRoute).toContain("Equipment is already enabled for this asset.");
   });
 
-  it("uses normal asset UUIDs and checks canonical unit/VIN duplicates before and after insert", () => {
+  it("validates VINs and restricts duplicate arbitration to exact matches", () => {
     const setup = source("features/equipment/components/EquipmentSetupDialog.tsx");
     const route = source("app/api/equipment/assets/route.ts");
 
     expect(setup).toContain("value={form.vin}");
     expect(setup).toContain("Equipment PIN");
     expect(route).toContain('import { randomUUID } from "node:crypto"');
-    expect(route).not.toContain("deterministicEquipmentAssetId");
-    expect(route).toContain("normalizeVinInput");
+    expect(route).toContain("vinResult.isValid");
+    expect(route).toContain("vinResult.message");
+    expect(route).toContain("isExactDuplicate");
+    expect(route).toContain("const beforeExact = before.rows.filter");
+    expect(route).toContain("after.rows\n    .filter((row) => isExactDuplicate");
     expect(route).toContain("DUPLICATE_VIN_MESSAGE");
-    expect(route).toContain("const before = await loadDuplicates()");
-    expect(route).toContain("const after = await loadDuplicates()");
     expect(route).toContain("const assetId = randomUUID()");
-    expect(route).toContain("vin,");
   });
 
   it("rejects archived or merged customer assignments at the write boundary", () => {
@@ -67,6 +72,33 @@ describe("Equipment front door", () => {
     expect(route).toContain('select("id,active,archived_at,merged_into_customer_id")');
     expect(route).toContain("!customer.active || customer.archived_at || customer.merged_into_customer_id");
     expect(route).toContain("Choose an active customer account before creating Equipment.");
+  });
+
+  it("records initial hours through the atomic profile meter write", () => {
+    const route = source("app/api/equipment/assets/route.ts");
+
+    expect(route).toContain("engine_hours: null");
+    expect(route).toContain("p_set_engine_hours: engineHours !== null");
+    expect(route).toContain("p_engine_hours: engineHours");
+    expect(route).toContain("p_expected_engine_hours: null");
+  });
+
+  it("surfaces recoverable partial state when compensation cannot clean up", () => {
+    const route = source("app/api/equipment/assets/route.ts");
+
+    expect(route).toContain("duplicate verification and cleanup failed");
+    expect(route).toContain("duplicate loser cleanup failed");
+    expect(route).toContain("failed to clean up incomplete asset");
+    expect(route).toContain("partial: true");
+    expect(route).toContain("Use Add existing asset");
+  });
+
+  it("prevents dismissing the setup dialog while a mutation is in flight", () => {
+    const setup = source("features/equipment/components/EquipmentSetupDialog.tsx");
+
+    expect(setup).toContain("if (saving) return");
+    expect(setup).toContain("aria-busy={saving}");
+    expect(setup).toContain('className={BUTTON} disabled={saving} onClick={onClose}');
   });
 
   it("verifies profile persistence before profile-failure compensation", () => {
