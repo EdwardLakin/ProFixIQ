@@ -1,23 +1,22 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-10-13T22:39:51.823Z
+Generated: 2026-10-13T19:41:44.525Z
 
 ## Summary
-- Total route count: **571**
-- Routes exporting GET: **217**
+- Total route count: **566**
+- Routes exporting GET: **212**
 - Routes exporting POST: **382**
 - Routes exporting PUT: **15**
 - Routes exporting PATCH: **36**
 - Routes exporting DELETE: **15**
-- Routes with service-role pattern: **222**
-- Routes using requireShopScopedApiAccess: **242**
-- Routes with auth.getUser references: **123**
+- Routes with service-role pattern: **220**
+- Routes using requireShopScopedApiAccess: **241**
+- Routes with auth.getUser references: **121**
 
 ## High-Risk Routes
 - `app/api/analytics/marketing-events/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary
 - `app/api/assistant/answer/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/assistant/suggested-actions/route.ts` | methods: GET, POST | riskFlags: mutating_without_obvious_auth_marker
-- `app/api/auth/handoff/start/route.ts` | methods: GET | riskFlags: service_role_without_shop_reference_on_staff_route
 - `app/api/auth/password-activation/route.ts` | methods: POST | riskFlags: service_role_without_shop_reference_on_staff_route
 - `app/api/auth/resolve-login/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/auth/sign-in/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_with_shop_identifier_input_or_reference
@@ -296,7 +295,6 @@ Generated: 2026-10-13T22:39:51.823Z
 - `app/api/workforce/job-time/corrections/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/workforce/me/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/workforce/overview/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
-- `app/api/workspaces/entitlements/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 
 ## Service-Role Route List
 - `app/api/admin/create-user/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
@@ -320,7 +318,6 @@ Generated: 2026-10-13T22:39:51.823Z
 - `app/api/ai/interpret/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/analytics/marketing-events/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary
 - `app/api/assignables/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
-- `app/api/auth/handoff/start/route.ts` | methods: GET | riskFlags: service_role_without_shop_reference_on_staff_route
 - `app/api/auth/password-activation/route.ts` | methods: POST | riskFlags: service_role_without_shop_reference_on_staff_route
 - `app/api/auth/sign-in/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_with_shop_identifier_input_or_reference
 - `app/api/chat/context-options/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
@@ -520,16 +517,12 @@ Generated: 2026-10-13T22:39:51.823Z
 - `app/api/workforce/job-time/corrections/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/workforce/me/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/workforce/overview/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
-- `app/api/workspaces/entitlements/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
 
 ## Routes Missing Obvious Auth Markers (staff/admin guess)
 - `app/api/agent/events/route.ts` | methods: GET | riskFlags: none
 - `app/api/ai/suggest/route.ts` | methods: none | riskFlags: none
 - `app/api/assistant/answer/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/assistant/suggested-actions/route.ts` | methods: GET, POST | riskFlags: mutating_without_obvious_auth_marker
-- `app/api/auth/handoff/begin/route.ts` | methods: GET | riskFlags: none
-- `app/api/auth/handoff/failed/route.ts` | methods: GET | riskFlags: none
-- `app/api/auth/handoff/redeem/route.ts` | methods: GET | riskFlags: none
 - `app/api/auth/resolve-login/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/auth/send-reset-email/route.ts` | methods: none | riskFlags: none
 - `app/api/auth/send-reset/route.ts` | methods: none | riskFlags: none

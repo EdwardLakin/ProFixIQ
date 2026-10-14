@@ -9,7 +9,6 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
 import RoleSidebar from "@/features/shared/components/RoleSidebar";
-import WorkspaceProductSwitcher from "@/features/shared/components/WorkspaceProductSwitcher";
 import ShiftTracker from "@shared/components/ShiftTracker";
 import ActionButton from "@/features/shared/components/ActionButton";
 import PwaUpdateButton from "@/features/shared/components/pwa/PwaUpdateButton";
@@ -640,9 +639,14 @@ export default function AppShell({
                 </div>
               </button>
 
-              <WorkspaceProductSwitcher
-                surface={pathname.startsWith("/equipment") ? "equipment" : "shop"}
-              />
+              <nav className="flex gap-3 text-sm text-[color:var(--theme-text-secondary)]">
+                <Link
+                  href="/dashboard"
+                  className="hover:text-[color:var(--theme-text-primary)]"
+                >
+                  Dashboard
+                </Link>
+              </nav>
             </div>
 
             <div className="flex items-center gap-1.5 lg:gap-2">
@@ -748,9 +752,6 @@ export default function AppShell({
           ) : null}
 
           <main className="flex w-full min-w-0 flex-1 flex-col overflow-x-hidden px-3 pb-14 pt-16 md:px-4 md:pb-6 md:pt-16 lg:px-6 lg:pt-[4.25rem] xl:px-8 2xl:px-10">
-            <div className="mb-2 md:hidden">
-              <WorkspaceProductSwitcher surface={pathname.startsWith("/equipment") ? "equipment" : "shop"} />
-            </div>
             <TabsBridge tabsSubdued={chatOpen}>
               <div className="relative z-0 mx-auto w-full max-w-[1800px] min-w-0">
                 {children}
