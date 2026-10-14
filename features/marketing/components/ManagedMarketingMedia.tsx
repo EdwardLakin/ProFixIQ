@@ -18,9 +18,9 @@ export default function ManagedMarketingMedia({
   slotKey,
   pageKey,
   fallback = null,
-  mediaClassName = "h-auto w-full object-contain object-top",
+  mediaClassName = "h-full w-full object-contain object-top",
   captionClassName = "border-t border-white/10 px-5 py-4 text-xs leading-5 text-slate-400",
-  autoPlayVideo = true,
+  autoPlayVideo = false,
 }: {
   slotKey: string;
   pageKey?: MarketingPageKey;
@@ -61,21 +61,23 @@ export default function ManagedMarketingMedia({
 
   return (
     <>
-      {asset.kind === "video" ? (
-        <video
-          src={asset.url}
-          aria-label={asset.alt}
-          className={mediaClassName}
-          muted
-          autoPlay={autoPlayVideo}
-          loop={autoPlayVideo}
-          playsInline
-          controls
-          preload="metadata"
-        />
-      ) : (
-        <img src={asset.url} alt={asset.alt} className={mediaClassName} />
-      )}
+      <div className="aspect-[16/10] w-full overflow-hidden bg-[#07111f]">
+        {asset.kind === "video" ? (
+          <video
+            src={asset.url}
+            aria-label={asset.alt}
+            className={mediaClassName}
+            muted
+            autoPlay={autoPlayVideo}
+            loop={autoPlayVideo}
+            playsInline
+            controls
+            preload="metadata"
+          />
+        ) : (
+          <img src={asset.url} alt={asset.alt} className={mediaClassName} />
+        )}
+      </div>
       {asset.caption ? <p className={captionClassName}>{asset.caption}</p> : null}
     </>
   );
