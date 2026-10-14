@@ -21,7 +21,7 @@ describe("Equipment front door", () => {
     expect(setup).toContain("Add existing asset");
   });
 
-  it("loads adoption candidates only when requested and keeps customer options complete", () => {
+  it("loads adoption candidates only when requested with no hard vehicle ceiling", () => {
     const page = source("app/equipment/page.tsx");
     const setup = source("features/equipment/components/EquipmentSetupDialog.tsx");
     const candidateRoute = source("app/api/equipment/adoption-candidates/route.ts");
@@ -34,6 +34,9 @@ describe("Equipment front door", () => {
     expect(setup).toContain("Load more assets");
     expect(candidateRoute).toContain("const PAGE_SIZE = 50");
     expect(candidateRoute).toContain('.range(offset, offset + PAGE_SIZE - 1)');
+    expect(candidateRoute).toContain("Number.isSafeInteger(rawOffset)");
+    expect(candidateRoute).not.toContain("20000");
+    expect(candidateRoute).toContain("const hasMore = vehicleRows.length === PAGE_SIZE");
     expect(candidateRoute).toContain('.ilike("unit_number"');
     expect(candidateRoute).toContain("RETIRED_VEHICLE_STATUSES");
     expect(candidateRoute).toContain('"equipment_asset_profiles"');
@@ -59,11 +62,12 @@ describe("Equipment front door", () => {
     expect(profileRoute).toContain("body?.createOnly === true");
     expect(profileRoute).toContain("mutation.currentCycles !== null");
     expect(profileRoute).toContain('"adopt_equipment_asset_atomic"');
+    expect(profileRoute).toContain('error.code === "40001"');
+    expect(profileRoute).toContain("Reload the asset list and try again");
     expect(migration).toContain("for update;");
     expect(migration).toContain("lower(pg_catalog.btrim(coalesce(v_vehicle.status, '')))");
     expect(migration).toContain("equipment_asset_retired");
     expect(migration).toContain("equipment_customer_inactive");
-    expect(migration).toContain("equipment_profile_exists");
   });
 
   it("keeps canonical vehicle contracts additive while serializing Equipment creation", () => {
@@ -86,11 +90,13 @@ describe("Equipment front door", () => {
     expect(migration).toContain("perform public.save_equipment_asset_profile");
   });
 
-  it("serializes Equipment customer validation with lifecycle mutations", () => {
+  it("locks customer lifecycle state before the vehicle table to avoid merge deadlocks", () => {
     const migration = source("supabase/migrations/20261014141000_atomic_equipment_asset_creation.sql");
 
-    expect(migration).toContain("select c.active, c.archived_at, c.merged_into_customer_id");
-    expect(migration).toContain("for update;");
+    const customerLock = migration.indexOf("select c.active, c.archived_at, c.merged_into_customer_id");
+    const vehicleTableLock = migration.indexOf("lock table public.vehicles in share row exclusive mode");
+    expect(customerLock).toBeGreaterThan(-1);
+    expect(vehicleTableLock).toBeGreaterThan(customerLock);
     expect(migration).toContain("v_customer_active is distinct from true");
     expect(migration).toContain("v_customer_merged_into is not null");
     expect(migration).toContain("v_initial_customer_id");
@@ -98,8 +104,9 @@ describe("Equipment front door", () => {
     expect(migration).toContain("equipment_asset_changed");
   });
 
-  it("makes successful create retries idempotent but rejects changed replay payloads", () => {
+  it("makes successful create retries idempotent but exposes changed replay payloads", () => {
     const setup = source("features/equipment/components/EquipmentSetupDialog.tsx");
+    const route = source("app/api/equipment/assets/route.ts");
     const migration = source("supabase/migrations/20261014141000_atomic_equipment_asset_creation.sql");
 
     expect(setup).toContain("crypto.randomUUID()");
@@ -113,6 +120,21 @@ describe("Equipment front door", () => {
     expect(migration).toContain("v_existing_profile.attributes");
     expect(migration).toContain("equipment_operation_conflict");
     expect(migration).toContain("return p_vehicle_id;");
+    expect(route).toContain("operation_conflict");
+    expect(route).toContain("operationConflict: true");
+    expect(route).toContain("already completed with different details");
+  });
+
+  it("makes completed adoption retries converge without overwriting changed profiles", () => {
+    const profileRoute = source("app/api/equipment/assets/[assetId]/profile/route.ts");
+    const migration = source("supabase/migrations/20261014141000_atomic_equipment_asset_creation.sql");
+
+    expect(migration).toContain("v_existing_profile public.equipment_asset_profiles%rowtype");
+    expect(migration).toContain("A lost successful HTTP response may cause the exact same adoption to be");
+    expect(migration).toContain("equipment_adoption_conflict");
+    expect(migration).toContain("return;");
+    expect(profileRoute).toContain("adoption_conflict");
+    expect(profileRoute).toContain("adoptionConflict: true");
   });
 
   it("rejects archived or merged customer assignments at both create boundaries", () => {
