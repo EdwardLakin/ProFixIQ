@@ -10,27 +10,43 @@ describe("marketing media library management", () => {
     expect(server).toContain("export async function getMarketingMediaUsageMap");
     expect(server).toContain('state: "draft"');
     expect(server).toContain('state: "published"');
-    expect(server).toContain("if (usages.length > 0) return { deleted: false, usages };");
+    expect(server).toContain("if (usages.length > 0)");
     expect(server).toContain("MARKETING_MEDIA_BUCKET).remove([asset.storagePath])");
   });
 
-  it("propagates metadata changes into draft and published slot records", () => {
+  it("uses canonical metadata as the single source of truth", () => {
     const server = read("features/marketing/media/server.ts");
 
+    expect(server).toContain("async function hydrateCanonicalAsset");
+    expect(server).toContain("return getMarketingMediaAsset(asset.id)");
     expect(server).toContain("export async function updateMarketingMediaAssetMetadata");
     expect(server).toContain("writeStoredJson(`assets/${assetId}.json`, updated)");
-    expect(server).toContain("draftSlotPath(usage.pageKey, usage.slotKey)");
-    expect(server).toContain("publishedSlotPath(usage.pageKey, usage.slotKey)");
-    expect(server).toContain("existing?.publishedAt");
+    expect(server).toContain("Canonical metadata is the source of truth");
+    expect(server).not.toContain("draftSlotPath(usage.pageKey, usage.slotKey)");
+    expect(server).not.toContain("publishedSlotPath(usage.pageKey, usage.slotKey)");
   });
 
-  it("cleans abandoned prepared uploads conservatively", () => {
+  it("serializes deletion against draft assignment with a tombstone and recheck", () => {
+    const server = read("features/marketing/media/server.ts");
+
+    expect(server).toContain("function deletionMarkerPath(assetId: string)");
+    expect(server).toContain("await writeStoredJson(deletionMarkerPath(assetId)");
+    expect(server).toContain("getAssignableMarketingMediaAsset(asset.id)");
+    expect(server).toContain("Recheck after the write to close the race");
+    expect(server).toContain("await removeStoredJson(path)");
+    expect(server).toContain("const asset = await getAssignableMarketingMediaAsset(draftAsset.id)");
+  });
+
+  it("cleans abandoned prepared uploads without deleting finalized media", () => {
     const route = read("app/api/ops/marketing/media/route.ts");
 
     expect(route).toContain("STALE_PENDING_MS = 24 * 60 * 60 * 1000");
     expect(route).toContain('listJsonItems("pending")');
     expect(route).toContain("new Date(asset.createdAt).getTime() > cutoff");
-    expect(route).toContain("cleanedPending");
+    expect(route).toContain("const canonical = await getMarketingMediaAsset(asset.id)");
+    expect(route).toContain("const usages = usageMap[asset.id] ?? []");
+    expect(route).toContain("if (canonical || usages.length > 0)");
+    expect(route).toContain("removePendingMarker(pendingPath, id)");
   });
 
   it("supports metadata editing and protected deletion through the Ops API", () => {
