@@ -1,9 +1,13 @@
+import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { requireOpsOperatorApiAccess } from "@/features/ops/server/operator-access";
 import {
+  clearMarketingPageMediaDraft,
+  getMarketingMediaAsset,
   getMarketingPageMediaDocument,
   isMarketingPageKey,
-  writeMarketingPageMediaDocument,
+  publishMarketingPageMediaDraft,
+  saveMarketingPageMediaDraft,
 } from "@/features/marketing/media/server";
 import {
   MARKETING_PAGE_REGISTRY,
@@ -59,44 +63,33 @@ export async function POST(
     );
   }
 
-  if (!Object.prototype.hasOwnProperty.call(MARKETING_PAGE_REGISTRY[pageKey].slots, parsed.data.slotKey)) {
+  const { slotKey, action, assetId } = parsed.data;
+  if (!Object.prototype.hasOwnProperty.call(MARKETING_PAGE_REGISTRY[pageKey].slots, slotKey)) {
     return NextResponse.json({ error: "Unknown media slot" }, { status: 404 });
   }
 
   try {
-    const current = await getMarketingPageMediaDocument(pageKey);
-    const previous = current.slots[parsed.data.slotKey] ?? {
-      draft: null,
-      published: null,
-      publishedAt: null,
-    };
-    const now = new Date().toISOString();
-
-    if (parsed.data.action === "save-draft" && !parsed.data.media) {
-      return NextResponse.json({ error: "Choose media before saving the draft" }, { status: 400 });
+    if (action === "save-draft") {
+      if (!assetId) {
+        return NextResponse.json({ error: "Choose media before saving the draft" }, { status: 400 });
+      }
+      const asset = await getMarketingMediaAsset(assetId);
+      if (!asset) {
+        return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
+      }
+      await saveMarketingPageMediaDraft(pageKey, slotKey, asset);
+    } else if (action === "clear-draft") {
+      await clearMarketingPageMediaDraft(pageKey, slotKey);
+    } else {
+      const published = await publishMarketingPageMediaDraft(pageKey, slotKey);
+      if (!published) {
+        return NextResponse.json({ error: "Save a draft before publishing" }, { status: 400 });
+      }
+      revalidatePath(`/api/public/marketing/pages/${pageKey}`);
+      revalidatePath(MARKETING_PAGE_REGISTRY[pageKey].href);
     }
 
-    const nextSlot =
-      parsed.data.action === "publish"
-        ? {
-            ...previous,
-            published: previous.draft,
-            publishedAt: previous.draft ? now : null,
-          }
-        : parsed.data.action === "clear-draft"
-          ? { ...previous, draft: null }
-          : { ...previous, draft: parsed.data.media ?? null };
-
-    if (parsed.data.action === "publish" && !previous.draft) {
-      return NextResponse.json({ error: "Save a draft before publishing" }, { status: 400 });
-    }
-
-    const document = {
-      ...current,
-      slots: { ...current.slots, [parsed.data.slotKey]: nextSlot },
-      updatedAt: now,
-    };
-    await writeMarketingPageMediaDocument(document);
+    const document = await getMarketingPageMediaDocument(pageKey);
     return NextResponse.json({ document });
   } catch (error) {
     console.error("ops marketing page media update failed", { pageKey, error });
