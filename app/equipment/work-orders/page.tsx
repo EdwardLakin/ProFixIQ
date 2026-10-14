@@ -3,7 +3,7 @@ import { unstable_noStore as noStore } from "next/cache";
 import EquipmentAccessState from "@/features/equipment/components/EquipmentAccessState";
 import EquipmentWorkOrdersView from "@/features/equipment/components/EquipmentWorkOrdersView";
 import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDirectory";
-import { loadEquipmentDirectory } from "@/features/equipment/server/loadEquipmentDirectory";
+import { loadEquipmentWorkOrders } from "@/features/equipment/server/loadEquipmentWorkOrders";
 import { resolveEquipmentPageEntitlement } from "@/features/equipment/server/pageEntitlement";
 import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
 import {
@@ -26,12 +26,12 @@ export default async function EquipmentWorkOrdersPage() {
     return <EquipmentAccessState state={entitlement} retryHref="/equipment/work-orders" />;
   }
 
-  const directory = await loadEquipmentDirectory({
+  const workOrders = await loadEquipmentWorkOrders({
     supabase: createServerSupabaseRSC(),
     admin: createAdminSupabase(),
     shopId: profile.shop_id,
     role: canonicalRole,
   });
 
-  return <EquipmentWorkOrdersView rows={directory.rows} truncated={directory.truncated} />;
+  return <EquipmentWorkOrdersView rows={workOrders.rows} truncated={workOrders.truncated} />;
 }
