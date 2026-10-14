@@ -1,11 +1,11 @@
 -- Atomic Equipment front-door creation and adoption.
 --
 -- Canonical vehicle identity writes are serialized per shop at the vehicles
--- table boundary, so Equipment creation and every other active canonical
--- vehicle writer share the same duplicate-protection mechanism. Equipment
--- creation then creates the canonical vehicle + Equipment profile/meter state
--- in one transaction. Adoption locks and revalidates the canonical asset and
--- owning customer immediately before inserting the Equipment profile.
+-- table boundary, so Equipment creation and every other canonical vehicle
+-- writer share the same duplicate-protection mechanism. Equipment creation
+-- then creates the canonical vehicle + Equipment profile/meter state in one
+-- transaction. Adoption locks and revalidates the canonical asset and owning
+-- customer immediately before inserting the Equipment profile.
 
 create or replace function public.vehicles_enforce_normalized_identity_unique()
 returns trigger
@@ -74,15 +74,8 @@ execute function public.vehicles_enforce_normalized_identity_unique();
 create or replace function public.create_equipment_asset_atomic(
   p_shop_id uuid,
   p_vehicle_id uuid,
-  p_customer_id uuid,
-  p_unit_number text,
-  p_year integer,
-  p_make text,
-  p_model text,
-  p_vin text,
-  p_engine_hours integer,
   p_actor_user_id uuid,
-  p_profile jsonb
+  p_input jsonb
 )
 returns uuid
 language plpgsql
@@ -90,19 +83,44 @@ security definer
 set search_path = ''
 as $$
 declare
+  v_customer_id uuid;
+  v_unit_number text;
   v_unit_normalized text;
+  v_year integer;
+  v_make text;
+  v_model text;
+  v_vin text;
+  v_engine_hours integer;
+  v_profile jsonb;
 begin
   if p_shop_id is null
      or p_vehicle_id is null
      or p_actor_user_id is null
-     or p_profile is null
-     or jsonb_typeof(p_profile) <> 'object' then
+     or p_input is null
+     or jsonb_typeof(p_input) <> 'object' then
     raise exception 'equipment_create_invalid' using errcode = '22023';
   end if;
 
-  v_unit_normalized := pg_catalog.lower(pg_catalog.btrim(coalesce(p_unit_number, '')));
-  if v_unit_normalized = '' then
-    raise exception 'equipment_unit_required' using errcode = '22023';
+  begin
+    v_customer_id := nullif(p_input ->> 'customer_id', '')::uuid;
+    v_year := nullif(p_input ->> 'year', '')::integer;
+    v_engine_hours := nullif(p_input ->> 'engine_hours', '')::integer;
+  exception when invalid_text_representation or numeric_value_out_of_range then
+    raise exception 'equipment_create_invalid' using errcode = '22023';
+  end;
+
+  v_unit_number := pg_catalog.btrim(coalesce(p_input ->> 'unit_number', ''));
+  v_unit_normalized := pg_catalog.lower(v_unit_number);
+  v_make := nullif(pg_catalog.btrim(coalesce(p_input ->> 'make', '')), '');
+  v_model := nullif(pg_catalog.btrim(coalesce(p_input ->> 'model', '')), '');
+  v_vin := nullif(pg_catalog.btrim(coalesce(p_input ->> 'vin', '')), '');
+  v_profile := p_input -> 'profile';
+
+  if v_unit_normalized = ''
+     or v_profile is null
+     or jsonb_typeof(v_profile) <> 'object'
+     or (v_engine_hours is not null and v_engine_hours < 0) then
+    raise exception 'equipment_create_invalid' using errcode = '22023';
   end if;
 
   -- Use the same lock as the vehicles trigger so Equipment creation serializes
@@ -111,10 +129,10 @@ begin
     pg_catalog.hashtextextended('canonical_vehicle_identity:' || p_shop_id::text, 0)
   );
 
-  if p_customer_id is not null and not exists (
+  if v_customer_id is not null and not exists (
     select 1
     from public.customers c
-    where c.id = p_customer_id
+    where c.id = v_customer_id
       and c.shop_id = p_shop_id
       and c.active = true
       and c.archived_at is null
@@ -132,7 +150,7 @@ begin
     raise exception 'equipment_unit_duplicate' using errcode = '23505';
   end if;
 
-  if p_vin is not null and exists (
+  if v_vin is not null and exists (
     select 1
     from public.vehicles v
     where v.shop_id = p_shop_id
@@ -141,7 +159,7 @@ begin
         '[^A-Z0-9]',
         '',
         'g'
-      ) = p_vin
+      ) = v_vin
   ) then
     raise exception 'equipment_vin_duplicate' using errcode = '23505';
   end if;
@@ -152,12 +170,12 @@ begin
   values (
     p_vehicle_id,
     p_shop_id,
-    p_customer_id,
-    pg_catalog.btrim(p_unit_number),
-    p_year,
-    p_make,
-    p_model,
-    p_vin,
+    v_customer_id,
+    v_unit_number,
+    v_year,
+    v_make,
+    v_model,
+    v_vin,
     null
   );
 
@@ -165,9 +183,9 @@ begin
     p_shop_id,
     p_vehicle_id,
     p_actor_user_id,
-    p_profile,
-    p_engine_hours is not null,
-    p_engine_hours,
+    v_profile,
+    v_engine_hours is not null,
+    v_engine_hours,
     null,
     false,
     null,
@@ -178,13 +196,11 @@ begin
 end;
 $$;
 
-revoke all on function public.create_equipment_asset_atomic(
-  uuid, uuid, uuid, text, integer, text, text, text, integer, uuid, jsonb
-) from public, anon, authenticated;
+revoke all on function public.create_equipment_asset_atomic(uuid, uuid, uuid, jsonb)
+  from public, anon, authenticated;
 
-grant execute on function public.create_equipment_asset_atomic(
-  uuid, uuid, uuid, text, integer, text, text, text, integer, uuid, jsonb
-) to service_role;
+grant execute on function public.create_equipment_asset_atomic(uuid, uuid, uuid, jsonb)
+  to service_role;
 
 create or replace function public.adopt_equipment_asset_atomic(
   p_shop_id uuid,
