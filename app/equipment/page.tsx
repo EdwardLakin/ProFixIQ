@@ -6,6 +6,7 @@ import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDir
 import { loadEquipmentDirectory } from "@/features/equipment/server/loadEquipmentDirectory";
 import { resolveEquipmentPageEntitlement } from "@/features/equipment/server/pageEntitlement";
 import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
+import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
 import {
   createAdminSupabase,
   createServerSupabaseRSC,
@@ -26,12 +27,92 @@ export default async function EquipmentDirectoryPage() {
     return <EquipmentAccessState state={entitlement} retryHref="/equipment" />;
   }
 
+  const supabase = createServerSupabaseRSC();
+  const admin = createAdminSupabase();
   const directory = await loadEquipmentDirectory({
-    supabase: createServerSupabaseRSC(),
-    admin: createAdminSupabase(),
+    supabase,
+    admin,
     shopId: profile.shop_id,
     role: canonicalRole,
   });
 
-  return <EquipmentDirectoryView rows={directory.rows} truncated={directory.truncated} />;
+  const canManage = (ROLE_GROUPS.billingOperators as readonly string[]).includes(canonicalRole);
+  let candidates: Array<{
+    id: string;
+    unitNumber: string | null;
+    year: number | null;
+    make: string | null;
+    model: string | null;
+    vin: string | null;
+    customerId: string | null;
+    engineHours: number | null;
+  }> = [];
+  let customers: Array<{ id: string; name: string }> = [];
+
+  if (canManage) {
+    const [vehicleResult, profileResult, customerResult] = await Promise.all([
+      supabase
+        .from("vehicles")
+        .select("id,unit_number,year,make,model,vin,customer_id,engine_hours")
+        .eq("shop_id", profile.shop_id)
+        .order("updated_at", { ascending: false })
+        .limit(250),
+      admin
+        .from("equipment_asset_profiles")
+        .select("vehicle_id")
+        .eq("shop_id", profile.shop_id),
+      supabase
+        .from("customers")
+        .select("id,name,business_name,first_name,last_name")
+        .eq("shop_id", profile.shop_id)
+        .order("name", { ascending: true })
+        .limit(500),
+    ]);
+
+    if (vehicleResult.error) {
+      console.error("[equipment/page] vehicle candidate load failed", vehicleResult.error);
+    } else {
+      const profiled = new Set((profileResult.data ?? []).map((row) => row.vehicle_id));
+      candidates = (vehicleResult.data ?? [])
+        .filter((row) => !profiled.has(row.id))
+        .map((row) => ({
+          id: row.id,
+          unitNumber: row.unit_number,
+          year: row.year,
+          make: row.make,
+          model: row.model,
+          vin: row.vin,
+          customerId: row.customer_id,
+          engineHours: row.engine_hours,
+        }));
+    }
+
+    if (profileResult.error) {
+      console.error("[equipment/page] profile candidate load failed", profileResult.error);
+      candidates = [];
+    }
+
+    if (customerResult.error) {
+      console.error("[equipment/page] customer load failed", customerResult.error);
+    } else {
+      customers = (customerResult.data ?? []).map((row) => ({
+        id: row.id,
+        name:
+          row.business_name?.trim() ||
+          row.name?.trim() ||
+          [row.first_name, row.last_name].filter(Boolean).join(" ").trim() ||
+          "Customer",
+      }));
+    }
+  }
+
+  return (
+    <EquipmentDirectoryView
+      rows={directory.rows}
+      truncated={directory.truncated}
+      canManage={canManage}
+      candidates={candidates}
+      customers={customers}
+    />
+  );
 }

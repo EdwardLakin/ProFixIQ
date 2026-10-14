@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 
 import AssetHealthView from "@/features/equipment/components/AssetHealthView";
 import EquipmentAccessState from "@/features/equipment/components/EquipmentAccessState";
+import EquipmentSetupGuide from "@/features/equipment/components/EquipmentSetupGuide";
 import { isAssetId } from "@/features/equipment/lib/assetProfile";
 import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDirectory";
 import { loadAssetHealth } from "@/features/equipment/server/loadAssetHealth";
@@ -19,22 +20,21 @@ export const revalidate = 0;
 
 type AssetHealthPageProps = {
   params: Promise<{ assetId: string }>;
+  searchParams: Promise<{ setup?: string }>;
 };
 
-export default async function AssetHealthPage({ params }: AssetHealthPageProps) {
+export default async function AssetHealthPage({ params, searchParams }: AssetHealthPageProps) {
   noStore();
 
   const { profile, canonicalRole } = await requireShopPageAccess({
     allowRoles: VEHICLE_WORKSPACE_READER_ROLES,
   });
-  const { assetId } = await params;
+  const [{ assetId }, query] = await Promise.all([params, searchParams]);
   if (!isAssetId(assetId)) notFound();
 
   const entitlement = await resolveEquipmentPageEntitlement(profile.shop_id);
   if (entitlement !== "enabled") {
-    return (
-      <EquipmentAccessState state={entitlement} retryHref={`/equipment/${assetId}`} />
-    );
+    return <EquipmentAccessState state={entitlement} retryHref={`/equipment/${assetId}`} />;
   }
 
   // Missing, cross-shop and unassigned (mechanic) assets all 404 alike.
@@ -48,11 +48,14 @@ export default async function AssetHealthPage({ params }: AssetHealthPageProps) 
   if (!health) notFound();
 
   return (
-    <AssetHealthView
-      health={health}
-      canOpenComponentHistory={(EQUIPMENT_DIRECTORY_ROLES as readonly string[]).includes(
-        canonicalRole,
-      )}
-    />
+    <>
+      {query.setup === "1" ? <EquipmentSetupGuide assetId={assetId} /> : null}
+      <AssetHealthView
+        health={health}
+        canOpenComponentHistory={(EQUIPMENT_DIRECTORY_ROLES as readonly string[]).includes(
+          canonicalRole,
+        )}
+      />
+    </>
   );
 }
