@@ -54,6 +54,10 @@ function normalizeStoredVin(value: string | null): string | null {
   return normalizeVinInput(value).vin || value.trim().toUpperCase();
 }
 
+function escapeLikePattern(value: string): string {
+  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
+}
+
 function isExactDuplicate(row: DuplicateRow, unitNumber: string, vin: string | null): boolean {
   return (
     normalizeUnit(row.unit_number) === normalizeUnit(unitNumber) ||
@@ -159,7 +163,7 @@ export async function POST(request: Request) {
         .from("vehicles")
         .select("id,created_at,unit_number,vin")
         .eq("shop_id", access.profile.shop_id)
-        .ilike("unit_number", unitNumber!),
+        .ilike("unit_number", escapeLikePattern(unitNumber!)),
       vin
         ? admin
             .from("vehicles")
