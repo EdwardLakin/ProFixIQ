@@ -13,6 +13,7 @@ import {
   Wrench,
 } from "lucide-react";
 import { ProFixIQMark, ProFixIQWordmark } from "@shared/components/brand/ProFixIQBrand";
+import ManagedHomepageHeroMedia from "@/features/marketing/components/ManagedHomepageHeroMedia";
 
 const workflow = [
   { label: "Inspect", icon: Mic },
@@ -84,6 +85,7 @@ export default function LandingHero() {
 
         <div className="relative lg:pl-4">
           <div className="absolute -inset-8 -z-10 rounded-full bg-[radial-gradient(circle,rgba(23,71,255,0.13),transparent_67%)]" />
+          <ManagedHomepageHeroMedia />
           <div className="overflow-hidden rounded-[1.75rem] border border-[color:var(--marketing-border-strong)] bg-white shadow-[0_32px_80px_rgba(7,17,31,0.14)]">
             <div className="flex items-center justify-between border-b border-[color:var(--marketing-border)] bg-[color:var(--marketing-stone)] px-5 py-4">
               <div className="flex items-center gap-3">
