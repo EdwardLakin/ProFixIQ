@@ -143,8 +143,27 @@ export async function PUT(request: Request, context: RouteContext) {
       });
 
       if (!error) return json({ entitled: true, canEdit: true, assetId });
+      if (error.code === "23505" && /adoption_conflict/i.test(error.message)) {
+        return json(
+          {
+            error: "Equipment is already enabled for this asset with different setup details. Open the asset to review or edit the completed profile.",
+            assetId,
+            adoptionConflict: true,
+          },
+          409,
+        );
+      }
       if (error.code === "23505") {
         return json({ error: "Equipment is already enabled for this asset." }, 409);
+      }
+      if (error.code === "40001") {
+        return json(
+          {
+            error: "This asset changed while Equipment was being enabled. Reload the asset list and try again.",
+            retryable: true,
+          },
+          409,
+        );
       }
       if (error.code === "P0002") return json({ error: "Asset not found." }, 404);
       if (error.code === "23514") {
