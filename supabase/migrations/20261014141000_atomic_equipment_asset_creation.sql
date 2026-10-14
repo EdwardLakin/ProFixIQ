@@ -4,8 +4,8 @@
 -- pre-existing vehicles table. Equipment creation serializes its own canonical
 -- vehicle insert against concurrent vehicle writes with a transaction-scoped
 -- table lock, then creates the canonical vehicle + Equipment profile/meter state
--- in one transaction. Adoption locks customer lifecycle state before the vehicle
--- row so it composes safely with archive/merge flows.
+-- in one transaction. Customer lifecycle rows are locked before vehicle locks so
+-- these operations compose safely with archive/merge flows.
 
 create or replace function public.create_equipment_asset_atomic(
   p_shop_id uuid,
@@ -64,6 +64,25 @@ begin
     raise exception 'equipment_create_invalid' using errcode = '22023';
   end if;
 
+  -- Lock customer lifecycle state first, matching merge/archive lock order. This
+  -- avoids a customer-row -> vehicles-table / vehicles-table -> customer-row
+  -- deadlock cycle while still preventing creation against a retiring account.
+  if v_customer_id is not null then
+    select c.active, c.archived_at, c.merged_into_customer_id
+      into v_customer_active, v_customer_archived_at, v_customer_merged_into
+    from public.customers c
+    where c.id = v_customer_id
+      and c.shop_id = p_shop_id
+    for update;
+
+    if not found
+       or v_customer_active is distinct from true
+       or v_customer_archived_at is not null
+       or v_customer_merged_into is not null then
+      raise exception 'equipment_customer_inactive' using errcode = '23514';
+    end if;
+  end if;
+
   -- Equipment creation is rare and correctness-sensitive. SHARE ROW EXCLUSIVE
   -- conflicts with ordinary vehicle INSERT/UPDATE/DELETE RowExclusive locks, so
   -- duplicate selection and this insert cannot race any existing canonical
@@ -110,25 +129,6 @@ begin
     end if;
 
     return p_vehicle_id;
-  end if;
-
-  -- Customer lifecycle rows are locked before the vehicle insert, matching the
-  -- lock order used by merge/archive mutations and preventing creation against a
-  -- source account that is concurrently becoming inactive/archived/merged.
-  if v_customer_id is not null then
-    select c.active, c.archived_at, c.merged_into_customer_id
-      into v_customer_active, v_customer_archived_at, v_customer_merged_into
-    from public.customers c
-    where c.id = v_customer_id
-      and c.shop_id = p_shop_id
-    for update;
-
-    if not found
-       or v_customer_active is distinct from true
-       or v_customer_archived_at is not null
-       or v_customer_merged_into is not null then
-      raise exception 'equipment_customer_inactive' using errcode = '23514';
-    end if;
   end if;
 
   if exists (
@@ -205,6 +205,7 @@ set search_path = ''
 as $$
 declare
   v_vehicle public.vehicles%rowtype;
+  v_existing_profile public.equipment_asset_profiles%rowtype;
   v_initial_customer_id uuid;
   v_customer_active boolean;
   v_customer_archived_at timestamptz;
@@ -263,12 +264,32 @@ begin
     raise exception 'equipment_asset_retired' using errcode = '23514';
   end if;
 
-  if exists (
-    select 1
-    from public.equipment_asset_profiles e
-    where e.vehicle_id = p_vehicle_id
-  ) then
-    raise exception 'equipment_profile_exists' using errcode = '23505';
+  -- A lost successful HTTP response may cause the exact same adoption to be
+  -- retried. Treat a semantically identical existing profile as success; reject
+  -- a changed retry instead of overwriting the completed profile.
+  select * into v_existing_profile
+  from public.equipment_asset_profiles e
+  where e.vehicle_id = p_vehicle_id
+    and e.shop_id = p_shop_id;
+
+  if found then
+    if v_existing_profile.equipment_class is distinct from (p_profile ->> 'equipment_class')
+       or v_existing_profile.equipment_family is distinct from (p_profile ->> 'equipment_family')
+       or v_existing_profile.serial_number is distinct from nullif(p_profile ->> 'serial_number', '')
+       or v_existing_profile.pin is distinct from nullif(p_profile ->> 'pin', '')
+       or v_existing_profile.engine_make is distinct from nullif(p_profile ->> 'engine_make', '')
+       or v_existing_profile.engine_model is distinct from nullif(p_profile ->> 'engine_model', '')
+       or v_existing_profile.engine_serial is distinct from nullif(p_profile ->> 'engine_serial', '')
+       or v_existing_profile.primary_meter is distinct from coalesce(p_profile ->> 'primary_meter', 'hours')
+       or v_existing_profile.current_cycles is distinct from nullif(p_profile ->> 'current_cycles', '')::bigint
+       or v_existing_profile.site_name is distinct from nullif(p_profile ->> 'site_name', '')
+       or v_existing_profile.operating_status is distinct from coalesce(p_profile ->> 'operating_status', 'operational')
+       or v_existing_profile.mounted_on_vehicle_id is distinct from nullif(p_profile ->> 'mounted_on_vehicle_id', '')::uuid
+       or coalesce(v_existing_profile.attributes, '{}'::jsonb) is distinct from coalesce(p_profile -> 'attributes', '{}'::jsonb) then
+      raise exception 'equipment_adoption_conflict' using errcode = '23505';
+    end if;
+
+    return;
   end if;
 
   insert into public.equipment_asset_profiles (
