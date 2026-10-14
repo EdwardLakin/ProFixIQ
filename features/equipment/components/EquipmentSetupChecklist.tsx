@@ -54,7 +54,6 @@ const ITEMS: SetupItem[] = [
 export default function EquipmentSetupChecklist({
   state,
 }: {
-  assetId: string;
   state: EquipmentSetupState;
 }) {
   const completeCount = ITEMS.filter((item) => state[item.key] === true).length;
