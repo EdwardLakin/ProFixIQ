@@ -33,7 +33,20 @@ describe("Ops marketing media CMS", () => {
     expect(mediaRoute).not.toContain('"image/svg+xml"');
   });
 
-  it("requires accessible metadata and validates draft/publish mutations", () => {
+  it("uses signed direct uploads so large reels do not traverse the Vercel function body", () => {
+    const mediaRoute = read("app/api/ops/marketing/media/route.ts");
+    const editor = read("features/ops/components/OpsMarketingMediaManager.tsx");
+
+    expect(mediaRoute).toContain('payload.action === "prepare-upload"');
+    expect(mediaRoute).toContain("createSignedUploadUrl(storagePath)");
+    expect(mediaRoute).toContain('payload.action === "finalize-upload"');
+    expect(mediaRoute).not.toContain("request.formData()");
+    expect(mediaRoute).not.toContain("file.arrayBuffer()");
+    expect(editor).toContain("uploadToSignedUrl");
+    expect(editor).toContain("Large files upload directly to media storage.");
+  });
+
+  it("requires accessible metadata and accepts only trusted library asset ids for draft mutations", () => {
     const validAsset = {
       id: "62d7aa09-0c10-49af-bd5d-5d6790e04d1f",
       kind: "image",
@@ -54,22 +67,55 @@ describe("Ops marketing media CMS", () => {
       MarketingMediaUpdateSchema.safeParse({
         slotKey: "hero",
         action: "save-draft",
+        assetId: validAsset.id,
+      }).success,
+    ).toBe(true);
+    expect(
+      MarketingMediaUpdateSchema.safeParse({
+        slotKey: "hero",
+        action: "save-draft",
         media: validAsset,
       }).success,
     ).toBe(true);
+
+    const pageRoute = read("app/api/ops/marketing/pages/[pageKey]/route.ts");
+    expect(pageRoute).toContain("getMarketingMediaAsset(assetId)");
+    expect(pageRoute).not.toContain("parsed.data.media");
   });
 
-  it("exposes only published slot values to public callers", () => {
+  it("fails closed on stored read errors and isolates draft from published writes", () => {
+    const server = read("features/marketing/media/server.ts");
+
+    expect(server).toContain("isStorageObjectMissing(error)");
+    expect(server).toContain("throw new Error(`Marketing media read failed");
+    expect(server).toContain("draft.json");
+    expect(server).toContain("published.json");
+    expect(server).toContain("saveMarketingPageMediaDraft");
+    expect(server).toContain("publishMarketingPageMediaDraft");
+  });
+
+  it("paginates the complete reusable media library", () => {
+    const mediaRoute = read("app/api/ops/marketing/media/route.ts");
+    expect(mediaRoute).toContain("for (let offset = 0; ; offset += PAGE_SIZE)");
+    expect(mediaRoute).toContain("offset,");
+    expect(mediaRoute).toContain("if (page.length < PAGE_SIZE) break;");
+  });
+
+  it("exposes only published slot values to public callers and enables CDN caching", () => {
     const server = read("features/marketing/media/server.ts");
     const publicRoute = read("app/api/public/marketing/pages/[pageKey]/route.ts");
+    const renderer = read("features/marketing/components/ManagedHomepageHeroMedia.tsx");
 
     expect(server).toContain("slot.published");
     expect(server).not.toContain("slot.draft?.url");
     expect(publicRoute).toContain("getPublishedMarketingPageMedia");
     expect(publicRoute).not.toContain("getMarketingPageMediaDocument");
+    expect(publicRoute).toContain('"Vercel-CDN-Cache-Control"');
+    expect(publicRoute).toContain("s-maxage=60");
+    expect(renderer).not.toContain('cache: "no-store"');
   });
 
-  it("wires the homepage hero to published managed media with a built-in fallback", () => {
+  it("wires the homepage hero to published managed media with a built-in fallback and pausable video", () => {
     const hero = read("features/shared/components/ui/LandingHero.tsx");
     const renderer = read(
       "features/marketing/components/ManagedHomepageHeroMedia.tsx",
@@ -80,10 +126,11 @@ describe("Ops marketing media CMS", () => {
     expect(renderer).toContain('/api/public/marketing/pages/home');
     expect(renderer).toContain("payload.slots?.hero");
     expect(renderer).toContain("autoPlay");
-    expect(renderer).toContain("playsInline");
+    expect(renderer).toContain("controls");
+    expect(renderer).toContain("object-contain object-top");
   });
 
-  it("provides drag/drop library, draft, preview, and publish controls in Ops", () => {
+  it("provides drag/drop library, accurate preview, saved-draft publish guard, and publish controls in Ops", () => {
     const editor = read("features/ops/components/OpsMarketingMediaManager.tsx");
     const shell = read("features/ops/components/OpsShell.tsx");
 
@@ -92,7 +139,9 @@ describe("Ops marketing media CMS", () => {
     expect(editor).toContain("Save draft");
     expect(editor).toContain("Publish");
     expect(editor).toContain("View live page");
-    expect(editor).toContain('form.append("alt"');
+    expect(editor).toContain("selectedMatchesDraft");
+    expect(editor).toContain("!selectedMatchesDraft");
+    expect(editor).toContain("object-contain object-top");
     expect(shell).toContain(
       '{ href: "/ops/marketing", label: "Landing Media", icon: LayoutTemplate }',
     );
