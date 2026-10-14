@@ -159,6 +159,16 @@ export async function POST(request: Request) {
 
   if (!error && data) return json({ assetId: data }, 201);
 
+  if (error?.code === "23505" && /operation_conflict/i.test(error.message)) {
+    return json(
+      {
+        error: "This Equipment creation already completed with different details. Opening the completed asset so you can review or edit it.",
+        assetId,
+        operationConflict: true,
+      },
+      409,
+    );
+  }
   if (error?.code === "23505") {
     return json(
       {
