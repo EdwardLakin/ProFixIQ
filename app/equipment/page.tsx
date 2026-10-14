@@ -15,22 +15,7 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-const RETIRED_VEHICLE_STATUSES = new Set(["archived", "merged", "duplicate", "inactive"]);
-const VEHICLE_PAGE_SIZE = 250;
-const PROFILE_BATCH_SIZE = 200;
 const CUSTOMER_PAGE_SIZE = 500;
-
-type CandidateVehicleRow = {
-  id: string;
-  unit_number: string | null;
-  year: number | null;
-  make: string | null;
-  model: string | null;
-  vin: string | null;
-  customer_id: string | null;
-  engine_hours: number | null;
-  status: string | null;
-};
 
 export default async function EquipmentDirectoryPage() {
   noStore();
@@ -54,74 +39,9 @@ export default async function EquipmentDirectoryPage() {
   });
 
   const canManage = (ROLE_GROUPS.billingOperators as readonly string[]).includes(canonicalRole);
-  let candidates: Array<{
-    id: string;
-    unitNumber: string | null;
-    year: number | null;
-    make: string | null;
-    model: string | null;
-    vin: string | null;
-    customerId: string | null;
-    engineHours: number | null;
-  }> = [];
   let customers: Array<{ id: string; name: string }> = [];
 
   if (canManage) {
-    const vehicleRows: CandidateVehicleRow[] = [];
-    for (let offset = 0; ; offset += VEHICLE_PAGE_SIZE) {
-      const vehicleResult = await supabase
-        .from("vehicles")
-        .select("id,unit_number,year,make,model,vin,customer_id,engine_hours,status")
-        .eq("shop_id", profile.shop_id)
-        .order("created_at", { ascending: false })
-        .order("id", { ascending: false })
-        .range(offset, offset + VEHICLE_PAGE_SIZE - 1);
-
-      if (vehicleResult.error) {
-        console.error("[equipment/page] vehicle candidate load failed", vehicleResult.error);
-        throw new Error("Equipment adoption candidates could not be loaded.");
-      }
-
-      const batch = (vehicleResult.data ?? []) as CandidateVehicleRow[];
-      vehicleRows.push(...batch);
-      if (batch.length < VEHICLE_PAGE_SIZE) break;
-    }
-
-    const visibleVehicles = vehicleRows.filter((row) => {
-      const status = String(row.status ?? "").trim().toLowerCase();
-      return !RETIRED_VEHICLE_STATUSES.has(status);
-    });
-    const visibleVehicleIds = visibleVehicles.map((row) => row.id);
-    const profiled = new Set<string>();
-
-    for (let index = 0; index < visibleVehicleIds.length; index += PROFILE_BATCH_SIZE) {
-      const batchIds = visibleVehicleIds.slice(index, index + PROFILE_BATCH_SIZE);
-      const profileResult = await admin
-        .from("equipment_asset_profiles")
-        .select("vehicle_id")
-        .eq("shop_id", profile.shop_id)
-        .in("vehicle_id", batchIds);
-
-      if (profileResult.error) {
-        console.error("[equipment/page] profile candidate load failed", profileResult.error);
-        throw new Error("Equipment adoption candidates could not be loaded.");
-      }
-      for (const row of profileResult.data ?? []) profiled.add(row.vehicle_id);
-    }
-
-    candidates = visibleVehicles
-      .filter((row) => !profiled.has(row.id))
-      .map((row) => ({
-        id: row.id,
-        unitNumber: row.unit_number,
-        year: row.year,
-        make: row.make,
-        model: row.model,
-        vin: row.vin,
-        customerId: row.customer_id,
-        engineHours: row.engine_hours,
-      }));
-
     const customerRows: Array<{
       id: string;
       name: string | null;
@@ -174,7 +94,6 @@ export default async function EquipmentDirectoryPage() {
       rows={directory.rows}
       truncated={directory.truncated}
       canManage={canManage}
-      candidates={candidates}
       customers={customers}
     />
   );
