@@ -7,6 +7,12 @@ import {
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
+const CACHE_HEADERS = {
+  "Cache-Control": "public, max-age=60",
+  "CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+  "Vercel-CDN-Cache-Control": "public, s-maxage=60, stale-while-revalidate=300",
+};
+
 export async function GET(
   _request: Request,
   context: { params: Promise<{ pageKey: string }> },
@@ -18,12 +24,12 @@ export async function GET(
 
   try {
     const slots = await getPublishedMarketingPageMedia(pageKey);
-    return NextResponse.json(
-      { slots },
-      { headers: { "Cache-Control": "public, max-age=60, stale-while-revalidate=300" } },
-    );
+    return NextResponse.json({ slots }, { headers: CACHE_HEADERS });
   } catch (error) {
     console.error("public marketing page media read failed", { pageKey, error });
-    return NextResponse.json({ slots: {} }, { status: 200 });
+    return NextResponse.json(
+      { slots: {} },
+      { status: 200, headers: { "Cache-Control": "no-store" } },
+    );
   }
 }
