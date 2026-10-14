@@ -8,7 +8,7 @@ export type EquipmentWorkOrderRow = {
   assetHref: string;
   assetLabel: string;
   customerName: string | null;
-  createdAt: string;
+  createdAt: string | null;
   scheduledAt: string | null;
 };
 
