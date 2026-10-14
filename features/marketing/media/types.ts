@@ -45,6 +45,20 @@ export const MarketingMediaUpdateSchema = z
   })
   .strict();
 
+type MarketingPageDefinition = {
+  label: string;
+  href: string;
+  slots: Record<string, { label: string; description: string }>;
+};
+
+const productProofSlot = {
+  "product-proof": {
+    label: "Product proof media",
+    description:
+      "Primary real-product screenshot or reel shown in the product proof section.",
+  },
+} as const;
+
 export const MARKETING_PAGE_REGISTRY = {
   home: {
     label: "Homepage",
@@ -57,6 +71,83 @@ export const MARKETING_PAGE_REGISTRY = {
       },
     },
   },
-} as const;
+  "repair-shop-management": {
+    label: "Repair Shop Management",
+    href: "/repair-shop-management-software",
+    slots: productProofSlot,
+  },
+  "heavy-duty-shop-management": {
+    label: "Heavy-Duty Shop Management",
+    href: "/heavy-duty-shop-management-software",
+    slots: productProofSlot,
+  },
+  "diesel-repair-shop": {
+    label: "Diesel Repair Shop",
+    href: "/diesel-repair-shop-software",
+    slots: productProofSlot,
+  },
+  "heavy-duty-work-order": {
+    label: "Heavy-Duty Work Orders",
+    href: "/heavy-duty-work-order-software",
+    slots: productProofSlot,
+  },
+  "heavy-duty-inspection": {
+    label: "Heavy-Duty Inspections",
+    href: "/heavy-duty-inspection-software",
+    slots: productProofSlot,
+  },
+  "fleet-repair-management": {
+    label: "Fleet Repair Management",
+    href: "/fleet-repair-management-software",
+    slots: productProofSlot,
+  },
+  "fleet-preventive-maintenance": {
+    label: "Fleet Preventive Maintenance",
+    href: "/fleet-preventive-maintenance-software",
+    slots: productProofSlot,
+  },
+  "mobile-truck-repair": {
+    label: "Mobile Truck Repair",
+    href: "/mobile-truck-repair-software",
+    slots: productProofSlot,
+  },
+  "service-truck-work-order": {
+    label: "Service Truck Work Orders",
+    href: "/service-truck-work-order-software",
+    slots: productProofSlot,
+  },
+  "equipment-maintenance": {
+    label: "Equipment Maintenance",
+    href: "/equipment-maintenance-software",
+    slots: productProofSlot,
+  },
+  "heavy-equipment-repair": {
+    label: "Heavy Equipment Repair",
+    href: "/heavy-equipment-repair-software",
+    slots: productProofSlot,
+  },
+  "off-highway-equipment-repair": {
+    label: "Off-Highway Equipment Repair",
+    href: "/off-highway-equipment-repair-software",
+    slots: productProofSlot,
+  },
+  "fullbay-alternative": {
+    label: "Fullbay Alternative",
+    href: "/compare/fullbay-alternative",
+    slots: productProofSlot,
+  },
+  "profixiq-vs-fullbay": {
+    label: "ProFixIQ vs Fullbay",
+    href: "/compare/profixiq-vs-fullbay",
+    slots: productProofSlot,
+  },
+} as const satisfies Record<string, MarketingPageDefinition>;
 
 export type MarketingPageKey = keyof typeof MARKETING_PAGE_REGISTRY;
+
+export function getMarketingPageKeyForHref(href: string): MarketingPageKey | null {
+  const entry = Object.entries(MARKETING_PAGE_REGISTRY).find(
+    ([, definition]) => definition.href === href,
+  );
+  return (entry?.[0] as MarketingPageKey | undefined) ?? null;
+}
