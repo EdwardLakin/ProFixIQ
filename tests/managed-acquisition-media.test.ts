@@ -53,7 +53,7 @@ describe("managed acquisition landing media", () => {
 
     expect(renderer).toContain("usePathname()");
     expect(renderer).toContain("getMarketingPageKeyForHref(pathname)");
-    expect(renderer).toContain("/api/public/marketing/pages/${pageKey}");
+    expect(renderer).toContain("/api/public/marketing/pages/${resolvedPageKey}");
     expect(renderer).toContain("if (!asset) return <>{fallback}</>");
     expect(renderer).toContain("controls");
     expect(landing).toContain("<ManagedMarketingMedia");
