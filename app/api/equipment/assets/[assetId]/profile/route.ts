@@ -22,13 +22,6 @@ import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 const NO_STORE = { "Cache-Control": "private, no-store" };
 
 type RouteContext = { params: Promise<{ assetId: string }> };
-type RpcError = { code?: string | null; message: string };
-type AtomicEquipmentAdoptionRpc = {
-  rpc: (
-    fn: "adopt_equipment_asset_atomic",
-    args: Record<string, unknown>,
-  ) => Promise<{ error: RpcError | null }>;
-};
 
 function json(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: NO_STORE });
@@ -128,29 +121,26 @@ export async function PUT(request: Request, context: RouteContext) {
       if (!asset) return json({ error: "Asset not found." }, 404);
 
       const admin = createAdminSupabase();
-      const { error } = await (admin as unknown as AtomicEquipmentAdoptionRpc).rpc(
-        "adopt_equipment_asset_atomic",
-        {
-          p_shop_id: access.profile.shop_id,
-          p_vehicle_id: assetId,
-          p_actor_user_id: access.authUserId,
-          p_profile: {
-            equipment_class: mutation.equipmentClass,
-            equipment_family: mutation.equipmentFamily,
-            serial_number: mutation.serialNumber,
-            pin: mutation.pin,
-            engine_make: mutation.engineMake,
-            engine_model: mutation.engineModel,
-            engine_serial: mutation.engineSerial,
-            primary_meter: mutation.primaryMeter,
-            current_cycles: null,
-            site_name: mutation.siteName,
-            operating_status: mutation.operatingStatus,
-            mounted_on_vehicle_id: null,
-            attributes: mutation.attributes,
-          },
+      const { error } = await admin.rpc("adopt_equipment_asset_atomic", {
+        p_shop_id: access.profile.shop_id,
+        p_vehicle_id: assetId,
+        p_actor_user_id: access.authUserId,
+        p_profile: {
+          equipment_class: mutation.equipmentClass,
+          equipment_family: mutation.equipmentFamily,
+          serial_number: mutation.serialNumber,
+          pin: mutation.pin,
+          engine_make: mutation.engineMake,
+          engine_model: mutation.engineModel,
+          engine_serial: mutation.engineSerial,
+          primary_meter: mutation.primaryMeter,
+          current_cycles: null,
+          site_name: mutation.siteName,
+          operating_status: mutation.operatingStatus,
+          mounted_on_vehicle_id: null,
+          attributes: mutation.attributes,
         },
-      );
+      });
 
       if (!error) return json({ entitled: true, canEdit: true, assetId });
       if (error.code === "23505") {
