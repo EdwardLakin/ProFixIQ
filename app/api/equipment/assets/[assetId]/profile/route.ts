@@ -9,6 +9,7 @@ import {
 } from "@/features/equipment/lib/assetProfile";
 import { resolveEquipmentAddonEntitlementForShop } from "@/features/equipment/server/equipmentAddonEntitlement";
 import {
+  authorizeEquipmentAsset,
   EquipmentAssetProfileError,
   loadEquipmentAssetRecord,
   saveEquipmentAssetProfile,
@@ -26,13 +27,10 @@ function json(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: NO_STORE });
 }
 
-/** null = entitled; otherwise the response to return. */
 async function entitlementFailure(shopId: string, forWrite: boolean) {
   try {
     const entitlement = await resolveEquipmentAddonEntitlementForShop(shopId);
     if (entitlement.enabled) return null;
-    // Reads report a non-entitled shop as a normal state so the UI can stay
-    // quiet; writes are refused.
     return forWrite
       ? json({ error: "An active Equipment subscription is required." }, 403)
       : json({ entitled: false });
@@ -92,7 +90,7 @@ export async function PUT(request: Request, context: RouteContext) {
   const { assetId } = await context.params;
   if (!isAssetId(assetId)) return json({ error: "Asset not found." }, 404);
 
-  const body = (await request.json().catch(() => null)) as unknown;
+  const body = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   const validation = validateEquipmentAssetProfileMutation(body, assetId);
   if (!validation.ok) return json({ error: validation.error }, 400);
 
@@ -100,6 +98,93 @@ export async function PUT(request: Request, context: RouteContext) {
   if (failure) return failure;
 
   try {
+    if (body?.createOnly === true) {
+      const mutation = validation.value;
+      if (
+        mutation.engineHours !== undefined ||
+        mutation.odometer !== undefined ||
+        mutation.currentCycles !== null ||
+        mutation.mountedOnAssetId !== null
+      ) {
+        return json(
+          { error: "Initial Equipment adoption cannot change canonical meters or mount state." },
+          400,
+        );
+      }
+
+      const asset = await authorizeEquipmentAsset({
+        supabase: access.supabase,
+        shopId: access.profile.shop_id,
+        role: access.canonicalRole,
+        assetId,
+      });
+      if (!asset) return json({ error: "Asset not found." }, 404);
+
+      const admin = createAdminSupabase();
+      const profileInsert = {
+        vehicle_id: assetId,
+        shop_id: access.profile.shop_id,
+        equipment_class: mutation.equipmentClass,
+        equipment_family: mutation.equipmentFamily,
+        serial_number: mutation.serialNumber,
+        pin: mutation.pin,
+        engine_make: mutation.engineMake,
+        engine_model: mutation.engineModel,
+        engine_serial: mutation.engineSerial,
+        primary_meter: mutation.primaryMeter,
+        current_cycles: null,
+        site_name: mutation.siteName,
+        operating_status: mutation.operatingStatus,
+        mounted_on_vehicle_id: null,
+        attributes: mutation.attributes,
+        created_by: access.authUserId,
+        updated_by: access.authUserId,
+      };
+
+      const { error } = await admin.from("equipment_asset_profiles").insert(profileInsert);
+      if (!error) return json({ entitled: true, canEdit: true, assetId });
+
+      if (error.code === "23505") {
+        const existing = await admin
+          .from("equipment_asset_profiles")
+          .select(
+            "equipment_class,equipment_family,serial_number,pin,engine_make,engine_model,engine_serial,primary_meter,current_cycles,site_name,operating_status,mounted_on_vehicle_id,attributes",
+          )
+          .eq("shop_id", access.profile.shop_id)
+          .eq("vehicle_id", assetId)
+          .maybeSingle();
+
+        if (!existing.error && existing.data) {
+          const row = existing.data;
+          const matches =
+            row.equipment_class === mutation.equipmentClass &&
+            row.equipment_family === mutation.equipmentFamily &&
+            row.serial_number === mutation.serialNumber &&
+            row.pin === mutation.pin &&
+            row.engine_make === mutation.engineMake &&
+            row.engine_model === mutation.engineModel &&
+            row.engine_serial === mutation.engineSerial &&
+            row.primary_meter === mutation.primaryMeter &&
+            row.current_cycles === null &&
+            row.site_name === mutation.siteName &&
+            row.operating_status === mutation.operatingStatus &&
+            row.mounted_on_vehicle_id === null &&
+            JSON.stringify(row.attributes ?? {}) === JSON.stringify(mutation.attributes);
+          if (matches) return json({ entitled: true, canEdit: true, assetId });
+        }
+
+        return json({ error: "Equipment is already enabled for this asset." }, 409);
+      }
+
+      console.error("[equipment/asset-profile] create-only insert failed", {
+        shopId: access.profile.shop_id,
+        assetId,
+        code: error.code ?? null,
+        message: error.message,
+      });
+      return json({ error: "Equipment could not be enabled for this asset." }, 500);
+    }
+
     const record = await saveEquipmentAssetProfile({
       supabase: access.supabase,
       admin: createAdminSupabase(),
