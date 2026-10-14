@@ -26,7 +26,6 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 
-import WorkspaceProductSwitcher from "@/features/shared/components/WorkspaceProductSwitcher";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   canUseFieldWorkspaceCapability,
@@ -311,10 +310,6 @@ export default function FieldWorkspaceShell({
           </span>
         </Link>
 
-        <div className="px-3 pb-2">
-          <WorkspaceProductSwitcher surface="field" />
-        </div>
-
         <Link href="/mobile/service/new" className="field-workspace-new-call">
           <Plus aria-hidden className="h-5 w-5" /> New service call
         </Link>
@@ -387,10 +382,6 @@ export default function FieldWorkspaceShell({
           <Plus aria-hidden className="h-5 w-5" />
         </Link>
       </header>
-
-      <div className="border-b border-[color:var(--theme-border-soft)] px-3 py-2 lg:hidden">
-        <WorkspaceProductSwitcher surface="field" />
-      </div>
 
       <main className="field-workspace-main">{children}</main>
 

@@ -30,7 +30,6 @@ import {
 } from "lucide-react";
 
 import ThemeToggleButton from "@/features/shared/components/ThemeToggleButton";
-import WorkspaceProductSwitcher from "@/features/shared/components/WorkspaceProductSwitcher";
 import FleetNotificationsBell from "@/features/fleet/components/FleetNotificationsBell";
 import ForcePasswordChangeModal from "@/features/auth/components/ForcePasswordChangeModal";
 import {
@@ -699,8 +698,6 @@ export default function FleetProductShell({
               </div>
             </div>
 
-            <WorkspaceProductSwitcher surface="fleet" className="hidden md:flex" />
-
             <div className="hidden items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 sm:flex">
               {shellExperience === "external_driver" ? (
                 <UserRound className="h-4 w-4 text-sky-400" />
@@ -722,10 +719,6 @@ export default function FleetProductShell({
             <ThemeToggleButton />
           </div>
         </header>
-
-        <div className="border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-header-bg)]/88 px-3 py-2 md:hidden">
-          <WorkspaceProductSwitcher surface="fleet" />
-        </div>
 
         <main
           aria-busy={navigationTarget ? true : undefined}
