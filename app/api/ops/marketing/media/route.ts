@@ -81,16 +81,42 @@ async function listAssets(): Promise<MarketingMediaAsset[]> {
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
+async function removePendingMarker(
+  pendingPath: string,
+  assetId: string,
+): Promise<boolean> {
+  const admin = createAdminSupabase();
+  const { error } = await admin.storage
+    .from(MARKETING_MEDIA_CONTENT_BUCKET)
+    .remove([pendingPath]);
+  if (error) {
+    console.warn("marketing media pending marker cleanup failed", {
+      assetId,
+      error,
+    });
+    return false;
+  }
+  return true;
+}
+
 async function cleanupStalePendingUploads(): Promise<number> {
   const items = await listJsonItems("pending");
   const cutoff = Date.now() - STALE_PENDING_MS;
   const admin = createAdminSupabase();
+  const usageMap = await getMarketingMediaUsageMap();
   let cleaned = 0;
 
   for (const item of items) {
     const pendingPath = `pending/${item.name}`;
     const asset = await readAssetMetadata(pendingPath);
     if (!asset || new Date(asset.createdAt).getTime() > cutoff) continue;
+
+    const canonical = await getMarketingMediaAsset(asset.id);
+    const usages = usageMap[asset.id] ?? [];
+    if (canonical || usages.length > 0) {
+      if (await removePendingMarker(pendingPath, asset.id)) cleaned += 1;
+      continue;
+    }
 
     const { error: mediaError } = await admin.storage
       .from(MARKETING_MEDIA_BUCKET)
@@ -103,17 +129,7 @@ async function cleanupStalePendingUploads(): Promise<number> {
       continue;
     }
 
-    const { error: metadataError } = await admin.storage
-      .from(MARKETING_MEDIA_CONTENT_BUCKET)
-      .remove([pendingPath]);
-    if (metadataError) {
-      console.warn("stale marketing media metadata cleanup failed", {
-        assetId: asset.id,
-        error: metadataError,
-      });
-      continue;
-    }
-    cleaned += 1;
+    if (await removePendingMarker(pendingPath, asset.id)) cleaned += 1;
   }
 
   return cleaned;
@@ -318,7 +334,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unable to save marketing media metadata" }, { status: 500 });
     }
 
-    await admin.storage.from(MARKETING_MEDIA_CONTENT_BUCKET).remove([pendingPath]);
+    await removePendingMarker(pendingPath, id);
     return NextResponse.json({ asset });
   }
 
