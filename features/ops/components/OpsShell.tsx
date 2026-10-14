@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState, type ReactNode } from "react";
-import { Activity, ArrowLeft, BadgePercent, BarChart3, BookOpen, BrainCircuit, Gauge, GitBranch, KeyRound, LogOut, Menu, MessageSquareText, ShieldCheck, X } from "lucide-react";
+import { Activity, ArrowLeft, BadgePercent, BarChart3, BookOpen, BrainCircuit, Gauge, GitBranch, KeyRound, LayoutTemplate, LogOut, Menu, MessageSquareText, ShieldCheck, X } from "lucide-react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { cn } from "@shared/lib/utils";
 
@@ -12,6 +12,7 @@ const NAVIGATION = [
   { href: "/ops/demo-access", label: "Demo Access", icon: KeyRound },
   { href: "/ops/early-access", label: "Early Access", icon: BadgePercent },
   { href: "/ops/marketing-funnel", label: "Acquisition Funnel", icon: BarChart3 },
+  { href: "/ops/marketing", label: "Landing Media", icon: LayoutTemplate },
   { href: "/ops/blog", label: "Blog", icon: BookOpen },
   { href: "/ops/system-health", label: "System Health", icon: Activity },
   { href: "/ops/deployments", label: "Deployments", icon: GitBranch },
