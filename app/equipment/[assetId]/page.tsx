@@ -37,7 +37,6 @@ export default async function AssetHealthPage({ params, searchParams }: AssetHea
     return <EquipmentAccessState state={entitlement} retryHref={`/equipment/${assetId}`} />;
   }
 
-  // Missing, cross-shop and unassigned (mechanic) assets all 404 alike.
   const health = await loadAssetHealth({
     supabase: createServerSupabaseRSC(),
     admin: createAdminSupabase(),
@@ -49,7 +48,9 @@ export default async function AssetHealthPage({ params, searchParams }: AssetHea
 
   return (
     <>
-      {query.setup === "1" ? <EquipmentSetupGuide assetId={assetId} /> : null}
+      {query.setup === "1" && health.equipment.profile ? (
+        <EquipmentSetupGuide assetId={assetId} />
+      ) : null}
       <AssetHealthView
         health={health}
         canOpenComponentHistory={(EQUIPMENT_DIRECTORY_ROLES as readonly string[]).includes(
