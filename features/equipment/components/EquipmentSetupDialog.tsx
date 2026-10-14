@@ -98,6 +98,7 @@ export default function EquipmentSetupDialog({
     setForm((current) => ({ ...current, ...patch }));
 
   const submit = async () => {
+    if (saving) return;
     setSaving(true);
     setError(null);
     try {
@@ -179,6 +180,7 @@ export default function EquipmentSetupDialog({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       role="dialog"
       aria-modal="true"
+      aria-busy={saving}
     >
       <div className={`${PANEL} max-h-[92vh] w-full max-w-3xl overflow-y-auto p-5`}>
         <div className="flex items-start justify-between gap-4">
@@ -193,7 +195,7 @@ export default function EquipmentSetupDialog({
                 : "Enable Equipment on a Shop asset without changing its work-order history or canonical meter."}
             </p>
           </div>
-          <button type="button" className={BUTTON} onClick={onClose}>
+          <button type="button" className={BUTTON} disabled={saving} onClick={onClose}>
             Close
           </button>
         </div>
@@ -208,6 +210,7 @@ export default function EquipmentSetupDialog({
                 <select
                   className={`${INPUT} w-full`}
                   value={form.candidateId}
+                  disabled={saving}
                   onChange={(event) => update({ candidateId: event.target.value })}
                 >
                   <option value="">Select asset…</option>
@@ -233,175 +236,44 @@ export default function EquipmentSetupDialog({
           ) : (
             <>
               <label className="space-y-1">
-                <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">
-                  Customer
-                </span>
-                <select
-                  className={`${INPUT} w-full`}
-                  value={form.customerId}
-                  onChange={(event) => update({ customerId: event.target.value })}
-                >
+                <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">Customer</span>
+                <select className={`${INPUT} w-full`} value={form.customerId} disabled={saving} onChange={(event) => update({ customerId: event.target.value })}>
                   <option value="">No customer assigned</option>
-                  {customers.map((customer) => (
-                    <option key={customer.id} value={customer.id}>
-                      {customer.name}
-                    </option>
-                  ))}
+                  {customers.map((customer) => <option key={customer.id} value={customer.id}>{customer.name}</option>)}
                 </select>
               </label>
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">
-                  Unit # *
-                </span>
-                <input
-                  className={`${INPUT} w-full`}
-                  value={form.unitNumber}
-                  onChange={(event) => update({ unitNumber: event.target.value })}
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">
-                  Make
-                </span>
-                <input
-                  className={`${INPUT} w-full`}
-                  value={form.make}
-                  onChange={(event) => update({ make: event.target.value })}
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">
-                  Model
-                </span>
-                <input
-                  className={`${INPUT} w-full`}
-                  value={form.model}
-                  onChange={(event) => update({ model: event.target.value })}
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">
-                  Year
-                </span>
-                <input
-                  className={`${INPUT} w-full`}
-                  inputMode="numeric"
-                  value={form.year}
-                  onChange={(event) => update({ year: event.target.value })}
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">
-                  VIN
-                </span>
-                <input
-                  className={`${INPUT} w-full`}
-                  value={form.vin}
-                  onChange={(event) => update({ vin: event.target.value })}
-                />
-              </label>
-              <label className="space-y-1">
-                <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">
-                  Current hours
-                </span>
-                <input
-                  className={`${INPUT} w-full`}
-                  inputMode="numeric"
-                  value={form.engineHours}
-                  onChange={(event) => update({ engineHours: event.target.value })}
-                />
-              </label>
+              <label className="space-y-1"><span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">Unit # *</span><input className={`${INPUT} w-full`} disabled={saving} value={form.unitNumber} onChange={(event) => update({ unitNumber: event.target.value })} /></label>
+              <label className="space-y-1"><span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">Make</span><input className={`${INPUT} w-full`} disabled={saving} value={form.make} onChange={(event) => update({ make: event.target.value })} /></label>
+              <label className="space-y-1"><span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">Model</span><input className={`${INPUT} w-full`} disabled={saving} value={form.model} onChange={(event) => update({ model: event.target.value })} /></label>
+              <label className="space-y-1"><span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">Year</span><input className={`${INPUT} w-full`} disabled={saving} inputMode="numeric" value={form.year} onChange={(event) => update({ year: event.target.value })} /></label>
+              <label className="space-y-1"><span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">VIN</span><input className={`${INPUT} w-full`} disabled={saving} value={form.vin} onChange={(event) => update({ vin: event.target.value })} /></label>
+              <label className="space-y-1"><span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">Current hours</span><input className={`${INPUT} w-full`} disabled={saving} inputMode="numeric" value={form.engineHours} onChange={(event) => update({ engineHours: event.target.value })} /></label>
             </>
           )}
 
           <label className="space-y-1">
-            <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">
-              Equipment class *
-            </span>
-            <select
-              className={`${INPUT} w-full`}
-              required
-              value={form.equipmentClass}
-              onChange={(event) => update({ equipmentClass: event.target.value })}
-            >
+            <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">Equipment class *</span>
+            <select className={`${INPUT} w-full`} required disabled={saving} value={form.equipmentClass} onChange={(event) => update({ equipmentClass: event.target.value })}>
               <option value="">Select class…</option>
-              {ASSET_EQUIPMENT_CLASS_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
+              {ASSET_EQUIPMENT_CLASS_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
             </select>
           </label>
+          <label className="space-y-1"><span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">Serial #</span><input className={`${INPUT} w-full`} disabled={saving} value={form.serialNumber} onChange={(event) => update({ serialNumber: event.target.value })} /></label>
+          <label className="space-y-1"><span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">Equipment PIN</span><input className={`${INPUT} w-full`} disabled={saving} value={form.pin} onChange={(event) => update({ pin: event.target.value })} /></label>
+          <label className="space-y-1"><span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">Site</span><input className={`${INPUT} w-full`} disabled={saving} value={form.siteName} onChange={(event) => update({ siteName: event.target.value })} /></label>
           <label className="space-y-1">
-            <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">
-              Serial #
-            </span>
-            <input
-              className={`${INPUT} w-full`}
-              value={form.serialNumber}
-              onChange={(event) => update({ serialNumber: event.target.value })}
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">
-              Equipment PIN
-            </span>
-            <input
-              className={`${INPUT} w-full`}
-              value={form.pin}
-              onChange={(event) => update({ pin: event.target.value })}
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">
-              Site
-            </span>
-            <input
-              className={`${INPUT} w-full`}
-              value={form.siteName}
-              onChange={(event) => update({ siteName: event.target.value })}
-            />
-          </label>
-          <label className="space-y-1">
-            <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">
-              Status
-            </span>
-            <select
-              className={`${INPUT} w-full`}
-              value={form.operatingStatus}
-              onChange={(event) =>
-                update({ operatingStatus: event.target.value as AssetOperatingStatus })
-              }
-            >
-              {ASSET_OPERATING_STATUSES.map((value) => (
-                <option key={value} value={value}>
-                  {ASSET_OPERATING_STATUS_LABELS[value]}
-                </option>
-              ))}
+            <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">Status</span>
+            <select className={`${INPUT} w-full`} disabled={saving} value={form.operatingStatus} onChange={(event) => update({ operatingStatus: event.target.value as AssetOperatingStatus })}>
+              {ASSET_OPERATING_STATUSES.map((value) => <option key={value} value={value}>{ASSET_OPERATING_STATUS_LABELS[value]}</option>)}
             </select>
           </label>
         </div>
 
-        {mode === "adopt" && candidates.length === 0 ? (
-          <p className="mt-4 text-sm text-[color:var(--theme-text-muted)]">
-            All visible Shop assets already have Equipment enabled.
-          </p>
-        ) : null}
-        {error ? (
-          <p className="mt-4 text-sm font-semibold text-red-400" role="alert">
-            {error}
-          </p>
-        ) : null}
+        {mode === "adopt" && candidates.length === 0 ? <p className="mt-4 text-sm text-[color:var(--theme-text-muted)]">All visible Shop assets already have Equipment enabled.</p> : null}
+        {error ? <p className="mt-4 text-sm font-semibold text-red-400" role="alert">{error}</p> : null}
         <div className="mt-5 flex justify-end gap-2">
-          <button type="button" className={BUTTON} onClick={onClose}>
-            Cancel
-          </button>
-          <button
-            type="button"
-            className={PRIMARY_BUTTON}
-            disabled={saving || (mode === "adopt" && candidates.length === 0)}
-            onClick={() => void submit()}
-          >
+          <button type="button" className={BUTTON} disabled={saving} onClick={onClose}>Cancel</button>
+          <button type="button" className={PRIMARY_BUTTON} disabled={saving || (mode === "adopt" && candidates.length === 0)} onClick={() => void submit()}>
             {saving ? "Saving…" : mode === "create" ? "Create equipment" : "Enable Equipment"}
           </button>
         </div>
