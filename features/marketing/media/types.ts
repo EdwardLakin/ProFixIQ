@@ -69,6 +69,26 @@ export const MARKETING_PAGE_REGISTRY = {
         description:
           "Primary product screenshot or reel beside the homepage headline.",
       },
+      inspection: {
+        label: "Voice inspection story",
+        description:
+          "Screenshot or reel for the homepage voice-inspection product story.",
+      },
+      approval: {
+        label: "Customer approval story",
+        description:
+          "Screenshot or reel for the connected customer-approval product story.",
+      },
+      operations: {
+        label: "Operations story",
+        description:
+          "Screenshot or reel for the end-to-end shop operations product story.",
+      },
+      onboarding: {
+        label: "Shop Boost onboarding",
+        description:
+          "Screenshot or reel for the homepage Shop Boost onboarding section.",
+      },
     },
   },
   "repair-shop-management": {

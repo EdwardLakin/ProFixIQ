@@ -120,11 +120,17 @@ describe("Ops marketing media CMS", () => {
     const renderer = read(
       "features/marketing/components/ManagedHomepageHeroMedia.tsx",
     );
+    const publicMedia = read(
+      "features/marketing/components/publicMarketingMedia.ts",
+    );
 
     expect(hero).toContain("<ManagedHomepageHeroMedia />");
     expect(hero).toContain("Work order EL000284");
-    expect(renderer).toContain('/api/public/marketing/pages/home');
-    expect(renderer).toContain("payload.slots?.hero");
+    expect(renderer).toContain('getPublishedMarketingSlots("home")');
+    expect(renderer).toContain("slots.hero");
+    expect(publicMedia).toContain(
+      "fetch(`/api/public/marketing/pages/${pageKey}`)",
+    );
     expect(renderer).toContain("autoPlay");
     expect(renderer).toContain("controls");
     expect(renderer).toContain("object-contain object-top");
