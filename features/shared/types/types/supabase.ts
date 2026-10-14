@@ -30286,6 +30286,15 @@ export type Database = {
         }
         Returns: Json
       }
+      adopt_equipment_asset_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_profile: Json
+          p_shop_id: string
+          p_vehicle_id: string
+        }
+        Returns: undefined
+      }
       advance_billing_reconciliation_generation: {
         Args: { p_shop_id: string; p_signature: string }
         Returns: number
@@ -31278,6 +31287,22 @@ export type Database = {
           p_source_type: string
         }
         Returns: Json
+      }
+      create_equipment_asset_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_customer_id: string
+          p_engine_hours: number
+          p_make: string
+          p_model: string
+          p_profile: Json
+          p_shop_id: string
+          p_unit_number: string
+          p_vehicle_id: string
+          p_vin: string
+          p_year: number
+        }
+        Returns: string
       }
       create_estimate_atomic: {
         Args: {
