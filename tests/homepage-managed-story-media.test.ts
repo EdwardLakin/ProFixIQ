@@ -41,4 +41,25 @@ describe("homepage managed story media", () => {
     expect(renderer).toContain("autoPlayVideo = false");
     expect(renderer).toContain("controls");
   });
+
+  it("shares one public homepage request across hero and story renderers", () => {
+    const shared = read("features/marketing/components/publicMarketingMedia.ts");
+    const renderer = read("features/marketing/components/ManagedMarketingMedia.tsx");
+    const hero = read("features/marketing/components/ManagedHomepageHeroMedia.tsx");
+
+    expect(shared).toContain("pageSlotsCache");
+    expect(shared).toContain("const cached = pageSlotsCache.get(pageKey)");
+    expect(shared).toContain("pageSlotsCache.set(pageKey, request)");
+    expect(renderer).toContain("getPublishedMarketingSlots(resolvedPageKey)");
+    expect(hero).toContain('getPublishedMarketingSlots("home")');
+    expect(hero).not.toContain('fetch("/api/public/marketing/pages/home")');
+  });
+
+  it("keeps managed captions grouped with media and readable on the light homepage", () => {
+    const renderer = read("features/marketing/components/ManagedMarketingMedia.tsx");
+
+    expect(renderer).toContain('resolvedPageKey === "home"');
+    expect(renderer).toContain("text-slate-600");
+    expect(renderer).toContain("<div>\n      <div className=\"aspect-[16/10]");
+  });
 });
