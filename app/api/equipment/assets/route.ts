@@ -31,39 +31,12 @@ function optionalText(value: unknown, max: number): string | null {
 }
 
 type RpcError = { code?: string | null; message: string };
-type EquipmentProfileRpc = {
+type AtomicEquipmentCreateRpc = {
   rpc: (
-    fn: "save_equipment_asset_profile",
+    fn: "create_equipment_asset_atomic",
     args: Record<string, unknown>,
-  ) => Promise<{ error: RpcError | null }>;
+  ) => Promise<{ data: string | null; error: RpcError | null }>;
 };
-
-type DuplicateRow = {
-  id: string;
-  created_at: string | null;
-  unit_number: string | null;
-  vin: string | null;
-};
-
-function normalizeUnit(value: string | null): string | null {
-  return value?.trim().toLowerCase() || null;
-}
-
-function normalizeStoredVin(value: string | null): string | null {
-  if (!value) return null;
-  return normalizeVinInput(value).vin || value.trim().toUpperCase();
-}
-
-function escapeLikePattern(value: string): string {
-  return value.replace(/[\\%_]/g, (match) => `\\${match}`);
-}
-
-function isExactDuplicate(row: DuplicateRow, unitNumber: string, vin: string | null): boolean {
-  return (
-    normalizeUnit(row.unit_number) === normalizeUnit(unitNumber) ||
-    (!!vin && normalizeStoredVin(row.vin) === vin)
-  );
-}
 
 export async function POST(request: Request) {
   const access = await requireShopScopedApiAccess({ allowRoles: ROLE_GROUPS.billingOperators });
@@ -156,123 +129,21 @@ export async function POST(request: Request) {
   );
   if (!profileValidation.ok) return json({ error: profileValidation.error }, 400);
 
-  const admin = createAdminSupabase();
-  const loadDuplicates = async (): Promise<{ rows: DuplicateRow[]; error: unknown | null }> => {
-    const [unitResult, vinResult] = await Promise.all([
-      admin
-        .from("vehicles")
-        .select("id,created_at,unit_number,vin")
-        .eq("shop_id", access.profile.shop_id)
-        .ilike("unit_number", escapeLikePattern(unitNumber!)),
-      vin
-        ? admin
-            .from("vehicles")
-            .select("id,created_at,unit_number,vin")
-            .eq("shop_id", access.profile.shop_id)
-            .eq("vin", vin)
-        : Promise.resolve({ data: [] as DuplicateRow[], error: null }),
-    ]);
-    if (unitResult.error || vinResult.error) {
-      return { rows: [], error: unitResult.error ?? vinResult.error };
-    }
-    const byId = new Map<string, DuplicateRow>();
-    for (const row of [...((unitResult.data ?? []) as DuplicateRow[]), ...((vinResult.data ?? []) as DuplicateRow[])]) {
-      byId.set(row.id, row);
-    }
-    return { rows: Array.from(byId.values()), error: null };
-  };
-
-  const before = await loadDuplicates();
-  if (before.error) return json({ error: "Equipment could not be checked for duplicates." }, 500);
-  const beforeExact = before.rows.filter((row) => isExactDuplicate(row, unitNumber!, vin));
-  if (beforeExact.some((row) => normalizeUnit(row.unit_number) === normalizeUnit(unitNumber))) {
-    return json({ error: DUPLICATE_UNIT_MESSAGE }, 409);
-  }
-  if (vin && beforeExact.some((row) => normalizeStoredVin(row.vin) === vin)) {
-    return json({ error: DUPLICATE_VIN_MESSAGE }, 409);
-  }
-
-  const assetId = randomUUID();
-  const { data: created, error: createError } = await admin
-    .from("vehicles")
-    .insert({
-      id: assetId,
-      shop_id: access.profile.shop_id,
-      customer_id: customerId,
-      unit_number: unitNumber,
-      year,
-      make,
-      model,
-      vin,
-      engine_hours: null,
-    })
-    .select("id,created_at")
-    .single();
-  if (createError || !created) {
-    console.error("[equipment/assets] canonical asset create failed", createError);
-    return json({ error: "Equipment could not be created." }, 500);
-  }
-
-  const after = await loadDuplicates();
-  if (after.error) {
-    const { error: cleanupError } = await admin
-      .from("vehicles")
-      .delete()
-      .eq("shop_id", access.profile.shop_id)
-      .eq("id", created.id);
-    if (cleanupError) {
-      console.error("[equipment/assets] duplicate verification and cleanup failed", {
-        assetId: created.id,
-        duplicateError: after.error,
-        cleanupError,
-      });
-      return json(
-        {
-          error: "Equipment duplicate status could not be verified and the new asset could not be cleaned up. Use Add existing asset before retrying.",
-          assetId: created.id,
-          partial: true,
-        },
-        500,
-      );
-    }
-    return json({ error: "Equipment duplicate status could not be verified. Try again." }, 500);
-  }
-
-  const contenders = after.rows
-    .filter((row) => isExactDuplicate(row, unitNumber!, vin))
-    .sort((a, b) => `${a.created_at ?? ""}:${a.id}`.localeCompare(`${b.created_at ?? ""}:${b.id}`));
-  const winner = contenders[0];
-  if (winner && winner.id !== created.id) {
-    const { error: cleanupError } = await admin
-      .from("vehicles")
-      .delete()
-      .eq("shop_id", access.profile.shop_id)
-      .eq("id", created.id);
-    if (cleanupError) {
-      console.error("[equipment/assets] duplicate loser cleanup failed", {
-        assetId: created.id,
-        winnerId: winner.id,
-        cleanupError,
-      });
-      return json(
-        {
-          error: "A duplicate asset was detected but the new record could not be cleaned up. Use Add existing asset and review the duplicate before retrying.",
-          assetId: created.id,
-          partial: true,
-        },
-        500,
-      );
-    }
-    const vinConflict = vin && normalizeStoredVin(winner.vin) === vin;
-    return json({ error: vinConflict ? DUPLICATE_VIN_MESSAGE : DUPLICATE_UNIT_MESSAGE }, 409);
-  }
-
   const mutation = profileValidation.value;
-  const { error: profileError } = await (admin as unknown as EquipmentProfileRpc).rpc(
-    "save_equipment_asset_profile",
+  const assetId = randomUUID();
+  const admin = createAdminSupabase();
+  const { data, error } = await (admin as unknown as AtomicEquipmentCreateRpc).rpc(
+    "create_equipment_asset_atomic",
     {
       p_shop_id: access.profile.shop_id,
-      p_vehicle_id: created.id,
+      p_vehicle_id: assetId,
+      p_customer_id: customerId,
+      p_unit_number: unitNumber,
+      p_year: year,
+      p_make: make,
+      p_model: model,
+      p_vin: vin,
+      p_engine_hours: engineHours,
       p_actor_user_id: access.authUserId,
       p_profile: {
         equipment_class: mutation.equipmentClass,
@@ -289,49 +160,31 @@ export async function POST(request: Request) {
         mounted_on_vehicle_id: null,
         attributes: mutation.attributes,
       },
-      p_set_engine_hours: engineHours !== null,
-      p_engine_hours: engineHours,
-      p_expected_engine_hours: null,
-      p_set_odometer: false,
-      p_odometer: null,
-      p_expected_odometer: null,
     },
   );
-  if (!profileError) return json({ assetId: created.id }, 201);
 
-  const { data: persistedProfile, error: verificationError } = await admin
-    .from("equipment_asset_profiles")
-    .select("vehicle_id")
-    .eq("shop_id", access.profile.shop_id)
-    .eq("vehicle_id", created.id)
-    .maybeSingle();
-  if (persistedProfile) return json({ assetId: created.id }, 201);
-  if (verificationError) {
-    console.error("[equipment/assets] profile persistence could not be verified", { assetId: created.id, profileError, verificationError });
-    return json({ error: "Equipment creation status could not be verified. Reload Equipment before trying again." }, 500);
-  }
+  if (!error && data) return json({ assetId: data }, 201);
 
-  const { error: cleanupError } = await admin
-    .from("vehicles")
-    .delete()
-    .eq("shop_id", access.profile.shop_id)
-    .eq("id", created.id);
-  if (cleanupError) {
-    console.error("[equipment/assets] failed to clean up incomplete asset", {
-      assetId: created.id,
-      profileError,
-      cleanupError,
-    });
+  if (error?.code === "23505") {
     return json(
       {
-        error: "The Equipment profile could not be created and the new asset could not be cleaned up. Use Add existing asset to finish setup before retrying.",
-        assetId: created.id,
-        partial: true,
+        error: /vin/i.test(error.message) ? DUPLICATE_VIN_MESSAGE : DUPLICATE_UNIT_MESSAGE,
       },
-      500,
+      409,
     );
   }
+  if (error?.code === "23514" && /customer/i.test(error.message)) {
+    return json({ error: "Choose an active customer account before creating Equipment." }, 409);
+  }
+  if (error?.code === "22023") {
+    return json({ error: "One or more Equipment fields are invalid." }, 400);
+  }
 
-  console.error("[equipment/assets] profile creation failed", { assetId: created.id, code: profileError.code ?? null, message: profileError.message });
+  console.error("[equipment/assets] atomic create failed", {
+    shopId: access.profile.shop_id,
+    assetId,
+    code: error?.code ?? null,
+    message: error?.message ?? "No asset id returned",
+  });
   return json({ error: "Equipment could not be created." }, 500);
 }
