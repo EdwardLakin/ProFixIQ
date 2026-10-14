@@ -13,9 +13,11 @@ import {
   Send,
   UploadCloud,
 } from "lucide-react";
-import type {
-  MarketingMediaAsset,
-  MarketingPageMediaDocument,
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import {
+  MARKETING_MEDIA_PUBLIC_BUCKET,
+  type MarketingMediaAsset,
+  type MarketingPageMediaDocument,
 } from "@/features/marketing/media/types";
 
 type PageDefinition = {
@@ -31,20 +33,25 @@ type PagePayload = {
 };
 
 type LibraryPayload = { assets?: MarketingMediaAsset[]; error?: string };
+type PreparedUpload = {
+  asset?: MarketingMediaAsset;
+  path?: string;
+  token?: string;
+  error?: string;
+};
 
 function MediaPreview({ asset, compact = false }: { asset: MarketingMediaAsset; compact?: boolean }) {
   const className = compact
     ? "h-28 w-full rounded-xl object-cover"
-    : "max-h-[460px] w-full rounded-2xl object-contain";
+    : "aspect-[16/10] w-full rounded-2xl bg-[#07111f] object-contain object-top";
 
   return asset.kind === "video" ? (
     <video
       src={asset.url}
+      aria-label={asset.alt}
       className={className}
       muted
-      loop
       playsInline
-      autoPlay={!compact}
       controls={!compact}
       preload="metadata"
     />
@@ -103,6 +110,7 @@ export default function OpsMarketingMediaManager() {
   }, [load]);
 
   const selectedId = selected?.id;
+  const selectedMatchesDraft = Boolean(selectedId && selectedId === slot?.draft?.id);
   const hasUnpublishedChange = useMemo(
     () => Boolean(slot?.draft && slot.draft.id !== slot.published?.id),
     [slot],
@@ -124,17 +132,47 @@ export default function OpsMarketingMediaManager() {
     setError(null);
     setMessage(null);
     try {
-      const form = new FormData();
-      form.append("file", file);
-      form.append("alt", alt.trim());
-      form.append("caption", caption.trim());
-      const response = await fetch("/api/ops/marketing/media", { method: "POST", body: form });
-      const payload = (await response.json()) as { asset?: MarketingMediaAsset; error?: string };
-      if (!response.ok || !payload.asset) {
-        throw new Error(payload.error ?? "Unable to upload media");
+      const prepareResponse = await fetch("/api/ops/marketing/media", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "prepare-upload",
+          filename: file.name,
+          contentType: file.type,
+          size: file.size,
+          alt: alt.trim(),
+          caption: caption.trim(),
+        }),
+      });
+      const prepared = (await prepareResponse.json()) as PreparedUpload;
+      if (!prepareResponse.ok || !prepared.asset || !prepared.path || !prepared.token) {
+        throw new Error(prepared.error ?? "Unable to prepare media upload");
       }
-      setAssets((current) => [payload.asset!, ...current]);
-      setSelected(payload.asset);
+
+      const supabase = createBrowserSupabase();
+      const { error: uploadError } = await supabase.storage
+        .from(MARKETING_MEDIA_PUBLIC_BUCKET)
+        .uploadToSignedUrl(prepared.path, prepared.token, file, {
+          contentType: file.type,
+          cacheControl: "31536000",
+        });
+      if (uploadError) throw new Error(uploadError.message);
+
+      const finalizeResponse = await fetch("/api/ops/marketing/media", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "finalize-upload", id: prepared.asset.id }),
+      });
+      const finalized = (await finalizeResponse.json()) as {
+        asset?: MarketingMediaAsset;
+        error?: string;
+      };
+      if (!finalizeResponse.ok || !finalized.asset) {
+        throw new Error(finalized.error ?? "Unable to finalize media upload");
+      }
+
+      setAssets((current) => [finalized.asset!, ...current]);
+      setSelected(finalized.asset);
       setAlt("");
       setCaption("");
       setMessage("Uploaded to the media library. Save it as the homepage draft when ready.");
@@ -151,6 +189,11 @@ export default function OpsMarketingMediaManager() {
       setError("Choose or upload media before saving the draft.");
       return;
     }
+    if (action === "publish" && !selectedMatchesDraft) {
+      setError("Save the selected media as the current draft before publishing.");
+      return;
+    }
+
     setSaving(true);
     setError(null);
     setMessage(null);
@@ -158,7 +201,11 @@ export default function OpsMarketingMediaManager() {
       const response = await fetch("/api/ops/marketing/pages/home", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ slotKey, action, media: action === "save-draft" ? selected : undefined }),
+        body: JSON.stringify({
+          slotKey,
+          action,
+          assetId: action === "save-draft" ? selected?.id : undefined,
+        }),
       });
       const payload = (await response.json()) as PagePayload;
       if (!response.ok || !payload.document) {
@@ -243,7 +290,7 @@ export default function OpsMarketingMediaManager() {
             <button
               type="button"
               onClick={() => void updateSlot("publish")}
-              disabled={saving || !slot?.draft}
+              disabled={saving || !slot?.draft || !selectedMatchesDraft}
               className="inline-flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-orange-400 disabled:opacity-50"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />} Publish
@@ -254,7 +301,7 @@ export default function OpsMarketingMediaManager() {
         <aside className="space-y-6">
           <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
             <h2 className="text-lg font-semibold">Upload media</h2>
-            <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">JPG, PNG, WebP, AVIF, MP4, or WebM. Maximum 50 MB.</p>
+            <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">JPG, PNG, WebP, AVIF, MP4, or WebM. Maximum 50 MB. Large files upload directly to media storage.</p>
             <label className="mt-4 block text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">Alt text</label>
             <input value={alt} onChange={(event) => setAlt(event.target.value)} placeholder="ProFixIQ work order workspace showing…" className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2.5 text-sm" />
             <label className="mt-4 block text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">Caption <span className="font-normal normal-case">(optional)</span></label>
