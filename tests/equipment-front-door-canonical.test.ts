@@ -22,8 +22,21 @@ describe("Equipment canonical front door", () => {
     const setup = source("features/equipment/components/EquipmentSetupDialog.tsx");
 
     expect(setup).toContain("checkVehicleDuplicates");
+    expect(setup).toContain('match.same_customer === true');
+    expect(setup).toContain('match.match_type === "vin" && match.same_customer === false');
     expect(setup).toContain("use Add existing asset");
     expect(setup).toContain("canonical vehicle record");
+  });
+
+  it("keeps Equipment browsing available when customer options fail", () => {
+    const page = source("app/equipment/page.tsx");
+    const directory = source("features/equipment/components/EquipmentDirectoryView.tsx");
+    const setup = source("features/equipment/components/EquipmentSetupDialog.tsx");
+
+    expect(page).toContain("customerOptionsError");
+    expect(page).not.toContain('throw new Error("Equipment customer options could not be loaded.")');
+    expect(directory).toContain("customerOptionsError={customerOptionsError}");
+    expect(setup).toContain("Boolean(customerOptionsError)");
   });
 
   it("attaches Equipment as a create-only profile extension", () => {
