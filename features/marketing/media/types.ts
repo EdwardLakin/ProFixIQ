@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export const MARKETING_MEDIA_PUBLIC_BUCKET = "marketing-page-media";
+
 export const MarketingMediaKindSchema = z.enum(["image", "video"]);
 
 export const MarketingMediaAssetSchema = z.object({
@@ -38,7 +40,7 @@ export type MarketingPageMediaDocument = z.infer<
 export const MarketingMediaUpdateSchema = z.object({
   slotKey: z.string().regex(/^[a-z0-9-]+$/),
   action: z.enum(["save-draft", "publish", "clear-draft"]),
-  media: MarketingMediaAssetSchema.nullable().optional(),
+  assetId: z.string().uuid().optional(),
 });
 
 export const MARKETING_PAGE_REGISTRY = {
