@@ -47,13 +47,17 @@ describe("managed acquisition landing media", () => {
     const renderer = read(
       "features/marketing/components/ManagedMarketingMedia.tsx",
     );
+    const shared = read(
+      "features/marketing/components/publicMarketingMedia.ts",
+    );
     const landing = read(
       "features/marketing/components/SearchLandingPage.tsx",
     );
 
     expect(renderer).toContain("usePathname()");
     expect(renderer).toContain("getMarketingPageKeyForHref(pathname)");
-    expect(renderer).toContain("/api/public/marketing/pages/${resolvedPageKey}");
+    expect(renderer).toContain("getPublishedMarketingSlots(resolvedPageKey)");
+    expect(shared).toContain("/api/public/marketing/pages/${pageKey}");
     expect(renderer).toContain("if (!asset) return <>{fallback}</>");
     expect(renderer).toContain('autoPlayVideo = false');
     expect(renderer).toContain('aspect-[16/10]');
