@@ -45,17 +45,9 @@ type DuplicateRow = {
   vin: string | null;
 };
 
-function normalizeUnit(value: string | null): string | null {
-  return value?.trim().toLowerCase() || null;
-}
-
 function normalizeVin(value: string | null): string | null {
   if (!value) return null;
   return normalizeVinInput(value).vin || value.trim().toUpperCase();
-}
-
-function sameDuplicateKey(row: DuplicateRow, unit: string, vin: string | null) {
-  return normalizeUnit(row.unit_number) === normalizeUnit(unit) || (!!vin && normalizeVin(row.vin) === vin);
 }
 
 export async function POST(request: Request) {
@@ -144,17 +136,37 @@ export async function POST(request: Request) {
   if (!profileValidation.ok) return json({ error: profileValidation.error }, 400);
 
   const admin = createAdminSupabase();
-  const { data: beforeRows, error: beforeError } = await admin
-    .from("vehicles")
-    .select("id,created_at,unit_number,vin")
-    .eq("shop_id", access.profile.shop_id)
-    .limit(5000);
-  if (beforeError) return json({ error: "Equipment could not be checked for duplicates." }, 500);
-  const beforeDuplicates = ((beforeRows ?? []) as DuplicateRow[]).filter((row) => sameDuplicateKey(row, unitNumber!, vin));
-  if (beforeDuplicates.some((row) => normalizeUnit(row.unit_number) === normalizeUnit(unitNumber))) {
+  const loadDuplicates = async (): Promise<{ rows: DuplicateRow[]; error: unknown | null }> => {
+    const [unitResult, vinResult] = await Promise.all([
+      admin
+        .from("vehicles")
+        .select("id,created_at,unit_number,vin")
+        .eq("shop_id", access.profile.shop_id)
+        .ilike("unit_number", unitNumber!),
+      vin
+        ? admin
+            .from("vehicles")
+            .select("id,created_at,unit_number,vin")
+            .eq("shop_id", access.profile.shop_id)
+            .eq("vin", vin)
+        : Promise.resolve({ data: [] as DuplicateRow[], error: null }),
+    ]);
+    if (unitResult.error || vinResult.error) {
+      return { rows: [], error: unitResult.error ?? vinResult.error };
+    }
+    const byId = new Map<string, DuplicateRow>();
+    for (const row of [...((unitResult.data ?? []) as DuplicateRow[]), ...((vinResult.data ?? []) as DuplicateRow[])]) {
+      byId.set(row.id, row);
+    }
+    return { rows: Array.from(byId.values()), error: null };
+  };
+
+  const before = await loadDuplicates();
+  if (before.error) return json({ error: "Equipment could not be checked for duplicates." }, 500);
+  if (before.rows.some((row) => row.unit_number?.trim().toLowerCase() === unitNumber!.trim().toLowerCase())) {
     return json({ error: DUPLICATE_UNIT_MESSAGE }, 409);
   }
-  if (vin && beforeDuplicates.some((row) => normalizeVin(row.vin) === vin)) {
+  if (vin && before.rows.some((row) => normalizeVin(row.vin) === vin)) {
     return json({ error: DUPLICATE_VIN_MESSAGE }, 409);
   }
 
@@ -180,20 +192,15 @@ export async function POST(request: Request) {
   }
 
   // Close the pre-check race without binding record identity to mutable unit data.
-  // If concurrent requests inserted the same unit/VIN, all contenders observe the
-  // collision after commit and a stable oldest-row winner survives.
-  const { data: afterRows, error: afterError } = await admin
-    .from("vehicles")
-    .select("id,created_at,unit_number,vin")
-    .eq("shop_id", access.profile.shop_id)
-    .limit(5000);
-  if (afterError) {
+  // Contenders use normal UUIDs; after commit the stable oldest row survives.
+  const after = await loadDuplicates();
+  if (after.error) {
     await admin.from("vehicles").delete().eq("shop_id", access.profile.shop_id).eq("id", created.id);
     return json({ error: "Equipment duplicate status could not be verified. Try again." }, 500);
   }
-  const contenders = ((afterRows ?? []) as DuplicateRow[])
-    .filter((row) => sameDuplicateKey(row, unitNumber!, vin))
-    .sort((a, b) => `${a.created_at ?? ""}:${a.id}`.localeCompare(`${b.created_at ?? ""}:${b.id}`));
+  const contenders = after.rows.sort((a, b) =>
+    `${a.created_at ?? ""}:${a.id}`.localeCompare(`${b.created_at ?? ""}:${b.id}`),
+  );
   const winner = contenders[0];
   if (winner && winner.id !== created.id) {
     await admin.from("vehicles").delete().eq("shop_id", access.profile.shop_id).eq("id", created.id);
@@ -241,11 +248,19 @@ export async function POST(request: Request) {
     .maybeSingle();
   if (persistedProfile) return json({ assetId: created.id }, 201);
   if (verificationError) {
-    console.error("[equipment/assets] profile persistence could not be verified", { assetId: created.id, profileError, verificationError });
+    console.error("[equipment/assets] profile persistence could not be verified", {
+      assetId: created.id,
+      profileError,
+      verificationError,
+    });
     return json({ error: "Equipment creation status could not be verified. Reload Equipment before trying again." }, 500);
   }
 
   await admin.from("vehicles").delete().eq("shop_id", access.profile.shop_id).eq("id", created.id);
-  console.error("[equipment/assets] profile creation failed", { assetId: created.id, code: profileError.code ?? null, message: profileError.message });
+  console.error("[equipment/assets] profile creation failed", {
+    assetId: created.id,
+    code: profileError.code ?? null,
+    message: profileError.message,
+  });
   return json({ error: "Equipment could not be created." }, 500);
 }
