@@ -27,7 +27,6 @@ function json(body: unknown, status = 200) {
   return NextResponse.json(body, { status, headers: NO_STORE });
 }
 
-/** null = entitled; otherwise the response to return. */
 async function entitlementFailure(shopId: string, forWrite: boolean) {
   try {
     const entitlement = await resolveEquipmentAddonEntitlementForShop(shopId);
@@ -104,6 +103,7 @@ export async function PUT(request: Request, context: RouteContext) {
       if (
         mutation.engineHours !== undefined ||
         mutation.odometer !== undefined ||
+        mutation.currentCycles !== null ||
         mutation.mountedOnAssetId !== null
       ) {
         return json(
