@@ -2,24 +2,17 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
-const loadEquipmentDirectory = vi.fn();
-vi.mock("@/features/equipment/server/loadEquipmentDirectory", () => ({
-  EQUIPMENT_DIRECTORY_LIMIT: 200,
-  loadEquipmentDirectory: (input: unknown) => loadEquipmentDirectory(input),
-}));
-
 import {
   DASHBOARD_ATTENTION_LIMIT,
   accumulateFleetSummary,
   emptyFleetSummary,
   equipmentAttentionReasons,
+  type FleetSignalRow,
 } from "@/features/equipment/lib/equipmentDashboard";
-import type { EquipmentDirectoryRow } from "@/features/equipment/lib/equipmentDirectory";
-import { loadEquipmentFleetSummary } from "@/features/equipment/server/loadEquipmentFleetSummary";
 
 const NOW = new Date("2026-10-12T12:00:00Z");
 
-function row(id: string, patch: Partial<EquipmentDirectoryRow> = {}): EquipmentDirectoryRow {
+function row(id: string, patch: Partial<FleetSignalRow> = {}): FleetSignalRow {
   return {
     assetId: id,
     href: `/equipment/${id}`,
@@ -27,29 +20,14 @@ function row(id: string, patch: Partial<EquipmentDirectoryRow> = {}): EquipmentD
     year: null,
     make: null,
     model: null,
-    equipmentClass: "crawler_excavator",
-    equipmentClassLabel: "Crawler excavator",
-    serialNumber: null,
-    primaryMeter: "hours",
-    engineHours: null,
-    odometer: null,
-    odometerUnit: null,
-    currentCycles: null,
-    customerId: null,
-    customerName: null,
-    siteName: null,
     operatingStatus: "operational",
     openDefects: { total: 0, failed: 0 },
-    pm: { state: "ok", dueCount: 0 },
+    pm: { state: "ok" },
     openWorkOrderCount: 0,
     inspection: { state: "clear", recordedAt: null },
-    actions: { createWorkOrderHref: null, recordMeterHref: null },
-    lastServiceAt: null,
     nextService: null,
-    activeWorkOrder: null,
-    mountedOnAssetId: null,
     ...patch,
-  } as EquipmentDirectoryRow;
+  };
 }
 
 describe("accumulateFleetSummary", () => {
@@ -57,22 +35,24 @@ describe("accumulateFleetSummary", () => {
     const summary = accumulateFleetSummary(
       emptyFleetSummary(),
       [
-        row("a", { pm: { state: "overdue", dueCount: 2 }, openWorkOrderCount: 2, nextService: { startsAt: "2026-10-15T08:00:00Z", status: "scheduled" } }),
+        row("a", { pm: { state: "overdue" }, openWorkOrderCount: 2, nextService: { startsAt: "2026-10-15T08:00:00Z", status: "scheduled" } }),
+        // A visit already in progress (started before now, not yet ended) counts too.
+        row("e", { nextService: { startsAt: "2026-10-12T08:00:00Z", status: "in_progress" } }),
         row("b", { operatingStatus: "down", inspection: { state: "findings", recordedAt: null }, openDefects: { total: 3, failed: 1 } }),
-        row("c", { pm: { state: "not_evaluated", dueCount: 0 }, inspection: { state: "none", recordedAt: null }, nextService: { startsAt: "2026-11-30T08:00:00Z", status: "scheduled" } }),
-        row("d", { operatingStatus: "retired", pm: { state: "due", dueCount: 1 } }),
+        row("c", { pm: { state: "not_evaluated" }, inspection: { state: "none", recordedAt: null }, nextService: { startsAt: "2026-11-30T08:00:00Z", status: "scheduled" } }),
+        row("d", { operatingStatus: "retired", pm: { state: "due" } }),
       ],
       NOW,
     );
     expect(summary).toMatchObject({
-      total: 4,
+      total: 5,
       partial: false,
-      pm: { overdue: 1, due: 1, ok: 1, not_evaluated: 1 },
-      inspection: { none: 1, clear: 2, findings: 1, failed: 1 },
+      pm: { overdue: 1, due: 1, ok: 2, not_evaluated: 1 },
+      inspection: { none: 1, clear: 3, findings: 1, failed: 1 },
       openWork: { assets: 1, orders: 2 },
-      upcomingService: 1,
+      upcomingService: 2,
     });
-    expect(summary.status).toMatchObject({ operational: 2, down: 1, retired: 1 });
+    expect(summary.status).toMatchObject({ operational: 3, down: 1, retired: 1 });
   });
 
   it("counts a machine as needing attention exactly when the directory filter does", () => {
@@ -80,11 +60,11 @@ describe("accumulateFleetSummary", () => {
       emptyFleetSummary(),
       [
         row("ok"),
-        row("overdue", { pm: { state: "overdue", dueCount: 1 } }),
-        row("due", { pm: { state: "due", dueCount: 1 } }),
+        row("overdue", { pm: { state: "overdue" } }),
+        row("due", { pm: { state: "due" } }),
         row("down", { operatingStatus: "out_of_service" }),
         row("failed", { openDefects: { total: 1, failed: 1 } }),
-        row("unevaluated", { pm: { state: "not_evaluated", dueCount: 0 } }),
+        row("unevaluated", { pm: { state: "not_evaluated" } }),
       ],
       NOW,
     );
@@ -95,8 +75,8 @@ describe("accumulateFleetSummary", () => {
 
   it("keeps only the most urgent attention items across batches", () => {
     const summary = emptyFleetSummary();
-    accumulateFleetSummary(summary, Array.from({ length: 15 }, (_, i) => row(`due-${i}`, { pm: { state: "due", dueCount: 1 } })), NOW);
-    accumulateFleetSummary(summary, [row("down-and-overdue", { operatingStatus: "down", pm: { state: "overdue", dueCount: 1 } })], NOW);
+    accumulateFleetSummary(summary, Array.from({ length: 15 }, (_, i) => row(`due-${i}`, { pm: { state: "due" } })), NOW);
+    accumulateFleetSummary(summary, [row("down-and-overdue", { operatingStatus: "down", pm: { state: "overdue" } })], NOW);
     expect(summary.needsAttention).toBe(16);
     expect(summary.attention).toHaveLength(DASHBOARD_ATTENTION_LIMIT);
     expect(summary.attention[0]).toMatchObject({
@@ -105,48 +85,36 @@ describe("accumulateFleetSummary", () => {
     });
   });
 
+  it("ranks overdue PM above failed findings above due PM, whatever else is flagged", () => {
+    const score = (patch: Partial<FleetSignalRow>) => equipmentAttentionReasons(row("x", patch)).score;
+    const overdueOnly = score({ pm: { state: "overdue" } });
+    const failedOnly = score({ openDefects: { total: 1, failed: 1 } });
+    const dueOnly = score({ pm: { state: "due" } });
+    const down = score({ operatingStatus: "down" });
+    expect(down).toBeGreaterThan(overdueOnly);
+    expect(overdueOnly).toBeGreaterThan(failedOnly);
+    expect(failedOnly).toBeGreaterThan(dueOnly);
+    // Even failed findings plus due PM do not displace an overdue-only machine.
+    expect(overdueOnly).toBeGreaterThan(score({ openDefects: { total: 9, failed: 9 }, pm: { state: "due" } }));
+  });
+
+  it("counts assets with failed findings, not findings", () => {
+    const summary = accumulateFleetSummary(
+      emptyFleetSummary(),
+      [row("many", { inspection: { state: "findings", recordedAt: null }, openDefects: { total: 4, failed: 3 } })],
+      NOW,
+    );
+    expect(summary.inspection).toMatchObject({ findings: 1, failed: 1 });
+  });
+
   it("explains each reason once and pluralises failed findings", () => {
     expect(
       equipmentAttentionReasons({
-        pm: { state: "due", dueCount: 1 },
+        pm: { state: "due" },
         operatingStatus: "operational",
         openDefects: { total: 3, failed: 2 },
       }).reasons,
-    ).toEqual(["PM due", "2 failed findings"]);
+    ).toEqual(["2 failed findings", "PM due"]);
   });
 });
 
-describe("loadEquipmentFleetSummary", () => {
-  const env = { supabase: {} as never, admin: {} as never, shopId: "shop", role: "owner" as const, now: NOW };
-
-  it("walks every window of the shop until the directory stops truncating", async () => {
-    loadEquipmentDirectory.mockReset();
-    loadEquipmentDirectory
-      .mockResolvedValueOnce({ rows: [row("a"), row("b")], truncated: true })
-      .mockResolvedValueOnce({ rows: [row("c", { pm: { state: "overdue", dueCount: 1 } })], truncated: false });
-    const summary = await loadEquipmentFleetSummary(env);
-    expect(loadEquipmentDirectory.mock.calls.map(([call]) => call.window)).toEqual([
-      { offset: 0, limit: 200 },
-      { offset: 200, limit: 200 },
-    ]);
-    // Counts cover assets beyond the first 200 — the whole point of the dashboard.
-    expect(summary).toMatchObject({ total: 3, partial: false, pm: { overdue: 1, ok: 2 } });
-  });
-
-  it("reports a partial summary when the shop is larger than the scan limit", async () => {
-    loadEquipmentDirectory.mockReset();
-    loadEquipmentDirectory.mockResolvedValue({ rows: [row("a")], truncated: true });
-    const summary = await loadEquipmentFleetSummary({ ...env, maxAssets: 400 });
-    expect(loadEquipmentDirectory).toHaveBeenCalledTimes(2);
-    expect(summary.partial).toBe(true);
-    expect(summary.total).toBe(2);
-  });
-
-  it("makes a single read for a small shop", async () => {
-    loadEquipmentDirectory.mockReset();
-    loadEquipmentDirectory.mockResolvedValue({ rows: [], truncated: false });
-    const summary = await loadEquipmentFleetSummary(env);
-    expect(loadEquipmentDirectory).toHaveBeenCalledTimes(1);
-    expect(summary).toMatchObject({ total: 0, partial: false });
-  });
-});

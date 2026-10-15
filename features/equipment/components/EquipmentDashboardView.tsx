@@ -110,8 +110,8 @@ export default function EquipmentDashboardView({ summary }: { summary: Equipment
               <Stat label="Not evaluated" value={summary.pm.not_evaluated} />
             </Tile>
             <Tile title="Inspections" href="/equipment/inspections" cta="Open Inspections">
-              <Stat label="Failed findings" value={summary.inspection.failed} tone="bad" />
-              <Stat label="With findings" value={summary.inspection.findings} tone="warn" />
+              <Stat label="Assets with failed findings" value={summary.inspection.failed} tone="bad" />
+              <Stat label="Assets with findings" value={summary.inspection.findings} tone="warn" />
               <Stat label="No findings" value={summary.inspection.clear} tone="good" />
               <Stat label="No inspection" value={summary.inspection.none} />
             </Tile>
@@ -119,7 +119,7 @@ export default function EquipmentDashboardView({ summary }: { summary: Equipment
               <Stat label="Open work orders" value={summary.openWork.orders} />
               <Stat label="Assets with open work" value={summary.openWork.assets} />
               <Stat
-                label={`Service in ${DASHBOARD_UPCOMING_DAYS} days`}
+                label={`Service now or in ${DASHBOARD_UPCOMING_DAYS} days`}
                 value={summary.upcomingService}
               />
             </Tile>

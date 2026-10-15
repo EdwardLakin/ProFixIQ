@@ -6,6 +6,25 @@ import {
   type EquipmentPmState,
 } from "@/features/equipment/lib/equipmentDirectory";
 
+/**
+ * The per-asset signals the dashboard folds. A directory row satisfies this
+ * structurally, which is how the tests prove both read the same values.
+ */
+export type FleetSignalRow = Pick<
+  EquipmentDirectoryRow,
+  | "assetId"
+  | "href"
+  | "unitNumber"
+  | "year"
+  | "make"
+  | "model"
+  | "operatingStatus"
+  | "openDefects"
+  | "inspection"
+  | "openWorkOrderCount"
+  | "nextService"
+> & { pm: { state: EquipmentPmState } };
+
 /** Assets listed under "Needs attention". */
 export const DASHBOARD_ATTENTION_LIMIT = 10;
 /** A scheduled visit within this many days counts as upcoming. */
@@ -31,9 +50,10 @@ export type EquipmentFleetSummary = {
   partial: boolean;
   status: Record<AssetOperatingStatus, number>;
   pm: Record<EquipmentPmState, number>;
-  /** Assets by their latest completed inspection. `failed` is a subset of `findings`. */
+  /** Assets by their latest completed inspection. `failed` counts assets with a failed finding (a subset of `findings`). */
   inspection: { none: number; clear: number; findings: number; failed: number };
   openWork: { assets: number; orders: number };
+  /** Assets with a visit in progress or starting within the next few days. */
   upcomingService: number;
   needsAttention: number;
   attention: DashboardAttentionItem[];
@@ -56,34 +76,39 @@ export function emptyFleetSummary(): EquipmentFleetSummary {
   };
 }
 
-/** Why a machine needs attention, most urgent first, with a sortable score. */
+/**
+ * Why a machine needs attention, most urgent first. `score` is a severity
+ * tuple packed into one number (down, then PM overdue, then failed findings,
+ * then PM due), so a lower condition can never outrank a higher one.
+ */
 export function equipmentAttentionReasons(
-  row: Pick<EquipmentDirectoryRow, "pm" | "operatingStatus" | "openDefects">,
+  row: Pick<FleetSignalRow, "pm" | "operatingStatus" | "openDefects">,
 ): { reasons: string[]; score: number } {
   const reasons: string[] = [];
   let score = 0;
   if (row.operatingStatus === "down" || row.operatingStatus === "out_of_service") {
     reasons.push(row.operatingStatus === "down" ? "Down" : "Out of service");
-    score += 40;
+    score += 1000;
   }
   if (row.pm.state === "overdue") {
     reasons.push("PM overdue");
-    score += 30;
-  } else if (row.pm.state === "due") {
-    reasons.push("PM due");
-    score += 10;
+    score += 100;
   }
   if (row.openDefects.failed > 0) {
     reasons.push(`${row.openDefects.failed} failed finding${row.openDefects.failed === 1 ? "" : "s"}`);
-    score += 30;
+    score += 10;
+  }
+  if (row.pm.state === "due") {
+    reasons.push("PM due");
+    score += 1;
   }
   return { reasons, score };
 }
 
-/** Fold a batch of directory rows into the summary (mutates and returns it). */
+/** Fold a batch of asset signal rows into the summary (mutates and returns it). */
 export function accumulateFleetSummary(
   summary: EquipmentFleetSummary,
-  rows: EquipmentDirectoryRow[],
+  rows: FleetSignalRow[],
   now: Date = new Date(),
 ): EquipmentFleetSummary {
   const horizon = now.getTime() + DASHBOARD_UPCOMING_DAYS * 24 * 60 * 60 * 1000;
@@ -98,7 +123,9 @@ export function accumulateFleetSummary(
       summary.openWork.orders += row.openWorkOrderCount;
     }
     const nextVisit = row.nextService ? Date.parse(row.nextService.startsAt) : NaN;
-    if (Number.isFinite(nextVisit) && nextVisit >= now.getTime() && nextVisit <= horizon) {
+    // The booking read keeps only visits that have not ended, so a start in the
+    // past is a visit in progress, which counts.
+    if (Number.isFinite(nextVisit) && nextVisit <= horizon) {
       summary.upcomingService += 1;
     }
     if (!equipmentNeedsAttention(row)) continue;
