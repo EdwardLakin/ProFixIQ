@@ -399,7 +399,12 @@ export async function deleteIncompleteMarketingMediaAsset(
         : requestedBy;
 
     if (existingMarker?.state === "deleted") {
+      // Terminal retries are also recovery passes. If the original post-tombstone metadata
+      // cleanup failed after storage deletion, keep retrying that cleanup before reporting
+      // success so a ghost library record cannot remain permanently listable.
+      await removeJson(`assets/${assetId}.json`);
       await writeDeletionAudit(current, actor, "completed");
+      await removeJson(`${LIBRARY_DELETING_PREFIX}/${assetId}.json`);
       return { deleted: true, usages: [], asset: current };
     }
 
