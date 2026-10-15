@@ -200,6 +200,16 @@ describe("marketing media library management", () => {
     expect(library).not.toContain('hidden max-w-xs truncate text-red-300 sm:inline');
   });
 
+  it("compensates only terminal promotion deletion and re-dispatches concurrent promotion edits", () => {
+    const libraryServer = read("features/marketing/media/library-server.ts");
+
+    expect(libraryServer).toContain("async function readPromotionDeletionState");
+    expect(libraryServer).toContain('if (deletionState === "deleted")');
+    expect(libraryServer).toContain('if (deletionState === "deleting") return null');
+    expect(libraryServer).toContain('await removeJson(`assets/${assetId}.json`)');
+    expect(libraryServer).toContain("return updateMarketingMediaAssetMetadata(assetId, input)");
+  });
+
   it("adds searchable, filterable usage-aware controls without double-loading the editor", () => {
     const page = read("app/ops/marketing/page.tsx");
     const libraryPage = read("app/ops/marketing/library/page.tsx");
