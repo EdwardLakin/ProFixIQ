@@ -77,6 +77,12 @@ export async function POST(
       if (!asset) {
         return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
       }
+      if (!asset.alt.trim()) {
+        return NextResponse.json(
+          { error: "Add alt text to this media before attaching it to a landing page" },
+          { status: 400 },
+        );
+      }
       await saveMarketingPageMediaDraft(pageKey, slotKey, asset);
     } else if (action === "clear-draft") {
       await clearMarketingPageMediaDraft(pageKey, slotKey);
