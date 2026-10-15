@@ -32,6 +32,13 @@ const MEDIA_TYPES: Record<string, { extension: string; kind: "image" | "video" }
   "video/webm": { extension: "webm", kind: "video" },
 };
 
+type PendingCleanupMarker = {
+  assetId: string;
+  storagePath: string;
+  state: "cancelling" | "cancelled" | "finalized";
+  updatedAt: string;
+};
+
 function validUuid(value: unknown): value is string {
   return typeof value === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
 }
@@ -58,16 +65,35 @@ async function readAssetMetadata(path: string): Promise<MarketingMediaAsset | nu
   }
 }
 
-async function contentObjectExists(path: string): Promise<boolean> {
+async function readPendingCleanupMarker(assetId: string): Promise<PendingCleanupMarker | null> {
   const admin = createAdminSupabase();
+  const path = pendingCleanupPath(assetId);
   const { data, error } = await admin.storage
     .from(MARKETING_MEDIA_CONTENT_BUCKET)
     .download(path);
   if (error) {
-    if (isStorageObjectMissing(error)) return false;
+    if (isStorageObjectMissing(error)) return null;
     throw new Error(`Marketing media coordination read failed for ${path}: ${error.message}`);
   }
-  return Boolean(data);
+  if (!data) return null;
+  try {
+    const value = JSON.parse(await data.text()) as Partial<PendingCleanupMarker>;
+    if (
+      value.assetId !== assetId ||
+      typeof value.storagePath !== "string" ||
+      !["cancelling", "cancelled", "finalized"].includes(String(value.state)) ||
+      typeof value.updatedAt !== "string"
+    ) {
+      throw new Error(`Invalid marketing media cleanup marker for ${assetId}`);
+    }
+    return value as PendingCleanupMarker;
+  } catch (error) {
+    throw new Error(
+      `Marketing media cleanup marker parse failed for ${assetId}: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+    );
+  }
 }
 
 async function writeContentJson(
@@ -132,6 +158,18 @@ function pendingCleanupPath(assetId: string): string {
   return `pending-cleanup/${assetId}.json`;
 }
 
+async function writePendingCleanupMarker(
+  asset: MarketingMediaAsset,
+  state: PendingCleanupMarker["state"],
+): Promise<void> {
+  await writeContentJson(pendingCleanupPath(asset.id), {
+    assetId: asset.id,
+    storagePath: asset.storagePath,
+    state,
+    updatedAt: new Date().toISOString(),
+  } satisfies PendingCleanupMarker);
+}
+
 async function removePendingMarker(
   pendingPath: string,
   assetId: string,
@@ -160,18 +198,13 @@ async function cleanupStalePendingUploads(): Promise<number> {
     const asset = await readAssetMetadata(pendingPath);
     if (!asset || new Date(asset.createdAt).getTime() > cutoff) continue;
 
-    const cleanupPath = pendingCleanupPath(asset.id);
-    await writeContentJson(cleanupPath, {
-      assetId: asset.id,
-      storagePath: asset.storagePath,
-      cancelledAt: new Date().toISOString(),
-    });
+    await writePendingCleanupMarker(asset, "cancelling");
 
     const canonical = await getMarketingMediaAsset(asset.id);
     const usages = usageMap[asset.id] ?? [];
     if (canonical || usages.length > 0) {
+      await writePendingCleanupMarker(asset, "finalized");
       if (await removePendingMarker(pendingPath, asset.id)) cleaned += 1;
-      await removeContentObject(cleanupPath);
       continue;
     }
 
@@ -186,35 +219,11 @@ async function cleanupStalePendingUploads(): Promise<number> {
       continue;
     }
 
+    await writePendingCleanupMarker(asset, "cancelled");
     if (await removePendingMarker(pendingPath, asset.id)) cleaned += 1;
-    // Keep the cancellation marker permanently. A late finalize request can no
-    // longer recreate canonical metadata for an object cleanup already removed.
   }
 
   return cleaned;
-}
-
-async function writeMediaDeletionAudit(input: {
-  operatorId: string;
-  operatorEmail: string;
-  asset: MarketingMediaAsset;
-}): Promise<void> {
-  const timestamp = new Date().toISOString();
-  const safeTimestamp = timestamp.replace(/[:.]/g, "-");
-  await writeContentJson(
-    `audit/media-deletions/${safeTimestamp}-${crypto.randomUUID()}.json`,
-    {
-      action: "marketing_media_deleted",
-      occurredAt: timestamp,
-      operatorId: input.operatorId,
-      operatorEmail: input.operatorEmail,
-      assetId: input.asset.id,
-      filename: input.asset.filename,
-      storagePath: input.asset.storagePath,
-      contentType: input.asset.contentType,
-    },
-    { upsert: false },
-  );
 }
 
 export async function GET() {
@@ -279,7 +288,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid marketing media asset" }, { status: 400 });
     }
     try {
-      const result = await deleteMarketingMediaAsset(payload.id);
+      const result = await deleteMarketingMediaAsset(payload.id, {
+        operatorId: access.user.id,
+        operatorEmail: access.operatorEmail,
+      });
       if (!result.asset) {
         return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
       }
@@ -289,11 +301,6 @@ export async function POST(request: Request) {
           { status: 409 },
         );
       }
-      await writeMediaDeletionAudit({
-        operatorId: access.user.id,
-        operatorEmail: access.operatorEmail,
-        asset: result.asset,
-      });
       return NextResponse.json({ deleted: true, id: payload.id });
     } catch (error) {
       console.error("ops marketing media delete failed", error);
@@ -377,8 +384,12 @@ export async function POST(request: Request) {
 
     const id = payload.id;
     const pendingPath = `pending/${id}.json`;
-    const cleanupPath = pendingCleanupPath(id);
-    if (await contentObjectExists(cleanupPath)) {
+    const existingCleanup = await readPendingCleanupMarker(id);
+    if (existingCleanup?.state === "finalized") {
+      const canonical = await getMarketingMediaAsset(id);
+      if (canonical) return NextResponse.json({ asset: canonical });
+    }
+    if (existingCleanup?.state === "cancelling" || existingCleanup?.state === "cancelled") {
       return NextResponse.json({ error: "Prepared marketing media upload has expired" }, { status: 409 });
     }
 
@@ -412,8 +423,13 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Uploaded media did not match the prepared file" }, { status: 400 });
     }
 
-    if (await contentObjectExists(cleanupPath)) {
+    const cleanupBeforeWrite = await readPendingCleanupMarker(id);
+    if (cleanupBeforeWrite?.state === "cancelling" || cleanupBeforeWrite?.state === "cancelled") {
       return NextResponse.json({ error: "Prepared marketing media upload has expired" }, { status: 409 });
+    }
+    if (cleanupBeforeWrite?.state === "finalized") {
+      const canonical = await getMarketingMediaAsset(id);
+      if (canonical) return NextResponse.json({ asset: canonical });
     }
 
     const metadataBody = Buffer.from(`${JSON.stringify(asset, null, 2)}\n`, "utf8");
@@ -429,7 +445,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unable to save marketing media metadata" }, { status: 500 });
     }
 
-    if (await contentObjectExists(cleanupPath)) {
+    const cleanupAfterWrite = await readPendingCleanupMarker(id);
+    if (cleanupAfterWrite?.state === "cancelling" || cleanupAfterWrite?.state === "cancelled") {
       await removeContentObject(`assets/${id}.json`);
       return NextResponse.json({ error: "Prepared marketing media upload expired during finalization" }, { status: 409 });
     }
