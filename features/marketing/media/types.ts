@@ -4,16 +4,25 @@ export const MARKETING_MEDIA_PUBLIC_BUCKET = "marketing-page-media";
 
 export const MarketingMediaKindSchema = z.enum(["image", "video"]);
 
-export const MarketingMediaAssetSchema = z.object({
+const MarketingMediaAssetBaseSchema = z.object({
   id: z.string().uuid(),
   kind: MarketingMediaKindSchema,
   url: z.string().url(),
   storagePath: z.string().min(1),
   filename: z.string().min(1),
   contentType: z.string().min(1),
-  alt: z.string().trim().min(1).max(240),
   caption: z.string().trim().max(300).nullable().default(null),
   createdAt: z.string().datetime(),
+});
+
+export const MarketingMediaLibraryAssetSchema = MarketingMediaAssetBaseSchema.extend({
+  alt: z.string().trim().max(240).default(""),
+});
+
+export type MarketingMediaLibraryAsset = z.infer<typeof MarketingMediaLibraryAssetSchema>;
+
+export const MarketingMediaAssetSchema = MarketingMediaAssetBaseSchema.extend({
+  alt: z.string().trim().min(1).max(240),
 });
 
 export type MarketingMediaAsset = z.infer<typeof MarketingMediaAssetSchema>;

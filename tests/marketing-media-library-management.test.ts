@@ -72,10 +72,12 @@ describe("marketing media library management", () => {
     expect(route).toContain("cleanup is still resolving");
   });
 
-  it("passes authenticated operator context into the deletion protocol", () => {
+  it("passes authenticated operator context into both deletion protocols", () => {
     const route = read("app/api/ops/marketing/media/route.ts");
 
-    expect(route).toContain("deleteMarketingMediaAsset(payload.id, {");
+    expect(route).toContain("const deletionActor = {");
+    expect(route).toContain("deleteMarketingMediaAsset(payload.id, deletionActor)");
+    expect(route).toContain("deleteIncompleteMarketingMediaAsset(payload.id, deletionActor)");
     expect(route).toContain("operatorId: access.user.id");
     expect(route).toContain("operatorEmail: access.operatorEmail");
     expect(route).not.toContain("writeMediaDeletionAudit");
@@ -89,6 +91,144 @@ describe("marketing media library management", () => {
     expect(route).toContain("getMarketingMediaUsageMap()");
     expect(route).toContain("This media is still used by a landing page");
     expect(route).toContain("revalidatePath(MARKETING_PAGE_REGISTRY[usage.pageKey].href)");
+  });
+
+  it("keeps incomplete library media separate from the page-ready asset contract", () => {
+    const types = read("features/marketing/media/types.ts");
+    const libraryServer = read("features/marketing/media/library-server.ts");
+    const mediaRoute = read("app/api/ops/marketing/media/route.ts");
+    const pageRoute = read("app/api/ops/marketing/pages/[pageKey]/route.ts");
+
+    expect(types).toContain("MarketingMediaLibraryAssetSchema");
+    expect(types).toContain('alt: z.string().trim().max(240).default("")');
+    expect(types).toContain('alt: z.string().trim().min(1).max(240)');
+    expect(libraryServer).toContain("MarketingMediaAssetSchema.parse");
+    expect(mediaRoute).toContain('payload.action === "prepare-upload" || payload.action === "prepare-library-upload"');
+    expect(mediaRoute).toContain('const isLibraryUpload = payload.action === "prepare-library-upload"');
+    expect(mediaRoute).toContain('(!isLibraryUpload && !alt)');
+    expect(mediaRoute).toContain('payload.action === "list-library"');
+    expect(mediaRoute).toContain("listPageReadyAssets()");
+    expect(pageRoute).toContain("getMarketingMediaAsset(assetId)");
+    expect(pageRoute).toContain("MarketingMediaAssetSchema.safeParse(libraryAsset)");
+    expect(pageRoute).toContain("Add alt text to this media before attaching it to a landing page");
+  });
+
+  it("bulk uploads directly into the same reusable media library", () => {
+    const library = read("features/ops/components/OpsMarketingMediaLibraryManager.tsx");
+    const editor = read("features/ops/components/OpsMarketingMediaManager.tsx");
+
+    expect(library).toContain("Bulk upload");
+    expect(library).toContain("multiple");
+    expect(library).toContain("uploadToSignedUrl");
+    expect(library).toContain('action: "list-library"');
+    expect(library).toContain('action: "prepare-library-upload"');
+    expect(library).toContain('action: "finalize-upload"');
+    expect(library).toContain('alt: ""');
+    expect(library).toContain("Alt text needed before use");
+    expect(editor).toContain("selectedNeedsAlt");
+    expect(editor).toContain('href="/ops/marketing/library"');
+    expect(editor).toContain("Large files upload directly to media storage.");
+    expect(editor).toContain("Add alt text before uploading the screenshot or reel from the landing-page editor");
+  });
+
+  it("uses both deletion marker namespaces as the race fence for incomplete metadata promotion", () => {
+    const libraryServer = read("features/marketing/media/library-server.ts");
+
+    expect(libraryServer).toContain("async function deletionBlocksPromotion");
+    expect(libraryServer).toContain("readLibraryDeletionMarker(assetId)");
+    expect(libraryServer).toContain("readCanonicalDeletionState(assetId)");
+    expect(libraryServer).toContain('canonicalState === "deleting"');
+    expect(libraryServer).toContain('canonicalState === "deleted"');
+    expect(libraryServer).toContain("if (await deletionBlocksPromotion(assetId))");
+    expect(libraryServer).toContain('await removeJson(`assets/${assetId}.json`)');
+    expect(libraryServer).not.toContain("LIBRARY_LOCK_TTL_MS");
+    expect(libraryServer).not.toContain("acquireLibraryLock");
+  });
+
+  it("fences incomplete deletion before classifying mutable metadata", () => {
+    const libraryServer = read("features/marketing/media/library-server.ts");
+
+    const fence = libraryServer.indexOf('await writeDeletionMarker(current, actor, "deleting")');
+    const classification = libraryServer.indexOf("const fencedAsset = await readLibraryAsset(assetId)");
+    expect(fence).toBeGreaterThan(-1);
+    expect(classification).toBeGreaterThan(fence);
+    expect(libraryServer).toContain("await deleteMarketingMediaAsset(assetId, actor)");
+    expect(libraryServer).toContain("await waitForAssignmentReservations(assetId)");
+    expect(libraryServer).toContain("await getMarketingMediaUsageMap()");
+  });
+
+  it("blocks canonical assignments for the full lifetime of a library deletion fence", () => {
+    const server = read("features/marketing/media/server.ts");
+
+    expect(server).toContain("async function getLibraryDeletionFence");
+    expect(server).toContain('return `library-deleting/${assetId}.json`');
+    expect(server).toContain('return `library-deleted/${assetId}.json`');
+    expect(server).toContain("getLibraryDeletionFence(assetId)");
+    expect(server).toContain('libraryFence?.state === "deleting"');
+    expect(server).toContain('libraryFence?.state === "deleted"');
+    expect(server).toContain("if (await isMarketingMediaAssetUnavailable(assetId))");
+  });
+
+  it("preserves deletion recovery state when canonical metadata is gone", () => {
+    const libraryServer = read("features/marketing/media/library-server.ts");
+
+    expect(libraryServer).toContain("const libraryMarker = await readLibraryDeletionMarker(assetId)");
+    expect(libraryServer).toContain('readDeletionMarkerAsset(`deleted/${assetId}.json`, assetId)');
+    expect(libraryServer).toContain('readDeletionMarkerAsset(`deleting/${assetId}.json`, assetId)');
+  });
+
+  it("audits incomplete asset deletion before destructive storage removal with an immutable terminal winner", () => {
+    const libraryServer = read("features/marketing/media/library-server.ts");
+
+    expect(libraryServer).toContain('await writeDeletionAudit(current, actor, "intent")');
+    expect(libraryServer).toContain('await writeDeletionMarker(current, actor, "deleting")');
+    expect(libraryServer).toContain("await writeTerminalDeletionMarker(current, actor)");
+    expect(libraryServer).toContain("writeJsonCreateOnly");
+    expect(libraryServer).toContain('await writeDeletionAudit(current, actor, "completed")');
+    expect(libraryServer).toContain("operatorId: terminal.operatorId");
+    expect(libraryServer).toContain("operatorEmail: terminal.operatorEmail");
+  });
+
+  it("re-cleans metadata after the immutable library deletion winner is established", () => {
+    const libraryServer = read("features/marketing/media/library-server.ts");
+
+    const terminal = libraryServer.indexOf("const terminal = await writeTerminalDeletionMarker(current, actor)");
+    const finalCleanup = libraryServer.indexOf('await removeJson(`assets/${assetId}.json`)', terminal);
+    expect(terminal).toBeGreaterThan(-1);
+    expect(finalCleanup).toBeGreaterThan(terminal);
+  });
+
+  it("never treats deletion tombstones as a successful finalized-upload replay", () => {
+    const route = read("app/api/ops/marketing/media/route.ts");
+    const finalize = route.slice(route.indexOf('payload.action === "finalize-upload"'));
+
+    expect(finalize).toContain('readAssetMetadata(`assets/${id}.json`)');
+    expect(finalize).not.toContain("getMarketingMediaLibraryAsset(id)");
+  });
+
+  it("does not let a stale initial library load overwrite a completed upload", () => {
+    const library = read("features/ops/components/OpsMarketingMediaLibraryManager.tsx");
+
+    expect(library).toContain("if (!files.length || loading || bulkUploading) return");
+    expect(library).toContain("const uploadDisabled = loading || bulkUploading");
+    expect(library).toContain("disabled={uploadDisabled}");
+  });
+
+  it("keeps per-file upload errors visible on mobile", () => {
+    const library = read("features/ops/components/OpsMarketingMediaLibraryManager.tsx");
+
+    expect(library).toContain('break-words pl-6 text-red-300');
+    expect(library).not.toContain('hidden max-w-xs truncate text-red-300 sm:inline');
+  });
+
+  it("compensates only terminal promotion deletion and re-dispatches concurrent promotion edits", () => {
+    const libraryServer = read("features/marketing/media/library-server.ts");
+
+    expect(libraryServer).toContain("async function readPromotionDeletionState");
+    expect(libraryServer).toContain('if (deletionState === "deleted")');
+    expect(libraryServer).toContain('if (deletionState === "deleting") return null');
+    expect(libraryServer).toContain('await removeJson(`assets/${assetId}.json`)');
+    expect(libraryServer).toContain("return updateMarketingMediaAssetMetadata(assetId, input)");
   });
 
   it("adds searchable, filterable usage-aware controls without double-loading the editor", () => {
