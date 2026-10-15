@@ -12,6 +12,7 @@ import {
   deleteMarketingMediaAsset,
   getMarketingMediaUsageMap,
   MARKETING_MEDIA_CONTENT_BUCKET,
+  updateMarketingMediaAssetMetadata,
   type MarketingMediaUsage,
 } from "./server";
 
@@ -202,11 +203,20 @@ async function readCanonicalDeletionState(assetId: string): Promise<DeletionMark
   return null;
 }
 
+async function readPromotionDeletionState(assetId: string): Promise<DeletionMarkerState | null> {
+  const [libraryMarker, canonicalState] = await Promise.all([
+    readLibraryDeletionMarker(assetId),
+    readCanonicalDeletionState(assetId),
+  ]);
+  if (libraryMarker?.state === "deleted" || canonicalState === "deleted") return "deleted";
+  if (libraryMarker?.state === "deleting" || canonicalState === "deleting") return "deleting";
+  if (libraryMarker?.state === "failed" || canonicalState === "failed") return "failed";
+  return null;
+}
+
 async function deletionBlocksPromotion(assetId: string): Promise<boolean> {
-  const libraryMarker = await readLibraryDeletionMarker(assetId);
-  if (libraryMarker?.state === "deleting" || libraryMarker?.state === "deleted") return true;
-  const canonicalState = await readCanonicalDeletionState(assetId);
-  return canonicalState === "deleting" || canonicalState === "deleted";
+  const state = await readPromotionDeletionState(assetId);
+  return state === "deleting" || state === "deleted";
 }
 
 async function writeDeletionMarker(
@@ -335,7 +345,9 @@ export async function updateIncompleteMarketingMediaMetadata(
 
   const current = await readLibraryAsset(assetId);
   if (!current) return null;
-  if (MarketingMediaAssetSchema.safeParse(current).success) return null;
+  if (MarketingMediaAssetSchema.safeParse(current).success) {
+    return updateMarketingMediaAssetMetadata(assetId, input);
+  }
 
   const updated = MarketingMediaAssetSchema.parse({
     ...current,
@@ -344,12 +356,14 @@ export async function updateIncompleteMarketingMediaMetadata(
   });
   await writeJson(`assets/${assetId}.json`, updated, true);
 
-  if (await deletionBlocksPromotion(assetId)) {
-    // Deletion owns destructive cleanup. Its marker may still transition to `failed`
-    // because of usage/assignment protection, so do not remove metadata based on a
-    // transient deleting observation. A successful deletion removes it itself.
+  const deletionState = await readPromotionDeletionState(assetId);
+  if (deletionState === "deleted") {
+    // Terminal deletion means storage is gone. Remove only metadata recreated after that
+    // terminal winner; transient/failed deletion remains owned by the deletion protocol.
+    await removeJson(`assets/${assetId}.json`);
     return null;
   }
+  if (deletionState === "deleting") return null;
 
   return updated;
 }
