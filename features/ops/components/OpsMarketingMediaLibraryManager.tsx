@@ -18,7 +18,7 @@ import {
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   MARKETING_MEDIA_PUBLIC_BUCKET,
-  type MarketingMediaAsset,
+  type MarketingMediaLibraryAsset,
 } from "@/features/marketing/media/types";
 
 type MediaUsage = {
@@ -31,21 +31,21 @@ type MediaUsage = {
 };
 
 type LibraryPayload = {
-  assets?: MarketingMediaAsset[];
+  assets?: MarketingMediaLibraryAsset[];
   usages?: Record<string, MediaUsage[]>;
   cleanedPending?: number;
   error?: string;
 };
 
 type MutationPayload = {
-  asset?: MarketingMediaAsset;
+  asset?: MarketingMediaLibraryAsset;
   usages?: MediaUsage[];
   deleted?: boolean;
   error?: string;
 };
 
 type PreparedUpload = {
-  asset?: MarketingMediaAsset;
+  asset?: MarketingMediaLibraryAsset;
   path?: string;
   token?: string;
   error?: string;
@@ -61,7 +61,7 @@ type UploadRow = {
 type KindFilter = "all" | "image" | "video";
 type UsageFilter = "all" | "used" | "unused";
 
-function AssetThumb({ asset }: { asset: MarketingMediaAsset }) {
+function AssetThumb({ asset }: { asset: MarketingMediaLibraryAsset }) {
   const className = "h-32 w-full rounded-xl bg-black/20 object-cover";
   if (asset.kind === "video") {
     return (
@@ -79,7 +79,7 @@ function AssetThumb({ asset }: { asset: MarketingMediaAsset }) {
 }
 
 export default function OpsMarketingMediaLibraryManager() {
-  const [assets, setAssets] = useState<MarketingMediaAsset[]>([]);
+  const [assets, setAssets] = useState<MarketingMediaLibraryAsset[]>([]);
   const [usages, setUsages] = useState<Record<string, MediaUsage[]>>({});
   const [query, setQuery] = useState("");
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
@@ -132,7 +132,7 @@ export default function OpsMarketingMediaLibraryManager() {
     });
   }, [assets, usages, query, kindFilter, usageFilter]);
 
-  function startEditing(asset: MarketingMediaAsset) {
+  function startEditing(asset: MarketingMediaLibraryAsset) {
     setEditingId(asset.id);
     setEditAlt(asset.alt);
     setEditCaption(asset.caption ?? "");
@@ -144,7 +144,7 @@ export default function OpsMarketingMediaLibraryManager() {
     setUploadRows((current) => current.map((row) => row.key === key ? { ...row, ...patch } : row));
   }
 
-  async function uploadOne(file: File): Promise<MarketingMediaAsset> {
+  async function uploadOne(file: File): Promise<MarketingMediaLibraryAsset> {
     const prepareResponse = await fetch("/api/ops/marketing/media", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -185,7 +185,7 @@ export default function OpsMarketingMediaLibraryManager() {
 
   async function uploadFiles(fileList: FileList | File[]) {
     const files = Array.from(fileList);
-    if (!files.length || bulkUploading) return;
+    if (!files.length || loading || bulkUploading) return;
 
     const rows = files.map((file, index) => ({
       key: `${file.name}:${file.size}:${file.lastModified}:${index}`,
@@ -197,7 +197,7 @@ export default function OpsMarketingMediaLibraryManager() {
     setError(null);
     setMessage(null);
 
-    const uploaded: MarketingMediaAsset[] = [];
+    const uploaded: MarketingMediaLibraryAsset[] = [];
     let failures = 0;
     for (let index = 0; index < files.length; index += 1) {
       const file = files[index];
@@ -237,7 +237,7 @@ export default function OpsMarketingMediaLibraryManager() {
     if (uploadInputRef.current) uploadInputRef.current.value = "";
   }
 
-  async function saveMetadata(asset: MarketingMediaAsset) {
+  async function saveMetadata(asset: MarketingMediaLibraryAsset) {
     if (!editAlt.trim()) {
       setError("Alt text is required before this media can be used on a landing page.");
       return;
@@ -273,7 +273,7 @@ export default function OpsMarketingMediaLibraryManager() {
     }
   }
 
-  async function deleteAsset(asset: MarketingMediaAsset) {
+  async function deleteAsset(asset: MarketingMediaLibraryAsset) {
     const assetUsages = usages[asset.id] ?? [];
     if (assetUsages.length > 0) {
       setError(`${asset.filename} is still used in ${assetUsages.length} landing-page slot${assetUsages.length === 1 ? "" : "s"}. Remove those references before deleting it.`);
@@ -311,6 +311,8 @@ export default function OpsMarketingMediaLibraryManager() {
     }
   }
 
+  const uploadDisabled = loading || bulkUploading;
+
   return (
     <section className="mt-8 space-y-5 rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
       <div>
@@ -330,17 +332,18 @@ export default function OpsMarketingMediaLibraryManager() {
           <button
             type="button"
             onClick={() => uploadInputRef.current?.click()}
-            disabled={bulkUploading}
-            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-orange-400 disabled:opacity-50"
+            disabled={uploadDisabled}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-orange-400 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {bulkUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
-            {bulkUploading ? "Uploading…" : "Choose files"}
+            {bulkUploading || loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+            {loading ? "Loading library…" : bulkUploading ? "Uploading…" : "Choose files"}
           </button>
         </div>
         <input
           ref={uploadInputRef}
           type="file"
           multiple
+          disabled={uploadDisabled}
           accept="image/jpeg,image/png,image/webp,image/avif,video/mp4,video/webm"
           className="hidden"
           onChange={(event) => {
@@ -349,17 +352,17 @@ export default function OpsMarketingMediaLibraryManager() {
         />
         <button
           type="button"
-          disabled={bulkUploading}
-          onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
-          onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+          disabled={uploadDisabled}
+          onDragEnter={(event) => { event.preventDefault(); if (!uploadDisabled) setDragging(true); }}
+          onDragOver={(event) => { event.preventDefault(); if (!uploadDisabled) setDragging(true); }}
           onDragLeave={(event) => { event.preventDefault(); setDragging(false); }}
           onDrop={(event) => {
             event.preventDefault();
             setDragging(false);
-            if (event.dataTransfer.files?.length) void uploadFiles(event.dataTransfer.files);
+            if (!uploadDisabled && event.dataTransfer.files?.length) void uploadFiles(event.dataTransfer.files);
           }}
-          onClick={() => uploadInputRef.current?.click()}
-          className={`mt-4 flex min-h-28 w-full flex-col items-center justify-center rounded-2xl border border-dashed px-4 text-center transition ${dragging ? "border-orange-400 bg-orange-500/10" : "border-[color:var(--theme-border-soft)] hover:border-orange-400/60"}`}
+          onClick={() => { if (!uploadDisabled) uploadInputRef.current?.click(); }}
+          className={`mt-4 flex min-h-28 w-full flex-col items-center justify-center rounded-2xl border border-dashed px-4 text-center transition disabled:cursor-not-allowed disabled:opacity-50 ${dragging ? "border-orange-400 bg-orange-500/10" : "border-[color:var(--theme-border-soft)] hover:border-orange-400/60"}`}
         >
           <UploadCloud className="h-6 w-6 text-orange-300" />
           <span className="mt-2 text-sm font-bold">Drop multiple files here</span>
@@ -369,14 +372,16 @@ export default function OpsMarketingMediaLibraryManager() {
         {uploadRows.length > 0 ? (
           <div className="mt-4 space-y-2" aria-live="polite">
             {uploadRows.map((row) => (
-              <div key={row.key} className="flex items-center gap-2 rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs">
-                {row.status === "done" ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-300" /> : null}
-                {row.status === "error" ? <AlertCircle className="h-4 w-4 shrink-0 text-red-300" /> : null}
-                {row.status === "uploading" ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : null}
-                {row.status === "queued" ? <span className="h-4 w-4 shrink-0 rounded-full border border-[color:var(--theme-border-soft)]" /> : null}
-                <span className="min-w-0 flex-1 truncate">{row.filename}</span>
-                <span className="shrink-0 text-[color:var(--theme-text-muted)]">{row.status}</span>
-                {row.error ? <span className="hidden max-w-xs truncate text-red-300 sm:inline">{row.error}</span> : null}
+              <div key={row.key} className="rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs">
+                <div className="flex items-center gap-2">
+                  {row.status === "done" ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-300" /> : null}
+                  {row.status === "error" ? <AlertCircle className="h-4 w-4 shrink-0 text-red-300" /> : null}
+                  {row.status === "uploading" ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : null}
+                  {row.status === "queued" ? <span className="h-4 w-4 shrink-0 rounded-full border border-[color:var(--theme-border-soft)]" /> : null}
+                  <span className="min-w-0 flex-1 truncate">{row.filename}</span>
+                  <span className="shrink-0 text-[color:var(--theme-text-muted)]">{row.status}</span>
+                </div>
+                {row.error ? <p className="mt-1 break-words pl-6 text-red-300">{row.error}</p> : null}
               </div>
             ))}
           </div>
