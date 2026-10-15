@@ -51,6 +51,20 @@ function isStorageObjectMissing(error: unknown): boolean {
   return statusCode === "404" || message.includes("object not found");
 }
 
+function isStorageObjectAlreadyExists(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { statusCode?: string | number; code?: string; message?: string };
+  const statusCode = String(candidate.statusCode ?? "");
+  const code = String(candidate.code ?? "").toLowerCase();
+  const message = String(candidate.message ?? "").toLowerCase();
+  return (
+    statusCode === "409" ||
+    code === "resourcealreadyexists" ||
+    code === "already_exists" ||
+    message.includes("already exists")
+  );
+}
+
 async function readStoredJson<T>(
   path: string,
   parse: (value: unknown) => { success: true; data: T } | { success: false },
@@ -97,6 +111,21 @@ async function writeStoredJson(path: string, value: unknown): Promise<void> {
   if (error) throw new Error(`Marketing media write failed for ${path}: ${error.message}`);
 }
 
+async function writeStoredJsonCreateOnly(path: string, value: unknown): Promise<boolean> {
+  const admin = createAdminSupabase();
+  const body = Buffer.from(`${JSON.stringify(value, null, 2)}\n`, "utf8");
+  const { error } = await admin.storage
+    .from(MARKETING_MEDIA_CONTENT_BUCKET)
+    .upload(path, body, {
+      contentType: "application/json",
+      cacheControl: "0",
+      upsert: false,
+    });
+  if (!error) return true;
+  if (isStorageObjectAlreadyExists(error)) return false;
+  throw new Error(`Marketing media create-only write failed for ${path}: ${error.message}`);
+}
+
 async function removeStoredJson(path: string): Promise<void> {
   const admin = createAdminSupabase();
   const { error } = await admin.storage.from(MARKETING_MEDIA_CONTENT_BUCKET).remove([path]);
@@ -117,8 +146,16 @@ function deletionMarkerPath(assetId: string): string {
   return `deleting/${assetId}.json`;
 }
 
+function terminalDeletionMarkerPath(assetId: string): string {
+  return `deleted/${assetId}.json`;
+}
+
 function deletionAuditPath(assetId: string): string {
   return `audit/media-deletions/${assetId}.json`;
+}
+
+function assignmentReservationPath(assetId: string, reservationId: string): string {
+  return `assigning/${assetId}/${reservationId}.json`;
 }
 
 function parseDeletionMarker(
@@ -148,7 +185,16 @@ function parseDeletionMarker(
   };
 }
 
+async function getTerminalDeletionMarker(
+  assetId: string,
+): Promise<MarketingMediaDeletionMarker | null> {
+  const marker = await readStoredJson(terminalDeletionMarkerPath(assetId), parseDeletionMarker);
+  return marker?.assetId === assetId && marker.state === "deleted" ? marker : null;
+}
+
 async function getDeletionMarker(assetId: string): Promise<MarketingMediaDeletionMarker | null> {
+  const terminal = await getTerminalDeletionMarker(assetId);
+  if (terminal) return terminal;
   const marker = await readStoredJson(deletionMarkerPath(assetId), parseDeletionMarker);
   return marker?.assetId === assetId ? marker : null;
 }
@@ -158,6 +204,7 @@ async function writeDeletionMarker(
   state: MarketingMediaDeletionMarker["state"],
   actor?: MarketingMediaDeletionActor,
 ): Promise<void> {
+  if (state !== "deleted" && (await getTerminalDeletionMarker(asset.id))) return;
   await writeStoredJson(deletionMarkerPath(asset.id), {
     assetId: asset.id,
     asset,
@@ -166,6 +213,22 @@ async function writeDeletionMarker(
     operatorId: actor?.operatorId,
     operatorEmail: actor?.operatorEmail,
   } satisfies MarketingMediaDeletionMarker);
+}
+
+async function writeTerminalDeletionMarker(
+  asset: MarketingMediaAsset,
+  actor: MarketingMediaDeletionActor,
+): Promise<void> {
+  const marker: MarketingMediaDeletionMarker = {
+    assetId: asset.id,
+    asset,
+    state: "deleted",
+    updatedAt: new Date().toISOString(),
+    operatorId: actor.operatorId,
+    operatorEmail: actor.operatorEmail,
+  };
+  await writeStoredJsonCreateOnly(terminalDeletionMarkerPath(asset.id), marker);
+  await writeDeletionMarker(asset, "deleted", actor);
 }
 
 async function writeDeletionAudit(
@@ -193,8 +256,43 @@ async function isMarketingMediaAssetUnavailable(assetId: string): Promise<boolea
 }
 
 async function isMarketingMediaAssetDeleted(assetId: string): Promise<boolean> {
-  const marker = await getDeletionMarker(assetId);
-  return marker?.state === "deleted";
+  return Boolean(await getTerminalDeletionMarker(assetId));
+}
+
+async function createAssignmentReservation(assetId: string): Promise<string> {
+  if (await isMarketingMediaAssetUnavailable(assetId)) {
+    throw new Error("Marketing media asset is unavailable");
+  }
+  const reservationId = crypto.randomUUID();
+  const path = assignmentReservationPath(assetId, reservationId);
+  const created = await writeStoredJsonCreateOnly(path, {
+    assetId,
+    reservationId,
+    createdAt: new Date().toISOString(),
+  });
+  if (!created) throw new Error("Marketing media assignment reservation collision");
+  if (await isMarketingMediaAssetUnavailable(assetId)) {
+    await removeStoredJson(path);
+    throw new Error("Marketing media asset became unavailable before assignment");
+  }
+  return path;
+}
+
+async function hasAssignmentReservations(assetId: string): Promise<boolean> {
+  const admin = createAdminSupabase();
+  const { data, error } = await admin.storage
+    .from(MARKETING_MEDIA_CONTENT_BUCKET)
+    .list(`assigning/${assetId}`, { limit: 1 });
+  if (error) throw new Error(`Marketing media reservation list failed: ${error.message}`);
+  return (data ?? []).some((item) => item.name.endsWith(".json"));
+}
+
+async function waitForAssignmentReservations(assetId: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    if (!(await hasAssignmentReservations(assetId))) return true;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return !(await hasAssignmentReservations(assetId));
 }
 
 async function readMarketingMediaSlotRaw(
@@ -351,23 +449,28 @@ export async function updateMarketingMediaAssetMetadata(
   assetId: string,
   input: { alt: string; caption: string | null },
 ): Promise<MarketingMediaAsset | null> {
-  const current = await getAssignableMarketingMediaAsset(assetId);
-  if (!current) return null;
-
-  const updated = MarketingMediaAssetSchema.parse({
-    ...current,
-    alt: input.alt,
-    caption: input.caption,
-  });
-
-  await writeStoredJson(`assets/${assetId}.json`, updated);
-
-  const marker = await getDeletionMarker(assetId);
-  if (marker?.state === "deleted") {
-    await removeStoredJson(`assets/${assetId}.json`);
+  let reservationPath: string;
+  try {
+    reservationPath = await createAssignmentReservation(assetId);
+  } catch {
     return null;
   }
-  return updated;
+
+  try {
+    const current = await getAssignableMarketingMediaAsset(assetId);
+    if (!current) return null;
+
+    const updated = MarketingMediaAssetSchema.parse({
+      ...current,
+      alt: input.alt,
+      caption: input.caption,
+    });
+
+    await writeStoredJson(`assets/${assetId}.json`, updated);
+    return (await isMarketingMediaAssetDeleted(assetId)) ? null : updated;
+  } finally {
+    await removeStoredJson(reservationPath);
+  }
 }
 
 export async function deleteMarketingMediaAsset(
@@ -402,6 +505,12 @@ export async function deleteMarketingMediaAsset(
   let mediaRemoved = false;
 
   try {
+    if (!(await waitForAssignmentReservations(assetId))) {
+      await writeDeletionMarker(asset, "failed", actor);
+      await writeDeletionAudit(asset, actor, "blocked");
+      return { deleted: false, usages: [], asset };
+    }
+
     const usageMap = await getMarketingMediaUsageMap();
     const usages = usageMap[assetId] ?? [];
     if (usages.length > 0) {
@@ -418,7 +527,7 @@ export async function deleteMarketingMediaAsset(
     mediaRemoved = true;
 
     await removeStoredJson(`assets/${assetId}.json`);
-    await writeDeletionMarker(asset, "deleted", actor);
+    await writeTerminalDeletionMarker(asset, actor);
     await writeDeletionAudit(asset, actor, "completed");
     return { deleted: true, usages: [], asset };
   } catch (error) {
@@ -441,24 +550,19 @@ export async function saveMarketingPageMediaDraft(
   slotKey: string,
   asset: MarketingMediaAsset,
 ): Promise<void> {
-  const canonical = await getAssignableMarketingMediaAsset(asset.id);
-  if (!canonical) throw new Error("Marketing media asset is unavailable");
+  const reservationPath = await createAssignmentReservation(asset.id);
+  try {
+    const canonical = await getAssignableMarketingMediaAsset(asset.id);
+    if (!canonical) throw new Error("Marketing media asset is unavailable");
 
-  const record = MarketingMediaSlotSchema.parse({
-    draft: canonical,
-    published: null,
-    publishedAt: null,
-  });
-  const path = draftSlotPath(pageKey, slotKey);
-  await writeStoredJson(path, record);
-
-  const stillAvailable = await getAssignableMarketingMediaAsset(asset.id);
-  if (!stillAvailable) {
-    const current = await readStoredJson(path, (value) => MarketingMediaSlotSchema.safeParse(value));
-    if (current?.draft?.id === asset.id) {
-      await removeStoredJson(path);
-    }
-    throw new Error("Marketing media asset became unavailable while saving the draft");
+    const record = MarketingMediaSlotSchema.parse({
+      draft: canonical,
+      published: null,
+      publishedAt: null,
+    });
+    await writeStoredJson(draftSlotPath(pageKey, slotKey), record);
+  } finally {
+    await removeStoredJson(reservationPath);
   }
 }
 
@@ -473,40 +577,33 @@ export async function publishMarketingPageMediaDraft(
   pageKey: MarketingPageKey,
   slotKey: string,
 ): Promise<MarketingMediaAsset | null> {
-  const draftPath = draftSlotPath(pageKey, slotKey);
-  const draftRecord = await readStoredJson(draftPath, (value) =>
+  const draftRecord = await readStoredJson(draftSlotPath(pageKey, slotKey), (value) =>
     MarketingMediaSlotSchema.safeParse(value),
   );
   const draftAsset = draftRecord?.draft ?? null;
   if (!draftAsset) return null;
 
-  const asset = await getPublishableMarketingMediaAsset(draftAsset);
-  if (!asset) return null;
-
-  const path = publishedSlotPath(pageKey, slotKey);
-  const previousRecord = await readStoredJson(path, (value) =>
-    MarketingMediaSlotSchema.safeParse(value),
-  );
-  const publishedAt = new Date().toISOString();
-  const record = MarketingMediaSlotSchema.parse({
-    draft: null,
-    published: asset,
-    publishedAt,
-  });
-  await writeStoredJson(path, record);
-
-  if (await isMarketingMediaAssetUnavailable(asset.id)) {
-    const current = await readStoredJson(path, (value) => MarketingMediaSlotSchema.safeParse(value));
-    if (current?.published?.id === asset.id && current.publishedAt === publishedAt) {
-      if (previousRecord) {
-        await writeStoredJson(path, previousRecord);
-      } else {
-        await removeStoredJson(path);
-      }
-    }
+  let reservationPath: string;
+  try {
+    reservationPath = await createAssignmentReservation(draftAsset.id);
+  } catch {
     return null;
   }
-  return asset;
+
+  try {
+    const asset = await getPublishableMarketingMediaAsset(draftAsset);
+    if (!asset) return null;
+
+    const record = MarketingMediaSlotSchema.parse({
+      draft: null,
+      published: asset,
+      publishedAt: new Date().toISOString(),
+    });
+    await writeStoredJson(publishedSlotPath(pageKey, slotKey), record);
+    return asset;
+  } finally {
+    await removeStoredJson(reservationPath);
+  }
 }
 
 export async function getPublishedMarketingPageMedia(
