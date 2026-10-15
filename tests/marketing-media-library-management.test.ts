@@ -75,8 +75,9 @@ describe("marketing media library management", () => {
   it("passes authenticated operator context into both deletion protocols", () => {
     const route = read("app/api/ops/marketing/media/route.ts");
 
-    expect(route).toContain("deleteMarketingMediaAsset(payload.id, {");
-    expect(route).toContain("deleteIncompleteMarketingMediaAsset(payload.id, {");
+    expect(route).toContain("const deletionActor = {");
+    expect(route).toContain("deleteMarketingMediaAsset(payload.id, deletionActor)");
+    expect(route).toContain("deleteIncompleteMarketingMediaAsset(payload.id, deletionActor)");
     expect(route).toContain("operatorId: access.user.id");
     expect(route).toContain("operatorEmail: access.operatorEmail");
     expect(route).not.toContain("writeMediaDeletionAudit");
@@ -144,6 +145,18 @@ describe("marketing media library management", () => {
     expect(libraryServer).not.toContain("acquireLibraryLock");
   });
 
+  it("fences incomplete deletion before classifying mutable metadata", () => {
+    const libraryServer = read("features/marketing/media/library-server.ts");
+
+    const fence = libraryServer.indexOf('await writeDeletionMarker(current, actor, "deleting")');
+    const classification = libraryServer.indexOf("const fencedAsset = await readLibraryAsset(assetId)");
+    expect(fence).toBeGreaterThan(-1);
+    expect(classification).toBeGreaterThan(fence);
+    expect(libraryServer).toContain("await deleteMarketingMediaAsset(assetId, actor)");
+    expect(libraryServer).toContain("await waitForAssignmentReservations(assetId)");
+    expect(libraryServer).toContain("await getMarketingMediaUsageMap()");
+  });
+
   it("preserves deletion recovery state when canonical metadata is gone", () => {
     const libraryServer = read("features/marketing/media/library-server.ts");
 
@@ -162,6 +175,14 @@ describe("marketing media library management", () => {
     expect(libraryServer).toContain('await writeDeletionAudit(current, actor, "completed")');
     expect(libraryServer).toContain("operatorId: terminal.operatorId");
     expect(libraryServer).toContain("operatorEmail: terminal.operatorEmail");
+  });
+
+  it("never treats deletion tombstones as a successful finalized-upload replay", () => {
+    const route = read("app/api/ops/marketing/media/route.ts");
+    const finalize = route.slice(route.indexOf('payload.action === "finalize-upload"'));
+
+    expect(finalize).toContain('readAssetMetadata(`assets/${id}.json`)');
+    expect(finalize).not.toContain("getMarketingMediaLibraryAsset(id)");
   });
 
   it("does not let a stale initial library load overwrite a completed upload", () => {
