@@ -4,6 +4,7 @@ import { requireOpsOperatorApiAccess } from "@/features/ops/server/operator-acce
 import { getMarketingMediaLibraryAsset } from "@/features/marketing/media/library-server";
 import {
   clearMarketingPageMediaDraft,
+  getMarketingMediaAsset,
   getMarketingPageMediaDocument,
   isMarketingPageKey,
   publishMarketingPageMediaDraft,
@@ -74,18 +75,24 @@ export async function POST(
       if (!assetId) {
         return NextResponse.json({ error: "Choose media before saving the draft" }, { status: 400 });
       }
+
       const libraryAsset = await getMarketingMediaLibraryAsset(assetId);
       if (!libraryAsset) {
         return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
       }
-      const asset = MarketingMediaAssetSchema.safeParse(libraryAsset);
-      if (!asset.success) {
+      const pageReadyAsset = MarketingMediaAssetSchema.safeParse(libraryAsset);
+      if (!pageReadyAsset.success) {
         return NextResponse.json(
           { error: "Add alt text to this media before attaching it to a landing page" },
           { status: 400 },
         );
       }
-      await saveMarketingPageMediaDraft(pageKey, slotKey, asset.data);
+
+      const asset = await getMarketingMediaAsset(assetId);
+      if (!asset) {
+        return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
+      }
+      await saveMarketingPageMediaDraft(pageKey, slotKey, asset);
     } else if (action === "clear-draft") {
       await clearMarketingPageMediaDraft(pageKey, slotKey);
     } else {
