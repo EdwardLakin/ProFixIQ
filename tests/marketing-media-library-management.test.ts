@@ -18,57 +18,54 @@ describe("marketing media library management", () => {
     const server = read("features/marketing/media/server.ts");
 
     expect(server).toContain("async function hydrateCanonicalAsset");
-    expect(server).toContain("return (await getMarketingMediaAsset(asset.id)) ?? asset");
+    expect(server).toContain("canonical ?? asset");
     expect(server).toContain("canonical hydration failed; using embedded slot asset");
-    expect(server).toContain("export async function updateMarketingMediaAssetMetadata");
-    expect(server).toContain("writeStoredJson(`assets/${assetId}.json`, updated)");
+    expect(server).toContain("async function getPublishableMarketingMediaAsset");
+    expect(server).toContain("canonical ?? embedded");
   });
 
-  it("serializes metadata edits and assignments against permanent deletion state", () => {
+  it("serializes metadata edits and assignments against deletion state", () => {
     const server = read("features/marketing/media/server.ts");
 
     expect(server).toContain('state: "deleting" | "deleted" | "failed"');
     expect(server).toContain("async function writeDeletionMarker");
-    expect(server).toContain("marker?.state === \"deleting\" || marker?.state === \"deleted\"");
-    expect(server).toContain("if (await isMarketingMediaAssetUnavailable(assetId))");
-    expect(server).toContain("await removeStoredJson(`assets/${assetId}.json`)");
-    expect(server).toContain("getAssignableMarketingMediaAsset(asset.id)");
-    expect(server).toContain("await removeStoredJson(path)");
-    expect(server).toContain("const asset = await getAssignableMarketingMediaAsset(draftAsset.id)");
+    expect(server).toContain('if (marker?.state === "deleted")');
+    expect(server).toContain("const current = await readStoredJson(path");
+    expect(server).toContain("current?.draft?.id === asset.id");
+    expect(server).toContain("current?.published?.id === asset.id");
+    expect(server).toContain("current.publishedAt === publishedAt");
   });
 
-  it("keeps deletion state recoverable across partial failures", () => {
+  it("keeps deletion state recoverable and audit intent durable", () => {
     const server = read("features/marketing/media/server.ts");
 
     expect(server).toContain('existingMarker?.state === "deleted"');
-    expect(server).toContain('await writeDeletionMarker(asset, "deleting")');
-    expect(server).toContain('await writeDeletionMarker(asset, "failed")');
-    expect(server).toContain('await writeDeletionMarker(asset, "deleted")');
-    expect(server).toContain("let mediaRemoved = false");
-    expect(server).toContain("if (!mediaRemoved)");
+    expect(server).toContain('await writeDeletionAudit(asset, actor, "intent")');
+    expect(server).toContain('await writeDeletionMarker(asset, "deleting", actor)');
+    expect(server).toContain('await writeDeletionMarker(asset, "failed", actor)');
+    expect(server).toContain('await writeDeletionMarker(asset, "deleted", actor)');
+    expect(server).toContain('await writeDeletionAudit(asset, actor, "completed")');
+    expect(server).toContain("existingMarker?.operatorId ?? requestedBy.operatorId");
   });
 
-  it("claims stale uploads so cleanup cannot race finalization", () => {
+  it("uses a durable winner state for stale cleanup versus finalization", () => {
     const route = read("app/api/ops/marketing/media/route.ts");
 
-    expect(route).toContain("STALE_PENDING_MS = 24 * 60 * 60 * 1000");
-    expect(route).toContain("function pendingCleanupPath(assetId: string)");
-    expect(route).toContain("await writeContentJson(cleanupPath");
-    expect(route).toContain("if (await contentObjectExists(cleanupPath))");
+    expect(route).toContain('state: "cancelling" | "cancelled" | "finalized"');
+    expect(route).toContain('await writePendingCleanupMarker(asset, "cancelling")');
+    expect(route).toContain('await writePendingCleanupMarker(asset, "finalized")');
+    expect(route).toContain('await writePendingCleanupMarker(asset, "cancelled")');
+    expect(route).toContain('cleanupAfterWrite?.state === "cancelling"');
     expect(route).toContain("expired during finalization");
-    expect(route).toContain("Keep the cancellation marker permanently");
-    expect(route).toContain("if (canonical || usages.length > 0)");
   });
 
-  it("audits permanent media deletion with authenticated operator context", () => {
+  it("passes authenticated operator context into the deletion protocol", () => {
     const route = read("app/api/ops/marketing/media/route.ts");
 
-    expect(route).toContain("async function writeMediaDeletionAudit");
-    expect(route).toContain('action: "marketing_media_deleted"');
+    expect(route).toContain("deleteMarketingMediaAsset(payload.id, {");
     expect(route).toContain("operatorId: access.user.id");
     expect(route).toContain("operatorEmail: access.operatorEmail");
-    expect(route).toContain("storagePath: input.asset.storagePath");
-    expect(route).toContain("await writeMediaDeletionAudit");
+    expect(route).not.toContain("writeMediaDeletionAudit");
   });
 
   it("supports metadata editing and protected deletion through the Ops API", () => {
