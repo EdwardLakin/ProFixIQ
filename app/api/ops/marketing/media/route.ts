@@ -340,21 +340,13 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
       }
 
-      if (!MarketingMediaAssetSchema.safeParse(libraryAsset).success) {
-        const deletedAsset = await deleteIncompleteMarketingMediaAsset(payload.id, {
-          operatorId: access.user.id,
-          operatorEmail: access.operatorEmail,
-        });
-        if (!deletedAsset) {
-          return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
-        }
-        return NextResponse.json({ deleted: true, id: payload.id });
-      }
-
-      const result = await deleteMarketingMediaAsset(payload.id, {
+      const deletionActor = {
         operatorId: access.user.id,
         operatorEmail: access.operatorEmail,
-      });
+      };
+      const result = MarketingMediaAssetSchema.safeParse(libraryAsset).success
+        ? await deleteMarketingMediaAsset(payload.id, deletionActor)
+        : await deleteIncompleteMarketingMediaAsset(payload.id, deletionActor);
       if (!result.asset) {
         return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
       }
@@ -453,7 +445,7 @@ export async function POST(request: Request) {
     const pendingPath = `pending/${id}.json`;
     const existingCleanup = await readPendingCleanupMarker(id);
     if (existingCleanup?.state === "finalized") {
-      const canonical = await getMarketingMediaLibraryAsset(id);
+      const canonical = await readAssetMetadata(`assets/${id}.json`);
       if (canonical) return NextResponse.json({ asset: canonical });
     }
     if (existingCleanup?.state === "cancelling" || existingCleanup?.state === "cancelled") {
@@ -495,7 +487,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Prepared marketing media upload has expired" }, { status: 409 });
     }
     if (cleanupBeforeWrite?.state === "finalized") {
-      const canonical = await getMarketingMediaLibraryAsset(id);
+      const canonical = await readAssetMetadata(`assets/${id}.json`);
       if (canonical) return NextResponse.json({ asset: canonical });
     }
 
@@ -521,7 +513,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Prepared marketing media upload cleanup is still resolving" }, { status: 409 });
     }
     if (cleanupAfterWrite?.state === "finalized") {
-      const canonical = await getMarketingMediaLibraryAsset(id);
+      const canonical = await readAssetMetadata(`assets/${id}.json`);
       if (canonical) return NextResponse.json({ asset: canonical });
     }
 
