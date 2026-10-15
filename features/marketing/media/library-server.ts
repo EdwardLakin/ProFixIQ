@@ -27,12 +27,28 @@ type LibraryDeletionMarker = {
   operatorEmail: string;
 };
 
+type DeletionMarkerState = LibraryDeletionMarker["state"];
+
 function isStorageObjectMissing(error: unknown): boolean {
   if (!error || typeof error !== "object") return false;
   const candidate = error as { statusCode?: string | number; message?: string };
   const statusCode = String(candidate.statusCode ?? "");
   const message = String(candidate.message ?? "").toLowerCase();
   return statusCode === "404" || message.includes("object not found");
+}
+
+function isStorageObjectAlreadyExists(error: unknown): boolean {
+  if (!error || typeof error !== "object") return false;
+  const candidate = error as { statusCode?: string | number; code?: string; message?: string };
+  const statusCode = String(candidate.statusCode ?? "");
+  const code = String(candidate.code ?? "").toLowerCase();
+  const message = String(candidate.message ?? "").toLowerCase();
+  return (
+    statusCode === "409" ||
+    code === "resourcealreadyexists" ||
+    code === "already_exists" ||
+    message.includes("already exists")
+  );
 }
 
 async function readJson(path: string): Promise<unknown | null> {
@@ -59,6 +75,21 @@ async function writeJson(path: string, value: unknown, upsert: boolean): Promise
       upsert,
     });
   if (error) throw new Error(`Marketing media library write failed for ${path}: ${error.message}`);
+}
+
+async function writeJsonCreateOnly(path: string, value: unknown): Promise<boolean> {
+  const admin = createAdminSupabase();
+  const body = Buffer.from(`${JSON.stringify(value, null, 2)}\n`, "utf8");
+  const { error } = await admin.storage
+    .from(MARKETING_MEDIA_CONTENT_BUCKET)
+    .upload(path, body, {
+      contentType: "application/json",
+      cacheControl: "0",
+      upsert: false,
+    });
+  if (!error) return true;
+  if (isStorageObjectAlreadyExists(error)) return false;
+  throw new Error(`Marketing media library create-only write failed for ${path}: ${error.message}`);
 }
 
 async function removeJson(path: string): Promise<void> {
@@ -126,11 +157,39 @@ async function readDeletionMarkerAsset(
   return asset.success ? asset.data : null;
 }
 
+async function readCanonicalDeletionState(assetId: string): Promise<DeletionMarkerState | null> {
+  for (const path of [`deleted/${assetId}.json`, `deleting/${assetId}.json`]) {
+    const value = await readJson(path);
+    if (!value || typeof value !== "object") continue;
+    const candidate = value as { assetId?: unknown; state?: unknown };
+    const state = String(candidate.state);
+    if (
+      candidate.assetId === assetId &&
+      ["deleting", "deleted", "failed"].includes(state)
+    ) {
+      return state as DeletionMarkerState;
+    }
+  }
+  return null;
+}
+
+async function deletionBlocksPromotion(assetId: string): Promise<boolean> {
+  const libraryMarker = await readLibraryDeletionMarker(assetId);
+  if (libraryMarker?.state === "deleting" || libraryMarker?.state === "deleted") return true;
+  const canonicalState = await readCanonicalDeletionState(assetId);
+  return canonicalState === "deleting" || canonicalState === "deleted";
+}
+
 async function writeDeletionMarker(
   asset: MarketingMediaLibraryAsset,
   actor: MarketingMediaDeletionActor,
-  state: LibraryDeletionMarker["state"],
+  state: Exclude<LibraryDeletionMarker["state"], "deleted">,
 ): Promise<void> {
+  const terminal = parseLibraryDeletionMarker(
+    await readJson(`${LIBRARY_DELETED_PREFIX}/${asset.id}.json`),
+  );
+  if (terminal?.assetId === asset.id && terminal.state === "deleted") return;
+
   const marker: LibraryDeletionMarker = {
     assetId: asset.id,
     asset,
@@ -139,8 +198,29 @@ async function writeDeletionMarker(
     operatorId: actor.operatorId,
     operatorEmail: actor.operatorEmail,
   };
-  const prefix = state === "deleted" ? LIBRARY_DELETED_PREFIX : LIBRARY_DELETING_PREFIX;
-  await writeJson(`${prefix}/${asset.id}.json`, marker, true);
+  await writeJson(`${LIBRARY_DELETING_PREFIX}/${asset.id}.json`, marker, true);
+}
+
+async function writeTerminalDeletionMarker(
+  asset: MarketingMediaLibraryAsset,
+  actor: MarketingMediaDeletionActor,
+): Promise<LibraryDeletionMarker> {
+  const marker: LibraryDeletionMarker = {
+    assetId: asset.id,
+    asset,
+    state: "deleted",
+    updatedAt: new Date().toISOString(),
+    operatorId: actor.operatorId,
+    operatorEmail: actor.operatorEmail,
+  };
+  const path = `${LIBRARY_DELETED_PREFIX}/${asset.id}.json`;
+  if (await writeJsonCreateOnly(path, marker)) return marker;
+
+  const winner = parseLibraryDeletionMarker(await readJson(path));
+  if (!winner || winner.assetId !== asset.id || winner.state !== "deleted") {
+    throw new Error(`Marketing media library terminal deletion marker is invalid for ${asset.id}`);
+  }
+  return winner;
 }
 
 async function writeDeletionAudit(
@@ -180,8 +260,7 @@ export async function updateIncompleteMarketingMediaMetadata(
   assetId: string,
   input: { alt: string; caption: string | null },
 ): Promise<MarketingMediaAsset | null> {
-  const markerBefore = await readLibraryDeletionMarker(assetId);
-  if (markerBefore?.state === "deleting" || markerBefore?.state === "deleted") return null;
+  if (await deletionBlocksPromotion(assetId)) return null;
 
   const current = await readLibraryAsset(assetId);
   if (!current) return null;
@@ -194,8 +273,7 @@ export async function updateIncompleteMarketingMediaMetadata(
   });
   await writeJson(`assets/${assetId}.json`, updated, true);
 
-  const markerAfter = await readLibraryDeletionMarker(assetId);
-  if (markerAfter?.state === "deleting" || markerAfter?.state === "deleted") {
+  if (await deletionBlocksPromotion(assetId)) {
     await removeJson(`assets/${assetId}.json`);
     return null;
   }
@@ -242,7 +320,12 @@ export async function deleteIncompleteMarketingMediaAsset(
     mediaRemoved = true;
 
     await removeJson(`assets/${assetId}.json`);
-    await writeDeletionMarker(current, actor, "deleted");
+    const terminal = await writeTerminalDeletionMarker(current, actor);
+    current = terminal.asset;
+    actor = {
+      operatorId: terminal.operatorId,
+      operatorEmail: terminal.operatorEmail,
+    };
     await writeDeletionAudit(current, actor, "completed");
     await removeJson(`${LIBRARY_DELETING_PREFIX}/${assetId}.json`);
     return current;
