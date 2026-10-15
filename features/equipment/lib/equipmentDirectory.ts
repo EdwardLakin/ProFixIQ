@@ -17,6 +17,28 @@ export const EQUIPMENT_DIRECTORY_ROLES = [
 ] as const;
 
 export type EquipmentPmState = "overdue" | "due" | "ok" | "not_evaluated";
+export type EquipmentInspectionState = "none" | "clear" | "findings";
+
+export const EQUIPMENT_INSPECTION_STATE_LABELS: Record<EquipmentInspectionState, string> = {
+  none: "No inspection",
+  clear: "No findings",
+  findings: "Findings",
+};
+
+/** True when the machine needs a manager's attention: PM overdue/due, down, failed findings. */
+export function equipmentNeedsAttention(row: {
+  pm: { state: EquipmentPmState };
+  operatingStatus: AssetOperatingStatus;
+  openDefects: { failed: number };
+}): boolean {
+  return (
+    row.pm.state === "overdue" ||
+    row.pm.state === "due" ||
+    row.operatingStatus === "down" ||
+    row.operatingStatus === "out_of_service" ||
+    row.openDefects.failed > 0
+  );
+}
 
 export type EquipmentDirectoryRow = {
   assetId: string;
@@ -33,12 +55,23 @@ export type EquipmentDirectoryRow = {
   odometer: string | null;
   odometerUnit: string | null;
   currentCycles: number | null;
+  customerId: string | null;
   customerName: string | null;
   siteName: string | null;
   operatingStatus: AssetOperatingStatus;
   /** Findings on the latest completed canonical inspection (the asset's current recorded condition). */
   openDefects: { total: number; failed: number };
   pm: { state: EquipmentPmState; dueCount: number };
+  /** Canonical work orders (and active estimates) that are not yet closed out. */
+  openWorkOrderCount: number;
+  /** Latest completed canonical inspection: none recorded, clean, or carrying findings. */
+  inspection: { state: EquipmentInspectionState; recordedAt: string | null };
+  /** Role-gated shortcuts into the canonical flows; null/false hides the action. */
+  actions: {
+    createWorkOrderHref: string | null;
+    /** Opens the asset's meter panel, where the canonical reading API is called. */
+    recordMeterHref: string | null;
+  };
   lastServiceAt: string | null;
   nextService: { startsAt: string; status: string } | null;
   /** href is null when the viewer's role may not open the record. */

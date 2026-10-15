@@ -13,8 +13,10 @@ import {
   type AssetOperatingStatus,
 } from "@/features/equipment/lib/assetProfile";
 import {
+  EQUIPMENT_INSPECTION_STATE_LABELS,
   EQUIPMENT_PM_STATE_LABELS,
   equipmentAssetTitle,
+  equipmentNeedsAttention,
   type EquipmentDirectoryRow,
   type EquipmentPmState,
 } from "@/features/equipment/lib/equipmentDirectory";
@@ -72,6 +74,27 @@ function defectsText(row: EquipmentDirectoryRow): string {
     : String(row.openDefects.total);
 }
 
+function inspectionText(row: EquipmentDirectoryRow): string {
+  if (row.inspection.state === "findings") return `Findings · ${defectsText(row)}`;
+  return EQUIPMENT_INSPECTION_STATE_LABELS[row.inspection.state];
+}
+
+function ActionLinks({ row }: { row: EquipmentDirectoryRow }) {
+  const link =
+    "min-h-9 inline-flex items-center rounded-lg border border-[color:var(--theme-border-soft)] px-3 text-xs font-semibold transition hover:bg-[color:var(--theme-surface-overlay)]";
+  return (
+    <div className="flex flex-wrap gap-2">
+      <Link href={row.href} className={link}>Open asset</Link>
+      {row.actions.createWorkOrderHref ? (
+        <Link href={row.actions.createWorkOrderHref} className={link}>Create work order</Link>
+      ) : null}
+      {row.actions.recordMeterHref ? (
+        <Link href={row.actions.recordMeterHref} className={link}>Record meter</Link>
+      ) : null}
+    </div>
+  );
+}
+
 function pmText(row: EquipmentDirectoryRow): string {
   const label = EQUIPMENT_PM_STATE_LABELS[row.pm.state];
   return row.pm.dueCount ? `${label} · ${row.pm.dueCount}` : label;
@@ -93,6 +116,9 @@ export default function EquipmentDirectoryView({
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState<"" | AssetOperatingStatus>("");
   const [equipmentClass, setEquipmentClass] = useState("");
+  const [customerId, setCustomerId] = useState("");
+  const [pmState, setPmState] = useState<"" | EquipmentPmState>("");
+  const [attentionOnly, setAttentionOnly] = useState(false);
   const [setupMode, setSetupMode] = useState<EquipmentSetupMode | null>(null);
 
   const classes = useMemo(
@@ -103,11 +129,31 @@ export default function EquipmentDirectoryView({
     [rows],
   );
 
+  const customerFilterOptions = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          rows
+            .filter((row) => row.customerId && row.customerName)
+            .map((row) => [row.customerId as string, row.customerName as string]),
+        ),
+      ).sort((a, b) => a[1].localeCompare(b[1])),
+    [rows],
+  );
+
+  const attentionCount = useMemo(
+    () => rows.filter(equipmentNeedsAttention).length,
+    [rows],
+  );
+
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return rows.filter((row) => {
       if (status && row.operatingStatus !== status) return false;
       if (equipmentClass && row.equipmentClass !== equipmentClass) return false;
+      if (customerId && row.customerId !== customerId) return false;
+      if (pmState && row.pm.state !== pmState) return false;
+      if (attentionOnly && !equipmentNeedsAttention(row)) return false;
       if (!needle) return true;
       return [
         row.unitNumber,
@@ -119,7 +165,7 @@ export default function EquipmentDirectoryView({
         row.equipmentClassLabel,
       ].some((value) => value?.toLowerCase().includes(needle));
     });
-  }, [equipmentClass, query, rows, status]);
+  }, [attentionOnly, customerId, equipmentClass, pmState, query, rows, status]);
 
   return (
     <WorkspaceShell>
@@ -149,7 +195,7 @@ export default function EquipmentDirectoryView({
           </div>
         </div>
         {rows.length > 0 ? (
-          <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto]">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_repeat(5,auto)]">
             <input
               className={INPUT}
               value={query}
@@ -183,6 +229,40 @@ export default function EquipmentDirectoryView({
                 </option>
               ))}
             </select>
+            <select
+              className={INPUT}
+              value={pmState}
+              onChange={(event) => setPmState(event.target.value as "" | EquipmentPmState)}
+              aria-label="Filter by PM state"
+            >
+              <option value="">All PM states</option>
+              {(Object.keys(EQUIPMENT_PM_STATE_LABELS) as EquipmentPmState[]).map((value) => (
+                <option key={value} value={value}>
+                  {EQUIPMENT_PM_STATE_LABELS[value]}
+                </option>
+              ))}
+            </select>
+            <select
+              className={INPUT}
+              value={customerId}
+              onChange={(event) => setCustomerId(event.target.value)}
+              aria-label="Filter by customer"
+            >
+              <option value="">All customers</option>
+              {customerFilterOptions.map(([value, label]) => (
+                <option key={value} value={value}>
+                  {label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              className={`${BUTTON} ${attentionOnly ? "bg-[color:var(--theme-surface-overlay)]" : ""}`}
+              aria-pressed={attentionOnly}
+              onClick={() => setAttentionOnly((value) => !value)}
+            >
+              Needs attention ({attentionCount}{truncated ? "+ in first " + rows.length : ""})
+            </button>
           </div>
         ) : null}
       </WorkspaceHeader>
@@ -237,10 +317,10 @@ export default function EquipmentDirectoryView({
           <ul className="grid gap-3 lg:hidden">
             {filtered.map((row) => (
               <li key={row.assetId}>
-                <Link href={row.href} className={`${PANEL} block p-4`}>
+                <div className={`${PANEL} block p-4`}>
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="truncate font-semibold">{equipmentAssetTitle(row)}</p>
+                      <Link href={row.href} className="block truncate font-semibold hover:underline">{equipmentAssetTitle(row)}</Link>
                       <p className="text-xs text-[color:var(--theme-text-muted)]">
                         {row.equipmentClassLabel}
                         {row.serialNumber ? ` · S/N ${row.serialNumber}` : ""}
@@ -252,28 +332,33 @@ export default function EquipmentDirectoryView({
                   </div>
                   <dl className="mt-3 grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
                     <dt className="text-[color:var(--theme-text-muted)]">Meter</dt>
-                    <dd>{meterText(row)}</dd>
+                    <dd className="text-sm font-bold">{meterText(row)}</dd>
                     <dt className="text-[color:var(--theme-text-muted)]">Customer / site</dt>
                     <dd className="truncate">
                       {[row.customerName, row.siteName].filter(Boolean).join(" · ") || "—"}
                     </dd>
-                    <dt className="text-[color:var(--theme-text-muted)]">Defects</dt>
-                    <dd>{defectsText(row)}</dd>
+                    <dt className="text-[color:var(--theme-text-muted)]">Inspection</dt>
+                    <dd>{inspectionText(row)}</dd>
                     <dt className="text-[color:var(--theme-text-muted)]">PM</dt>
                     <dd className={PM_TONE[row.pm.state]}>{pmText(row)}</dd>
-                    <dt className="text-[color:var(--theme-text-muted)]">Active WO</dt>
-                    <dd className="truncate">{row.activeWorkOrder?.title ?? "—"}</dd>
+                    <dt className="text-[color:var(--theme-text-muted)]">Open work</dt>
+                    <dd className="truncate">
+                      {row.openWorkOrderCount
+                        ? `${row.openWorkOrderCount} · ${row.activeWorkOrder?.title ?? ""}`
+                        : "None"}
+                    </dd>
                   </dl>
-                </Link>
+                  <div className="mt-3"><ActionLinks row={row} /></div>
+                </div>
               </li>
             ))}
           </ul>
 
           <div className={`${PANEL} hidden overflow-x-auto lg:block`}>
-            <table className="w-full min-w-[1100px] text-left text-sm">
+            <table className="w-full min-w-[1300px] text-left text-sm">
               <thead className="text-xs uppercase tracking-[0.12em] text-[color:var(--theme-text-muted)]">
                 <tr>
-                  {["Unit", "Make / model", "Serial", "Meter", "Customer / site", "Status", "Defects", "PM", "Last service", "Next service", "Active WO"].map((heading) => (
+                  {["Unit", "Make / model", "Serial", "Meter", "Customer / site", "Status", "Inspection", "PM", "Last service", "Next service", "Open work", "Actions"].map((heading) => (
                     <th key={heading} className="px-3 py-2 font-semibold">{heading}</th>
                   ))}
                 </tr>
@@ -287,17 +372,20 @@ export default function EquipmentDirectoryView({
                       <div className="text-xs text-[color:var(--theme-text-muted)]">{row.equipmentClassLabel}</div>
                     </td>
                     <td className="px-3 py-2">{row.serialNumber ?? "—"}</td>
-                    <td className="px-3 py-2">{meterText(row)}</td>
+                    <td className="px-3 py-2 font-bold">{meterText(row)}</td>
                     <td className="px-3 py-2">
                       <div>{row.customerName ?? "—"}</div>
                       {row.siteName ? <div className="text-xs text-[color:var(--theme-text-muted)]">{row.siteName}</div> : null}
                     </td>
                     <td className={`px-3 py-2 font-semibold ${STATUS_TONE[row.operatingStatus]}`}>{ASSET_OPERATING_STATUS_LABELS[row.operatingStatus]}</td>
-                    <td className="px-3 py-2">{defectsText(row)}</td>
+                    <td className="px-3 py-2">{inspectionText(row)}</td>
                     <td className={`px-3 py-2 ${PM_TONE[row.pm.state]}`}>{pmText(row)}</td>
                     <td className="px-3 py-2">{formatDate(row.lastServiceAt)}</td>
                     <td className="px-3 py-2">{formatDate(row.nextService?.startsAt ?? null)}</td>
                     <td className="px-3 py-2">
+                      {row.openWorkOrderCount ? (
+                        <div className="text-xs font-semibold">{row.openWorkOrderCount} open</div>
+                      ) : null}
                       {row.activeWorkOrder?.href ? (
                         <Link href={row.activeWorkOrder.href} className="hover:underline">
                           {row.activeWorkOrder.title}
@@ -305,8 +393,9 @@ export default function EquipmentDirectoryView({
                         </Link>
                       ) : row.activeWorkOrder ? (
                         <span>{row.activeWorkOrder.title}<span className="block text-xs text-[color:var(--theme-text-muted)]">{row.activeWorkOrder.status}</span></span>
-                      ) : "—"}
+                      ) : row.openWorkOrderCount ? null : "—"}
                     </td>
+                    <td className="px-3 py-2"><ActionLinks row={row} /></td>
                   </tr>
                 ))}
               </tbody>

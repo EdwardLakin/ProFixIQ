@@ -170,7 +170,16 @@ function setup(extra: Partial<Tables> = {}) {
         last_service_date: "2026-01-05",
       },
     ],
-    customers: [{ id: "cust-1", shop_id: SHOP, business_name: "Granite Co" }],
+    customers: [
+      {
+        id: "cust-1",
+        shop_id: SHOP,
+        business_name: "Granite Co",
+        active: true,
+        archived_at: null,
+        merged_into_customer_id: null,
+      },
+    ],
     work_orders: [
       workOrder("wo-active", EX, "in_progress", "2026-10-11T00:00:00Z", { odometer_km: 812 }),
       workOrder("wo-done", EX, "completed", "2026-09-01T00:00:00Z", {
@@ -489,6 +498,57 @@ describe("loadEquipmentDirectory", () => {
     expect(rows).toEqual([]);
   });
 
+  it("derives open work, inspection state and role-gated quick actions from the same evidence", async () => {
+    const env = setup();
+    const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
+
+    const ex = rows.find((row) => row.assetId === EX)!;
+    expect(ex.customerId).toBe("cust-1");
+    // Only the in-progress order is open; completed and paid orders are not.
+    expect(ex.openWorkOrderCount).toBe(1);
+    expect(ex.inspection.state).toBe("findings");
+    expect(ex.actions.recordMeterHref).toBe(`/equipment/${EX}#asset-meters`);
+    expect(ex.actions.createWorkOrderHref).toBe(
+      `/work-orders/create?autostart=1&customerId=cust-1&vehicleId=${EX}`,
+    );
+
+    const bucket = rows.find((row) => row.assetId === BUCKET)!;
+    expect(bucket).toMatchObject({ customerId: null, openWorkOrderCount: 0 });
+    expect(bucket.inspection.state).toBe("none");
+    // The canonical create flow needs an account; no account, no shortcut.
+    expect(bucket.actions.createWorkOrderHref).toBeNull();
+  });
+
+  it.each([
+    ["an archived account", { customers: [{ id: "cust-1", shop_id: SHOP, business_name: "Granite Co", active: true, archived_at: "2026-01-01T00:00:00Z", merged_into_customer_id: null }] }],
+    ["an inactive account", { customers: [{ id: "cust-1", shop_id: SHOP, business_name: "Granite Co", active: false, archived_at: null, merged_into_customer_id: null }] }],
+    ["a merged account", { customers: [{ id: "cust-1", shop_id: SHOP, business_name: "Granite Co", active: true, archived_at: null, merged_into_customer_id: "cust-2" }] }],
+  ])("offers no work-order shortcut for %s", async (_name, extra) => {
+    const env = setup(extra as Partial<Tables>);
+    const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
+    expect(rows.find((row) => row.assetId === EX)!.actions.createWorkOrderHref).toBeNull();
+  });
+
+  it.each(["archived", "merged", "duplicate", "inactive"])(
+    "offers no work-order shortcut for a %s vehicle",
+    async (status) => {
+      const env = setup({
+        vehicles: [
+          { id: EX, shop_id: SHOP, customer_id: "cust-1", year: 2021, make: "Caterpillar", model: "336", unit_number: "EX-1", engine_hours: 4210, mileage: "500", odometer_unit: "mi", last_service_date: null, status },
+        ],
+      });
+      const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
+      expect(rows.find((row) => row.assetId === EX)!.actions.createWorkOrderHref).toBeNull();
+    },
+  );
+
+  it("hides quick actions from roles that may not create work or record readings", async () => {
+    const env = setup();
+    const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "parts", now: NOW });
+    const ex = rows.find((row) => row.assetId === EX)!;
+    expect(ex.actions).toEqual({ createWorkOrderHref: null, recordMeterHref: null });
+  });
+
   it("omits the active work order link for roles that cannot open it", async () => {
     const env = setup();
     const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "parts", now: NOW });
@@ -509,5 +569,18 @@ describe("loadEquipmentDirectory", () => {
     expect(rows.find((row) => row.assetId === EX)?.activeWorkOrder?.href).toBe(
       "/work-orders/wo-zzzzz",
     );
+  });
+});
+
+describe("equipmentNeedsAttention", () => {
+  it("flags overdue/due PM, downed machines and failed findings only", async () => {
+    const { equipmentNeedsAttention } = await import("@/features/equipment/lib/equipmentDirectory");
+    const base = { pm: { state: "ok" as const }, operatingStatus: "operational" as const, openDefects: { failed: 0 } };
+    expect(equipmentNeedsAttention(base)).toBe(false);
+    expect(equipmentNeedsAttention({ ...base, pm: { state: "overdue" } })).toBe(true);
+    expect(equipmentNeedsAttention({ ...base, pm: { state: "due" } })).toBe(true);
+    expect(equipmentNeedsAttention({ ...base, pm: { state: "not_evaluated" } })).toBe(false);
+    expect(equipmentNeedsAttention({ ...base, operatingStatus: "down" })).toBe(true);
+    expect(equipmentNeedsAttention({ ...base, openDefects: { failed: 1 } })).toBe(true);
   });
 });
