@@ -3,6 +3,11 @@ import { NextResponse } from "next/server";
 import { requireOpsOperatorApiAccess } from "@/features/ops/server/operator-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import {
+  deleteIncompleteMarketingMediaAsset,
+  getMarketingMediaLibraryAsset,
+  updateIncompleteMarketingMediaMetadata,
+} from "@/features/marketing/media/library-server";
+import {
   deleteMarketingMediaAsset,
   getMarketingMediaAsset,
   getMarketingMediaUsageMap,
@@ -12,8 +17,8 @@ import {
 } from "@/features/marketing/media/server";
 import {
   MARKETING_PAGE_REGISTRY,
-  MarketingMediaAssetSchema,
-  type MarketingMediaAsset,
+  MarketingMediaLibraryAssetSchema,
+  type MarketingMediaLibraryAsset,
 } from "@/features/marketing/media/types";
 
 export const dynamic = "force-dynamic";
@@ -51,14 +56,14 @@ function isStorageObjectMissing(error: unknown): boolean {
   return statusCode === "404" || message.includes("object not found");
 }
 
-async function readAssetMetadata(path: string): Promise<MarketingMediaAsset | null> {
+async function readAssetMetadata(path: string): Promise<MarketingMediaLibraryAsset | null> {
   const admin = createAdminSupabase();
   const { data, error } = await admin.storage
     .from(MARKETING_MEDIA_CONTENT_BUCKET)
     .download(path);
   if (error || !data) return null;
   try {
-    const parsed = MarketingMediaAssetSchema.safeParse(JSON.parse(await data.text()));
+    const parsed = MarketingMediaLibraryAssetSchema.safeParse(JSON.parse(await data.text()));
     return parsed.success ? parsed.data : null;
   } catch {
     return null;
@@ -144,13 +149,13 @@ async function listJsonItems(folder: "assets" | "pending"): Promise<Array<{ name
   return items;
 }
 
-async function listAssets(): Promise<MarketingMediaAsset[]> {
+async function listAssets(): Promise<MarketingMediaLibraryAsset[]> {
   const items = await listJsonItems("assets");
   const assets = await Promise.all(
     items.map((item) => readAssetMetadata(`assets/${item.name}`)),
   );
   return assets
-    .filter((asset): asset is MarketingMediaAsset => Boolean(asset))
+    .filter((asset): asset is MarketingMediaLibraryAsset => Boolean(asset))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 }
 
@@ -159,7 +164,7 @@ function pendingCleanupPath(assetId: string): string {
 }
 
 async function writePendingCleanupMarker(
-  asset: MarketingMediaAsset,
+  asset: MarketingMediaLibraryAsset,
   state: PendingCleanupMarker["state"],
 ): Promise<void> {
   await writeContentJson(pendingCleanupPath(asset.id), {
@@ -211,7 +216,7 @@ async function cleanupStalePendingUploads(): Promise<number> {
 
     await writePendingCleanupMarker(asset, "cancelling");
 
-    const canonical = await getMarketingMediaAsset(asset.id);
+    const canonical = await getMarketingMediaLibraryAsset(asset.id);
     const usages = usageMap[asset.id] ?? [];
     if (canonical || usages.length > 0) {
       await writePendingCleanupMarker(asset, "finalized");
@@ -274,10 +279,16 @@ export async function POST(request: Request) {
     }
 
     try {
-      const asset = await updateMarketingMediaAssetMetadata(payload.id, {
-        alt,
-        caption: caption || null,
-      });
+      const strictAsset = await getMarketingMediaAsset(payload.id);
+      const asset = strictAsset
+        ? await updateMarketingMediaAssetMetadata(payload.id, {
+            alt,
+            caption: caption || null,
+          })
+        : await updateIncompleteMarketingMediaMetadata(payload.id, {
+            alt,
+            caption: caption || null,
+          });
       if (!asset) {
         return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
       }
@@ -299,6 +310,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid marketing media asset" }, { status: 400 });
     }
     try {
+      const strictAsset = await getMarketingMediaAsset(payload.id);
+      if (!strictAsset) {
+        const deletedAsset = await deleteIncompleteMarketingMediaAsset(payload.id);
+        if (!deletedAsset) {
+          return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
+        }
+        return NextResponse.json({ deleted: true, id: payload.id });
+      }
+
       const result = await deleteMarketingMediaAsset(payload.id, {
         operatorId: access.user.id,
         operatorEmail: access.operatorEmail,
@@ -351,7 +371,7 @@ export async function POST(request: Request) {
     const storagePath = `uploads/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${id}.${mediaType.extension}`;
     const admin = createAdminSupabase();
     const { data: publicData } = admin.storage.from(MARKETING_MEDIA_BUCKET).getPublicUrl(storagePath);
-    const asset = MarketingMediaAssetSchema.parse({
+    const asset = MarketingMediaLibraryAssetSchema.parse({
       id,
       kind: mediaType.kind,
       url: publicData.publicUrl,
@@ -397,7 +417,7 @@ export async function POST(request: Request) {
     const pendingPath = `pending/${id}.json`;
     const existingCleanup = await readPendingCleanupMarker(id);
     if (existingCleanup?.state === "finalized") {
-      const canonical = await getMarketingMediaAsset(id);
+      const canonical = await getMarketingMediaLibraryAsset(id);
       if (canonical) return NextResponse.json({ asset: canonical });
     }
     if (existingCleanup?.state === "cancelling" || existingCleanup?.state === "cancelled") {
@@ -439,7 +459,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Prepared marketing media upload has expired" }, { status: 409 });
     }
     if (cleanupBeforeWrite?.state === "finalized") {
-      const canonical = await getMarketingMediaAsset(id);
+      const canonical = await getMarketingMediaLibraryAsset(id);
       if (canonical) return NextResponse.json({ asset: canonical });
     }
 
@@ -465,7 +485,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Prepared marketing media upload cleanup is still resolving" }, { status: 409 });
     }
     if (cleanupAfterWrite?.state === "finalized") {
-      const canonical = await getMarketingMediaAsset(id);
+      const canonical = await getMarketingMediaLibraryAsset(id);
       if (canonical) return NextResponse.json({ asset: canonical });
     }
 
