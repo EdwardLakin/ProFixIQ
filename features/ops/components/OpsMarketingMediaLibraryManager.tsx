@@ -1,9 +1,11 @@
 /* eslint-disable @next/next/no-img-element */
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import {
+  AlertCircle,
+  CheckCircle2,
   ExternalLink,
   Film,
   ImageIcon,
@@ -11,8 +13,13 @@ import {
   Pencil,
   Search,
   Trash2,
+  UploadCloud,
 } from "lucide-react";
-import type { MarketingMediaAsset } from "@/features/marketing/media/types";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
+import {
+  MARKETING_MEDIA_PUBLIC_BUCKET,
+  type MarketingMediaAsset,
+} from "@/features/marketing/media/types";
 
 type MediaUsage = {
   pageKey: string;
@@ -37,6 +44,20 @@ type MutationPayload = {
   error?: string;
 };
 
+type PreparedUpload = {
+  asset?: MarketingMediaAsset;
+  path?: string;
+  token?: string;
+  error?: string;
+};
+
+type UploadRow = {
+  key: string;
+  filename: string;
+  status: "queued" | "uploading" | "done" | "error";
+  error?: string;
+};
+
 type KindFilter = "all" | "image" | "video";
 type UsageFilter = "all" | "used" | "unused";
 
@@ -46,7 +67,7 @@ function AssetThumb({ asset }: { asset: MarketingMediaAsset }) {
     return (
       <video
         src={asset.url}
-        aria-label={asset.alt}
+        aria-label={asset.alt || asset.filename}
         className={className}
         muted
         playsInline
@@ -54,7 +75,7 @@ function AssetThumb({ asset }: { asset: MarketingMediaAsset }) {
       />
     );
   }
-  return <img src={asset.url} alt={asset.alt} className={className} />;
+  return <img src={asset.url} alt={asset.alt || asset.filename} className={className} />;
 }
 
 export default function OpsMarketingMediaLibraryManager() {
@@ -68,8 +89,12 @@ export default function OpsMarketingMediaLibraryManager() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editAlt, setEditAlt] = useState("");
   const [editCaption, setEditCaption] = useState("");
+  const [bulkUploading, setBulkUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [uploadRows, setUploadRows] = useState<UploadRow[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const uploadInputRef = useRef<HTMLInputElement>(null);
 
   async function loadLibrary() {
     setLoading(true);
@@ -115,9 +140,106 @@ export default function OpsMarketingMediaLibraryManager() {
     setMessage(null);
   }
 
+  function updateUploadRow(key: string, patch: Partial<UploadRow>) {
+    setUploadRows((current) => current.map((row) => row.key === key ? { ...row, ...patch } : row));
+  }
+
+  async function uploadOne(file: File): Promise<MarketingMediaAsset> {
+    const prepareResponse = await fetch("/api/ops/marketing/media", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "prepare-upload",
+        filename: file.name,
+        contentType: file.type,
+        size: file.size,
+        alt: "",
+        caption: "",
+      }),
+    });
+    const prepared = (await prepareResponse.json()) as PreparedUpload;
+    if (!prepareResponse.ok || !prepared.asset || !prepared.path || !prepared.token) {
+      throw new Error(prepared.error ?? "Unable to prepare media upload");
+    }
+
+    const supabase = createBrowserSupabase();
+    const { error: uploadError } = await supabase.storage
+      .from(MARKETING_MEDIA_PUBLIC_BUCKET)
+      .uploadToSignedUrl(prepared.path, prepared.token, file, {
+        contentType: file.type,
+        cacheControl: "31536000",
+      });
+    if (uploadError) throw new Error(uploadError.message);
+
+    const finalizeResponse = await fetch("/api/ops/marketing/media", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "finalize-upload", id: prepared.asset.id }),
+    });
+    const finalized = (await finalizeResponse.json()) as MutationPayload;
+    if (!finalizeResponse.ok || !finalized.asset) {
+      throw new Error(finalized.error ?? "Unable to finalize media upload");
+    }
+    return finalized.asset;
+  }
+
+  async function uploadFiles(fileList: FileList | File[]) {
+    const files = Array.from(fileList);
+    if (!files.length || bulkUploading) return;
+
+    const rows = files.map((file, index) => ({
+      key: `${file.name}:${file.size}:${file.lastModified}:${index}`,
+      filename: file.name,
+      status: "queued" as const,
+    }));
+    setUploadRows(rows);
+    setBulkUploading(true);
+    setError(null);
+    setMessage(null);
+
+    const uploaded: MarketingMediaAsset[] = [];
+    let failures = 0;
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      const row = rows[index];
+      updateUploadRow(row.key, { status: "uploading", error: undefined });
+      try {
+        const asset = await uploadOne(file);
+        uploaded.push(asset);
+        updateUploadRow(row.key, { status: "done" });
+      } catch (caught) {
+        failures += 1;
+        updateUploadRow(row.key, {
+          status: "error",
+          error: caught instanceof Error ? caught.message : "Upload failed",
+        });
+      }
+    }
+
+    if (uploaded.length) {
+      setAssets((current) => {
+        const uploadedIds = new Set(uploaded.map((asset) => asset.id));
+        return [...uploaded, ...current.filter((asset) => !uploadedIds.has(asset.id))];
+      });
+      setUsages((current) => {
+        const next = { ...current };
+        uploaded.forEach((asset) => { next[asset.id] = []; });
+        return next;
+      });
+    }
+
+    if (failures) {
+      setError(`${failures} of ${files.length} file${files.length === 1 ? "" : "s"} failed to upload. Review the batch below.`);
+    } else {
+      setMessage(`Uploaded ${uploaded.length} file${uploaded.length === 1 ? "" : "s"} to the media library. Alt text can be added when you prepare media for a landing page.`);
+    }
+    setBulkUploading(false);
+    if (uploadInputRef.current) uploadInputRef.current.value = "";
+  }
+
   async function saveMetadata(asset: MarketingMediaAsset) {
     if (!editAlt.trim()) {
-      setError("Alt text is required.");
+      setError("Alt text is required before this media can be used on a landing page.");
       return;
     }
     setBusyId(asset.id);
@@ -195,8 +317,70 @@ export default function OpsMarketingMediaLibraryManager() {
         <div className="text-xs font-bold uppercase tracking-[0.18em] text-orange-300">Library management</div>
         <h2 className="mt-2 text-2xl font-semibold tracking-[-0.025em]">Reusable marketing media</h2>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-[color:var(--theme-text-secondary)]">
-          Search uploaded screenshots and reels, see every draft or published placement, correct alt text/captions, and safely delete unused assets.
+          Bulk upload screenshots and reels first, then add alt text and captions before using them on a landing page. Uploaded media is immediately available in the landing-page editor.
         </p>
+      </div>
+
+      <div className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h3 className="text-sm font-semibold">Bulk upload</h3>
+            <p className="mt-1 text-xs text-[color:var(--theme-text-secondary)]">Select multiple JPG, PNG, WebP, AVIF, MP4, or WebM files. Each file can be up to 50 MB. Alt text is not required until the media is attached to a page.</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => uploadInputRef.current?.click()}
+            disabled={bulkUploading}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-bold text-white hover:bg-orange-400 disabled:opacity-50"
+          >
+            {bulkUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+            {bulkUploading ? "Uploading…" : "Choose files"}
+          </button>
+        </div>
+        <input
+          ref={uploadInputRef}
+          type="file"
+          multiple
+          accept="image/jpeg,image/png,image/webp,image/avif,video/mp4,video/webm"
+          className="hidden"
+          onChange={(event) => {
+            if (event.target.files?.length) void uploadFiles(event.target.files);
+          }}
+        />
+        <button
+          type="button"
+          disabled={bulkUploading}
+          onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
+          onDragOver={(event) => { event.preventDefault(); setDragging(true); }}
+          onDragLeave={(event) => { event.preventDefault(); setDragging(false); }}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragging(false);
+            if (event.dataTransfer.files?.length) void uploadFiles(event.dataTransfer.files);
+          }}
+          onClick={() => uploadInputRef.current?.click()}
+          className={`mt-4 flex min-h-28 w-full flex-col items-center justify-center rounded-2xl border border-dashed px-4 text-center transition ${dragging ? "border-orange-400 bg-orange-500/10" : "border-[color:var(--theme-border-soft)] hover:border-orange-400/60"}`}
+        >
+          <UploadCloud className="h-6 w-6 text-orange-300" />
+          <span className="mt-2 text-sm font-bold">Drop multiple files here</span>
+          <span className="mt-1 text-xs text-[color:var(--theme-text-muted)]">They will be added to the reusable library without requiring metadata first.</span>
+        </button>
+
+        {uploadRows.length > 0 ? (
+          <div className="mt-4 space-y-2" aria-live="polite">
+            {uploadRows.map((row) => (
+              <div key={row.key} className="flex items-center gap-2 rounded-lg border border-[color:var(--theme-border-soft)] px-3 py-2 text-xs">
+                {row.status === "done" ? <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-300" /> : null}
+                {row.status === "error" ? <AlertCircle className="h-4 w-4 shrink-0 text-red-300" /> : null}
+                {row.status === "uploading" ? <Loader2 className="h-4 w-4 shrink-0 animate-spin" /> : null}
+                {row.status === "queued" ? <span className="h-4 w-4 shrink-0 rounded-full border border-[color:var(--theme-border-soft)]" /> : null}
+                <span className="min-w-0 flex-1 truncate">{row.filename}</span>
+                <span className="shrink-0 text-[color:var(--theme-text-muted)]">{row.status}</span>
+                {row.error ? <span className="hidden max-w-xs truncate text-red-300 sm:inline">{row.error}</span> : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
 
       <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_180px_180px]">
@@ -257,7 +441,10 @@ export default function OpsMarketingMediaLibraryManager() {
                       {asset.kind === "video" ? <Film className="h-4 w-4" /> : <ImageIcon className="h-4 w-4" />}
                       <span className="truncate">{asset.filename}</span>
                     </div>
-                    <p className="mt-1 text-xs text-[color:var(--theme-text-muted)]">{assetUsages.length ? `${assetUsages.length} placement${assetUsages.length === 1 ? "" : "s"}` : "Unused"}</p>
+                    <div className="mt-1 flex flex-wrap gap-2 text-xs text-[color:var(--theme-text-muted)]">
+                      <span>{assetUsages.length ? `${assetUsages.length} placement${assetUsages.length === 1 ? "" : "s"}` : "Unused"}</span>
+                      {!asset.alt.trim() ? <span className="rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-amber-200">Alt text needed before use</span> : null}
+                    </div>
                   </div>
                   <div className="flex gap-2">
                     <button
@@ -290,6 +477,7 @@ export default function OpsMarketingMediaLibraryManager() {
                         value={editAlt}
                         onChange={(event) => setEditAlt(event.target.value)}
                         maxLength={240}
+                        placeholder="Describe what the screenshot or reel shows"
                         className="mt-1.5 w-full rounded-lg border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] px-3 py-2 text-sm"
                       />
                     </label>
@@ -324,7 +512,7 @@ export default function OpsMarketingMediaLibraryManager() {
                   </div>
                 ) : (
                   <div className="mt-3 text-xs leading-5 text-[color:var(--theme-text-secondary)]">
-                    <p><span className="font-semibold">Alt:</span> {asset.alt}</p>
+                    <p><span className="font-semibold">Alt:</span> {asset.alt || "Not set"}</p>
                     {asset.caption ? <p><span className="font-semibold">Caption:</span> {asset.caption}</p> : null}
                   </div>
                 )}
