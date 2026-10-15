@@ -327,8 +327,8 @@ export async function POST(request: Request) {
     const caption = typeof payload.caption === "string" ? payload.caption.trim() : "";
     const mediaType = MEDIA_TYPES[contentType];
 
-    if (!filename || !alt) {
-      return NextResponse.json({ error: "File name and alt text are required" }, { status: 400 });
+    if (!filename) {
+      return NextResponse.json({ error: "File name is required" }, { status: 400 });
     }
     if (!mediaType) {
       return NextResponse.json(
