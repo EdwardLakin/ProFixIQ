@@ -149,7 +149,7 @@ export default function OpsMarketingMediaLibraryManager() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        action: "prepare-upload",
+        action: "prepare-library-upload",
         filename: file.name,
         contentType: file.type,
         size: file.size,
