@@ -345,7 +345,9 @@ export async function updateIncompleteMarketingMediaMetadata(
   await writeJson(`assets/${assetId}.json`, updated, true);
 
   if (await deletionBlocksPromotion(assetId)) {
-    await removeJson(`assets/${assetId}.json`);
+    // Deletion owns destructive cleanup. Its marker may still transition to `failed`
+    // because of usage/assignment protection, so do not remove metadata based on a
+    // transient deleting observation. A successful deletion removes it itself.
     return null;
   }
 
