@@ -91,6 +91,35 @@ describe("marketing media library management", () => {
     expect(route).toContain("revalidatePath(MARKETING_PAGE_REGISTRY[usage.pageKey].href)");
   });
 
+  it("allows library ingestion before alt text is assigned but enforces it at attachment", () => {
+    const types = read("features/marketing/media/types.ts");
+    const mediaRoute = read("app/api/ops/marketing/media/route.ts");
+    const pageRoute = read("app/api/ops/marketing/pages/[pageKey]/route.ts");
+
+    expect(types).toContain('alt: z.string().trim().max(240).default("")');
+    expect(mediaRoute).toContain('if (!filename)');
+    expect(mediaRoute).toContain('{ error: "File name is required" }');
+    expect(mediaRoute).not.toContain('if (!filename || !alt)');
+    expect(pageRoute).toContain('if (!asset.alt.trim())');
+    expect(pageRoute).toContain("Add alt text to this media before attaching it to a landing page");
+  });
+
+  it("bulk uploads directly into the same reusable media library", () => {
+    const library = read("features/ops/components/OpsMarketingMediaLibraryManager.tsx");
+    const editor = read("features/ops/components/OpsMarketingMediaManager.tsx");
+
+    expect(library).toContain("Bulk upload");
+    expect(library).toContain("multiple");
+    expect(library).toContain("uploadToSignedUrl");
+    expect(library).toContain('action: "prepare-upload"');
+    expect(library).toContain('action: "finalize-upload"');
+    expect(library).toContain('alt: ""');
+    expect(library).toContain("Alt text needed before use");
+    expect(editor).toContain("selectedNeedsAlt");
+    expect(editor).toContain('href="/ops/marketing/library"');
+    expect(editor).toContain("optional on upload");
+  });
+
   it("adds searchable, filterable usage-aware controls without double-loading the editor", () => {
     const page = read("app/ops/marketing/page.tsx");
     const libraryPage = read("app/ops/marketing/library/page.tsx");
