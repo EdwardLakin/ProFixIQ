@@ -115,7 +115,12 @@ export default function OpsMarketingMediaManager() {
   const loadLibrary = useCallback(async () => {
     setLoadingLibrary(true);
     try {
-      const response = await fetch("/api/ops/marketing/media", { cache: "no-store" });
+      const response = await fetch("/api/ops/marketing/media", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify({ action: "list-library" }),
+      });
       const payload = (await response.json()) as LibraryPayload;
       if (!response.ok) throw new Error(payload.error ?? "Unable to load media library");
       setAssets(payload.assets ?? []);
