@@ -1,9 +1,9 @@
 import { revalidatePath } from "next/cache";
 import { NextResponse } from "next/server";
 import { requireOpsOperatorApiAccess } from "@/features/ops/server/operator-access";
+import { getMarketingMediaLibraryAsset } from "@/features/marketing/media/library-server";
 import {
   clearMarketingPageMediaDraft,
-  getMarketingMediaAsset,
   getMarketingPageMediaDocument,
   isMarketingPageKey,
   publishMarketingPageMediaDraft,
@@ -11,6 +11,7 @@ import {
 } from "@/features/marketing/media/server";
 import {
   MARKETING_PAGE_REGISTRY,
+  MarketingMediaAssetSchema,
   MarketingMediaUpdateSchema,
 } from "@/features/marketing/media/types";
 
@@ -73,17 +74,18 @@ export async function POST(
       if (!assetId) {
         return NextResponse.json({ error: "Choose media before saving the draft" }, { status: 400 });
       }
-      const asset = await getMarketingMediaAsset(assetId);
-      if (!asset) {
+      const libraryAsset = await getMarketingMediaLibraryAsset(assetId);
+      if (!libraryAsset) {
         return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
       }
-      if (!asset.alt.trim()) {
+      const asset = MarketingMediaAssetSchema.safeParse(libraryAsset);
+      if (!asset.success) {
         return NextResponse.json(
           { error: "Add alt text to this media before attaching it to a landing page" },
           { status: 400 },
         );
       }
-      await saveMarketingPageMediaDraft(pageKey, slotKey, asset);
+      await saveMarketingPageMediaDraft(pageKey, slotKey, asset.data);
     } else if (action === "clear-draft") {
       await clearMarketingPageMediaDraft(pageKey, slotKey);
     } else {
