@@ -72,10 +72,11 @@ describe("marketing media library management", () => {
     expect(route).toContain("cleanup is still resolving");
   });
 
-  it("passes authenticated operator context into the deletion protocol", () => {
+  it("passes authenticated operator context into both deletion protocols", () => {
     const route = read("app/api/ops/marketing/media/route.ts");
 
     expect(route).toContain("deleteMarketingMediaAsset(payload.id, {");
+    expect(route).toContain("deleteIncompleteMarketingMediaAsset(payload.id, {");
     expect(route).toContain("operatorId: access.user.id");
     expect(route).toContain("operatorEmail: access.operatorEmail");
     expect(route).not.toContain("writeMediaDeletionAudit");
@@ -101,9 +102,10 @@ describe("marketing media library management", () => {
     expect(types).toContain('alt: z.string().trim().max(240).default("")');
     expect(types).toContain('alt: z.string().trim().min(1).max(240)');
     expect(libraryServer).toContain("MarketingMediaAssetSchema.parse");
-    expect(mediaRoute).toContain("MarketingMediaLibraryAssetSchema.parse");
-    expect(mediaRoute).toContain('if (!filename)');
-    expect(mediaRoute).not.toContain('if (!filename || !alt)');
+    expect(mediaRoute).toContain('payload.action === "prepare-upload" || payload.action === "prepare-library-upload"');
+    expect(mediaRoute).toContain('const isLibraryUpload = payload.action === "prepare-library-upload"');
+    expect(mediaRoute).toContain('(!isLibraryUpload && !alt)');
+    expect(pageRoute).toContain("getMarketingMediaAsset(assetId)");
     expect(pageRoute).toContain("MarketingMediaAssetSchema.safeParse(libraryAsset)");
     expect(pageRoute).toContain("Add alt text to this media before attaching it to a landing page");
   });
@@ -115,13 +117,36 @@ describe("marketing media library management", () => {
     expect(library).toContain("Bulk upload");
     expect(library).toContain("multiple");
     expect(library).toContain("uploadToSignedUrl");
-    expect(library).toContain('action: "prepare-upload"');
+    expect(library).toContain('action: "prepare-library-upload"');
     expect(library).toContain('action: "finalize-upload"');
     expect(library).toContain('alt: ""');
     expect(library).toContain("Alt text needed before use");
     expect(editor).toContain("selectedNeedsAlt");
     expect(editor).toContain('href="/ops/marketing/library"');
-    expect(editor).toContain("optional on upload");
+    expect(editor).toContain("Large files upload directly to media storage.");
+    expect(editor).toContain("Add alt text before uploading the screenshot or reel from the landing-page editor");
+  });
+
+  it("recovers stale library locks instead of permanently wedging an asset", () => {
+    const libraryServer = read("features/marketing/media/library-server.ts");
+
+    expect(libraryServer).toContain("LIBRARY_LOCK_TTL_MS");
+    expect(libraryServer).toContain("lockId: crypto.randomUUID()").not;
+    expect(libraryServer).toContain("const lockId = crypto.randomUUID()");
+    expect(libraryServer).toContain("Date.now() - createdAt > LIBRARY_LOCK_TTL_MS");
+    expect(libraryServer).toContain("current.lockId !== existing.lockId");
+    expect(libraryServer).toContain("current.lockId !== handle.lockId");
+  });
+
+  it("audits incomplete asset deletion before destructive storage removal", () => {
+    const libraryServer = read("features/marketing/media/library-server.ts");
+
+    expect(libraryServer).toContain('await writeDeletionAudit(current, requestedBy, "intent")');
+    expect(libraryServer).toContain('await writeDeletionMarker(current, requestedBy, "deleting")');
+    expect(libraryServer).toContain('await writeDeletionMarker(current, requestedBy, "deleted")');
+    expect(libraryServer).toContain('await writeDeletionAudit(current, requestedBy, "completed")');
+    expect(libraryServer).toContain("operatorId: actor.operatorId");
+    expect(libraryServer).toContain("operatorEmail: actor.operatorEmail");
   });
 
   it("does not let a stale initial library load overwrite a completed upload", () => {
