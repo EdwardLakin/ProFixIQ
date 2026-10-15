@@ -128,6 +128,64 @@ async function removeContentObject(path: string): Promise<void> {
   }
 }
 
+async function readTerminalDeletedAsset(assetId: string): Promise<MarketingMediaLibraryAsset | null> {
+  const admin = createAdminSupabase();
+  for (const path of [`library-deleted/${assetId}.json`, `deleted/${assetId}.json`]) {
+    const { data, error } = await admin.storage
+      .from(MARKETING_MEDIA_CONTENT_BUCKET)
+      .download(path);
+    if (error) {
+      if (isStorageObjectMissing(error)) continue;
+      throw new Error(`Marketing media terminal deletion read failed for ${path}: ${error.message}`);
+    }
+    if (!data) continue;
+    try {
+      const value = JSON.parse(await data.text()) as {
+        assetId?: unknown;
+        asset?: unknown;
+        state?: unknown;
+      };
+      if (value.assetId !== assetId || value.state !== "deleted") continue;
+      const asset = MarketingMediaLibraryAssetSchema.safeParse(value.asset);
+      if (asset.success) return asset.data;
+    } catch (error) {
+      throw new Error(
+        `Marketing media terminal deletion marker parse failed for ${assetId}: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
+  }
+  return null;
+}
+
+async function invalidatePreparedUpload(assetId: string): Promise<void> {
+  await Promise.all([
+    removeContentObject(`pending/${assetId}.json`),
+    removeContentObject(pendingCleanupPath(assetId)),
+  ]);
+}
+
+async function rejectDeletedFinalization(assetId: string): Promise<boolean> {
+  const deletedAsset = await readTerminalDeletedAsset(assetId);
+  if (!deletedAsset) return false;
+
+  const admin = createAdminSupabase();
+  const { error: mediaError } = await admin.storage
+    .from(MARKETING_MEDIA_BUCKET)
+    .remove([deletedAsset.storagePath]);
+  if (mediaError && !isStorageObjectMissing(mediaError)) {
+    throw new Error(`Deleted marketing media replay cleanup failed: ${mediaError.message}`);
+  }
+
+  await Promise.all([
+    removeContentObject(`assets/${assetId}.json`),
+    removeContentObject(`pending/${assetId}.json`),
+    removeContentObject(pendingCleanupPath(assetId)),
+  ]);
+  return true;
+}
+
 async function listJsonItems(folder: "assets" | "pending"): Promise<Array<{ name: string }>> {
   const admin = createAdminSupabase();
   const items: Array<{ name: string }> = [];
@@ -340,6 +398,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
       }
 
+      await invalidatePreparedUpload(payload.id);
       const deletionActor = {
         operatorId: access.user.id,
         operatorEmail: access.operatorEmail,
@@ -443,6 +502,10 @@ export async function POST(request: Request) {
 
     const id = payload.id;
     const pendingPath = `pending/${id}.json`;
+    if (await rejectDeletedFinalization(id)) {
+      return NextResponse.json({ error: "That marketing media upload has been deleted" }, { status: 409 });
+    }
+
     const existingCleanup = await readPendingCleanupMarker(id);
     if (existingCleanup?.state === "finalized") {
       const canonical = await readAssetMetadata(`assets/${id}.json`);
@@ -490,6 +553,9 @@ export async function POST(request: Request) {
       const canonical = await readAssetMetadata(`assets/${id}.json`);
       if (canonical) return NextResponse.json({ asset: canonical });
     }
+    if (await rejectDeletedFinalization(id)) {
+      return NextResponse.json({ error: "That marketing media upload has been deleted" }, { status: 409 });
+    }
 
     const metadataBody = Buffer.from(`${JSON.stringify(asset, null, 2)}\n`, "utf8");
     const { error: metadataError } = await admin.storage
@@ -502,6 +568,10 @@ export async function POST(request: Request) {
     if (metadataError) {
       console.error("ops marketing media metadata write failed", metadataError);
       return NextResponse.json({ error: "Unable to save marketing media metadata" }, { status: 500 });
+    }
+
+    if (await rejectDeletedFinalization(id)) {
+      return NextResponse.json({ error: "That marketing media upload was deleted during finalization" }, { status: 409 });
     }
 
     const cleanupAfterWrite = await waitForPendingCleanupResolution(id);
