@@ -16,6 +16,8 @@ import {
 export const MARKETING_MEDIA_CONTENT_BUCKET = "marketing-page-content";
 export const MARKETING_MEDIA_BUCKET = MARKETING_MEDIA_PUBLIC_BUCKET;
 
+const ASSIGNMENT_RESERVATION_TTL_MS = 5 * 60 * 1000;
+
 export type MarketingMediaUsage = {
   pageKey: MarketingPageKey;
   pageLabel: string;
@@ -37,6 +39,12 @@ type MarketingMediaDeletionMarker = {
   updatedAt: string;
   operatorId?: string;
   operatorEmail?: string;
+};
+
+type MarketingMediaAssignmentReservation = {
+  assetId: string;
+  reservationId: string;
+  createdAt: string;
 };
 
 export function isMarketingPageKey(value: string): value is MarketingPageKey {
@@ -185,6 +193,28 @@ function parseDeletionMarker(
   };
 }
 
+function parseAssignmentReservation(
+  value: unknown,
+): { success: true; data: MarketingMediaAssignmentReservation } | { success: false } {
+  if (!value || typeof value !== "object") return { success: false };
+  const candidate = value as Partial<MarketingMediaAssignmentReservation>;
+  if (
+    typeof candidate.assetId !== "string" ||
+    typeof candidate.reservationId !== "string" ||
+    typeof candidate.createdAt !== "string"
+  ) {
+    return { success: false };
+  }
+  return {
+    success: true,
+    data: {
+      assetId: candidate.assetId,
+      reservationId: candidate.reservationId,
+      createdAt: candidate.createdAt,
+    },
+  };
+}
+
 async function getTerminalDeletionMarker(
   assetId: string,
 ): Promise<MarketingMediaDeletionMarker | null> {
@@ -259,6 +289,18 @@ async function isMarketingMediaAssetDeleted(assetId: string): Promise<boolean> {
   return Boolean(await getTerminalDeletionMarker(assetId));
 }
 
+async function isMarketingMediaAssetDeletedForRead(assetId: string): Promise<boolean> {
+  try {
+    return await isMarketingMediaAssetDeleted(assetId);
+  } catch (error) {
+    console.warn("marketing media terminal deletion check failed; preserving embedded slot asset", {
+      assetId,
+      error,
+    });
+    return false;
+  }
+}
+
 async function createAssignmentReservation(assetId: string): Promise<string> {
   if (await isMarketingMediaAssetUnavailable(assetId)) {
     throw new Error("Marketing media asset is unavailable");
@@ -282,9 +324,34 @@ async function hasAssignmentReservations(assetId: string): Promise<boolean> {
   const admin = createAdminSupabase();
   const { data, error } = await admin.storage
     .from(MARKETING_MEDIA_CONTENT_BUCKET)
-    .list(`assigning/${assetId}`, { limit: 1 });
+    .list(`assigning/${assetId}`, { limit: 1000 });
   if (error) throw new Error(`Marketing media reservation list failed: ${error.message}`);
-  return (data ?? []).some((item) => item.name.endsWith(".json"));
+
+  const now = Date.now();
+  let hasActiveReservation = false;
+  for (const item of data ?? []) {
+    if (!item.name.endsWith(".json")) continue;
+    const path = `assigning/${assetId}/${item.name}`;
+    try {
+      const reservation = await readStoredJson(path, parseAssignmentReservation);
+      if (!reservation) continue;
+      const createdAt = Date.parse(reservation.createdAt);
+      const expired = !Number.isFinite(createdAt) || now - createdAt > ASSIGNMENT_RESERVATION_TTL_MS;
+      if (expired) {
+        await removeStoredJson(path);
+        continue;
+      }
+      hasActiveReservation = true;
+    } catch (reservationError) {
+      console.warn("marketing media reservation recovery read failed; treating reservation as active", {
+        assetId,
+        path,
+        reservationError,
+      });
+      hasActiveReservation = true;
+    }
+  }
+  return hasActiveReservation;
 }
 
 async function waitForAssignmentReservations(assetId: string): Promise<boolean> {
@@ -319,17 +386,17 @@ async function hydrateCanonicalAsset(
   asset: MarketingMediaAsset | null,
 ): Promise<MarketingMediaAsset | null> {
   if (!asset) return null;
-  if (await isMarketingMediaAssetDeleted(asset.id)) return null;
+  if (await isMarketingMediaAssetDeletedForRead(asset.id)) return null;
   try {
     const canonical = await getMarketingMediaAsset(asset.id);
-    if (await isMarketingMediaAssetDeleted(asset.id)) return null;
+    if (await isMarketingMediaAssetDeletedForRead(asset.id)) return null;
     return canonical ?? asset;
   } catch (error) {
     console.warn("marketing media canonical hydration failed; using embedded slot asset", {
       assetId: asset.id,
       error,
     });
-    return (await isMarketingMediaAssetDeleted(asset.id)) ? null : asset;
+    return (await isMarketingMediaAssetDeletedForRead(asset.id)) ? null : asset;
   }
 }
 
