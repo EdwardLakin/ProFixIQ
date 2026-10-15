@@ -172,7 +172,13 @@ export default function EquipmentDirectoryView({
           </div>
         </div>
         {totalAssets > 0 ? (
-          <form method="get" action="/equipment" className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_repeat(5,auto)]">
+          <form
+            // Remount when the URL filters change (Clear, back/forward), so the
+            // uncontrolled inputs always show what the server applied.
+            key={directoryQueryString(filters, { page: 1 })}
+            method="get"
+            action="/equipment"
+            className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_repeat(5,auto)]">
             <input
               className={INPUT}
               type="search"

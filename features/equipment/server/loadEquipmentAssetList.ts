@@ -13,8 +13,14 @@ import { mapEquipmentAssetProfileRow } from "@/features/equipment/server/equipme
 import { customerAccountDisplayName } from "@/features/vehicles/lib/vehicleWorkspace";
 
 type DB = Database;
-/** Profiles per read; PostgREST caps a response at 1,000 rows. */
-const WINDOW = 1_000;
+/**
+ * Profiles per read. PostgREST caps a response at 1,000 rows (`max_rows` in
+ * supabase/config.toml) and each read also asks for one lookahead row, so the
+ * window must stay below that cap or the lookahead can never arrive and the
+ * scan would stop silently after the first window.
+ */
+export const ASSET_LIST_WINDOW = 500;
+const WINDOW = ASSET_LIST_WINDOW;
 const ID_CHUNK = 100;
 
 const PROFILE_COLUMNS =
@@ -58,10 +64,13 @@ async function inChunks<T>(
  * `IDENTITY_INDEX_MAX_ASSETS`), which lets the Assets list and the section
  * pages search and page every asset, and only score the page being shown.
  *
- * Profiles are read through the privileged client scoped to the shop, paged by
- * the immutable `vehicle_id`; vehicles and accounts come through the caller's
- * RLS client, so an asset the caller cannot see is never listed. Rows come back
- * newest-updated first.
+ * Profiles are read through the privileged client scoped to the shop, newest
+ * updated first with a deterministic id tie-break, paged by a keyset on that
+ * same pair — so when a shop exceeds the cap, the assets that are left out are
+ * the oldest, as the list tells the user. Vehicles and accounts come through
+ * the caller's RLS client, so an asset the caller cannot see is never listed.
+ * (A profile edited mid-scan can at worst shift by one position in this
+ * one-request list; an id seen twice is kept once.)
  *
  * `requireUndercarriage` keeps only machines that have undercarriage
  * components, so every row links to a panel that actually renders.
@@ -79,8 +88,9 @@ export async function loadEquipmentAssetList(input: {
   const max = input.maxAssets ?? IDENTITY_INDEX_MAX_ASSETS;
   const windowSize = input.windowSize ?? WINDOW;
   const rows: EquipmentIdentityRow[] = [];
+  const seen = new Set<string>();
 
-  let cursor: string | null = null;
+  let cursor: { updatedAt: string; assetId: string } | null = null;
   let scanned = 0;
   let capped = false;
   for (;;) {
@@ -88,16 +98,23 @@ export async function loadEquipmentAssetList(input: {
       .from("equipment_asset_profiles")
       .select(PROFILE_COLUMNS)
       .eq("shop_id", shopId)
-      .order("vehicle_id", { ascending: true })
+      .order("updated_at", { ascending: false })
+      .order("vehicle_id", { ascending: false })
       .limit(windowSize + 1);
-    if (cursor) query = query.gt("vehicle_id", cursor);
+    if (cursor) {
+      // Strictly after the cursor in (updated_at desc, vehicle_id desc) order.
+      query = query.or(
+        `updated_at.lt."${cursor.updatedAt}",and(updated_at.eq."${cursor.updatedAt}",vehicle_id.lt.${cursor.assetId})`,
+      );
+    }
     const { data, error } = await query;
     if (error) throw new EquipmentAssetListError("Unable to load Equipment profiles.");
     const fetched = (data ?? []) as Parameters<typeof mapEquipmentAssetProfileRow>[0][];
     const more = fetched.length > windowSize;
     const window = fetched.slice(0, windowSize);
     if (!window.length) break;
-    cursor = window[window.length - 1].vehicle_id;
+    const last = window[window.length - 1];
+    cursor = { updatedAt: last.updated_at, assetId: last.vehicle_id };
     const profiles = window.map((row) => ({ profile: mapEquipmentAssetProfileRow(row), updatedAt: row.updated_at }));
 
     const vehicles = new Map(
@@ -156,6 +173,8 @@ export async function loadEquipmentAssetList(input: {
     );
 
     for (const { profile, updatedAt } of visible) {
+      if (seen.has(profile.assetId)) continue;
+      seen.add(profile.assetId);
       if (withUndercarriage && !withUndercarriage.has(profile.assetId)) continue;
       const vehicle = vehicles.get(profile.assetId)!;
       rows.push({
@@ -185,7 +204,7 @@ export async function loadEquipmentAssetList(input: {
 
   rows.sort((a, b) => {
     const byTime = Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
-    return Number.isFinite(byTime) && byTime !== 0 ? byTime : a.assetId.localeCompare(b.assetId);
+    return Number.isFinite(byTime) && byTime !== 0 ? byTime : b.assetId.localeCompare(a.assetId);
   });
   return { rows, capped };
 }
