@@ -127,14 +127,24 @@ describe("marketing media library management", () => {
     expect(editor).toContain("Add alt text before uploading the screenshot or reel from the landing-page editor");
   });
 
-  it("recovers stale library locks instead of permanently wedging an asset", () => {
+  it("uses deletion markers as the race fence for incomplete metadata promotion", () => {
     const libraryServer = read("features/marketing/media/library-server.ts");
 
-    expect(libraryServer).toContain("LIBRARY_LOCK_TTL_MS");
-    expect(libraryServer).toContain("const lockId = crypto.randomUUID()");
-    expect(libraryServer).toContain("Date.now() - createdAt > LIBRARY_LOCK_TTL_MS");
-    expect(libraryServer).toContain("current.lockId !== existing.lockId");
-    expect(libraryServer).toContain("current.lockId !== handle.lockId");
+    expect(libraryServer).toContain("const markerBefore = await readLibraryDeletionMarker(assetId)");
+    expect(libraryServer).toContain("const markerAfter = await readLibraryDeletionMarker(assetId)");
+    expect(libraryServer).toContain('markerAfter?.state === "deleting"');
+    expect(libraryServer).toContain('markerAfter?.state === "deleted"');
+    expect(libraryServer).toContain('await removeJson(`assets/${assetId}.json`)');
+    expect(libraryServer).not.toContain("LIBRARY_LOCK_TTL_MS");
+    expect(libraryServer).not.toContain("acquireLibraryLock");
+  });
+
+  it("preserves deletion recovery state when canonical metadata is gone", () => {
+    const libraryServer = read("features/marketing/media/library-server.ts");
+
+    expect(libraryServer).toContain("const libraryMarker = await readLibraryDeletionMarker(assetId)");
+    expect(libraryServer).toContain('readDeletionMarkerAsset(`deleted/${assetId}.json`, assetId)');
+    expect(libraryServer).toContain('readDeletionMarkerAsset(`deleting/${assetId}.json`, assetId)');
   });
 
   it("audits incomplete asset deletion before destructive storage removal", () => {
