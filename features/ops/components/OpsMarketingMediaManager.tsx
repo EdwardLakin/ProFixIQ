@@ -17,7 +17,7 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   MARKETING_MEDIA_PUBLIC_BUCKET,
   MARKETING_PAGE_REGISTRY,
-  type MarketingMediaAsset,
+  type MarketingMediaLibraryAsset,
   type MarketingPageKey,
   type MarketingPageMediaDocument,
 } from "@/features/marketing/media/types";
@@ -33,15 +33,15 @@ type PagePayload = {
   error?: string;
 };
 
-type LibraryPayload = { assets?: MarketingMediaAsset[]; error?: string };
+type LibraryPayload = { assets?: MarketingMediaLibraryAsset[]; error?: string };
 type PreparedUpload = {
-  asset?: MarketingMediaAsset;
+  asset?: MarketingMediaLibraryAsset;
   path?: string;
   token?: string;
   error?: string;
 };
 
-function MediaPreview({ asset, compact = false }: { asset: MarketingMediaAsset; compact?: boolean }) {
+function MediaPreview({ asset, compact = false }: { asset: MarketingMediaLibraryAsset; compact?: boolean }) {
   const className = compact
     ? "h-28 w-full rounded-xl object-cover"
     : "aspect-[16/10] w-full rounded-2xl bg-[#07111f] object-contain object-top";
@@ -65,8 +65,8 @@ export default function OpsMarketingMediaManager() {
   const [pageKey, setPageKey] = useState<MarketingPageKey>("home");
   const [slotKey, setSlotKey] = useState("hero");
   const [document, setDocument] = useState<MarketingPageMediaDocument | null>(null);
-  const [assets, setAssets] = useState<MarketingMediaAsset[]>([]);
-  const [selected, setSelected] = useState<MarketingMediaAsset | null>(null);
+  const [assets, setAssets] = useState<MarketingMediaLibraryAsset[]>([]);
+  const [selected, setSelected] = useState<MarketingMediaLibraryAsset | null>(null);
   const [alt, setAlt] = useState("");
   const [caption, setCaption] = useState("");
   const [loadingPage, setLoadingPage] = useState(true);
@@ -149,7 +149,7 @@ export default function OpsMarketingMediaManager() {
     setError(null);
   }
 
-  function chooseAsset(asset: MarketingMediaAsset) {
+  function chooseAsset(asset: MarketingMediaLibraryAsset) {
     setSelected(asset);
     setMessage(null);
     setError(null);
@@ -192,7 +192,7 @@ export default function OpsMarketingMediaManager() {
         body: JSON.stringify({ action: "finalize-upload", id: prepared.asset.id }),
       });
       const finalized = (await finalizeResponse.json()) as {
-        asset?: MarketingMediaAsset;
+        asset?: MarketingMediaLibraryAsset;
         error?: string;
       };
       if (!finalizeResponse.ok || !finalized.asset) {
