@@ -489,6 +489,34 @@ describe("loadEquipmentDirectory", () => {
     expect(rows).toEqual([]);
   });
 
+  it("derives open work, inspection state and role-gated quick actions from the same evidence", async () => {
+    const env = setup();
+    const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
+
+    const ex = rows.find((row) => row.assetId === EX)!;
+    expect(ex.customerId).toBe("cust-1");
+    // Only the in-progress order is open; completed and paid orders are not.
+    expect(ex.openWorkOrderCount).toBe(1);
+    expect(ex.inspection.state).toBe("findings");
+    expect(ex.actions.recordMeterHref).toBe(`/equipment/${EX}#asset-meters`);
+    expect(ex.actions.createWorkOrderHref).toBe(
+      `/work-orders/create?autostart=1&customerId=cust-1&vehicleId=${EX}`,
+    );
+
+    const bucket = rows.find((row) => row.assetId === BUCKET)!;
+    expect(bucket).toMatchObject({ customerId: null, openWorkOrderCount: 0 });
+    expect(bucket.inspection.state).toBe("none");
+    // The canonical create flow needs an account; no account, no shortcut.
+    expect(bucket.actions.createWorkOrderHref).toBeNull();
+  });
+
+  it("hides quick actions from roles that may not create work or record readings", async () => {
+    const env = setup();
+    const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "parts", now: NOW });
+    const ex = rows.find((row) => row.assetId === EX)!;
+    expect(ex.actions).toEqual({ createWorkOrderHref: null, recordMeterHref: null });
+  });
+
   it("omits the active work order link for roles that cannot open it", async () => {
     const env = setup();
     const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "parts", now: NOW });
@@ -509,5 +537,18 @@ describe("loadEquipmentDirectory", () => {
     expect(rows.find((row) => row.assetId === EX)?.activeWorkOrder?.href).toBe(
       "/work-orders/wo-zzzzz",
     );
+  });
+});
+
+describe("equipmentNeedsAttention", () => {
+  it("flags overdue/due PM, downed machines and failed findings only", async () => {
+    const { equipmentNeedsAttention } = await import("@/features/equipment/lib/equipmentDirectory");
+    const base = { pm: { state: "ok" as const }, operatingStatus: "operational" as const, openDefects: { failed: 0 } };
+    expect(equipmentNeedsAttention(base)).toBe(false);
+    expect(equipmentNeedsAttention({ ...base, pm: { state: "overdue" } })).toBe(true);
+    expect(equipmentNeedsAttention({ ...base, pm: { state: "due" } })).toBe(true);
+    expect(equipmentNeedsAttention({ ...base, pm: { state: "not_evaluated" } })).toBe(false);
+    expect(equipmentNeedsAttention({ ...base, operatingStatus: "down" })).toBe(true);
+    expect(equipmentNeedsAttention({ ...base, openDefects: { failed: 1 } })).toBe(true);
   });
 });

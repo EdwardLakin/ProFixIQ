@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@shared/types/types/supabase";
 import { equipmentClassLabel } from "@/features/equipment/lib/assetProfile";
+import { canRecordComponentWork } from "@/features/equipment/lib/components";
 import { combinePmStates } from "@/features/equipment/lib/pm";
 import type {
   EquipmentDirectory,
@@ -19,7 +20,10 @@ import {
   loadEquipmentPmSummaries,
 } from "@/features/equipment/server/equipmentPmService";
 import type { CanonicalRole } from "@/features/shared/lib/rbac";
-import { customerAccountDisplayName } from "@/features/vehicles/lib/vehicleWorkspace";
+import {
+  createWorkOrderHandoffHref,
+  customerAccountDisplayName,
+} from "@/features/vehicles/lib/vehicleWorkspace";
 import { vehicleWorkspacePermissionsForRole } from "@/features/vehicles/server/vehicleWorkspacePermissions";
 import { isEstimateRecord } from "@/features/work-orders/lib/work-order-status";
 import {
@@ -185,6 +189,8 @@ export async function loadEquipmentDirectory(input: {
       .sort((a, b) => Date.parse(b.updated_at ?? "") - Date.parse(a.updated_at ?? ""))
       .find(workOrderIsActive);
     const findings = facts.latestInspection?.findings ?? [];
+    const canCreateWorkOrder =
+      permissions.canCreateWorkOrder && profile.operatingStatus !== "retired";
 
     rows.push({
       assetId: profile.assetId,
@@ -206,6 +212,7 @@ export async function loadEquipmentDirectory(input: {
           : String(facts.workOrderOdometerKm),
       odometerUnit: facts.workOrderOdometerKm === null ? vehicle.odometer_unit : "km",
       currentCycles: profile.currentCycles,
+      customerId: vehicle.customer_id,
       customerName: vehicle.customer_id ? customerNames.get(vehicle.customer_id) ?? null : null,
       siteName: profile.siteName,
       operatingStatus: profile.operatingStatus,
@@ -218,6 +225,22 @@ export async function loadEquipmentDirectory(input: {
       pm: {
         state: combinePmStates(pmPlans.get(profile.assetId)?.state ?? null, facts.pm.state),
         dueCount: facts.pm.items.length + (pmPlans.get(profile.assetId)?.dueCount ?? 0),
+      },
+      openWorkOrderCount: facts.workOrders.filter(workOrderIsActive).length,
+      inspection: {
+        state: !facts.latestInspection ? "none" : findings.length ? "findings" : "clear",
+        recordedAt: facts.latestInspection?.recordedAt ?? null,
+      },
+      actions: {
+        createWorkOrderHref: canCreateWorkOrder
+          ? createWorkOrderHandoffHref({
+              customerId: vehicle.customer_id,
+              vehicleId: profile.assetId,
+            })
+          : null,
+        recordMeterHref: canRecordComponentWork(input.role)
+          ? `/equipment/${profile.assetId}#asset-meters`
+          : null,
       },
       lastServiceAt: facts.lastServiceAt ?? vehicle.last_service_date ?? null,
       nextService: facts.nextBooking,
