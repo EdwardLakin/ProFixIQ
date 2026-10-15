@@ -157,6 +157,18 @@ describe("marketing media library management", () => {
     expect(libraryServer).toContain("await getMarketingMediaUsageMap()");
   });
 
+  it("blocks canonical assignments for the full lifetime of a library deletion fence", () => {
+    const server = read("features/marketing/media/server.ts");
+
+    expect(server).toContain("async function getLibraryDeletionFence");
+    expect(server).toContain('return `library-deleting/${assetId}.json`');
+    expect(server).toContain('return `library-deleted/${assetId}.json`');
+    expect(server).toContain("getLibraryDeletionFence(assetId)");
+    expect(server).toContain('libraryFence?.state === "deleting"');
+    expect(server).toContain('libraryFence?.state === "deleted"');
+    expect(server).toContain("if (await isMarketingMediaAssetUnavailable(assetId))");
+  });
+
   it("preserves deletion recovery state when canonical metadata is gone", () => {
     const libraryServer = read("features/marketing/media/library-server.ts");
 
@@ -175,6 +187,15 @@ describe("marketing media library management", () => {
     expect(libraryServer).toContain('await writeDeletionAudit(current, actor, "completed")');
     expect(libraryServer).toContain("operatorId: terminal.operatorId");
     expect(libraryServer).toContain("operatorEmail: terminal.operatorEmail");
+  });
+
+  it("re-cleans metadata after the immutable library deletion winner is established", () => {
+    const libraryServer = read("features/marketing/media/library-server.ts");
+
+    const terminal = libraryServer.indexOf("const terminal = await writeTerminalDeletionMarker(current, actor)");
+    const finalCleanup = libraryServer.indexOf('await removeJson(`assets/${assetId}.json`)', terminal);
+    expect(terminal).toBeGreaterThan(-1);
+    expect(finalCleanup).toBeGreaterThan(terminal);
   });
 
   it("never treats deletion tombstones as a successful finalized-upload replay", () => {
