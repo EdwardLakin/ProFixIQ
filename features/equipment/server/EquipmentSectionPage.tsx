@@ -9,10 +9,13 @@ import {
 } from "@/features/equipment/lib/equipmentDirectory";
 import {
   equipmentAssetSectionHref,
+  equipmentOperatingSignal,
   equipmentSection,
   equipmentSectionSignal,
   type EquipmentAssetSectionKey,
+  type EquipmentSectionSignal,
 } from "@/features/equipment/lib/equipmentSections";
+import { loadEquipmentAssetList } from "@/features/equipment/server/loadEquipmentAssetList";
 import { loadEquipmentDirectory } from "@/features/equipment/server/loadEquipmentDirectory";
 import { resolveEquipmentPageEntitlement } from "@/features/equipment/server/pageEntitlement";
 import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
@@ -33,7 +36,7 @@ const SECTION_COPY: Record<EquipmentAssetSectionKey, string> = {
   inspections: "Latest completed inspection per machine, failed findings first.",
   components: "Choose a machine to manage its tracked components, service and replacement history.",
   measurements: "Choose a machine to record and review wear measurements.",
-  undercarriage: "Choose a tracked machine to review undercarriage wear against its limits. Machines without undercarriage components show no panel.",
+  undercarriage: "Machines with undercarriage components. Open one to review wear against its limits.",
   "fluid-analysis": "Choose a machine to log and review fluid samples.",
 };
 
@@ -66,16 +69,49 @@ export default async function EquipmentSectionPage({
     return <EquipmentAccessState state={entitlement} retryHref={definition.href} />;
   }
 
-  const directory = await loadEquipmentDirectory({
-    supabase: createServerSupabaseRSC(),
-    admin: createAdminSupabase(),
-    shopId: profile.shop_id,
-    role: canonicalRole,
-  });
-
-  const rows = directory.rows
-    .map((row) => ({ row, signal: equipmentSectionSignal(section, row) }))
-    .sort((a, b) => a.signal.rank - b.signal.rank);
+  const supabase = createServerSupabaseRSC();
+  const admin = createAdminSupabase();
+  type Entry = {
+    assetId: string;
+    title: string;
+    subtitle: string;
+    signal: EquipmentSectionSignal;
+  };
+  let entries: Entry[];
+  let truncated: boolean;
+  if (section === "pm" || section === "inspections") {
+    // These two need the directory's PM and inspection evidence.
+    const directory = await loadEquipmentDirectory({
+      supabase,
+      admin,
+      shopId: profile.shop_id,
+      role: canonicalRole,
+    });
+    truncated = directory.truncated;
+    entries = directory.rows.map((row) => ({
+      assetId: row.assetId,
+      title: equipmentAssetTitle(row),
+      subtitle: [row.equipmentClassLabel, row.customerName, row.siteName].filter(Boolean).join(" · "),
+      signal: equipmentSectionSignal(section, row),
+    }));
+  } else {
+    // The rest show operating state only, so skip the work-order, inspection,
+    // booking and PM history reads.
+    const list = await loadEquipmentAssetList({
+      supabase,
+      admin,
+      shopId: profile.shop_id,
+      requireUndercarriage: section === "undercarriage",
+    });
+    truncated = list.truncated;
+    entries = list.rows.map((row) => ({
+      assetId: row.assetId,
+      title: equipmentAssetTitle(row),
+      subtitle: [row.equipmentClassLabel, row.customerName, row.siteName].filter(Boolean).join(" · "),
+      signal: equipmentOperatingSignal(row.operatingStatus),
+    }));
+  }
+  entries.sort((a, b) => a.signal.rank - b.signal.rank);
 
   return (
     <>
@@ -88,25 +124,21 @@ export default async function EquipmentSectionPage({
             {SECTION_COPY[section]}
           </p>
         </WorkspaceHeader>
-        {rows.length === 0 ? (
+        {entries.length === 0 ? (
           <EmptyState>
             No Equipment assets yet. <Link className="underline" href="/equipment">Add one from Assets.</Link>
           </EmptyState>
         ) : (
           <ul className="grid gap-2">
-            {rows.map(({ row, signal }) => (
-              <li key={row.assetId}>
+            {entries.map(({ assetId, title, subtitle, signal }) => (
+              <li key={assetId}>
                 <Link
-                  href={equipmentAssetSectionHref(section, row.assetId)}
+                  href={equipmentAssetSectionHref(section, assetId)}
                   className={`${PANEL} flex flex-wrap items-center justify-between gap-2 p-4 hover:bg-[color:var(--theme-surface-overlay)]`}
                 >
                   <span className="min-w-0">
-                    <span className="block truncate font-semibold">{equipmentAssetTitle(row)}</span>
-                    <span className="block text-xs text-[color:var(--theme-text-muted)]">
-                      {[row.equipmentClassLabel, row.customerName, row.siteName]
-                        .filter(Boolean)
-                        .join(" · ")}
-                    </span>
+                    <span className="block truncate font-semibold">{title}</span>
+                    <span className="block text-xs text-[color:var(--theme-text-muted)]">{subtitle}</span>
                   </span>
                   <span className={`text-sm font-semibold capitalize ${TONE[signal.tone]}`}>
                     {signal.label}
@@ -114,9 +146,10 @@ export default async function EquipmentSectionPage({
                 </Link>
               </li>
             ))}
-            {directory.truncated ? (
+            {truncated ? (
               <li className="text-xs text-[color:var(--theme-text-muted)]">
-                Showing the {rows.length} most recently updated assets. Use Assets to find others.
+                Showing the {entries.length} most recently updated assets. Older assets are not
+                listed here yet, so ordering applies to this list only.
               </li>
             ) : null}
           </ul>

@@ -176,10 +176,17 @@ export function equipmentSectionSignal(
       ? { rank: 3, label: "No findings", tone: "good" }
       : { rank: 2, label: "No inspection recorded", tone: "muted" };
   }
-  const down = row.operatingStatus === "down" || row.operatingStatus === "out_of_service";
+  return equipmentOperatingSignal(row.operatingStatus);
+}
+
+/** Operating state, used by sections that read no fleet-level history. */
+export function equipmentOperatingSignal(
+  status: EquipmentDirectoryRow["operatingStatus"],
+): EquipmentSectionSignal {
+  const down = status === "down" || status === "out_of_service";
   return {
     rank: down ? 0 : 1,
-    label: row.operatingStatus.replace(/_/g, " "),
+    label: status.replace(/_/g, " "),
     tone: down ? "bad" : "muted",
   };
 }
