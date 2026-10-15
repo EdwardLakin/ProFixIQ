@@ -170,6 +170,17 @@ async function writePendingCleanupMarker(
   } satisfies PendingCleanupMarker);
 }
 
+async function waitForPendingCleanupResolution(
+  assetId: string,
+): Promise<PendingCleanupMarker | null> {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const marker = await readPendingCleanupMarker(assetId);
+    if (!marker || marker.state !== "cancelling") return marker;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return readPendingCleanupMarker(assetId);
+}
+
 async function removePendingMarker(
   pendingPath: string,
   assetId: string,
@@ -445,10 +456,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Unable to save marketing media metadata" }, { status: 500 });
     }
 
-    const cleanupAfterWrite = await readPendingCleanupMarker(id);
-    if (cleanupAfterWrite?.state === "cancelling" || cleanupAfterWrite?.state === "cancelled") {
+    const cleanupAfterWrite = await waitForPendingCleanupResolution(id);
+    if (cleanupAfterWrite?.state === "cancelled") {
       await removeContentObject(`assets/${id}.json`);
       return NextResponse.json({ error: "Prepared marketing media upload expired during finalization" }, { status: 409 });
+    }
+    if (cleanupAfterWrite?.state === "cancelling") {
+      return NextResponse.json({ error: "Prepared marketing media upload cleanup is still resolving" }, { status: 409 });
+    }
+    if (cleanupAfterWrite?.state === "finalized") {
+      const canonical = await getMarketingMediaAsset(id);
+      if (canonical) return NextResponse.json({ asset: canonical });
     }
 
     await removePendingMarker(pendingPath, id);
