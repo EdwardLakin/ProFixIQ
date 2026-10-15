@@ -369,11 +369,24 @@ async function createAssignmentReservation(assetId: string): Promise<string> {
     createdAt: new Date().toISOString(),
   });
   if (!created) throw new Error("Marketing media assignment reservation collision");
-  if (await isMarketingMediaAssetUnavailable(assetId)) {
-    await removeStoredJson(path);
-    throw new Error("Marketing media asset became unavailable before assignment");
+
+  try {
+    if (await isMarketingMediaAssetUnavailable(assetId)) {
+      throw new Error("Marketing media asset became unavailable before assignment");
+    }
+    return path;
+  } catch (error) {
+    try {
+      await removeStoredJson(path);
+    } catch (cleanupError) {
+      console.error("marketing media assignment reservation cleanup failed", {
+        assetId,
+        path,
+        cleanupError,
+      });
+    }
+    throw error;
   }
-  return path;
 }
 
 async function hasAssignmentReservations(assetId: string): Promise<boolean> {
