@@ -149,7 +149,7 @@ async function listJsonItems(folder: "assets" | "pending"): Promise<Array<{ name
   return items;
 }
 
-async function listAssets(): Promise<MarketingMediaLibraryAsset[]> {
+async function listLibraryAssets(): Promise<MarketingMediaLibraryAsset[]> {
   const items = await listJsonItems("assets");
   const assets = await Promise.all(
     items.map((item) => readAssetMetadata(`assets/${item.name}`)),
@@ -157,6 +157,14 @@ async function listAssets(): Promise<MarketingMediaLibraryAsset[]> {
   return assets
     .filter((asset): asset is MarketingMediaLibraryAsset => Boolean(asset))
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+}
+
+async function listPageReadyAssets() {
+  const assets = await listLibraryAssets();
+  return assets.flatMap((asset) => {
+    const parsed = MarketingMediaAssetSchema.safeParse(asset);
+    return parsed.success ? [parsed.data] : [];
+  });
 }
 
 function pendingCleanupPath(assetId: string): string {
@@ -249,7 +257,7 @@ export async function GET() {
   try {
     const cleanedPending = await cleanupStalePendingUploads();
     const [assets, usages] = await Promise.all([
-      listAssets(),
+      listPageReadyAssets(),
       getMarketingMediaUsageMap(),
     ]);
     return NextResponse.json({ assets, usages, cleanedPending });
@@ -266,6 +274,20 @@ export async function POST(request: Request) {
   const payload = (await request.json().catch(() => null)) as Record<string, unknown> | null;
   if (!payload || typeof payload.action !== "string") {
     return NextResponse.json({ error: "Invalid marketing media request" }, { status: 400 });
+  }
+
+  if (payload.action === "list-library") {
+    try {
+      const cleanedPending = await cleanupStalePendingUploads();
+      const [assets, usages] = await Promise.all([
+        listLibraryAssets(),
+        getMarketingMediaUsageMap(),
+      ]);
+      return NextResponse.json({ assets, usages, cleanedPending });
+    } catch (error) {
+      console.error("ops marketing media library listing failed", error);
+      return NextResponse.json({ error: "Unable to load marketing media library" }, { status: 500 });
+    }
   }
 
   if (payload.action === "update-metadata") {
