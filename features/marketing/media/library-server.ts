@@ -180,7 +180,10 @@ async function readDeletionMarkerAsset(
   const value = await readJson(path);
   if (!value || typeof value !== "object") return null;
   const candidate = value as { assetId?: unknown; asset?: unknown; state?: unknown };
-  if (candidate.assetId !== assetId || !["deleting", "deleted", "failed"].includes(String(candidate.state))) {
+  if (
+    candidate.assetId !== assetId ||
+    !["deleting", "deleted", "failed"].includes(String(candidate.state))
+  ) {
     return null;
   }
   const asset = MarketingMediaLibraryAssetSchema.safeParse(candidate.asset);
@@ -267,17 +270,21 @@ async function writeDeletionAudit(
   actor: MarketingMediaDeletionActor,
   state: "intent" | "blocked" | "completed",
 ): Promise<void> {
-  await writeJson(`audit/media-deletions/${asset.id}.json`, {
-    action: "marketing_media_delete",
-    state,
-    assetId: asset.id,
-    filename: asset.filename,
-    storagePath: asset.storagePath,
-    contentType: asset.contentType,
-    operatorId: actor.operatorId,
-    operatorEmail: actor.operatorEmail,
-    updatedAt: new Date().toISOString(),
-  }, true);
+  await writeJson(
+    `audit/media-deletions/${asset.id}.json`,
+    {
+      action: "marketing_media_delete",
+      state,
+      assetId: asset.id,
+      filename: asset.filename,
+      storagePath: asset.storagePath,
+      contentType: asset.contentType,
+      operatorId: actor.operatorId,
+      operatorEmail: actor.operatorEmail,
+      updatedAt: new Date().toISOString(),
+    },
+    true,
+  );
 }
 
 async function hasAssignmentReservations(assetId: string): Promise<boolean> {
@@ -386,7 +393,8 @@ export async function deleteIncompleteMarketingMediaAsset(
 
     actor =
       (existingMarker?.state === "deleting" || existingMarker?.state === "deleted") &&
-      existingMarker.operatorId && existingMarker.operatorEmail
+      existingMarker.operatorId &&
+      existingMarker.operatorEmail
         ? { operatorId: existingMarker.operatorId, operatorEmail: existingMarker.operatorEmail }
         : requestedBy;
 
@@ -400,9 +408,9 @@ export async function deleteIncompleteMarketingMediaAsset(
       await writeDeletionMarker(current, actor, "deleting");
     }
 
-    // The library deletion marker is the promotion fence. Classify only after it exists.
-    // A promotion that won immediately before the fence is delegated to the canonical
-    // deletion protocol, which establishes its own assignment fence and usage guard.
+    // The library deletion marker is also checked by canonical assignment reservations.
+    // Classify only after that fence exists so a promoted asset cannot begin a new
+    // draft/publish assignment while this deletion is draining existing reservations.
     const fencedAsset = await readLibraryAsset(assetId);
     if (fencedAsset && MarketingMediaAssetSchema.safeParse(fencedAsset).success) {
       const canonicalResult = await deleteMarketingMediaAsset(assetId, actor);
@@ -411,8 +419,6 @@ export async function deleteIncompleteMarketingMediaAsset(
       current = fencedAsset;
     }
 
-    // A canonical assignment may have started in the narrow promotion-before-fence
-    // window. Drain any reservation and then check persisted usage before destructive work.
     if (!(await waitForAssignmentReservations(assetId))) {
       await writeDeletionMarker(current, actor, "failed");
       await writeDeletionAudit(current, actor, "blocked");
@@ -436,6 +442,10 @@ export async function deleteIncompleteMarketingMediaAsset(
 
     await removeJson(`assets/${assetId}.json`);
     const terminal = await writeTerminalDeletionMarker(current, actor);
+    // A promotion that started before the library fence may have recreated strict metadata
+    // after the first removal. Once the immutable terminal tombstone exists, remove that
+    // metadata one final time; any later promotion observes `deleted` and compensates itself.
+    await removeJson(`assets/${assetId}.json`);
     current = terminal.asset;
     actor = {
       operatorId: terminal.operatorId,
