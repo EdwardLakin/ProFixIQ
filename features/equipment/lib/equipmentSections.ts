@@ -2,6 +2,7 @@ import type { EquipmentDirectoryRow } from "@/features/equipment/lib/equipmentDi
 import { getActorCapabilities, ROLE_GROUPS, type CanonicalRole } from "@/features/shared/lib/rbac";
 
 export type EquipmentSectionKey =
+  | "dashboard"
   | "assets"
   | "work-orders"
   | "pm"
@@ -40,9 +41,9 @@ const hasRole = (roles: readonly string[]) => (role: CanonicalRole) => roles.inc
  * Single navigation registry for the Equipment workspace. Equipment pages are
  * always visible to roles that can browse the directory; links out to shop
  * surfaces mirror the destination's own gate so nobody is sent to a denial.
- * (Dashboard is added with the Equipment dashboard.)
  */
 export const EQUIPMENT_SECTIONS: readonly EquipmentSection[] = [
+  { key: "dashboard", label: "Dashboard", href: "/equipment/dashboard", visibleTo: always },
   { key: "assets", label: "Assets", href: "/equipment", visibleTo: always },
   { key: "work-orders", label: "Work Orders", href: "/equipment/work-orders", visibleTo: always },
   { key: "pm", label: "PM", href: "/equipment/pm", assetAnchor: "asset-pm", visibleTo: always },

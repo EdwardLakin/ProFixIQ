@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 
 vi.mock("server-only", () => ({}));
 
+import { accumulateFleetSummary, emptyFleetSummary } from "@/features/equipment/lib/equipmentDashboard";
 import { loadEquipmentDirectory } from "@/features/equipment/server/loadEquipmentDirectory";
+import { loadEquipmentFleetSummary } from "@/features/equipment/server/loadEquipmentFleetSummary";
 
 const SHOP = "00000000-0000-4000-8000-000000000111";
 const EX = "00000000-0000-4000-8000-000000000001";
@@ -33,6 +35,10 @@ function fakeClient(tables: Tables, log: string[], name: string) {
         },
         is: (column: string, value: unknown) => {
           filters.push((row) => (row[column] ?? null) === value);
+          return builder;
+        },
+        gt: (column: string, value: string) => {
+          filters.push((row) => String(row[column]) > value);
           return builder;
         },
         gte: (column: string, value: string) => {
@@ -582,5 +588,47 @@ describe("equipmentNeedsAttention", () => {
     expect(equipmentNeedsAttention({ ...base, pm: { state: "not_evaluated" } })).toBe(false);
     expect(equipmentNeedsAttention({ ...base, operatingStatus: "down" })).toBe(true);
     expect(equipmentNeedsAttention({ ...base, openDefects: { failed: 1 } })).toBe(true);
+  });
+});
+
+describe("loadEquipmentFleetSummary", () => {
+  it("matches the directory's per-asset signals", async () => {
+    const dir = setup();
+    const { rows } = await loadEquipmentDirectory({ ...dir, shopId: SHOP, role: "owner", now: NOW });
+    const fromDirectory = accumulateFleetSummary(emptyFleetSummary(), rows, NOW);
+    const fleet = setup();
+    const summary = await loadEquipmentFleetSummary({ ...fleet, shopId: SHOP, role: "owner", now: NOW });
+    expect(summary).toEqual(fromDirectory);
+    // Sanity: the fixture exercises PM, inspections, open work and attention.
+    expect(summary).toMatchObject({ total: 2, pm: { overdue: 1 }, openWork: { assets: 1, orders: 1 } });
+    expect(summary.needsAttention).toBeGreaterThan(0);
+  });
+
+  it("scans windows by immutable vehicle id and reaches every profile", async () => {
+    const whole = await loadEquipmentFleetSummary({ ...setup(), shopId: SHOP, role: "owner", now: NOW });
+    const env = setup();
+    const windowed = await loadEquipmentFleetSummary({ ...env, shopId: SHOP, role: "owner", now: NOW, windowSize: 1 });
+    expect(windowed).toEqual(whole);
+    expect(env.log.filter((entry) => entry === "admin:equipment_asset_profiles").length).toBeGreaterThan(1);
+  });
+
+  it("reports a partial summary when the shop exceeds the scan limit", async () => {
+    const summary = await loadEquipmentFleetSummary({ ...setup(), shopId: SHOP, role: "owner", now: NOW, windowSize: 1, maxAssets: 1 });
+    expect(summary).toMatchObject({ total: 1, partial: true });
+  });
+
+  it("counts open work through the shop-scoped admin client, not the session client", async () => {
+    const env = setup();
+    await loadEquipmentFleetSummary({ ...env, shopId: SHOP, role: "parts", now: NOW });
+    expect(env.log).toContain("admin:work_orders");
+    // Roles without financial visibility get the same open-work count as the Work Orders page.
+    const summary = await loadEquipmentFleetSummary({ ...setup(), shopId: SHOP, role: "parts", now: NOW });
+    expect(summary.openWork).toEqual({ assets: 1, orders: 1 });
+  });
+
+  it("never counts an asset the caller cannot see through RLS", async () => {
+    const summary = await loadEquipmentFleetSummary({ ...setup(), shopId: SHOP, role: "owner", now: NOW });
+    expect(summary.attention.map((item) => item.assetId)).not.toContain(HIDDEN);
+    expect(summary.total).toBe(2);
   });
 });
