@@ -11,7 +11,7 @@ export const MarketingMediaAssetSchema = z.object({
   storagePath: z.string().min(1),
   filename: z.string().min(1),
   contentType: z.string().min(1),
-  alt: z.string().trim().min(1).max(240),
+  alt: z.string().trim().max(240).default(""),
   caption: z.string().trim().max(300).nullable().default(null),
   createdAt: z.string().datetime(),
 });
