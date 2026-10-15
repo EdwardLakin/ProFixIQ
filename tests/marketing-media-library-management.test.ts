@@ -25,24 +25,26 @@ describe("marketing media library management", () => {
     expect(server).toContain("isMarketingMediaAssetDeleted");
   });
 
-  it("serializes metadata edits and assignments against deletion state", () => {
+  it("uses assignment reservations instead of racy read-then-compensate writes", () => {
     const server = read("features/marketing/media/server.ts");
 
-    expect(server).toContain('state: "deleting" | "deleted" | "failed"');
-    expect(server).toContain("async function writeDeletionMarker");
-    expect(server).toContain('if (marker?.state === "deleted")');
-    expect(server).toContain("const current = await readStoredJson(path");
-    expect(server).toContain("current?.draft?.id === asset.id");
-    expect(server).toContain("current?.published?.id === asset.id");
-    expect(server).toContain("current.publishedAt === publishedAt");
+    expect(server).toContain("async function createAssignmentReservation");
+    expect(server).toContain("async function waitForAssignmentReservations");
+    expect(server).toContain("writeStoredJsonCreateOnly");
+    expect(server).toContain("const reservationPath = await createAssignmentReservation(asset.id)");
+    expect(server).not.toContain("current?.draft?.id === asset.id");
+    expect(server).not.toContain("current?.published?.id === asset.id");
+    expect(server).not.toContain("await writeStoredJson(path, previousRecord)");
   });
 
-  it("restores the previous live publication if a raced publish must compensate", () => {
+  it("keeps terminal deletion state immutable and authoritative", () => {
     const server = read("features/marketing/media/server.ts");
 
-    expect(server).toContain("const previousRecord = await readStoredJson(path");
-    expect(server).toContain("if (previousRecord)");
-    expect(server).toContain("await writeStoredJson(path, previousRecord)");
+    expect(server).toContain("function terminalDeletionMarkerPath");
+    expect(server).toContain("async function getTerminalDeletionMarker");
+    expect(server).toContain("async function writeTerminalDeletionMarker");
+    expect(server).toContain("if (terminal) return terminal");
+    expect(server).toContain("await writeTerminalDeletionMarker(asset, actor)");
   });
 
   it("keeps deletion state recoverable and attributes fresh blocked retries to the current operator", () => {
@@ -52,7 +54,6 @@ describe("marketing media library management", () => {
     expect(server).toContain('await writeDeletionAudit(asset, actor, "intent")');
     expect(server).toContain('await writeDeletionMarker(asset, "deleting", actor)');
     expect(server).toContain('await writeDeletionMarker(asset, "failed", actor)');
-    expect(server).toContain('await writeDeletionMarker(asset, "deleted", actor)');
     expect(server).toContain('await writeDeletionAudit(asset, actor, "completed")');
     expect(server).toContain('existingMarker?.state === "deleting"');
     expect(server).toContain(": requestedBy;");
