@@ -4,7 +4,9 @@ import EquipmentAccessState from "@/features/equipment/components/EquipmentAcces
 import EquipmentDirectoryView from "@/features/equipment/components/EquipmentDirectoryView";
 import EquipmentSectionNav from "@/features/equipment/components/EquipmentSectionNav";
 import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDirectory";
-import { loadEquipmentDirectory } from "@/features/equipment/server/loadEquipmentDirectory";
+import { parseDirectoryFilters } from "@/features/equipment/lib/equipmentDirectoryQuery";
+import { EVIDENCE_SCAN_MAX_ASSETS } from "@/features/equipment/lib/equipmentDirectoryQuery";
+import { loadEquipmentDirectoryPage } from "@/features/equipment/server/loadEquipmentDirectoryPage";
 import { resolveEquipmentPageEntitlement } from "@/features/equipment/server/pageEntitlement";
 import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
 import { ROLE_GROUPS } from "@/features/shared/lib/rbac";
@@ -18,7 +20,11 @@ export const revalidate = 0;
 
 const CUSTOMER_PAGE_SIZE = 500;
 
-export default async function EquipmentDirectoryPage() {
+export default async function EquipmentDirectoryPage({
+  searchParams,
+}: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   noStore();
 
   const { profile, canonicalRole } = await requireShopPageAccess({
@@ -32,11 +38,13 @@ export default async function EquipmentDirectoryPage() {
 
   const supabase = createServerSupabaseRSC();
   const admin = createAdminSupabase();
-  const directory = await loadEquipmentDirectory({
+  const filters = parseDirectoryFilters((await searchParams) ?? {});
+  const directory = await loadEquipmentDirectoryPage({
     supabase,
     admin,
     shopId: profile.shop_id,
     role: canonicalRole,
+    filters,
   });
 
   const canManage = (ROLE_GROUPS.billingOperators as readonly string[]).includes(canonicalRole);
@@ -101,7 +109,15 @@ export default async function EquipmentDirectoryPage() {
       <EquipmentSectionNav current="assets" role={canonicalRole} />
       <EquipmentDirectoryView
         rows={directory.rows}
-        truncated={directory.truncated}
+        info={directory.info}
+        totalAssets={directory.totalAssets}
+        filters={filters}
+        facets={directory.facets}
+        notes={{
+          indexCapped: directory.indexCapped,
+          evidencePartial: directory.evidencePartial,
+          evidenceLimit: EVIDENCE_SCAN_MAX_ASSETS,
+        }}
         canManage={canManage}
         customers={customers}
         customerOptionsError={customerOptionsError}

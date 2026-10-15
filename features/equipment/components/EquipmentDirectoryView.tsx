@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 
+import EquipmentPager from "@/features/equipment/components/EquipmentPager";
 import EquipmentSetupDialog, {
   type EquipmentCustomerOption,
   type EquipmentSetupMode,
@@ -16,10 +17,14 @@ import {
   EQUIPMENT_INSPECTION_STATE_LABELS,
   EQUIPMENT_PM_STATE_LABELS,
   equipmentAssetTitle,
-  equipmentNeedsAttention,
   type EquipmentDirectoryRow,
   type EquipmentPmState,
 } from "@/features/equipment/lib/equipmentDirectory";
+import {
+  directoryQueryString,
+  type EquipmentDirectoryFilters,
+  type PageInfo,
+} from "@/features/equipment/lib/equipmentDirectoryQuery";
 import {
   WorkspaceEmptyState as EmptyState,
   WorkspaceHeader,
@@ -100,72 +105,44 @@ function pmText(row: EquipmentDirectoryRow): string {
   return row.pm.dueCount ? `${label} · ${row.pm.dueCount}` : label;
 }
 
+/** Notes shown when the list could not cover every asset. */
+export type EquipmentDirectoryNotes = {
+  /** Assets beyond the identity index limit are not listed. */
+  indexCapped: boolean;
+  /** PM / attention filters were scored on the most recent matches only. */
+  evidencePartial: boolean;
+  evidenceLimit: number;
+};
+
+const submitForm = (event: { currentTarget: { form: HTMLFormElement | null } }) =>
+  event.currentTarget.form?.requestSubmit();
+
 export default function EquipmentDirectoryView({
   rows,
-  truncated,
+  info,
+  totalAssets,
+  filters,
+  facets,
+  notes,
   canManage,
   customers,
   customerOptionsError,
 }: {
+  /** Only the current page. Filtering, search and paging happen on the server. */
   rows: EquipmentDirectoryRow[];
-  truncated: boolean;
+  info: PageInfo;
+  /** Every asset the caller can see, before filters. */
+  totalAssets: number;
+  filters: EquipmentDirectoryFilters;
+  facets: { classes: Array<[string, string]>; customers: Array<[string, string]> };
+  notes: EquipmentDirectoryNotes;
   canManage: boolean;
   customers: EquipmentCustomerOption[];
   customerOptionsError: string | null;
 }) {
-  const [query, setQuery] = useState("");
-  const [status, setStatus] = useState<"" | AssetOperatingStatus>("");
-  const [equipmentClass, setEquipmentClass] = useState("");
-  const [customerId, setCustomerId] = useState("");
-  const [pmState, setPmState] = useState<"" | EquipmentPmState>("");
-  const [attentionOnly, setAttentionOnly] = useState(false);
   const [setupMode, setSetupMode] = useState<EquipmentSetupMode | null>(null);
-
-  const classes = useMemo(
-    () =>
-      Array.from(
-        new Map(rows.map((row) => [row.equipmentClass, row.equipmentClassLabel])),
-      ).sort((a, b) => a[1].localeCompare(b[1])),
-    [rows],
-  );
-
-  const customerFilterOptions = useMemo(
-    () =>
-      Array.from(
-        new Map(
-          rows
-            .filter((row) => row.customerId && row.customerName)
-            .map((row) => [row.customerId as string, row.customerName as string]),
-        ),
-      ).sort((a, b) => a[1].localeCompare(b[1])),
-    [rows],
-  );
-
-  const attentionCount = useMemo(
-    () => rows.filter(equipmentNeedsAttention).length,
-    [rows],
-  );
-
-  const filtered = useMemo(() => {
-    const needle = query.trim().toLowerCase();
-    return rows.filter((row) => {
-      if (status && row.operatingStatus !== status) return false;
-      if (equipmentClass && row.equipmentClass !== equipmentClass) return false;
-      if (customerId && row.customerId !== customerId) return false;
-      if (pmState && row.pm.state !== pmState) return false;
-      if (attentionOnly && !equipmentNeedsAttention(row)) return false;
-      if (!needle) return true;
-      return [
-        row.unitNumber,
-        row.make,
-        row.model,
-        row.serialNumber,
-        row.customerName,
-        row.siteName,
-        row.equipmentClassLabel,
-      ].some((value) => value?.toLowerCase().includes(needle));
-    });
-  }, [attentionOnly, customerId, equipmentClass, pmState, query, rows, status]);
+  const filtered = rows;
+  const hasFilters = directoryQueryString({ ...filters, page: 1 }) !== "";
 
   return (
     <WorkspaceShell>
@@ -180,8 +157,8 @@ export default function EquipmentDirectoryView({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs text-[color:var(--theme-text-muted)]">
-              {filtered.length} of {rows.length}
-              {truncated ? "+" : ""}
+              {info.total.toLocaleString()} of {totalAssets.toLocaleString()}
+              {notes.indexCapped ? "+" : ""}
             </span>
             {canManage ? (
               <button
@@ -194,23 +171,25 @@ export default function EquipmentDirectoryView({
             ) : null}
           </div>
         </div>
-        {rows.length > 0 ? (
-          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_repeat(5,auto)]">
+        {totalAssets > 0 ? (
+          <form method="get" action="/equipment" className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_repeat(5,auto)]">
             <input
               className={INPUT}
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              type="search"
+              name="q"
+              defaultValue={filters.q}
               placeholder="Search unit, make, model, serial, customer or site"
               aria-label="Search Equipment assets"
             />
             <select
               className={INPUT}
-              value={equipmentClass}
-              onChange={(event) => setEquipmentClass(event.target.value)}
+              name="class"
+              defaultValue={filters.equipmentClass}
+              onChange={submitForm}
               aria-label="Filter by equipment class"
             >
               <option value="">All classes</option>
-              {classes.map(([value, label]) => (
+              {facets.classes.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
@@ -218,8 +197,9 @@ export default function EquipmentDirectoryView({
             </select>
             <select
               className={INPUT}
-              value={status}
-              onChange={(event) => setStatus(event.target.value as "" | AssetOperatingStatus)}
+              name="status"
+              defaultValue={filters.status}
+              onChange={submitForm}
               aria-label="Filter by operating status"
             >
               <option value="">All statuses</option>
@@ -231,8 +211,9 @@ export default function EquipmentDirectoryView({
             </select>
             <select
               className={INPUT}
-              value={pmState}
-              onChange={(event) => setPmState(event.target.value as "" | EquipmentPmState)}
+              name="pm"
+              defaultValue={filters.pm}
+              onChange={submitForm}
               aria-label="Filter by PM state"
             >
               <option value="">All PM states</option>
@@ -244,30 +225,53 @@ export default function EquipmentDirectoryView({
             </select>
             <select
               className={INPUT}
-              value={customerId}
-              onChange={(event) => setCustomerId(event.target.value)}
+              name="customer"
+              defaultValue={filters.customerId}
+              onChange={submitForm}
               aria-label="Filter by customer"
             >
               <option value="">All customers</option>
-              {customerFilterOptions.map(([value, label]) => (
+              {facets.customers.map(([value, label]) => (
                 <option key={value} value={value}>
                   {label}
                 </option>
               ))}
             </select>
-            <button
-              type="button"
-              className={`${BUTTON} ${attentionOnly ? "bg-[color:var(--theme-surface-overlay)]" : ""}`}
-              aria-pressed={attentionOnly}
-              onClick={() => setAttentionOnly((value) => !value)}
-            >
-              Needs attention ({attentionCount}{truncated ? "+ in first " + rows.length : ""})
-            </button>
-          </div>
+            <label className={`${BUTTON} flex cursor-pointer items-center gap-2`}>
+              <input
+                type="checkbox"
+                name="attention"
+                value="1"
+                defaultChecked={filters.attention}
+                onChange={submitForm}
+              />
+              Needs attention
+            </label>
+            <div className="flex gap-2 sm:col-span-2 xl:col-span-6">
+              <button type="submit" className={BUTTON}>Search</button>
+              {hasFilters ? (
+                <Link href="/equipment" className={`${BUTTON} inline-flex items-center`}>
+                  Clear
+                </Link>
+              ) : null}
+            </div>
+          </form>
+        ) : null}
+        {notes.indexCapped ? (
+          <p className="mt-2 text-xs text-amber-400" role="status">
+            This shop has more Equipment assets than the list can search, so the oldest are not
+            listed.
+          </p>
+        ) : null}
+        {notes.evidencePartial ? (
+          <p className="mt-2 text-xs text-amber-400" role="status">
+            PM and attention filters are scored on the {notes.evidenceLimit.toLocaleString()} most
+            recently updated matching assets. Narrow the search to cover the rest.
+          </p>
         ) : null}
       </WorkspaceHeader>
 
-      {rows.length === 0 ? (
+      {totalAssets === 0 ? (
         <div className={`${PANEL} p-6`}>
           <p className={EYEBROW}>Start here</p>
           <h2 className="mt-1 text-xl font-bold">Add your first machine</h2>
@@ -401,6 +405,10 @@ export default function EquipmentDirectoryView({
               </tbody>
             </table>
           </div>
+          <EquipmentPager
+            info={info}
+            hrefFor={(page) => `/equipment${directoryQueryString(filters, { page })}`}
+          />
         </>
       )}
 

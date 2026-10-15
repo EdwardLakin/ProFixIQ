@@ -27,6 +27,10 @@ function fakeClient(tables: Record<string, Row[]>, log: string[], name: string) 
           filters.push((row) => values.includes(row[column]));
           return builder;
         },
+        gt: (column: string, value: string) => {
+          filters.push((row) => String(row[column]) > value);
+          return builder;
+        },
         order: () => builder,
         limit: (count: number) => {
           max = count;
@@ -72,7 +76,11 @@ function profile(id: string, patch: Row = {}): Row {
 function setup() {
   const log: string[] = [];
   const tables = {
-    equipment_asset_profiles: [profile(TRACKED), profile(WHEELED), profile(HIDDEN)],
+    equipment_asset_profiles: [
+      profile(TRACKED, { updated_at: "2026-03-01T00:00:00Z" }),
+      profile(WHEELED, { updated_at: "2026-05-01T00:00:00Z" }),
+      profile(HIDDEN, { updated_at: "2026-04-01T00:00:00Z" }),
+    ],
     // RLS: the caller can see two of the three assets.
     vehicles: [
       { id: TRACKED, shop_id: SHOP, customer_id: "cust-1", year: 2021, make: "Cat", model: "336", unit_number: "EX-1" },
@@ -93,11 +101,21 @@ function setup() {
 }
 
 describe("loadEquipmentAssetList", () => {
-  it("lists visible assets without any history reads", async () => {
+  it("lists visible assets newest-updated first, without any history reads", async () => {
     const env = setup();
-    const { rows } = await loadEquipmentAssetList({ ...env, shopId: SHOP });
-    expect(rows.map((row) => row.assetId)).toEqual([TRACKED, WHEELED]);
-    expect(rows[0]).toMatchObject({ unitNumber: "EX-1", customerName: "Granite Co", siteName: "North pit" });
+    const { rows, capped } = await loadEquipmentAssetList({ ...env, shopId: SHOP });
+    // WHEELED was updated after TRACKED; HIDDEN is not visible through RLS.
+    expect(rows.map((row) => row.assetId)).toEqual([WHEELED, TRACKED]);
+    expect(capped).toBe(false);
+    expect(rows[1]).toMatchObject({
+      unitNumber: "EX-1",
+      customerId: "cust-1",
+      customerName: "Granite Co",
+      siteName: "North pit",
+      equipmentClass: "crawler_excavator",
+      operatingStatus: "operational",
+      updatedAt: "2026-03-01T00:00:00Z",
+    });
     for (const table of ["work_orders", "inspections", "bookings", "equipment_pm_plans"]) {
       expect(env.log.some((entry) => entry.endsWith(`:${table}`))).toBe(false);
     }
@@ -109,5 +127,24 @@ describe("loadEquipmentAssetList", () => {
     const { rows } = await loadEquipmentAssetList({ ...env, shopId: SHOP, requireUndercarriage: true });
     // Wheeled has no undercarriage part; Hidden has one but is not visible through RLS.
     expect(rows.map((row) => row.assetId)).toEqual([TRACKED]);
+  });
+
+  it("reads every window by immutable vehicle id and returns the same list", async () => {
+    const whole = await loadEquipmentAssetList({ ...setup(), shopId: SHOP });
+    const env = setup();
+    const windowed = await loadEquipmentAssetList({ ...env, shopId: SHOP, windowSize: 1 });
+    expect(windowed).toEqual(whole);
+    expect(env.log.filter((entry) => entry === "admin:equipment_asset_profiles").length).toBeGreaterThan(1);
+  });
+
+  it("stops at the scan limit and says the list is capped", async () => {
+    const { rows, capped } = await loadEquipmentAssetList({
+      ...setup(),
+      shopId: SHOP,
+      windowSize: 1,
+      maxAssets: 1,
+    });
+    expect(capped).toBe(true);
+    expect(rows.length).toBeLessThan(2);
   });
 });

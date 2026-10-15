@@ -496,6 +496,24 @@ describe("loadEquipmentDirectory", () => {
     expect(env.log).toEqual(["admin:equipment_asset_profiles"]);
   });
 
+  it("builds rows for exactly the requested assets, and leaves the default read unchanged", async () => {
+    const subset = await loadEquipmentDirectory({ ...setup(), shopId: SHOP, role: "owner", now: NOW, assetIds: [BUCKET] });
+    expect(subset.rows.map((row) => row.assetId)).toEqual([BUCKET]);
+    expect(subset.truncated).toBe(false);
+
+    const none = await loadEquipmentDirectory({ ...setup(), shopId: SHOP, role: "owner", now: NOW, assetIds: [] });
+    expect(none.rows).toEqual([]);
+
+    // An id the caller cannot see produces no row, and other shops' profiles are never read.
+    const hidden = await loadEquipmentDirectory({ ...setup(), shopId: SHOP, role: "owner", now: NOW, assetIds: [HIDDEN] });
+    expect(hidden.rows).toEqual([]);
+    const otherShop = await loadEquipmentDirectory({ ...setup(), shopId: "00000000-0000-4000-8000-0000000009ff", role: "owner", now: NOW, assetIds: [EX] });
+    expect(otherShop.rows).toEqual([]);
+
+    const first = await loadEquipmentDirectory({ ...setup(), shopId: SHOP, role: "owner", now: NOW });
+    expect(first.rows.map((row) => row.assetId)).toEqual(expect.arrayContaining([EX, BUCKET]));
+  });
+
   it("scopes profiles to the caller's shop", async () => {
     const env = setup({
       equipment_asset_profiles: [profile(EX, { shop_id: "other-shop" })],
