@@ -91,16 +91,20 @@ describe("marketing media library management", () => {
     expect(route).toContain("revalidatePath(MARKETING_PAGE_REGISTRY[usage.pageKey].href)");
   });
 
-  it("allows library ingestion before alt text is assigned but enforces it at attachment", () => {
+  it("keeps incomplete library media separate from the page-ready asset contract", () => {
     const types = read("features/marketing/media/types.ts");
+    const libraryServer = read("features/marketing/media/library-server.ts");
     const mediaRoute = read("app/api/ops/marketing/media/route.ts");
     const pageRoute = read("app/api/ops/marketing/pages/[pageKey]/route.ts");
 
+    expect(types).toContain("MarketingMediaLibraryAssetSchema");
     expect(types).toContain('alt: z.string().trim().max(240).default("")');
+    expect(types).toContain('alt: z.string().trim().min(1).max(240)');
+    expect(libraryServer).toContain("MarketingMediaAssetSchema.parse");
+    expect(mediaRoute).toContain("MarketingMediaLibraryAssetSchema.parse");
     expect(mediaRoute).toContain('if (!filename)');
-    expect(mediaRoute).toContain('{ error: "File name is required" }');
     expect(mediaRoute).not.toContain('if (!filename || !alt)');
-    expect(pageRoute).toContain('if (!asset.alt.trim())');
+    expect(pageRoute).toContain("MarketingMediaAssetSchema.safeParse(libraryAsset)");
     expect(pageRoute).toContain("Add alt text to this media before attaching it to a landing page");
   });
 
@@ -118,6 +122,21 @@ describe("marketing media library management", () => {
     expect(editor).toContain("selectedNeedsAlt");
     expect(editor).toContain('href="/ops/marketing/library"');
     expect(editor).toContain("optional on upload");
+  });
+
+  it("does not let a stale initial library load overwrite a completed upload", () => {
+    const library = read("features/ops/components/OpsMarketingMediaLibraryManager.tsx");
+
+    expect(library).toContain("if (!files.length || loading || bulkUploading) return");
+    expect(library).toContain("const uploadDisabled = loading || bulkUploading");
+    expect(library).toContain("disabled={uploadDisabled}");
+  });
+
+  it("keeps per-file upload errors visible on mobile", () => {
+    const library = read("features/ops/components/OpsMarketingMediaLibraryManager.tsx");
+
+    expect(library).toContain('break-words pl-6 text-red-300');
+    expect(library).not.toContain('hidden max-w-xs truncate text-red-300 sm:inline');
   });
 
   it("adds searchable, filterable usage-aware controls without double-loading the editor", () => {
