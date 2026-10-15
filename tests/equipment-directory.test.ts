@@ -170,7 +170,16 @@ function setup(extra: Partial<Tables> = {}) {
         last_service_date: "2026-01-05",
       },
     ],
-    customers: [{ id: "cust-1", shop_id: SHOP, business_name: "Granite Co" }],
+    customers: [
+      {
+        id: "cust-1",
+        shop_id: SHOP,
+        business_name: "Granite Co",
+        active: true,
+        archived_at: null,
+        merged_into_customer_id: null,
+      },
+    ],
     work_orders: [
       workOrder("wo-active", EX, "in_progress", "2026-10-11T00:00:00Z", { odometer_km: 812 }),
       workOrder("wo-done", EX, "completed", "2026-09-01T00:00:00Z", {
@@ -509,6 +518,29 @@ describe("loadEquipmentDirectory", () => {
     // The canonical create flow needs an account; no account, no shortcut.
     expect(bucket.actions.createWorkOrderHref).toBeNull();
   });
+
+  it.each([
+    ["an archived account", { customers: [{ id: "cust-1", shop_id: SHOP, business_name: "Granite Co", active: true, archived_at: "2026-01-01T00:00:00Z", merged_into_customer_id: null }] }],
+    ["an inactive account", { customers: [{ id: "cust-1", shop_id: SHOP, business_name: "Granite Co", active: false, archived_at: null, merged_into_customer_id: null }] }],
+    ["a merged account", { customers: [{ id: "cust-1", shop_id: SHOP, business_name: "Granite Co", active: true, archived_at: null, merged_into_customer_id: "cust-2" }] }],
+  ])("offers no work-order shortcut for %s", async (_name, extra) => {
+    const env = setup(extra as Partial<Tables>);
+    const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
+    expect(rows.find((row) => row.assetId === EX)!.actions.createWorkOrderHref).toBeNull();
+  });
+
+  it.each(["archived", "merged", "duplicate", "inactive"])(
+    "offers no work-order shortcut for a %s vehicle",
+    async (status) => {
+      const env = setup({
+        vehicles: [
+          { id: EX, shop_id: SHOP, customer_id: "cust-1", year: 2021, make: "Caterpillar", model: "336", unit_number: "EX-1", engine_hours: 4210, mileage: "500", odometer_unit: "mi", last_service_date: null, status },
+        ],
+      });
+      const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
+      expect(rows.find((row) => row.assetId === EX)!.actions.createWorkOrderHref).toBeNull();
+    },
+  );
 
   it("hides quick actions from roles that may not create work or record readings", async () => {
     const env = setup();

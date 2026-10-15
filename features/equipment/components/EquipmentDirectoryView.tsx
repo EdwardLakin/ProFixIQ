@@ -195,7 +195,7 @@ export default function EquipmentDirectoryView({
           </div>
         </div>
         {rows.length > 0 ? (
-          <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto_auto_auto_auto]">
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_repeat(5,auto)]">
             <input
               className={INPUT}
               value={query}
@@ -261,7 +261,7 @@ export default function EquipmentDirectoryView({
               aria-pressed={attentionOnly}
               onClick={() => setAttentionOnly((value) => !value)}
             >
-              Needs attention ({attentionCount})
+              Needs attention ({attentionCount}{truncated ? "+ in first " + rows.length : ""})
             </button>
           </div>
         ) : null}

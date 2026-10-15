@@ -43,9 +43,9 @@ const ID_CHUNK = 100;
 const PROFILE_COLUMNS =
   "vehicle_id,shop_id,equipment_class,equipment_family,serial_number,pin,engine_make,engine_model,engine_serial,primary_meter,current_cycles,meters_updated_at,site_name,operating_status,mounted_on_vehicle_id,attributes,created_at,created_by,updated_at,updated_by";
 const VEHICLE_COLUMNS =
-  "id,customer_id,year,make,model,unit_number,engine_hours,mileage,odometer_unit,last_service_date";
+  "id,customer_id,year,make,model,unit_number,engine_hours,mileage,odometer_unit,last_service_date,status";
 const CUSTOMER_SAFE_COLUMNS =
-  "id,account_type,business_name,name,first_name,last_name,identity_name";
+  "id,account_type,business_name,name,first_name,last_name,identity_name,active,archived_at,merged_into_customer_id";
 
 export class EquipmentDirectoryError extends Error {}
 
@@ -60,8 +60,27 @@ type VehicleRow = {
   mileage: string | null;
   odometer_unit: string | null;
   last_service_date: string | null;
+  status: string | null;
 };
-type CustomerRow = { id: string } & Parameters<typeof customerAccountDisplayName>[0];
+type CustomerRow = {
+  id: string;
+  active: boolean;
+  archived_at: string | null;
+  merged_into_customer_id: string | null;
+} & Parameters<typeof customerAccountDisplayName>[0];
+
+/**
+ * Same eligibility the vehicle workspace applies before offering new work
+ * (`archived_account` / `vehicle_status` conflicts): an inactive, archived or
+ * merged account, or an archived/merged/duplicate/inactive vehicle, blocks it.
+ */
+function canStartWorkFor(vehicle: VehicleRow, account: CustomerRow | undefined): boolean {
+  if (!account || !account.active || account.archived_at || account.merged_into_customer_id) {
+    return false;
+  }
+  const status = String(vehicle.status ?? "").trim().toLowerCase();
+  return !["archived", "merged", "duplicate", "inactive"].includes(status);
+}
 
 async function inChunks<T>(
   ids: string[],
@@ -147,6 +166,7 @@ export async function loadEquipmentDirectory(input: {
     }
     throw error;
   }
+  const customersById = new Map(customers.map((row) => [row.id, row]));
   const customerNames = new Map(customers.map((row) => [row.id, customerAccountDisplayName(row)]));
 
   // Equipment PM plans (no client grants) for the visible assets only, with
@@ -190,7 +210,12 @@ export async function loadEquipmentDirectory(input: {
       .find(workOrderIsActive);
     const findings = facts.latestInspection?.findings ?? [];
     const canCreateWorkOrder =
-      permissions.canCreateWorkOrder && profile.operatingStatus !== "retired";
+      permissions.canCreateWorkOrder &&
+      profile.operatingStatus !== "retired" &&
+      canStartWorkFor(
+        vehicle,
+        vehicle.customer_id ? customersById.get(vehicle.customer_id) : undefined,
+      );
 
     rows.push({
       assetId: profile.assetId,
