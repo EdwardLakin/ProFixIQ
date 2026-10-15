@@ -131,7 +131,6 @@ describe("marketing media library management", () => {
     const libraryServer = read("features/marketing/media/library-server.ts");
 
     expect(libraryServer).toContain("LIBRARY_LOCK_TTL_MS");
-    expect(libraryServer).toContain("lockId: crypto.randomUUID()").not;
     expect(libraryServer).toContain("const lockId = crypto.randomUUID()");
     expect(libraryServer).toContain("Date.now() - createdAt > LIBRARY_LOCK_TTL_MS");
     expect(libraryServer).toContain("current.lockId !== existing.lockId");
