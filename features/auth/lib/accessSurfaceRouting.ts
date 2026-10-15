@@ -11,6 +11,17 @@ export const PRODUCT_SIGN_IN: Record<ProductAccessSurface, string> = {
   customer: "/customer/sign-in",
 };
 
+/** Where the Equipment door lands once the Shop account is signed in. */
+export const EQUIPMENT_HOME = "/equipment/dashboard";
+
+/**
+ * Equipment is an add-on to the Shop account, so its door is the Shop sign-in
+ * with a continuation to the Equipment dashboard. It is not a separate
+ * authentication surface: the same account, the same Shop entitlement checks,
+ * and the Equipment add-on gate on the destination still apply.
+ */
+export const EQUIPMENT_SIGN_IN = `${PRODUCT_SIGN_IN.shop}?redirect=${encodeURIComponent(EQUIPMENT_HOME)}`;
+
 const CONTINUATION_KEYS = [
   "redirect",
   "session_id",

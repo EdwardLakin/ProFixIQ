@@ -4,6 +4,7 @@ import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { cn } from "@shared/lib/utils";
 import { ProFixIQMark, ProFixIQWordmark } from "@shared/components/brand/ProFixIQBrand";
+import { EQUIPMENT_SIGN_IN } from "@/features/auth/lib/accessSurfaceRouting";
 import HomeResourceHighlights from "@/features/marketing/blog/HomeResourceHighlights";
 
 const groups = [
@@ -30,6 +31,7 @@ const groups = [
     links: [
       { label: "Choose an app", href: "/sign-in" },
       { label: "Shop sign-in", href: "/shop/sign-in" },
+      { label: "Equipment sign-in", href: EQUIPMENT_SIGN_IN },
       { label: "Field sign-in", href: "/field/sign-in" },
       { label: "Fleet sign-in", href: "/fleet/sign-in" },
       { label: "Customer portal", href: "/customer/sign-in" },
