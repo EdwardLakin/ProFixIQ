@@ -81,6 +81,7 @@ describe("Ops marketing media CMS", () => {
     const pageRoute = read("app/api/ops/marketing/pages/[pageKey]/route.ts");
     expect(pageRoute).toContain("getMarketingMediaLibraryAsset(assetId)");
     expect(pageRoute).toContain("MarketingMediaAssetSchema.safeParse(libraryAsset)");
+    expect(pageRoute).toContain("getMarketingMediaAsset(assetId)");
     expect(pageRoute).not.toContain("parsed.data.media");
   });
 
