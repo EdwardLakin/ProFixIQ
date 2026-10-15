@@ -10,21 +10,8 @@ import {
 } from "./types";
 import { MARKETING_MEDIA_CONTENT_BUCKET } from "./server";
 
-const LIBRARY_LOCK_PREFIX = "library-locks";
-const LIBRARY_LOCK_TTL_MS = 5 * 60 * 1000;
 const LIBRARY_DELETING_PREFIX = "library-deleting";
 const LIBRARY_DELETED_PREFIX = "library-deleted";
-
-type LibraryLock = {
-  assetId: string;
-  lockId: string;
-  createdAt: string;
-};
-
-type LibraryLockHandle = {
-  path: string;
-  lockId: string;
-};
 
 type MarketingMediaDeletionActor = {
   operatorId: string;
@@ -46,20 +33,6 @@ function isStorageObjectMissing(error: unknown): boolean {
   const statusCode = String(candidate.statusCode ?? "");
   const message = String(candidate.message ?? "").toLowerCase();
   return statusCode === "404" || message.includes("object not found");
-}
-
-function isStorageObjectAlreadyExists(error: unknown): boolean {
-  if (!error || typeof error !== "object") return false;
-  const candidate = error as { statusCode?: string | number; code?: string; message?: string };
-  const statusCode = String(candidate.statusCode ?? "");
-  const code = String(candidate.code ?? "").toLowerCase();
-  const message = String(candidate.message ?? "").toLowerCase();
-  return (
-    statusCode === "409" ||
-    code === "resourcealreadyexists" ||
-    code === "already_exists" ||
-    message.includes("already exists")
-  );
 }
 
 async function readJson(path: string): Promise<unknown | null> {
@@ -104,86 +77,6 @@ async function readLibraryAsset(assetId: string): Promise<MarketingMediaLibraryA
   return parsed.data;
 }
 
-function parseLibraryLock(value: unknown): LibraryLock | null {
-  if (!value || typeof value !== "object") return null;
-  const candidate = value as Partial<LibraryLock>;
-  if (
-    typeof candidate.assetId !== "string" ||
-    typeof candidate.lockId !== "string" ||
-    typeof candidate.createdAt !== "string"
-  ) {
-    return null;
-  }
-  return {
-    assetId: candidate.assetId,
-    lockId: candidate.lockId,
-    createdAt: candidate.createdAt,
-  };
-}
-
-async function readLibraryLock(path: string): Promise<LibraryLock | null> {
-  return parseLibraryLock(await readJson(path));
-}
-
-async function tryCreateLibraryLock(
-  path: string,
-  lock: LibraryLock,
-): Promise<"created" | "exists"> {
-  const admin = createAdminSupabase();
-  const body = Buffer.from(`${JSON.stringify(lock, null, 2)}\n`, "utf8");
-  const { error } = await admin.storage
-    .from(MARKETING_MEDIA_CONTENT_BUCKET)
-    .upload(path, body, {
-      contentType: "application/json",
-      cacheControl: "0",
-      upsert: false,
-    });
-  if (!error) return "created";
-  if (isStorageObjectAlreadyExists(error)) return "exists";
-  throw new Error(`Marketing media library lock failed: ${error.message}`);
-}
-
-async function acquireLibraryLock(assetId: string): Promise<LibraryLockHandle> {
-  const path = `${LIBRARY_LOCK_PREFIX}/${assetId}.json`;
-  const lockId = crypto.randomUUID();
-  const lock: LibraryLock = { assetId, lockId, createdAt: new Date().toISOString() };
-
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    if ((await tryCreateLibraryLock(path, lock)) === "created") {
-      const owner = await readLibraryLock(path);
-      if (owner?.lockId !== lockId) {
-        throw new Error("Marketing media library lock ownership could not be verified");
-      }
-      return { path, lockId };
-    }
-
-    const existing = await readLibraryLock(path);
-    const createdAt = existing ? Date.parse(existing.createdAt) : Number.NaN;
-    const stale = !existing || !Number.isFinite(createdAt) || Date.now() - createdAt > LIBRARY_LOCK_TTL_MS;
-    if (!stale) {
-      throw new Error("Marketing media library asset is being changed by another request");
-    }
-
-    const current = await readLibraryLock(path);
-    if (current && existing && current.lockId !== existing.lockId) {
-      throw new Error("Marketing media library asset is being changed by another request");
-    }
-    await removeJson(path);
-  }
-
-  throw new Error("Marketing media library asset is being changed by another request");
-}
-
-async function releaseLibraryLock(handle: LibraryLockHandle): Promise<void> {
-  try {
-    const current = await readLibraryLock(handle.path);
-    if (!current || current.lockId !== handle.lockId) return;
-    await removeJson(handle.path);
-  } catch (error) {
-    console.warn("marketing media library lock cleanup failed", { path: handle.path, error });
-  }
-}
-
 function parseLibraryDeletionMarker(value: unknown): LibraryDeletionMarker | null {
   if (!value || typeof value !== "object") return null;
   const candidate = value as Partial<LibraryDeletionMarker>;
@@ -217,6 +110,20 @@ async function readLibraryDeletionMarker(assetId: string): Promise<LibraryDeleti
     await readJson(`${LIBRARY_DELETING_PREFIX}/${assetId}.json`),
   );
   return active?.assetId === assetId ? active : null;
+}
+
+async function readDeletionMarkerAsset(
+  path: string,
+  assetId: string,
+): Promise<MarketingMediaLibraryAsset | null> {
+  const value = await readJson(path);
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as { assetId?: unknown; asset?: unknown; state?: unknown };
+  if (candidate.assetId !== assetId || !["deleting", "deleted", "failed"].includes(String(candidate.state))) {
+    return null;
+  }
+  const asset = MarketingMediaLibraryAssetSchema.safeParse(candidate.asset);
+  return asset.success ? asset.data : null;
 }
 
 async function writeDeletionMarker(
@@ -257,36 +164,49 @@ async function writeDeletionAudit(
 export async function getMarketingMediaLibraryAsset(
   assetId: string,
 ): Promise<MarketingMediaLibraryAsset | null> {
-  return readLibraryAsset(assetId);
+  const asset = await readLibraryAsset(assetId);
+  if (asset) return asset;
+
+  const libraryMarker = await readLibraryDeletionMarker(assetId);
+  if (libraryMarker) return libraryMarker.asset;
+
+  return (
+    (await readDeletionMarkerAsset(`deleted/${assetId}.json`, assetId)) ??
+    (await readDeletionMarkerAsset(`deleting/${assetId}.json`, assetId))
+  );
 }
 
 export async function updateIncompleteMarketingMediaMetadata(
   assetId: string,
   input: { alt: string; caption: string | null },
 ): Promise<MarketingMediaAsset | null> {
-  const lock = await acquireLibraryLock(assetId);
-  try {
-    const current = await readLibraryAsset(assetId);
-    if (!current) return null;
-    if (MarketingMediaAssetSchema.safeParse(current).success) return null;
+  const markerBefore = await readLibraryDeletionMarker(assetId);
+  if (markerBefore?.state === "deleting" || markerBefore?.state === "deleted") return null;
 
-    const updated = MarketingMediaAssetSchema.parse({
-      ...current,
-      alt: input.alt,
-      caption: input.caption,
-    });
-    await writeJson(`assets/${assetId}.json`, updated, true);
-    return updated;
-  } finally {
-    await releaseLibraryLock(lock);
+  const current = await readLibraryAsset(assetId);
+  if (!current) return null;
+  if (MarketingMediaAssetSchema.safeParse(current).success) return null;
+
+  const updated = MarketingMediaAssetSchema.parse({
+    ...current,
+    alt: input.alt,
+    caption: input.caption,
+  });
+  await writeJson(`assets/${assetId}.json`, updated, true);
+
+  const markerAfter = await readLibraryDeletionMarker(assetId);
+  if (markerAfter?.state === "deleting" || markerAfter?.state === "deleted") {
+    await removeJson(`assets/${assetId}.json`);
+    return null;
   }
+
+  return updated;
 }
 
 export async function deleteIncompleteMarketingMediaAsset(
   assetId: string,
   requestedBy: MarketingMediaDeletionActor,
 ): Promise<MarketingMediaLibraryAsset | null> {
-  const lock = await acquireLibraryLock(assetId);
   let mediaRemoved = false;
   let current: MarketingMediaLibraryAsset | null = null;
   let actor = requestedBy;
@@ -338,7 +258,5 @@ export async function deleteIncompleteMarketingMediaAsset(
       }
     }
     throw error;
-  } finally {
-    await releaseLibraryLock(lock);
   }
 }
