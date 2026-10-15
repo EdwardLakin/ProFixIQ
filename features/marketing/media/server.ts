@@ -25,11 +25,18 @@ export type MarketingMediaUsage = {
   state: "draft" | "published";
 };
 
+type MarketingMediaDeletionActor = {
+  operatorId: string;
+  operatorEmail: string;
+};
+
 type MarketingMediaDeletionMarker = {
   assetId: string;
   asset: MarketingMediaAsset;
   state: "deleting" | "deleted" | "failed";
   updatedAt: string;
+  operatorId?: string;
+  operatorEmail?: string;
 };
 
 export function isMarketingPageKey(value: string): value is MarketingPageKey {
@@ -110,6 +117,10 @@ function deletionMarkerPath(assetId: string): string {
   return `deleting/${assetId}.json`;
 }
 
+function deletionAuditPath(assetId: string): string {
+  return `audit/media-deletions/${assetId}.json`;
+}
+
 function parseDeletionMarker(
   value: unknown,
 ): { success: true; data: MarketingMediaDeletionMarker } | { success: false } {
@@ -131,6 +142,8 @@ function parseDeletionMarker(
       asset: parsedAsset.data,
       state: candidate.state as MarketingMediaDeletionMarker["state"],
       updatedAt: candidate.updatedAt,
+      operatorId: typeof candidate.operatorId === "string" ? candidate.operatorId : undefined,
+      operatorEmail: typeof candidate.operatorEmail === "string" ? candidate.operatorEmail : undefined,
     },
   };
 }
@@ -143,13 +156,35 @@ async function getDeletionMarker(assetId: string): Promise<MarketingMediaDeletio
 async function writeDeletionMarker(
   asset: MarketingMediaAsset,
   state: MarketingMediaDeletionMarker["state"],
+  actor?: MarketingMediaDeletionActor,
 ): Promise<void> {
   await writeStoredJson(deletionMarkerPath(asset.id), {
     assetId: asset.id,
     asset,
     state,
     updatedAt: new Date().toISOString(),
+    operatorId: actor?.operatorId,
+    operatorEmail: actor?.operatorEmail,
   } satisfies MarketingMediaDeletionMarker);
+}
+
+async function writeDeletionAudit(
+  asset: MarketingMediaAsset,
+  actor: MarketingMediaDeletionActor,
+  state: "intent" | "blocked" | "completed",
+): Promise<void> {
+  const now = new Date().toISOString();
+  await writeStoredJson(deletionAuditPath(asset.id), {
+    action: "marketing_media_delete",
+    state,
+    assetId: asset.id,
+    filename: asset.filename,
+    storagePath: asset.storagePath,
+    contentType: asset.contentType,
+    operatorId: actor.operatorId,
+    operatorEmail: actor.operatorEmail,
+    updatedAt: now,
+  });
 }
 
 async function isMarketingMediaAssetUnavailable(assetId: string): Promise<boolean> {
@@ -181,14 +216,17 @@ async function hydrateCanonicalAsset(
   asset: MarketingMediaAsset | null,
 ): Promise<MarketingMediaAsset | null> {
   if (!asset) return null;
+  if (await isMarketingMediaAssetUnavailable(asset.id)) return null;
   try {
-    return (await getMarketingMediaAsset(asset.id)) ?? asset;
+    const canonical = await getMarketingMediaAsset(asset.id);
+    if (await isMarketingMediaAssetUnavailable(asset.id)) return null;
+    return canonical ?? asset;
   } catch (error) {
     console.warn("marketing media canonical hydration failed; using embedded slot asset", {
       assetId: asset.id,
       error,
     });
-    return asset;
+    return (await isMarketingMediaAssetUnavailable(asset.id)) ? null : asset;
   }
 }
 
@@ -255,6 +293,23 @@ async function getAssignableMarketingMediaAsset(assetId: string): Promise<Market
   return asset;
 }
 
+async function getPublishableMarketingMediaAsset(
+  embedded: MarketingMediaAsset,
+): Promise<MarketingMediaAsset | null> {
+  if (await isMarketingMediaAssetUnavailable(embedded.id)) return null;
+  let canonical: MarketingMediaAsset | null = null;
+  try {
+    canonical = await getMarketingMediaAsset(embedded.id);
+  } catch (error) {
+    console.warn("marketing media canonical publish hydration failed; using embedded draft", {
+      assetId: embedded.id,
+      error,
+    });
+  }
+  if (await isMarketingMediaAssetUnavailable(embedded.id)) return null;
+  return canonical ?? embedded;
+}
+
 export async function getMarketingMediaUsageMap(): Promise<Record<string, MarketingMediaUsage[]>> {
   const usageMap: Record<string, MarketingMediaUsage[]> = {};
 
@@ -302,16 +357,18 @@ export async function updateMarketingMediaAssetMetadata(
 
   await writeStoredJson(`assets/${assetId}.json`, updated);
 
-  // A successful deletion leaves a permanent tombstone. If deletion raced this
-  // write, compensate by removing any canonical metadata recreated by the edit.
-  if (await isMarketingMediaAssetUnavailable(assetId)) {
+  const marker = await getDeletionMarker(assetId);
+  if (marker?.state === "deleted") {
     await removeStoredJson(`assets/${assetId}.json`);
     return null;
   }
   return updated;
 }
 
-export async function deleteMarketingMediaAsset(assetId: string): Promise<{
+export async function deleteMarketingMediaAsset(
+  assetId: string,
+  requestedBy: MarketingMediaDeletionActor,
+): Promise<{
   deleted: boolean;
   usages: MarketingMediaUsage[];
   asset: MarketingMediaAsset | null;
@@ -320,18 +377,25 @@ export async function deleteMarketingMediaAsset(assetId: string): Promise<{
   const canonical = await getMarketingMediaAsset(assetId);
   const asset = canonical ?? existingMarker?.asset ?? null;
   if (!asset) return { deleted: false, usages: [], asset: null };
+  const actor: MarketingMediaDeletionActor = {
+    operatorId: existingMarker?.operatorId ?? requestedBy.operatorId,
+    operatorEmail: existingMarker?.operatorEmail ?? requestedBy.operatorEmail,
+  };
   if (existingMarker?.state === "deleted") {
+    await writeDeletionAudit(asset, actor, "completed");
     return { deleted: true, usages: [], asset };
   }
 
-  await writeDeletionMarker(asset, "deleting");
+  await writeDeletionAudit(asset, actor, "intent");
+  await writeDeletionMarker(asset, "deleting", actor);
   let mediaRemoved = false;
 
   try {
     const usageMap = await getMarketingMediaUsageMap();
     const usages = usageMap[assetId] ?? [];
     if (usages.length > 0) {
-      await writeDeletionMarker(asset, "failed");
+      await writeDeletionMarker(asset, "failed", actor);
+      await writeDeletionAudit(asset, actor, "blocked");
       return { deleted: false, usages, asset };
     }
 
@@ -343,12 +407,13 @@ export async function deleteMarketingMediaAsset(assetId: string): Promise<{
     mediaRemoved = true;
 
     await removeStoredJson(`assets/${assetId}.json`);
-    await writeDeletionMarker(asset, "deleted");
+    await writeDeletionMarker(asset, "deleted", actor);
+    await writeDeletionAudit(asset, actor, "completed");
     return { deleted: true, usages: [], asset };
   } catch (error) {
     if (!mediaRemoved) {
       try {
-        await writeDeletionMarker(asset, "failed");
+        await writeDeletionMarker(asset, "failed", actor);
       } catch (markerError) {
         console.error("marketing media deletion recovery marker write failed", {
           assetId,
@@ -378,7 +443,10 @@ export async function saveMarketingPageMediaDraft(
 
   const stillAvailable = await getAssignableMarketingMediaAsset(asset.id);
   if (!stillAvailable) {
-    await removeStoredJson(path);
+    const current = await readStoredJson(path, (value) => MarketingMediaSlotSchema.safeParse(value));
+    if (current?.draft?.id === asset.id) {
+      await removeStoredJson(path);
+    }
     throw new Error("Marketing media asset became unavailable while saving the draft");
   }
 }
@@ -394,21 +462,32 @@ export async function publishMarketingPageMediaDraft(
   pageKey: MarketingPageKey,
   slotKey: string,
 ): Promise<MarketingMediaAsset | null> {
-  const draftRecord = await readStoredJson(draftSlotPath(pageKey, slotKey), (value) =>
+  const draftPath = draftSlotPath(pageKey, slotKey);
+  const draftRecord = await readStoredJson(draftPath, (value) =>
     MarketingMediaSlotSchema.safeParse(value),
   );
   const draftAsset = draftRecord?.draft ?? null;
   if (!draftAsset) return null;
 
-  const asset = await getAssignableMarketingMediaAsset(draftAsset.id);
+  const asset = await getPublishableMarketingMediaAsset(draftAsset);
   if (!asset) return null;
 
+  const publishedAt = new Date().toISOString();
   const record = MarketingMediaSlotSchema.parse({
     draft: null,
     published: asset,
-    publishedAt: new Date().toISOString(),
+    publishedAt,
   });
-  await writeStoredJson(publishedSlotPath(pageKey, slotKey), record);
+  const path = publishedSlotPath(pageKey, slotKey);
+  await writeStoredJson(path, record);
+
+  if (await isMarketingMediaAssetUnavailable(asset.id)) {
+    const current = await readStoredJson(path, (value) => MarketingMediaSlotSchema.safeParse(value));
+    if (current?.published?.id === asset.id && current.publishedAt === publishedAt) {
+      await removeStoredJson(path);
+    }
+    return null;
+  }
   return asset;
 }
 
