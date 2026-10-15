@@ -140,10 +140,10 @@ describe("marketing media library management", () => {
   it("audits incomplete asset deletion before destructive storage removal", () => {
     const libraryServer = read("features/marketing/media/library-server.ts");
 
-    expect(libraryServer).toContain('await writeDeletionAudit(current, requestedBy, "intent")');
-    expect(libraryServer).toContain('await writeDeletionMarker(current, requestedBy, "deleting")');
-    expect(libraryServer).toContain('await writeDeletionMarker(current, requestedBy, "deleted")');
-    expect(libraryServer).toContain('await writeDeletionAudit(current, requestedBy, "completed")');
+    expect(libraryServer).toContain('await writeDeletionAudit(current, actor, "intent")');
+    expect(libraryServer).toContain('await writeDeletionMarker(current, actor, "deleting")');
+    expect(libraryServer).toContain('await writeDeletionMarker(current, actor, "deleted")');
+    expect(libraryServer).toContain('await writeDeletionAudit(current, actor, "completed")');
     expect(libraryServer).toContain("operatorId: actor.operatorId");
     expect(libraryServer).toContain("operatorEmail: actor.operatorEmail");
   });
