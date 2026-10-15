@@ -9,7 +9,6 @@ import {
 } from "@/features/marketing/media/library-server";
 import {
   deleteMarketingMediaAsset,
-  getMarketingMediaAsset,
   getMarketingMediaUsageMap,
   MARKETING_MEDIA_BUCKET,
   MARKETING_MEDIA_CONTENT_BUCKET,
@@ -17,6 +16,7 @@ import {
 } from "@/features/marketing/media/server";
 import {
   MARKETING_PAGE_REGISTRY,
+  MarketingMediaAssetSchema,
   MarketingMediaLibraryAssetSchema,
   type MarketingMediaLibraryAsset,
 } from "@/features/marketing/media/types";
@@ -279,8 +279,11 @@ export async function POST(request: Request) {
     }
 
     try {
-      const strictAsset = await getMarketingMediaAsset(payload.id);
-      const asset = strictAsset
+      const libraryAsset = await getMarketingMediaLibraryAsset(payload.id);
+      if (!libraryAsset) {
+        return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
+      }
+      const asset = MarketingMediaAssetSchema.safeParse(libraryAsset).success
         ? await updateMarketingMediaAssetMetadata(payload.id, {
             alt,
             caption: caption || null,
@@ -310,9 +313,16 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Invalid marketing media asset" }, { status: 400 });
     }
     try {
-      const strictAsset = await getMarketingMediaAsset(payload.id);
-      if (!strictAsset) {
-        const deletedAsset = await deleteIncompleteMarketingMediaAsset(payload.id);
+      const libraryAsset = await getMarketingMediaLibraryAsset(payload.id);
+      if (!libraryAsset) {
+        return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
+      }
+
+      if (!MarketingMediaAssetSchema.safeParse(libraryAsset).success) {
+        const deletedAsset = await deleteIncompleteMarketingMediaAsset(payload.id, {
+          operatorId: access.user.id,
+          operatorEmail: access.operatorEmail,
+        });
         if (!deletedAsset) {
           return NextResponse.json({ error: "That media asset is no longer available" }, { status: 404 });
         }
@@ -339,7 +349,8 @@ export async function POST(request: Request) {
     }
   }
 
-  if (payload.action === "prepare-upload") {
+  if (payload.action === "prepare-upload" || payload.action === "prepare-library-upload") {
+    const isLibraryUpload = payload.action === "prepare-library-upload";
     const filename = typeof payload.filename === "string" ? payload.filename.trim() : "";
     const contentType = typeof payload.contentType === "string" ? payload.contentType : "";
     const size = typeof payload.size === "number" ? payload.size : Number.NaN;
@@ -347,8 +358,11 @@ export async function POST(request: Request) {
     const caption = typeof payload.caption === "string" ? payload.caption.trim() : "";
     const mediaType = MEDIA_TYPES[contentType];
 
-    if (!filename) {
-      return NextResponse.json({ error: "File name is required" }, { status: 400 });
+    if (!filename || (!isLibraryUpload && !alt)) {
+      return NextResponse.json(
+        { error: isLibraryUpload ? "File name is required" : "File name and alt text are required" },
+        { status: 400 },
+      );
     }
     if (!mediaType) {
       return NextResponse.json(
@@ -371,7 +385,7 @@ export async function POST(request: Request) {
     const storagePath = `uploads/${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}/${id}.${mediaType.extension}`;
     const admin = createAdminSupabase();
     const { data: publicData } = admin.storage.from(MARKETING_MEDIA_BUCKET).getPublicUrl(storagePath);
-    const asset = MarketingMediaLibraryAssetSchema.parse({
+    const asset = (isLibraryUpload ? MarketingMediaLibraryAssetSchema : MarketingMediaAssetSchema).parse({
       id,
       kind: mediaType.kind,
       url: publicData.publicUrl,
