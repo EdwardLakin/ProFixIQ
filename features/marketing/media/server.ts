@@ -192,6 +192,11 @@ async function isMarketingMediaAssetUnavailable(assetId: string): Promise<boolea
   return marker?.state === "deleting" || marker?.state === "deleted";
 }
 
+async function isMarketingMediaAssetDeleted(assetId: string): Promise<boolean> {
+  const marker = await getDeletionMarker(assetId);
+  return marker?.state === "deleted";
+}
+
 async function readMarketingMediaSlotRaw(
   pageKey: MarketingPageKey,
   slotKey: string,
@@ -216,17 +221,17 @@ async function hydrateCanonicalAsset(
   asset: MarketingMediaAsset | null,
 ): Promise<MarketingMediaAsset | null> {
   if (!asset) return null;
-  if (await isMarketingMediaAssetUnavailable(asset.id)) return null;
+  if (await isMarketingMediaAssetDeleted(asset.id)) return null;
   try {
     const canonical = await getMarketingMediaAsset(asset.id);
-    if (await isMarketingMediaAssetUnavailable(asset.id)) return null;
+    if (await isMarketingMediaAssetDeleted(asset.id)) return null;
     return canonical ?? asset;
   } catch (error) {
     console.warn("marketing media canonical hydration failed; using embedded slot asset", {
       assetId: asset.id,
       error,
     });
-    return (await isMarketingMediaAssetUnavailable(asset.id)) ? null : asset;
+    return (await isMarketingMediaAssetDeleted(asset.id)) ? null : asset;
   }
 }
 
@@ -377,10 +382,16 @@ export async function deleteMarketingMediaAsset(
   const canonical = await getMarketingMediaAsset(assetId);
   const asset = canonical ?? existingMarker?.asset ?? null;
   if (!asset) return { deleted: false, usages: [], asset: null };
-  const actor: MarketingMediaDeletionActor = {
-    operatorId: existingMarker?.operatorId ?? requestedBy.operatorId,
-    operatorEmail: existingMarker?.operatorEmail ?? requestedBy.operatorEmail,
-  };
+
+  const recoveryActor =
+    existingMarker?.state === "deleting" && existingMarker.operatorId && existingMarker.operatorEmail
+      ? { operatorId: existingMarker.operatorId, operatorEmail: existingMarker.operatorEmail }
+      : requestedBy;
+  const actor: MarketingMediaDeletionActor =
+    existingMarker?.state === "deleted" && existingMarker.operatorId && existingMarker.operatorEmail
+      ? { operatorId: existingMarker.operatorId, operatorEmail: existingMarker.operatorEmail }
+      : recoveryActor;
+
   if (existingMarker?.state === "deleted") {
     await writeDeletionAudit(asset, actor, "completed");
     return { deleted: true, usages: [], asset };
@@ -472,19 +483,26 @@ export async function publishMarketingPageMediaDraft(
   const asset = await getPublishableMarketingMediaAsset(draftAsset);
   if (!asset) return null;
 
+  const path = publishedSlotPath(pageKey, slotKey);
+  const previousRecord = await readStoredJson(path, (value) =>
+    MarketingMediaSlotSchema.safeParse(value),
+  );
   const publishedAt = new Date().toISOString();
   const record = MarketingMediaSlotSchema.parse({
     draft: null,
     published: asset,
     publishedAt,
   });
-  const path = publishedSlotPath(pageKey, slotKey);
   await writeStoredJson(path, record);
 
   if (await isMarketingMediaAssetUnavailable(asset.id)) {
     const current = await readStoredJson(path, (value) => MarketingMediaSlotSchema.safeParse(value));
     if (current?.published?.id === asset.id && current.publishedAt === publishedAt) {
-      await removeStoredJson(path);
+      if (previousRecord) {
+        await writeStoredJson(path, previousRecord);
+      } else {
+        await removeStoredJson(path);
+      }
     }
     return null;
   }
