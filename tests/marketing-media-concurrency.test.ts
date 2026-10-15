@@ -13,6 +13,7 @@ vi.mock("@/features/shared/lib/supabase/server", () => ({
 
 import {
   deleteMarketingMediaAsset,
+  getMarketingPageMediaDocument,
   MARKETING_MEDIA_BUCKET,
   MARKETING_MEDIA_CONTENT_BUCKET,
   publishMarketingPageMediaDraft,
@@ -22,6 +23,7 @@ import {
 
 class FakeStorage {
   private readonly buckets = new Map<string, Map<string, Uint8Array>>();
+  private readonly downloadFailures = new Map<string, { statusCode: number; message: string }>();
   private gate:
     | {
         predicate: (bucket: string, path: string, text: string) => boolean;
@@ -34,6 +36,13 @@ class FakeStorage {
 
   from = (bucket: string) => ({
     download: async (path: string) => {
+      const failureKey = `${bucket}:${path}`;
+      const failure = this.downloadFailures.get(failureKey);
+      if (failure) {
+        this.downloadFailures.delete(failureKey);
+        return { data: null, error: failure };
+      }
+
       const value = this.bucket(bucket).get(path);
       if (!value) {
         return {
@@ -41,7 +50,12 @@ class FakeStorage {
           error: { statusCode: 404, message: "Object not found" },
         };
       }
-      return { data: new Blob([value]), error: null };
+      return {
+        data: {
+          text: async () => Buffer.from(value).toString("utf8"),
+        },
+        error: null,
+      };
     },
     upload: async (
       path: string,
@@ -96,6 +110,13 @@ class FakeStorage {
 
   seedObject(bucket: string, path: string) {
     this.bucket(bucket).set(path, Buffer.from("media", "utf8"));
+  }
+
+  failNextDownload(bucket: string, path: string) {
+    this.downloadFailures.set(`${bucket}:${path}`, {
+      statusCode: 500,
+      message: "Temporary storage failure",
+    });
   }
 
   remove(bucket: string, path: string) {
@@ -280,5 +301,36 @@ describe("marketing media concurrency", () => {
     expect(storage.has(MARKETING_MEDIA_BUCKET, A.storagePath)).toBe(false);
     expect(await updateMarketingMediaAssetMetadata(A.id, { alt: "changed", caption: null })).toBeNull();
     expect(storage.has(MARKETING_MEDIA_CONTENT_BUCKET, `assets/${A.id}.json`)).toBe(false);
+  });
+
+  it("expires abandoned assignment reservations so deletion can recover", async () => {
+    storage.seedJson(
+      MARKETING_MEDIA_CONTENT_BUCKET,
+      `assigning/${A.id}/abandoned.json`,
+      {
+        assetId: A.id,
+        reservationId: "abandoned",
+        createdAt: "2020-01-01T00:00:00.000Z",
+      },
+    );
+
+    const result = await deleteMarketingMediaAsset(A.id, actor);
+
+    expect(result.deleted).toBe(true);
+    expect(storage.has(MARKETING_MEDIA_CONTENT_BUCKET, `assigning/${A.id}/abandoned.json`)).toBe(false);
+    expect(storage.has(MARKETING_MEDIA_BUCKET, A.storagePath)).toBe(false);
+  });
+
+  it("preserves embedded published media when a terminal tombstone read fails transiently", async () => {
+    storage.seedJson(MARKETING_MEDIA_CONTENT_BUCKET, "pages/home/hero/published.json", {
+      draft: null,
+      published: A,
+      publishedAt: "2026-10-14T00:00:00.000Z",
+    });
+    storage.failNextDownload(MARKETING_MEDIA_CONTENT_BUCKET, `deleted/${A.id}.json`);
+
+    const document = await getMarketingPageMediaDocument("home");
+
+    expect(document.slots.hero?.published?.id).toBe(A.id);
   });
 });
