@@ -18,7 +18,7 @@ export const MARKETING_MEDIA_BUCKET = MARKETING_MEDIA_PUBLIC_BUCKET;
 
 const ASSIGNMENT_RESERVATION_TTL_MS = 5 * 60 * 1000;
 
-export type MarketingMediaUsage = {
+type MarketingMediaUsage = {
   pageKey: MarketingPageKey;
   pageLabel: string;
   href: string;
@@ -26,6 +26,8 @@ export type MarketingMediaUsage = {
   slotLabel: string;
   state: "draft" | "published";
 };
+
+export type { MarketingMediaUsage };
 
 type MarketingMediaDeletionActor = {
   operatorId: string;
@@ -45,6 +47,11 @@ type MarketingMediaAssignmentReservation = {
   assetId: string;
   reservationId: string;
   createdAt: string;
+};
+
+type MarketingMediaLibraryDeletionFence = {
+  assetId: string;
+  state: "deleting" | "deleted" | "failed";
 };
 
 export function isMarketingPageKey(value: string): value is MarketingPageKey {
@@ -158,6 +165,14 @@ function terminalDeletionMarkerPath(assetId: string): string {
   return `deleted/${assetId}.json`;
 }
 
+function libraryDeletionMarkerPath(assetId: string): string {
+  return `library-deleting/${assetId}.json`;
+}
+
+function terminalLibraryDeletionMarkerPath(assetId: string): string {
+  return `library-deleted/${assetId}.json`;
+}
+
 function deletionAuditPath(assetId: string): string {
   return `audit/media-deletions/${assetId}.json`;
 }
@@ -189,6 +204,27 @@ function parseDeletionMarker(
       updatedAt: candidate.updatedAt,
       operatorId: typeof candidate.operatorId === "string" ? candidate.operatorId : undefined,
       operatorEmail: typeof candidate.operatorEmail === "string" ? candidate.operatorEmail : undefined,
+    },
+  };
+}
+
+function parseLibraryDeletionFence(
+  value: unknown,
+): { success: true; data: MarketingMediaLibraryDeletionFence } | { success: false } {
+  if (!value || typeof value !== "object") return { success: false };
+  const candidate = value as Partial<MarketingMediaLibraryDeletionFence>;
+  const state = String(candidate.state);
+  if (
+    typeof candidate.assetId !== "string" ||
+    !["deleting", "deleted", "failed"].includes(state)
+  ) {
+    return { success: false };
+  }
+  return {
+    success: true,
+    data: {
+      assetId: candidate.assetId,
+      state: state as MarketingMediaLibraryDeletionFence["state"],
     },
   };
 }
@@ -227,6 +263,18 @@ async function getDeletionMarker(assetId: string): Promise<MarketingMediaDeletio
   if (terminal) return terminal;
   const marker = await readStoredJson(deletionMarkerPath(assetId), parseDeletionMarker);
   return marker?.assetId === assetId ? marker : null;
+}
+
+async function getLibraryDeletionFence(
+  assetId: string,
+): Promise<MarketingMediaLibraryDeletionFence | null> {
+  const terminal = await readStoredJson(
+    terminalLibraryDeletionMarkerPath(assetId),
+    parseLibraryDeletionFence,
+  );
+  if (terminal?.assetId === assetId && terminal.state === "deleted") return terminal;
+  const active = await readStoredJson(libraryDeletionMarkerPath(assetId), parseLibraryDeletionFence);
+  return active?.assetId === assetId ? active : null;
 }
 
 async function writeDeletionMarker(
@@ -281,8 +329,16 @@ async function writeDeletionAudit(
 }
 
 async function isMarketingMediaAssetUnavailable(assetId: string): Promise<boolean> {
-  const marker = await getDeletionMarker(assetId);
-  return marker?.state === "deleting" || marker?.state === "deleted";
+  const [marker, libraryFence] = await Promise.all([
+    getDeletionMarker(assetId),
+    getLibraryDeletionFence(assetId),
+  ]);
+  return (
+    marker?.state === "deleting" ||
+    marker?.state === "deleted" ||
+    libraryFence?.state === "deleting" ||
+    libraryFence?.state === "deleted"
+  );
 }
 
 async function isMarketingMediaAssetDeleted(assetId: string): Promise<boolean> {
