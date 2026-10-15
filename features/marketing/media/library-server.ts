@@ -8,10 +8,16 @@ import {
   type MarketingMediaAsset,
   type MarketingMediaLibraryAsset,
 } from "./types";
-import { MARKETING_MEDIA_CONTENT_BUCKET } from "./server";
+import {
+  deleteMarketingMediaAsset,
+  getMarketingMediaUsageMap,
+  MARKETING_MEDIA_CONTENT_BUCKET,
+  type MarketingMediaUsage,
+} from "./server";
 
 const LIBRARY_DELETING_PREFIX = "library-deleting";
 const LIBRARY_DELETED_PREFIX = "library-deleted";
+const ASSIGNMENT_RESERVATION_TTL_MS = 5 * 60 * 1000;
 
 type MarketingMediaDeletionActor = {
   operatorId: string;
@@ -25,6 +31,12 @@ type LibraryDeletionMarker = {
   updatedAt: string;
   operatorId: string;
   operatorEmail: string;
+};
+
+type MarketingMediaAssignmentReservation = {
+  assetId: string;
+  reservationId: string;
+  createdAt: string;
 };
 
 type DeletionMarkerState = LibraryDeletionMarker["state"];
@@ -132,6 +144,23 @@ function parseLibraryDeletionMarker(value: unknown): LibraryDeletionMarker | nul
   };
 }
 
+function parseAssignmentReservation(value: unknown): MarketingMediaAssignmentReservation | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<MarketingMediaAssignmentReservation>;
+  if (
+    typeof candidate.assetId !== "string" ||
+    typeof candidate.reservationId !== "string" ||
+    typeof candidate.createdAt !== "string"
+  ) {
+    return null;
+  }
+  return {
+    assetId: candidate.assetId,
+    reservationId: candidate.reservationId,
+    createdAt: candidate.createdAt,
+  };
+}
+
 async function readLibraryDeletionMarker(assetId: string): Promise<LibraryDeletionMarker | null> {
   const terminal = parseLibraryDeletionMarker(
     await readJson(`${LIBRARY_DELETED_PREFIX}/${assetId}.json`),
@@ -226,7 +255,7 @@ async function writeTerminalDeletionMarker(
 async function writeDeletionAudit(
   asset: MarketingMediaLibraryAsset,
   actor: MarketingMediaDeletionActor,
-  state: "intent" | "completed",
+  state: "intent" | "blocked" | "completed",
 ): Promise<void> {
   await writeJson(`audit/media-deletions/${asset.id}.json`, {
     action: "marketing_media_delete",
@@ -239,6 +268,48 @@ async function writeDeletionAudit(
     operatorEmail: actor.operatorEmail,
     updatedAt: new Date().toISOString(),
   }, true);
+}
+
+async function hasAssignmentReservations(assetId: string): Promise<boolean> {
+  const admin = createAdminSupabase();
+  const { data, error } = await admin.storage
+    .from(MARKETING_MEDIA_CONTENT_BUCKET)
+    .list(`assigning/${assetId}`, { limit: 1000 });
+  if (error) throw new Error(`Marketing media library reservation list failed: ${error.message}`);
+
+  const now = Date.now();
+  let hasActiveReservation = false;
+  for (const item of data ?? []) {
+    if (!item.name.endsWith(".json")) continue;
+    const path = `assigning/${assetId}/${item.name}`;
+    try {
+      const reservation = parseAssignmentReservation(await readJson(path));
+      if (!reservation) continue;
+      const createdAt = Date.parse(reservation.createdAt);
+      const expired = !Number.isFinite(createdAt) || now - createdAt > ASSIGNMENT_RESERVATION_TTL_MS;
+      if (expired) {
+        await removeJson(path);
+        continue;
+      }
+      hasActiveReservation = true;
+    } catch (reservationError) {
+      console.warn("marketing media library reservation recovery read failed; treating reservation as active", {
+        assetId,
+        path,
+        reservationError,
+      });
+      hasActiveReservation = true;
+    }
+  }
+  return hasActiveReservation;
+}
+
+async function waitForAssignmentReservations(assetId: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 80; attempt += 1) {
+    if (!(await hasAssignmentReservations(assetId))) return true;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  return !(await hasAssignmentReservations(assetId));
 }
 
 export async function getMarketingMediaLibraryAsset(
@@ -284,15 +355,18 @@ export async function updateIncompleteMarketingMediaMetadata(
 export async function deleteIncompleteMarketingMediaAsset(
   assetId: string,
   requestedBy: MarketingMediaDeletionActor,
-): Promise<MarketingMediaLibraryAsset | null> {
+): Promise<{
+  deleted: boolean;
+  usages: MarketingMediaUsage[];
+  asset: MarketingMediaLibraryAsset | null;
+}> {
   let mediaRemoved = false;
   let current: MarketingMediaLibraryAsset | null = null;
   let actor = requestedBy;
   try {
     const existingMarker = await readLibraryDeletionMarker(assetId);
     current = (await readLibraryAsset(assetId)) ?? existingMarker?.asset ?? null;
-    if (!current) return null;
-    if (MarketingMediaAssetSchema.safeParse(current).success && !existingMarker) return null;
+    if (!current) return { deleted: false, usages: [], asset: null };
 
     actor =
       (existingMarker?.state === "deleting" || existingMarker?.state === "deleted") &&
@@ -302,12 +376,37 @@ export async function deleteIncompleteMarketingMediaAsset(
 
     if (existingMarker?.state === "deleted") {
       await writeDeletionAudit(current, actor, "completed");
-      return current;
+      return { deleted: true, usages: [], asset: current };
     }
 
     if (existingMarker?.state !== "deleting") {
       await writeDeletionAudit(current, actor, "intent");
       await writeDeletionMarker(current, actor, "deleting");
+    }
+
+    // The library deletion marker is the promotion fence. Classify only after it exists.
+    // A promotion that won immediately before the fence is delegated to the canonical
+    // deletion protocol, which establishes its own assignment fence and usage guard.
+    const fencedAsset = await readLibraryAsset(assetId);
+    if (fencedAsset && MarketingMediaAssetSchema.safeParse(fencedAsset).success) {
+      const canonicalResult = await deleteMarketingMediaAsset(assetId, actor);
+      await removeJson(`${LIBRARY_DELETING_PREFIX}/${assetId}.json`);
+      if (canonicalResult.asset) return canonicalResult;
+      current = fencedAsset;
+    }
+
+    // A canonical assignment may have started in the narrow promotion-before-fence
+    // window. Drain any reservation and then check persisted usage before destructive work.
+    if (!(await waitForAssignmentReservations(assetId))) {
+      await writeDeletionMarker(current, actor, "failed");
+      await writeDeletionAudit(current, actor, "blocked");
+      return { deleted: false, usages: [], asset: current };
+    }
+    const usages = (await getMarketingMediaUsageMap())[assetId] ?? [];
+    if (usages.length > 0) {
+      await writeDeletionMarker(current, actor, "failed");
+      await writeDeletionAudit(current, actor, "blocked");
+      return { deleted: false, usages, asset: current };
     }
 
     const admin = createAdminSupabase();
@@ -328,7 +427,7 @@ export async function deleteIncompleteMarketingMediaAsset(
     };
     await writeDeletionAudit(current, actor, "completed");
     await removeJson(`${LIBRARY_DELETING_PREFIX}/${assetId}.json`);
-    return current;
+    return { deleted: true, usages: [], asset: current };
   } catch (error) {
     if (current && !mediaRemoved) {
       try {
