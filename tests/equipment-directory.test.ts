@@ -288,17 +288,22 @@ function setup(extra: Partial<Tables> = {}) {
 }
 
 describe("loadEquipmentDirectory", () => {
-  it("reads profiles and PM plans with the admin client and every operational fact through the caller's client", async () => {
+  it("reads profiles, PM plans and work-order evidence with the admin client and the remaining facts through the caller's client", async () => {
     const env = setup();
     await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW });
     // Equipment PM plans have no client grants; completions are read only when plans exist.
+    // Work orders, their lines and maintenance suggestions are read privileged because
+    // their restrictive financial policy hides them from roles such as parts and lead hand.
     expect(env.log.filter((entry) => entry.startsWith("admin:"))).toEqual([
       "admin:equipment_asset_profiles",
+      "admin:work_orders",
+      "admin:maintenance_suggestions",
+      "admin:work_order_lines",
       "admin:equipment_pm_plans",
     ]);
     expect(env.log).toContain("scoped:vehicles");
-    expect(env.log).toContain("scoped:work_orders");
     expect(env.log).toContain("scoped:inspections");
+    expect(env.log).not.toContain("scoped:work_orders");
   });
 
   it("builds the operational row from canonical workspace evidence", async () => {
@@ -553,6 +558,27 @@ describe("loadEquipmentDirectory", () => {
     const { rows } = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "parts", now: NOW });
     const ex = rows.find((row) => row.assetId === EX)!;
     expect(ex.actions).toEqual({ createWorkOrderHref: null, recordMeterHref: null });
+  });
+
+  it("gives roles without financial visibility the same PM and open work as other roles", async () => {
+    const full = setup();
+    const expected = await loadEquipmentDirectory({ ...full, shopId: SHOP, role: "parts", now: NOW });
+
+    // Their RLS client sees none of the restricted work-order tables.
+    const restricted = setup();
+    const { work_orders: _w, work_order_lines: _l, maintenance_suggestions: _m, ...visible } = restricted.tables;
+    const log: string[] = [];
+    const result = await loadEquipmentDirectory({
+      supabase: fakeClient(visible, log, "scoped") as never,
+      admin: restricted.admin,
+      shopId: SHOP,
+      role: "parts",
+      now: NOW,
+    });
+    expect(result.rows).toEqual(expected.rows);
+    const ex = result.rows.find((row) => row.assetId === EX)!;
+    expect(ex.pm.state).toBe("overdue");
+    expect(ex.openWorkOrderCount).toBe(1);
   });
 
   it("omits the active work order link for roles that cannot open it", async () => {

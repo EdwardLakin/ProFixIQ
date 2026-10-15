@@ -11,10 +11,7 @@ import {
   type FleetSignalRow,
 } from "@/features/equipment/lib/equipmentDashboard";
 import { mapEquipmentAssetProfileRow } from "@/features/equipment/server/equipmentAssetProfileService";
-import {
-  loadEquipmentEvidence,
-  type EvidenceWorkOrderRow,
-} from "@/features/equipment/server/equipmentEvidence";
+import { loadEquipmentEvidence } from "@/features/equipment/server/equipmentEvidence";
 import { loadEquipmentPmSummaries } from "@/features/equipment/server/equipmentPmService";
 import type { CanonicalRole } from "@/features/shared/lib/rbac";
 import { workOrderIsActive } from "@/features/vehicles/server/searchShopVehicleRecords";
@@ -27,15 +24,10 @@ const WINDOW = 200;
 export const FLEET_SUMMARY_MAX_ASSETS = 2_000;
 
 const ID_CHUNK = 100;
-const PAGE = 1_000;
-const MAX_PAGES = 50;
 
 const PROFILE_COLUMNS =
   "vehicle_id,shop_id,equipment_class,equipment_family,serial_number,pin,engine_make,engine_model,engine_serial,primary_meter,current_cycles,meters_updated_at,site_name,operating_status,mounted_on_vehicle_id,attributes,created_at,created_by,updated_at,updated_by";
 const VEHICLE_COLUMNS = "id,year,make,model,unit_number,engine_hours,mileage,odometer_unit";
-/** Non-financial work-order projection, the same one the Equipment Work Orders page reads. */
-const OPEN_WORK_COLUMNS =
-  "id,status,record_type,approval_state,estimate_number,estimate_status,customer_id,vehicle_id,vehicle_unit_number,custom_id,created_at,updated_at";
 
 export class EquipmentFleetSummaryError extends Error {}
 
@@ -62,44 +54,6 @@ async function inChunks<T>(
     rows.push(...(data ?? []));
   }
   return rows;
-}
-
-/**
- * Open work orders per asset through the privileged client, scoped to the
- * shop and limited to a non-financial projection — the same read boundary the
- * Equipment Work Orders page uses. The session client cannot see work orders
- * for roles without financial visibility (parts, lead hand), which would show
- * those roles zero open work while the linked page lists it.
- */
-async function loadOpenWorkCounts(
-  admin: SupabaseClient<DB>,
-  shopId: string,
-  assetIds: string[],
-): Promise<Map<string, number>> {
-  const counts = new Map<string, number>();
-  for (let offset = 0; offset < assetIds.length; offset += ID_CHUNK) {
-    const chunk = assetIds.slice(offset, offset + ID_CHUNK);
-    for (let page = 0; page < MAX_PAGES; page += 1) {
-      const from = page * PAGE;
-      const { data, error } = await admin
-        .from("work_orders")
-        .select(OPEN_WORK_COLUMNS)
-        .eq("shop_id", shopId)
-        .in("vehicle_id", chunk)
-        .order("id", { ascending: true })
-        .range(from, from + PAGE - 1);
-      if (error) throw new EquipmentFleetSummaryError("Unable to load work orders.");
-      for (const row of (data ?? []) as unknown as EvidenceWorkOrderRow[]) {
-        if (!row.vehicle_id || !workOrderIsActive(row)) continue;
-        counts.set(row.vehicle_id, (counts.get(row.vehicle_id) ?? 0) + 1);
-      }
-      if (!data || data.length < PAGE) break;
-      if (page === MAX_PAGES - 1) {
-        throw new EquipmentFleetSummaryError("Too many work orders to count completely.");
-      }
-    }
-  }
-  return counts;
 }
 
 /**
@@ -160,9 +114,16 @@ export async function loadEquipmentFleetSummary(input: {
     const visible = profiles.filter((profile) => vehicles.has(profile.assetId));
     const visibleIds = visible.map((profile) => profile.assetId);
 
-    const evidence = await loadEquipmentEvidence({ supabase, shopId, assetIds: visibleIds, now: input.now });
-    const [pmPlans, openWork] = await Promise.all([
-      loadEquipmentPmSummaries({
+    // Work-order evidence is read privileged so roles without financial
+    // visibility (parts, lead hand) get the same PM and open work as everyone.
+    const evidence = await loadEquipmentEvidence({
+      supabase,
+      shopId,
+      assetIds: visibleIds,
+      now: input.now,
+      privileged: admin,
+    });
+    const pmPlans = await loadEquipmentPmSummaries({
         admin,
         shopId,
         assets: visible.map((profile) => {
@@ -178,9 +139,7 @@ export async function loadEquipmentFleetSummary(input: {
           };
         }),
         now: input.now?.getTime(),
-      }),
-      loadOpenWorkCounts(admin, shopId, visibleIds),
-    ]);
+      });
 
     const rows: FleetSignalRow[] = [];
     for (const profile of visible) {
@@ -206,7 +165,7 @@ export async function loadEquipmentFleetSummary(input: {
         },
         // Plans and service suggestions combined, as the directory does.
         pm: { state: combinePmStates(pmPlans.get(profile.assetId)?.state ?? null, facts.pm.state) },
-        openWorkOrderCount: openWork.get(profile.assetId) ?? 0,
+        openWorkOrderCount: facts.workOrders.filter(workOrderIsActive).length,
         nextService: facts.nextBooking,
       });
     }

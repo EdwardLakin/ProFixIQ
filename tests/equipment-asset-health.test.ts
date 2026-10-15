@@ -126,6 +126,17 @@ describe("loadAssetHealth", () => {
     );
   });
 
+  it("reads work-order evidence privileged for shop-wide roles but not for assigned-work-only mechanics", async () => {
+    await loadAssetHealth({ supabase: scoped, admin, shopId: SHOP, role: "parts", assetId: EX });
+    expect(mocks.evidence).toHaveBeenLastCalledWith(expect.objectContaining({ privileged: admin }));
+
+    // A mechanic keeps RLS, which limits them to the work they are assigned.
+    await loadAssetHealth({ supabase: scoped, admin, shopId: SHOP, role: "mechanic", assetId: EX });
+    expect(mocks.evidence).toHaveBeenLastCalledWith(
+      expect.objectContaining({ privileged: undefined }),
+    );
+  });
+
   it("reports no Equipment PM plan status when the asset has no active plan", async () => {
     const result = await loadAssetHealth({
       supabase: scoped,

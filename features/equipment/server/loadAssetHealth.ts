@@ -144,6 +144,12 @@ export async function loadAssetHealth(input: {
       supabase: input.supabase,
       shopId: input.shopId,
       assetIds: [input.assetId],
+      // Shop-wide roles read work-order evidence privileged (see the evidence
+      // loader). Assigned-work-only roles keep RLS, which limits them to the
+      // work they are assigned.
+      privileged: vehicleWorkspacePermissionsForRole(input.role).isAssignedWorkOnly
+        ? undefined
+        : input.admin,
     })
   ).get(input.assetId)!;
 

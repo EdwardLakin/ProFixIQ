@@ -158,7 +158,15 @@ export async function loadEquipmentDirectory(input: {
           error: { message: string } | null;
         }>,
       ),
-      loadEquipmentEvidence({ supabase, shopId, assetIds: visibleIds, now: input.now }),
+      // Work-order evidence is read privileged so roles without financial
+      // visibility (parts, lead hand) see the same PM and open work.
+      loadEquipmentEvidence({
+        supabase,
+        shopId,
+        assetIds: visibleIds,
+        now: input.now,
+        privileged: admin,
+      }),
     ]);
   } catch (error) {
     if (error instanceof EquipmentEvidenceError) {
