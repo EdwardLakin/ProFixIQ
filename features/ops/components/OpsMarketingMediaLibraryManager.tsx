@@ -100,7 +100,11 @@ export default function OpsMarketingMediaLibraryManager() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("/api/ops/marketing/media", { cache: "no-store" });
+      const response = await fetch("/api/ops/marketing/media", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "list-library" }),
+      });
       const payload = (await response.json()) as LibraryPayload;
       if (!response.ok) throw new Error(payload.error ?? "Unable to load media library");
       setAssets(payload.assets ?? []);
