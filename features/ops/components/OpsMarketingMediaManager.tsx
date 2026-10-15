@@ -156,6 +156,11 @@ export default function OpsMarketingMediaManager() {
   }
 
   async function upload(file: File) {
+    if (!alt.trim()) {
+      setError("Add alt text before uploading the screenshot or reel from the landing-page editor. Use Media Library bulk upload when you want to add metadata later.");
+      return;
+    }
+
     setUploading(true);
     setError(null);
     setMessage(null);
@@ -203,11 +208,7 @@ export default function OpsMarketingMediaManager() {
       setSelected(finalized.asset);
       setAlt("");
       setCaption("");
-      setMessage(
-        finalized.asset.alt.trim()
-          ? `Uploaded to the library. Save it to ${definition.label} → ${slotDefinition?.label ?? slotKey} when ready.`
-          : "Uploaded to the library. Add alt text in Media Library before attaching it to a landing page.",
-      );
+      setMessage(`Uploaded to the library. Save it to ${definition.label} → ${slotDefinition?.label ?? slotKey} when ready.`);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to upload media");
     } finally {
@@ -368,9 +369,9 @@ export default function OpsMarketingMediaManager() {
           <aside className="space-y-6">
             <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
               <h2 className="text-lg font-semibold">Upload media</h2>
-              <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">JPG, PNG, WebP, AVIF, MP4, or WebM. Maximum 50 MB. Upload first; alt text is only required before the media is attached to a page.</p>
-              <label className="mt-4 block text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">Alt text <span className="font-normal normal-case">(optional on upload)</span></label>
-              <input value={alt} onChange={(event) => setAlt(event.target.value)} placeholder="Can be added later in Media Library" className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2.5 text-sm" />
+              <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">JPG, PNG, WebP, AVIF, MP4, or WebM. Maximum 50 MB. Large files upload directly to media storage.</p>
+              <label className="mt-4 block text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">Alt text</label>
+              <input value={alt} onChange={(event) => setAlt(event.target.value)} placeholder="ProFixIQ work order workspace showing…" className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2.5 text-sm" />
               <label className="mt-4 block text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">Caption <span className="font-normal normal-case">(optional)</span></label>
               <input value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="Short supporting caption" className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2.5 text-sm" />
               <input
