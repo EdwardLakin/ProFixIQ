@@ -10,6 +10,7 @@ import {
   type EquipmentAssetEvidence,
 } from "@/features/equipment/server/equipmentEvidence";
 import { loadFluidSampleSummaries } from "@/features/equipment/server/equipmentFluidSampleService";
+import { supplementSnapshotWithWorkOrders } from "@/features/equipment/server/supplementWorkspaceWork";
 import type { FluidSampleSummary } from "@/features/equipment/lib/fluids";
 import {
   loadEquipmentPmSummaries,
@@ -182,5 +183,15 @@ export async function loadAssetHealth(input: {
     assetId: input.assetId,
   });
 
-  return { snapshot, equipment, evidence, pmPlans, fluidSamples, attachments, host };
+  // Roles without financial visibility get no work orders from the canonical
+  // snapshot; fill them from the same evidence the directory shows.
+  return {
+    snapshot: supplementSnapshotWithWorkOrders(snapshot, evidence.workOrders),
+    equipment,
+    evidence,
+    pmPlans,
+    fluidSamples,
+    attachments,
+    host,
+  };
 }

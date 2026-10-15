@@ -82,7 +82,7 @@ describe("loadAssetHealth", () => {
     vi.clearAllMocks();
     mocks.snapshot.mockResolvedValue({ identity: { id: EX } });
     mocks.record.mockResolvedValue({ asset: { id: EX }, profile: null });
-    mocks.evidence.mockResolvedValue(new Map([[EX, { latestInspection: null }]]));
+    mocks.evidence.mockResolvedValue(new Map([[EX, { latestInspection: null, workOrders: [] }]]));
   });
 
   it("returns null when the canonical workspace hides the asset (cross-shop or unassigned mechanic)", async () => {
@@ -120,7 +120,7 @@ describe("loadAssetHealth", () => {
       role: "owner",
       assetId: EX,
     });
-    expect(result?.evidence).toEqual({ latestInspection: null });
+    expect(result?.evidence).toEqual({ latestInspection: null, workOrders: [] });
     expect(mocks.evidence).toHaveBeenCalledWith(
       expect.objectContaining({ shopId: SHOP, assetIds: [EX] }),
     );
