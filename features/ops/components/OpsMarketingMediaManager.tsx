@@ -49,7 +49,7 @@ function MediaPreview({ asset, compact = false }: { asset: MarketingMediaAsset; 
   return asset.kind === "video" ? (
     <video
       src={asset.url}
-      aria-label={asset.alt}
+      aria-label={asset.alt || asset.filename}
       className={className}
       muted
       playsInline
@@ -57,7 +57,7 @@ function MediaPreview({ asset, compact = false }: { asset: MarketingMediaAsset; 
       preload="metadata"
     />
   ) : (
-    <img src={asset.url} alt={asset.alt} className={className} />
+    <img src={asset.url} alt={asset.alt || asset.filename} className={className} />
   );
 }
 
@@ -136,6 +136,7 @@ export default function OpsMarketingMediaManager() {
 
   const selectedId = selected?.id;
   const selectedMatchesDraft = Boolean(selectedId && selectedId === slot?.draft?.id);
+  const selectedNeedsAlt = Boolean(selected && !selected.alt.trim());
   const hasUnpublishedChange = useMemo(
     () => Boolean(slot?.draft && slot.draft.id !== slot.published?.id),
     [slot],
@@ -155,11 +156,6 @@ export default function OpsMarketingMediaManager() {
   }
 
   async function upload(file: File) {
-    if (!alt.trim()) {
-      setError("Add alt text before uploading the screenshot or reel.");
-      return;
-    }
-
     setUploading(true);
     setError(null);
     setMessage(null);
@@ -207,7 +203,11 @@ export default function OpsMarketingMediaManager() {
       setSelected(finalized.asset);
       setAlt("");
       setCaption("");
-      setMessage(`Uploaded to the library. Save it to ${definition.label} → ${slotDefinition?.label ?? slotKey} when ready.`);
+      setMessage(
+        finalized.asset.alt.trim()
+          ? `Uploaded to the library. Save it to ${definition.label} → ${slotDefinition?.label ?? slotKey} when ready.`
+          : "Uploaded to the library. Add alt text in Media Library before attaching it to a landing page.",
+      );
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to upload media");
     } finally {
@@ -219,6 +219,10 @@ export default function OpsMarketingMediaManager() {
   async function updateSlot(action: "save-draft" | "publish") {
     if (action === "save-draft" && !selected) {
       setError("Choose or upload media before saving the draft.");
+      return;
+    }
+    if (action === "save-draft" && selectedNeedsAlt) {
+      setError("Add alt text to this media in Media Library before attaching it to a landing page.");
       return;
     }
     if (action === "publish" && !selectedMatchesDraft) {
@@ -335,11 +339,17 @@ export default function OpsMarketingMediaManager() {
               {selected?.caption ? <p className="mt-3 text-xs text-[color:var(--theme-text-secondary)]">{selected.caption}</p> : null}
             </div>
 
+            {selectedNeedsAlt ? (
+              <div className="mt-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+                This media is in the library but does not have alt text yet. Add it in <Link href="/ops/marketing/library" className="font-semibold underline">Media Library</Link> before attaching it to this page.
+              </div>
+            ) : null}
+
             <div className="mt-5 flex flex-wrap gap-3">
               <button
                 type="button"
                 onClick={() => void updateSlot("save-draft")}
-                disabled={saving || !selected}
+                disabled={saving || !selected || selectedNeedsAlt}
                 className="inline-flex items-center gap-2 rounded-xl border border-[color:var(--theme-border-soft)] px-4 py-2.5 text-sm font-bold disabled:opacity-50"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save draft
@@ -358,9 +368,9 @@ export default function OpsMarketingMediaManager() {
           <aside className="space-y-6">
             <section className="rounded-2xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-inset)] p-5">
               <h2 className="text-lg font-semibold">Upload media</h2>
-              <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">JPG, PNG, WebP, AVIF, MP4, or WebM. Maximum 50 MB. Large files upload directly to media storage.</p>
-              <label className="mt-4 block text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">Alt text</label>
-              <input value={alt} onChange={(event) => setAlt(event.target.value)} placeholder="ProFixIQ work order workspace showing…" className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2.5 text-sm" />
+              <p className="mt-1 text-sm text-[color:var(--theme-text-secondary)]">JPG, PNG, WebP, AVIF, MP4, or WebM. Maximum 50 MB. Upload first; alt text is only required before the media is attached to a page.</p>
+              <label className="mt-4 block text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">Alt text <span className="font-normal normal-case">(optional on upload)</span></label>
+              <input value={alt} onChange={(event) => setAlt(event.target.value)} placeholder="Can be added later in Media Library" className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2.5 text-sm" />
               <label className="mt-4 block text-xs font-bold uppercase tracking-[0.12em] text-[color:var(--theme-text-secondary)]">Caption <span className="font-normal normal-case">(optional)</span></label>
               <input value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="Short supporting caption" className="mt-2 w-full rounded-xl border border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-page)] px-3 py-2.5 text-sm" />
               <input
@@ -406,7 +416,7 @@ export default function OpsMarketingMediaManager() {
                     <MediaPreview asset={asset} compact />
                     <div className="mt-2 flex items-start gap-2 px-1 pb-1">
                       {asset.kind === "video" ? <Film className="mt-0.5 h-4 w-4 shrink-0" /> : <ImageIcon className="mt-0.5 h-4 w-4 shrink-0" />}
-                      <div className="min-w-0"><div className="truncate text-xs font-bold">{asset.filename}</div><div className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-[color:var(--theme-text-secondary)]">{asset.alt}</div></div>
+                      <div className="min-w-0"><div className="truncate text-xs font-bold">{asset.filename}</div><div className={`mt-0.5 line-clamp-2 text-[11px] leading-4 ${asset.alt ? "text-[color:var(--theme-text-secondary)]" : "text-amber-200"}`}>{asset.alt || "Alt text needed before use"}</div></div>
                       {selectedId === asset.id ? <Check className="ml-auto h-4 w-4 shrink-0 text-orange-300" /> : null}
                     </div>
                   </button>
