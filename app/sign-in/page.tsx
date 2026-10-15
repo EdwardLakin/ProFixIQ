@@ -5,6 +5,7 @@ import {
   Building2,
   ChevronRight,
   Smartphone,
+  Tractor,
   Truck,
   UserRound,
   Wrench,
@@ -12,6 +13,7 @@ import {
 
 import AuthShell from "@/features/auth/components/AuthShell";
 import {
+  EQUIPMENT_SIGN_IN,
   PRODUCT_SIGN_IN,
   resolveLegacySignInHref,
   type ProductAccessSurface,
@@ -19,7 +21,7 @@ import {
 
 export const metadata: Metadata = {
   title: "Choose your ProFixIQ app",
-  description: "Sign in to ProFixIQ Shop, Shop Mobile, Field, Fleet, or Customer Portal.",
+  description: "Sign in to ProFixIQ Shop, Shop Mobile, Equipment, Field, Fleet, or Customer Portal.",
 };
 
 type SignInChooserProps = {
@@ -27,7 +29,7 @@ type SignInChooserProps = {
 };
 
 const accessCards: Array<{
-  surface: ProductAccessSurface | "mobile";
+  surface: ProductAccessSurface | "mobile" | "equipment";
   href: string;
   title: string;
   description: string;
@@ -46,6 +48,13 @@ const accessCards: Array<{
     title: "Shop Mobile",
     description: "Use the role-specific shop workspace from a phone or tablet for jobs, inspections, shifts, evidence, and team communication.",
     icon: Smartphone,
+  },
+  {
+    surface: "equipment",
+    href: EQUIPMENT_SIGN_IN,
+    title: "ProFixIQ Equipment",
+    description: "Track heavy equipment health, meters, preventive maintenance, inspections, and wear in one operational dashboard.",
+    icon: Tractor,
   },
   {
     surface: "field",
@@ -92,7 +101,7 @@ export default async function SignInChooser({ searchParams }: SignInChooserProps
   return (
     <AuthShell
       productLabel="Product access"
-      heroTitle="Five clear doors into one connected platform."
+      heroTitle="Six clear doors into one connected platform."
       heroDescription="Choose the workspace that matches the work you are here to do. Your account stays secure and shared while each product keeps its own operating boundary."
       highlights={["Dedicated sign-in", "Shared identity", "Product-scoped access"]}
       cardClassName="sm:p-7"
