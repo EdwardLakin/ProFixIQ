@@ -164,6 +164,14 @@ const actor = {
 
 let storage: FakeStorage;
 
+async function waitForStored(path: string) {
+  for (let attempt = 0; attempt < 200; attempt += 1) {
+    if (storage.has(MARKETING_MEDIA_CONTENT_BUCKET, path)) return;
+    await new Promise((resolve) => setTimeout(resolve, 1));
+  }
+  throw new Error(`Timed out waiting for ${path}`);
+}
+
 beforeEach(() => {
   storage = new FakeStorage();
   mocks.createAdminSupabase.mockReset();
@@ -184,7 +192,7 @@ describe("marketing media concurrency", () => {
     await gate.reached;
 
     const deleting = deleteMarketingMediaAsset(A.id, actor);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitForStored(`deleting/${A.id}.json`);
     gate.release();
 
     await save;
@@ -225,7 +233,7 @@ describe("marketing media concurrency", () => {
     await gate.reached;
 
     const deleting = deleteMarketingMediaAsset(A.id, actor);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await waitForStored(`deleting/${A.id}.json`);
     gate.release();
 
     expect(await publishing).toEqual(A);
