@@ -98,7 +98,7 @@ export default async function EquipmentDirectoryPage() {
 
   return (
     <>
-      <EquipmentSectionNav current="assets" />
+      <EquipmentSectionNav current="assets" role={canonicalRole} />
       <EquipmentDirectoryView
         rows={directory.rows}
         truncated={directory.truncated}

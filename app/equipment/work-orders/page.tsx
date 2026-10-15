@@ -32,7 +32,7 @@ export default async function EquipmentWorkOrdersPage() {
 
   return (
     <>
-      <EquipmentSectionNav current="work-orders" />
+      <EquipmentSectionNav current="work-orders" role={canonicalRole} />
       <EquipmentWorkOrdersView rows={workOrders.rows} truncated={workOrders.truncated} />
     </>
   );
