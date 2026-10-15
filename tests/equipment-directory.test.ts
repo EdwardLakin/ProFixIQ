@@ -490,6 +490,22 @@ describe("loadEquipmentDirectory", () => {
     expect(env.log).toEqual(["admin:equipment_asset_profiles"]);
   });
 
+  it("reads a later window of profiles on request and leaves the default read unchanged", async () => {
+    const first = setup();
+    const defaultRead = await loadEquipmentDirectory({ ...first, shopId: SHOP, role: "owner", now: NOW });
+    expect(defaultRead.rows.map((r) => r.assetId)).toEqual(expect.arrayContaining([EX, BUCKET]));
+
+    const env = setup();
+    const head = await loadEquipmentDirectory({ ...env, shopId: SHOP, role: "owner", now: NOW, window: { offset: 0, limit: 1 } });
+    expect(head.truncated).toBe(true);
+    expect(head.rows.map((r) => r.assetId)).toEqual([EX]);
+
+    const tail = await loadEquipmentDirectory({ ...setup(), shopId: SHOP, role: "owner", now: NOW, window: { offset: 1, limit: 5 } });
+    expect(tail.truncated).toBe(false);
+    expect(tail.rows.map((r) => r.assetId)).not.toContain(EX);
+    expect(tail.rows.map((r) => r.assetId)).toContain(BUCKET);
+  });
+
   it("scopes profiles to the caller's shop", async () => {
     const env = setup({
       equipment_asset_profiles: [profile(EX, { shop_id: "other-shop" })],

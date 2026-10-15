@@ -111,22 +111,31 @@ export async function loadEquipmentDirectory(input: {
   shopId: string;
   role: CanonicalRole;
   now?: Date;
+  /**
+   * Read a later slice of the shop's profiles (same ordering, plus a stable
+   * tie-break) instead of the first page. Omitted, the call is exactly the
+   * directory's first-page read. Used by the fleet summary to cover a whole shop.
+   */
+  window?: { offset: number; limit: number };
 }): Promise<EquipmentDirectory> {
   const { supabase, admin, shopId } = input;
+  const pageSize = input.window?.limit ?? EQUIPMENT_DIRECTORY_LIMIT;
   const permissions = vehicleWorkspacePermissionsForRole(input.role);
 
-  const { data: profileData, error: profileError } = await admin
+  const orderedProfiles = admin
     .from("equipment_asset_profiles")
     .select(PROFILE_COLUMNS)
     .eq("shop_id", shopId)
-    .order("updated_at", { ascending: false })
-    .limit(EQUIPMENT_DIRECTORY_LIMIT + 1);
+    .order("updated_at", { ascending: false });
+  const { data: profileData, error: profileError } = await (input.window
+    ? orderedProfiles
+        .order("vehicle_id", { ascending: true })
+        .range(input.window.offset, input.window.offset + pageSize)
+    : orderedProfiles.limit(EQUIPMENT_DIRECTORY_LIMIT + 1));
   if (profileError) throw new EquipmentDirectoryError("Unable to load Equipment profiles.");
   const profileRows = (profileData ?? []) as ProfileRow[];
-  const truncated = profileRows.length > EQUIPMENT_DIRECTORY_LIMIT;
-  const profiles = profileRows
-    .slice(0, EQUIPMENT_DIRECTORY_LIMIT)
-    .map(mapEquipmentAssetProfileRow);
+  const truncated = profileRows.length > pageSize;
+  const profiles = profileRows.slice(0, pageSize).map(mapEquipmentAssetProfileRow);
   if (!profiles.length) return { rows: [], truncated: false };
 
   const vehicleRows = await inChunks<VehicleRow>(
