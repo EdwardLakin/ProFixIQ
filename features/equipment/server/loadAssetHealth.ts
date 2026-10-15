@@ -10,6 +10,7 @@ import {
   type EquipmentAssetEvidence,
 } from "@/features/equipment/server/equipmentEvidence";
 import { loadFluidSampleSummaries } from "@/features/equipment/server/equipmentFluidSampleService";
+import { supplementSnapshotWithWorkOrders } from "@/features/equipment/server/supplementWorkspaceWork";
 import type { FluidSampleSummary } from "@/features/equipment/lib/fluids";
 import {
   loadEquipmentPmSummaries,
@@ -144,6 +145,12 @@ export async function loadAssetHealth(input: {
       supabase: input.supabase,
       shopId: input.shopId,
       assetIds: [input.assetId],
+      // Shop-wide roles read work-order evidence privileged (see the evidence
+      // loader). Assigned-work-only roles keep RLS, which limits them to the
+      // work they are assigned.
+      privileged: vehicleWorkspacePermissionsForRole(input.role).isAssignedWorkOnly
+        ? undefined
+        : input.admin,
     })
   ).get(input.assetId)!;
 
@@ -176,5 +183,15 @@ export async function loadAssetHealth(input: {
     assetId: input.assetId,
   });
 
-  return { snapshot, equipment, evidence, pmPlans, fluidSamples, attachments, host };
+  // Roles without financial visibility get no work orders from the canonical
+  // snapshot; fill them from the same evidence the directory shows.
+  return {
+    snapshot: supplementSnapshotWithWorkOrders(snapshot, evidence.workOrders),
+    equipment,
+    evidence,
+    pmPlans,
+    fluidSamples,
+    attachments,
+    host,
+  };
 }

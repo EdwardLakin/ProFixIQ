@@ -129,8 +129,20 @@ export async function loadEquipmentEvidence(input: {
   shopId: string;
   assetIds: string[];
   now?: Date;
+  /**
+   * Privileged client for the work-order reads only (work orders, their lines
+   * and maintenance suggestions). Those tables carry a restrictive financial-
+   * capability policy, so for roles without sell/invoice visibility (parts,
+   * lead hand) the caller's client sees none of them and PM, last service and
+   * open work come back empty. Pass it only after the caller has authorized
+   * a shop-wide role and filtered `assetIds` through the caller's own client;
+   * reads stay scoped to the shop and select non-financial columns. Omitted,
+   * every read uses the caller's client, exactly as before.
+   */
+  privileged?: SupabaseClient<DB>;
 }): Promise<Map<string, EquipmentAssetEvidence>> {
   const { supabase, shopId } = input;
+  const workOrderReader = input.privileged ?? supabase;
   const assetIds = Array.from(new Set(input.assetIds));
   const nowIso = (input.now ?? new Date()).toISOString();
   const result = new Map<string, EquipmentAssetEvidence>();
@@ -138,7 +150,7 @@ export async function loadEquipmentEvidence(input: {
 
   const [workOrders, inspections, bookings] = await Promise.all([
     loadAllForIds<EvidenceWorkOrderRow>("work orders", assetIds, (chunk, from, to) =>
-      supabase
+      workOrderReader
         .from("work_orders")
         .select(WORK_ORDER_COLUMNS)
         .eq("shop_id", shopId)
@@ -196,7 +208,7 @@ export async function loadEquipmentEvidence(input: {
       "maintenance status",
       serviceWorkOrderIds,
       (chunk, from, to) =>
-        supabase
+        workOrderReader
           .from("maintenance_suggestions")
           .select(
             "work_order_id,vehicle_id,status,suggestions,created_at,updated_at,error_message,mileage_km",
@@ -210,7 +222,7 @@ export async function loadEquipmentEvidence(input: {
       "work order lines",
       serviceWorkOrderIds,
       (chunk, from, to) =>
-        supabase
+        workOrderReader
           .from("work_order_lines")
           .select(LINE_COLUMNS)
           .eq("shop_id", shopId)

@@ -82,7 +82,7 @@ describe("loadAssetHealth", () => {
     vi.clearAllMocks();
     mocks.snapshot.mockResolvedValue({ identity: { id: EX } });
     mocks.record.mockResolvedValue({ asset: { id: EX }, profile: null });
-    mocks.evidence.mockResolvedValue(new Map([[EX, { latestInspection: null }]]));
+    mocks.evidence.mockResolvedValue(new Map([[EX, { latestInspection: null, workOrders: [] }]]));
   });
 
   it("returns null when the canonical workspace hides the asset (cross-shop or unassigned mechanic)", async () => {
@@ -120,9 +120,20 @@ describe("loadAssetHealth", () => {
       role: "owner",
       assetId: EX,
     });
-    expect(result?.evidence).toEqual({ latestInspection: null });
+    expect(result?.evidence).toEqual({ latestInspection: null, workOrders: [] });
     expect(mocks.evidence).toHaveBeenCalledWith(
       expect.objectContaining({ shopId: SHOP, assetIds: [EX] }),
+    );
+  });
+
+  it("reads work-order evidence privileged for shop-wide roles but not for assigned-work-only mechanics", async () => {
+    await loadAssetHealth({ supabase: scoped, admin, shopId: SHOP, role: "parts", assetId: EX });
+    expect(mocks.evidence).toHaveBeenLastCalledWith(expect.objectContaining({ privileged: admin }));
+
+    // A mechanic keeps RLS, which limits them to the work they are assigned.
+    await loadAssetHealth({ supabase: scoped, admin, shopId: SHOP, role: "mechanic", assetId: EX });
+    expect(mocks.evidence).toHaveBeenLastCalledWith(
+      expect.objectContaining({ privileged: undefined }),
     );
   });
 
