@@ -3,48 +3,74 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { Database } from "@shared/types/types/supabase";
-import { equipmentClassLabel, type AssetOperatingStatus } from "@/features/equipment/lib/assetProfile";
+import { equipmentClassLabel } from "@/features/equipment/lib/assetProfile";
+import {
+  IDENTITY_INDEX_MAX_ASSETS,
+  type EquipmentIdentityRow,
+} from "@/features/equipment/lib/equipmentDirectoryQuery";
 import { UNDERCARRIAGE_PART_MEASUREMENTS } from "@/features/equipment/lib/undercarriage";
-import { EQUIPMENT_DIRECTORY_LIMIT } from "@/features/equipment/server/loadEquipmentDirectory";
 import { mapEquipmentAssetProfileRow } from "@/features/equipment/server/equipmentAssetProfileService";
 import { customerAccountDisplayName } from "@/features/vehicles/lib/vehicleWorkspace";
 
 type DB = Database;
+/**
+ * Profiles per read. PostgREST caps a response at 1,000 rows (`max_rows` in
+ * supabase/config.toml) and each read also asks for one lookahead row, so the
+ * window must stay below that cap or the lookahead can never arrive and the
+ * scan would stop silently after the first window.
+ */
+export const ASSET_LIST_WINDOW = 500;
+const WINDOW = ASSET_LIST_WINDOW;
 const ID_CHUNK = 100;
+
+const PROFILE_COLUMNS =
+  "vehicle_id,shop_id,equipment_class,equipment_family,serial_number,pin,engine_make,engine_model,engine_serial,primary_meter,current_cycles,meters_updated_at,site_name,operating_status,mounted_on_vehicle_id,attributes,created_at,created_by,updated_at,updated_by";
 
 export class EquipmentAssetListError extends Error {}
 
-export type EquipmentAssetListRow = {
-  assetId: string;
-  unitNumber: string | null;
+type VehicleRow = {
+  id: string;
+  customer_id: string | null;
   year: number | null;
   make: string | null;
   model: string | null;
-  equipmentClassLabel: string;
-  customerName: string | null;
-  siteName: string | null;
-  operatingStatus: AssetOperatingStatus;
+  unit_number: string | null;
 };
+type CustomerRow = { id: string } & Parameters<typeof customerAccountDisplayName>[0];
 
 async function inChunks<T>(
   ids: string[],
   what: string,
   query: (chunk: string[]) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
 ): Promise<T[]> {
-  const rows: T[] = [];
+  const chunks: string[][] = [];
   for (let offset = 0; offset < ids.length; offset += ID_CHUNK) {
-    const { data, error } = await query(ids.slice(offset, offset + ID_CHUNK));
-    if (error) throw new EquipmentAssetListError(`Unable to load ${what}.`);
-    rows.push(...(data ?? []));
+    chunks.push(ids.slice(offset, offset + ID_CHUNK));
   }
-  return rows;
+  const results = await Promise.all(
+    chunks.map(async (chunk) => {
+      const { data, error } = await query(chunk);
+      if (error) throw new EquipmentAssetListError(`Unable to load ${what}.`);
+      return data ?? [];
+    }),
+  );
+  return results.flat();
 }
 
 /**
- * Identity-only asset list for section pages whose engines have no fleet-level
- * read model. Same sources and scoping as the directory (profiles through the
- * privileged client, vehicles and accounts through the caller's RLS client), but
- * none of the work-order, inspection, booking or PM history reads.
+ * Identity index of a shop's Equipment assets: who they are, who owns them,
+ * and their operating status — and nothing from work-order, inspection,
+ * booking or PM history. It is cheap enough to read for the whole shop (up to
+ * `IDENTITY_INDEX_MAX_ASSETS`), which lets the Assets list and the section
+ * pages search and page every asset, and only score the page being shown.
+ *
+ * Profiles are read through the privileged client scoped to the shop, newest
+ * updated first with a deterministic id tie-break, paged by a keyset on that
+ * same pair — so when a shop exceeds the cap, the assets that are left out are
+ * the oldest, as the list tells the user. Vehicles and accounts come through
+ * the caller's RLS client, so an asset the caller cannot see is never listed.
+ * (A profile edited mid-scan can at worst shift by one position in this
+ * one-request list; an id seen twice is kept once.)
  *
  * `requireUndercarriage` keeps only machines that have undercarriage
  * components, so every row links to a panel that actually renders.
@@ -54,103 +80,131 @@ export async function loadEquipmentAssetList(input: {
   admin: SupabaseClient<DB>;
   shopId: string;
   requireUndercarriage?: boolean;
-}): Promise<{ rows: EquipmentAssetListRow[]; truncated: boolean }> {
+  /** Tests lower these. */
+  maxAssets?: number;
+  windowSize?: number;
+}): Promise<{ rows: EquipmentIdentityRow[]; capped: boolean }> {
   const { supabase, admin, shopId } = input;
+  const max = input.maxAssets ?? IDENTITY_INDEX_MAX_ASSETS;
+  const windowSize = input.windowSize ?? WINDOW;
+  const rows: EquipmentIdentityRow[] = [];
+  const seen = new Set<string>();
 
-  const { data: profileData, error: profileError } = await admin
-    .from("equipment_asset_profiles")
-    .select(
-      "vehicle_id,shop_id,equipment_class,equipment_family,serial_number,pin,engine_make,engine_model,engine_serial,primary_meter,current_cycles,meters_updated_at,site_name,operating_status,mounted_on_vehicle_id,attributes,created_at,created_by,updated_at,updated_by",
-    )
-    .eq("shop_id", shopId)
-    .order("updated_at", { ascending: false })
-    .limit(EQUIPMENT_DIRECTORY_LIMIT + 1);
-  if (profileError) throw new EquipmentAssetListError("Unable to load Equipment profiles.");
-  const profileRows = profileData ?? [];
-  const truncated = profileRows.length > EQUIPMENT_DIRECTORY_LIMIT;
-  const profiles = profileRows.slice(0, EQUIPMENT_DIRECTORY_LIMIT).map(mapEquipmentAssetProfileRow);
-  if (!profiles.length) return { rows: [], truncated: false };
+  let cursor: { updatedAt: string; assetId: string } | null = null;
+  let scanned = 0;
+  let capped = false;
+  for (;;) {
+    let query = admin
+      .from("equipment_asset_profiles")
+      .select(PROFILE_COLUMNS)
+      .eq("shop_id", shopId)
+      .order("updated_at", { ascending: false })
+      .order("vehicle_id", { ascending: false })
+      .limit(windowSize + 1);
+    if (cursor) {
+      // Strictly after the cursor in (updated_at desc, vehicle_id desc) order.
+      query = query.or(
+        `updated_at.lt."${cursor.updatedAt}",and(updated_at.eq."${cursor.updatedAt}",vehicle_id.lt.${cursor.assetId})`,
+      );
+    }
+    const { data, error } = await query;
+    if (error) throw new EquipmentAssetListError("Unable to load Equipment profiles.");
+    const fetched = (data ?? []) as Parameters<typeof mapEquipmentAssetProfileRow>[0][];
+    const more = fetched.length > windowSize;
+    const window = fetched.slice(0, windowSize);
+    if (!window.length) break;
+    const last = window[window.length - 1];
+    cursor = { updatedAt: last.updated_at, assetId: last.vehicle_id };
+    const profiles = window.map((row) => ({ profile: mapEquipmentAssetProfileRow(row), updatedAt: row.updated_at }));
 
-  type VehicleRow = {
-    id: string;
-    customer_id: string | null;
-    year: number | null;
-    make: string | null;
-    model: string | null;
-    unit_number: string | null;
-  };
-  const vehicles = new Map(
-    (
-      await inChunks<VehicleRow>(profiles.map((p) => p.assetId), "assets", (chunk) =>
-        supabase
-          .from("vehicles")
-          .select("id,customer_id,year,make,model,unit_number")
-          .eq("shop_id", shopId)
-          .in("id", chunk),
-      )
-    ).map((row) => [row.id, row]),
-  );
-  // An asset the caller cannot see through RLS is never listed or queried.
-  const visibleIds = profiles.map((p) => p.assetId).filter((id) => vehicles.has(id));
-
-  let withUndercarriage: Set<string> | null = null;
-  if (input.requireUndercarriage) {
-    const components = await inChunks<{ installed_vehicle_id: string | null }>(
-      visibleIds,
-      "components",
-      (chunk) =>
-        admin
-          .from("equipment_components")
-          .select("installed_vehicle_id")
-          .eq("shop_id", shopId)
-          .in("installed_vehicle_id", chunk)
-          .in("component_type", Object.keys(UNDERCARRIAGE_PART_MEASUREMENTS))
-          .limit(1_000),
+    const vehicles = new Map(
+      (
+        await inChunks<VehicleRow>(profiles.map((p) => p.profile.assetId), "assets", (chunk) =>
+          supabase
+            .from("vehicles")
+            .select("id,customer_id,year,make,model,unit_number")
+            .eq("shop_id", shopId)
+            .in("id", chunk),
+        )
+      ).map((row) => [row.id, row]),
     );
-    withUndercarriage = new Set(
-      components.map((row) => row.installed_vehicle_id).filter((id): id is string => Boolean(id)),
+    // An asset the caller cannot see through RLS is never listed or queried.
+    const visible = profiles.filter(({ profile }) => vehicles.has(profile.assetId));
+
+    let withUndercarriage: Set<string> | null = null;
+    if (input.requireUndercarriage) {
+      const components = await inChunks<{ installed_vehicle_id: string | null }>(
+        visible.map(({ profile }) => profile.assetId),
+        "components",
+        (chunk) =>
+          admin
+            .from("equipment_components")
+            .select("installed_vehicle_id")
+            .eq("shop_id", shopId)
+            .in("installed_vehicle_id", chunk)
+            .in("component_type", Object.keys(UNDERCARRIAGE_PART_MEASUREMENTS))
+            .limit(1_000),
+      );
+      withUndercarriage = new Set(
+        components.map((row) => row.installed_vehicle_id).filter((id): id is string => Boolean(id)),
+      );
+    }
+
+    const customerIds = Array.from(
+      new Set(
+        Array.from(vehicles.values())
+          .map((row) => row.customer_id)
+          .filter((id): id is string => Boolean(id)),
+      ),
     );
+    const customerNames = new Map(
+      (
+        await inChunks<CustomerRow>(customerIds, "accounts", (chunk) =>
+          supabase
+            .from("customers")
+            .select("id,account_type,business_name,name,first_name,last_name,identity_name")
+            .eq("shop_id", shopId)
+            .in("id", chunk) as unknown as PromiseLike<{
+            data: CustomerRow[] | null;
+            error: { message: string } | null;
+          }>,
+        )
+      ).map((row) => [row.id, customerAccountDisplayName(row)]),
+    );
+
+    for (const { profile, updatedAt } of visible) {
+      if (seen.has(profile.assetId)) continue;
+      seen.add(profile.assetId);
+      if (withUndercarriage && !withUndercarriage.has(profile.assetId)) continue;
+      const vehicle = vehicles.get(profile.assetId)!;
+      rows.push({
+        assetId: profile.assetId,
+        updatedAt,
+        unitNumber: vehicle.unit_number,
+        year: vehicle.year,
+        make: vehicle.make,
+        model: vehicle.model,
+        serialNumber: profile.serialNumber,
+        equipmentClass: profile.equipmentClass,
+        equipmentClassLabel: equipmentClassLabel(profile.equipmentClass),
+        customerId: vehicle.customer_id,
+        customerName: vehicle.customer_id ? customerNames.get(vehicle.customer_id) ?? null : null,
+        siteName: profile.siteName,
+        operatingStatus: profile.operatingStatus,
+      });
+    }
+
+    scanned += window.length;
+    if (!more) break;
+    if (scanned >= max) {
+      capped = true;
+      break;
+    }
   }
 
-  const customerIds = Array.from(
-    new Set(
-      Array.from(vehicles.values())
-        .map((row) => row.customer_id)
-        .filter((id): id is string => Boolean(id)),
-    ),
-  );
-  type CustomerRow = { id: string } & Parameters<typeof customerAccountDisplayName>[0];
-  const customerNames = new Map(
-    (
-      await inChunks<CustomerRow>(customerIds, "accounts", (chunk) =>
-        supabase
-          .from("customers")
-          .select("id,account_type,business_name,name,first_name,last_name,identity_name")
-          .eq("shop_id", shopId)
-          .in("id", chunk) as unknown as PromiseLike<{
-          data: CustomerRow[] | null;
-          error: { message: string } | null;
-        }>,
-      )
-    ).map((row) => [row.id, customerAccountDisplayName(row)]),
-  );
-
-  const rows: EquipmentAssetListRow[] = [];
-  for (const profile of profiles) {
-    const vehicle = vehicles.get(profile.assetId);
-    if (!vehicle) continue;
-    if (withUndercarriage && !withUndercarriage.has(profile.assetId)) continue;
-    rows.push({
-      assetId: profile.assetId,
-      unitNumber: vehicle.unit_number,
-      year: vehicle.year,
-      make: vehicle.make,
-      model: vehicle.model,
-      equipmentClassLabel: equipmentClassLabel(profile.equipmentClass),
-      customerName: vehicle.customer_id ? customerNames.get(vehicle.customer_id) ?? null : null,
-      siteName: profile.siteName,
-      operatingStatus: profile.operatingStatus,
-    });
-  }
-  return { rows, truncated };
+  rows.sort((a, b) => {
+    const byTime = Date.parse(b.updatedAt) - Date.parse(a.updatedAt);
+    return Number.isFinite(byTime) && byTime !== 0 ? byTime : b.assetId.localeCompare(a.assetId);
+  });
+  return { rows, capped };
 }

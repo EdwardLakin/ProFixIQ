@@ -186,7 +186,7 @@ describe("Equipment page access contracts", () => {
   });
 
   it.each([
-    ["directory", directory, "loadEquipmentDirectory("],
+    ["directory", directory, "loadEquipmentDirectoryPage("],
     ["asset health", health, "loadAssetHealth("],
   ])("checks the Equipment entitlement before loading %s data", (_name, source, loader) => {
     const gate = source.indexOf("resolveEquipmentPageEntitlement(");

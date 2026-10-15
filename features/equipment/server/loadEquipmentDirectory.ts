@@ -111,22 +111,44 @@ export async function loadEquipmentDirectory(input: {
   shopId: string;
   role: CanonicalRole;
   now?: Date;
+  /**
+   * Build rows for exactly these assets instead of the shop's most recent page.
+   * Used to score only the assets a page shows (or a bounded scan window).
+   * Omitted, the call is exactly the directory's first-page read.
+   */
+  assetIds?: string[];
 }): Promise<EquipmentDirectory> {
   const { supabase, admin, shopId } = input;
   const permissions = vehicleWorkspacePermissionsForRole(input.role);
 
-  const { data: profileData, error: profileError } = await admin
-    .from("equipment_asset_profiles")
-    .select(PROFILE_COLUMNS)
-    .eq("shop_id", shopId)
-    .order("updated_at", { ascending: false })
-    .limit(EQUIPMENT_DIRECTORY_LIMIT + 1);
-  if (profileError) throw new EquipmentDirectoryError("Unable to load Equipment profiles.");
-  const profileRows = (profileData ?? []) as ProfileRow[];
-  const truncated = profileRows.length > EQUIPMENT_DIRECTORY_LIMIT;
-  const profiles = profileRows
-    .slice(0, EQUIPMENT_DIRECTORY_LIMIT)
-    .map(mapEquipmentAssetProfileRow);
+  let profileRows: ProfileRow[];
+  let truncated: boolean;
+  if (input.assetIds) {
+    profileRows = [];
+    for (let offset = 0; offset < input.assetIds.length; offset += ID_CHUNK) {
+      const { data, error } = await admin
+        .from("equipment_asset_profiles")
+        .select(PROFILE_COLUMNS)
+        .eq("shop_id", shopId)
+        .in("vehicle_id", input.assetIds.slice(offset, offset + ID_CHUNK));
+      if (error) throw new EquipmentDirectoryError("Unable to load Equipment profiles.");
+      profileRows.push(...((data ?? []) as ProfileRow[]));
+    }
+    truncated = false;
+  } else {
+    const { data, error } = await admin
+      .from("equipment_asset_profiles")
+      .select(PROFILE_COLUMNS)
+      .eq("shop_id", shopId)
+      .order("updated_at", { ascending: false })
+      .limit(EQUIPMENT_DIRECTORY_LIMIT + 1);
+    if (error) throw new EquipmentDirectoryError("Unable to load Equipment profiles.");
+    profileRows = (data ?? []) as ProfileRow[];
+    truncated = profileRows.length > EQUIPMENT_DIRECTORY_LIMIT;
+  }
+  const profiles = (input.assetIds ? profileRows : profileRows.slice(0, EQUIPMENT_DIRECTORY_LIMIT)).map(
+    mapEquipmentAssetProfileRow,
+  );
   if (!profiles.length) return { rows: [], truncated: false };
 
   const vehicleRows = await inChunks<VehicleRow>(
