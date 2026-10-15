@@ -184,6 +184,41 @@ async function releaseLibraryLock(handle: LibraryLockHandle): Promise<void> {
   }
 }
 
+function parseLibraryDeletionMarker(value: unknown): LibraryDeletionMarker | null {
+  if (!value || typeof value !== "object") return null;
+  const candidate = value as Partial<LibraryDeletionMarker>;
+  const asset = MarketingMediaLibraryAssetSchema.safeParse(candidate.asset);
+  if (
+    typeof candidate.assetId !== "string" ||
+    !asset.success ||
+    !["deleting", "deleted", "failed"].includes(String(candidate.state)) ||
+    typeof candidate.updatedAt !== "string" ||
+    typeof candidate.operatorId !== "string" ||
+    typeof candidate.operatorEmail !== "string"
+  ) {
+    return null;
+  }
+  return {
+    assetId: candidate.assetId,
+    asset: asset.data,
+    state: candidate.state as LibraryDeletionMarker["state"],
+    updatedAt: candidate.updatedAt,
+    operatorId: candidate.operatorId,
+    operatorEmail: candidate.operatorEmail,
+  };
+}
+
+async function readLibraryDeletionMarker(assetId: string): Promise<LibraryDeletionMarker | null> {
+  const terminal = parseLibraryDeletionMarker(
+    await readJson(`${LIBRARY_DELETED_PREFIX}/${assetId}.json`),
+  );
+  if (terminal?.assetId === assetId && terminal.state === "deleted") return terminal;
+  const active = parseLibraryDeletionMarker(
+    await readJson(`${LIBRARY_DELETING_PREFIX}/${assetId}.json`),
+  );
+  return active?.assetId === assetId ? active : null;
+}
+
 async function writeDeletionMarker(
   asset: MarketingMediaLibraryAsset,
   actor: MarketingMediaDeletionActor,
@@ -254,13 +289,28 @@ export async function deleteIncompleteMarketingMediaAsset(
   const lock = await acquireLibraryLock(assetId);
   let mediaRemoved = false;
   let current: MarketingMediaLibraryAsset | null = null;
+  let actor = requestedBy;
   try {
-    current = await readLibraryAsset(assetId);
+    const existingMarker = await readLibraryDeletionMarker(assetId);
+    current = (await readLibraryAsset(assetId)) ?? existingMarker?.asset ?? null;
     if (!current) return null;
-    if (MarketingMediaAssetSchema.safeParse(current).success) return null;
+    if (MarketingMediaAssetSchema.safeParse(current).success && !existingMarker) return null;
 
-    await writeDeletionAudit(current, requestedBy, "intent");
-    await writeDeletionMarker(current, requestedBy, "deleting");
+    actor =
+      (existingMarker?.state === "deleting" || existingMarker?.state === "deleted") &&
+      existingMarker.operatorId && existingMarker.operatorEmail
+        ? { operatorId: existingMarker.operatorId, operatorEmail: existingMarker.operatorEmail }
+        : requestedBy;
+
+    if (existingMarker?.state === "deleted") {
+      await writeDeletionAudit(current, actor, "completed");
+      return current;
+    }
+
+    if (existingMarker?.state !== "deleting") {
+      await writeDeletionAudit(current, actor, "intent");
+      await writeDeletionMarker(current, actor, "deleting");
+    }
 
     const admin = createAdminSupabase();
     const { error: mediaError } = await admin.storage
@@ -272,14 +322,14 @@ export async function deleteIncompleteMarketingMediaAsset(
     mediaRemoved = true;
 
     await removeJson(`assets/${assetId}.json`);
-    await writeDeletionMarker(current, requestedBy, "deleted");
-    await writeDeletionAudit(current, requestedBy, "completed");
+    await writeDeletionMarker(current, actor, "deleted");
+    await writeDeletionAudit(current, actor, "completed");
     await removeJson(`${LIBRARY_DELETING_PREFIX}/${assetId}.json`);
     return current;
   } catch (error) {
     if (current && !mediaRemoved) {
       try {
-        await writeDeletionMarker(current, requestedBy, "failed");
+        await writeDeletionMarker(current, actor, "failed");
       } catch (markerError) {
         console.error("marketing media incomplete deletion recovery marker write failed", {
           assetId,
