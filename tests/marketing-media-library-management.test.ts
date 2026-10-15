@@ -105,6 +105,8 @@ describe("marketing media library management", () => {
     expect(mediaRoute).toContain('payload.action === "prepare-upload" || payload.action === "prepare-library-upload"');
     expect(mediaRoute).toContain('const isLibraryUpload = payload.action === "prepare-library-upload"');
     expect(mediaRoute).toContain('(!isLibraryUpload && !alt)');
+    expect(mediaRoute).toContain('payload.action === "list-library"');
+    expect(mediaRoute).toContain("listPageReadyAssets()");
     expect(pageRoute).toContain("getMarketingMediaAsset(assetId)");
     expect(pageRoute).toContain("MarketingMediaAssetSchema.safeParse(libraryAsset)");
     expect(pageRoute).toContain("Add alt text to this media before attaching it to a landing page");
@@ -117,6 +119,7 @@ describe("marketing media library management", () => {
     expect(library).toContain("Bulk upload");
     expect(library).toContain("multiple");
     expect(library).toContain("uploadToSignedUrl");
+    expect(library).toContain('action: "list-library"');
     expect(library).toContain('action: "prepare-library-upload"');
     expect(library).toContain('action: "finalize-upload"');
     expect(library).toContain('alt: ""');
@@ -127,13 +130,15 @@ describe("marketing media library management", () => {
     expect(editor).toContain("Add alt text before uploading the screenshot or reel from the landing-page editor");
   });
 
-  it("uses deletion markers as the race fence for incomplete metadata promotion", () => {
+  it("uses both deletion marker namespaces as the race fence for incomplete metadata promotion", () => {
     const libraryServer = read("features/marketing/media/library-server.ts");
 
-    expect(libraryServer).toContain("const markerBefore = await readLibraryDeletionMarker(assetId)");
-    expect(libraryServer).toContain("const markerAfter = await readLibraryDeletionMarker(assetId)");
-    expect(libraryServer).toContain('markerAfter?.state === "deleting"');
-    expect(libraryServer).toContain('markerAfter?.state === "deleted"');
+    expect(libraryServer).toContain("async function deletionBlocksPromotion");
+    expect(libraryServer).toContain("readLibraryDeletionMarker(assetId)");
+    expect(libraryServer).toContain("readCanonicalDeletionState(assetId)");
+    expect(libraryServer).toContain('canonicalState === "deleting"');
+    expect(libraryServer).toContain('canonicalState === "deleted"');
+    expect(libraryServer).toContain("if (await deletionBlocksPromotion(assetId))");
     expect(libraryServer).toContain('await removeJson(`assets/${assetId}.json`)');
     expect(libraryServer).not.toContain("LIBRARY_LOCK_TTL_MS");
     expect(libraryServer).not.toContain("acquireLibraryLock");
@@ -147,15 +152,16 @@ describe("marketing media library management", () => {
     expect(libraryServer).toContain('readDeletionMarkerAsset(`deleting/${assetId}.json`, assetId)');
   });
 
-  it("audits incomplete asset deletion before destructive storage removal", () => {
+  it("audits incomplete asset deletion before destructive storage removal with an immutable terminal winner", () => {
     const libraryServer = read("features/marketing/media/library-server.ts");
 
     expect(libraryServer).toContain('await writeDeletionAudit(current, actor, "intent")');
     expect(libraryServer).toContain('await writeDeletionMarker(current, actor, "deleting")');
-    expect(libraryServer).toContain('await writeDeletionMarker(current, actor, "deleted")');
+    expect(libraryServer).toContain("await writeTerminalDeletionMarker(current, actor)");
+    expect(libraryServer).toContain("writeJsonCreateOnly");
     expect(libraryServer).toContain('await writeDeletionAudit(current, actor, "completed")');
-    expect(libraryServer).toContain("operatorId: actor.operatorId");
-    expect(libraryServer).toContain("operatorEmail: actor.operatorEmail");
+    expect(libraryServer).toContain("operatorId: terminal.operatorId");
+    expect(libraryServer).toContain("operatorEmail: terminal.operatorEmail");
   });
 
   it("does not let a stale initial library load overwrite a completed upload", () => {
