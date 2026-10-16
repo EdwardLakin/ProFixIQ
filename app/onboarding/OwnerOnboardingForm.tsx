@@ -67,6 +67,16 @@ const ONBOARDING_COPY: Record<
     submitLabel: "Create Fleet workspace and continue",
     destination: "/dashboard/owner/fleet-access",
   },
+  equipment: {
+    eyebrow: "ProFixIQ Equipment setup",
+    title: "Create your Equipment workspace",
+    description:
+      "Add the repair business and primary location behind this Equipment Operations trial. You can invite your team after setup.",
+    businessLabel: "Equipment repair business",
+    locationLabel: "Primary shop location",
+    submitLabel: "Create Equipment workspace and continue",
+    destination: "/equipment/dashboard",
+  },
 };
 
 export default function OwnerOnboardingForm({

@@ -17,6 +17,7 @@ export type EquipmentAddonEntitlement = {
   enabled: boolean;
   hasAddonItem: boolean;
   hasCompleteBaseItem: boolean;
+  hasStandaloneEquipmentItem: boolean;
   packageKey: string | null;
   subscriptionStatus: string | null;
 };
@@ -28,7 +29,13 @@ type EquipmentBillingLink = {
   billing_entitlement_override: string | null;
 };
 
+type EquipmentPackageLink = {
+  subscription_package: string | null;
+  stripe_subscription_status: string | null;
+};
+
 const INTERNAL_DEMO_ENTITLEMENT = "internal_demo";
+const STANDALONE_EQUIPMENT_PACKAGE = "equipment_operations";
 
 function mustEnv(name: string): string {
   const value = process.env[name];
@@ -41,6 +48,7 @@ function disabledEntitlement(): EquipmentAddonEntitlement {
     enabled: false,
     hasAddonItem: false,
     hasCompleteBaseItem: false,
+    hasStandaloneEquipmentItem: false,
     packageKey: null,
     subscriptionStatus: null,
   };
@@ -51,6 +59,7 @@ function internalDemoEntitlement(): EquipmentAddonEntitlement {
     enabled: true,
     hasAddonItem: true,
     hasCompleteBaseItem: true,
+    hasStandaloneEquipmentItem: false,
     packageKey: "complete_operations",
     subscriptionStatus: INTERNAL_DEMO_ENTITLEMENT,
   };
@@ -99,9 +108,12 @@ export function subscriptionHasEquipmentAddon(
 }
 
 /**
- * Equipment is deliberately not part of Complete Operations itself. Paying
- * shops receive access only when the same canonical subscription contains
- * both a real Complete base-price item and an active Equipment add-on item.
+ * Legacy bridge, unchanged: Equipment is not part of Complete Operations
+ * itself, so a Complete shop receives access only when the same canonical
+ * subscription contains both a real Complete base-price item and an active
+ * Equipment add-on item. Standalone Equipment Operations shops never reach this
+ * function; they are decided by the canonical product-access capability in
+ * resolveEquipmentAddonEntitlementForShop.
  * The server-owned `internal_demo` billing override is the sole non-Stripe
  * exception so the canonical ProFixIQ demo can permanently exercise Equipment
  * without creating a billable subscription item.
@@ -121,6 +133,7 @@ export function resolveEquipmentAddonEntitlement(
       hasAddonItem,
     hasAddonItem,
     hasCompleteBaseItem,
+    hasStandaloneEquipmentItem: false,
     packageKey,
     subscriptionStatus,
   };
@@ -149,6 +162,34 @@ export async function resolveEquipmentAddonEntitlementForShop(
 
   if (shop.billing_entitlement_override === INTERNAL_DEMO_ENTITLEMENT) {
     return internalDemoEntitlement();
+  }
+
+  // Standalone Equipment Operations is decided by the one canonical
+  // entitlement function, so subscription status, billing grace and billing
+  // overrides behave exactly as they do for Shop and Field. It is deliberately
+  // not applied to other shops: legacy (null package) shops resolve true for
+  // every capability there, which would hand them Equipment for free.
+  const { data: packageLink, error: packageError } = await admin
+    .from("shops")
+    .select("subscription_package,stripe_subscription_status")
+    .eq("id", shopId)
+    .maybeSingle<EquipmentPackageLink>();
+  if (packageError) throw new Error(packageError.message);
+
+  if (packageLink?.subscription_package === STANDALONE_EQUIPMENT_PACKAGE) {
+    const { data: entitled, error: entitlementError } = await admin.rpc(
+      "profixiq_shop_has_product_access",
+      { p_shop_id: shopId, p_capability: "equipment" },
+    );
+    if (entitlementError) throw new Error(entitlementError.message);
+    return {
+      enabled: entitled === true,
+      hasAddonItem: false,
+      hasCompleteBaseItem: false,
+      hasStandaloneEquipmentItem: true,
+      packageKey: STANDALONE_EQUIPMENT_PACKAGE,
+      subscriptionStatus: packageLink.stripe_subscription_status ?? null,
+    };
   }
 
   const subscriptionId = String(shop.stripe_subscription_id ?? "").trim();
