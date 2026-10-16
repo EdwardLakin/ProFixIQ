@@ -155,6 +155,22 @@ describe("POST /api/openai/inspection-transcription-token", () => {
     );
   });
 
+  it.each([
+    ["/v1/realtime/calls/019eb97d-8e9a-7ff3-94b0-ea019babd5d7", "019eb97d-8e9a-7ff3-94b0-ea019babd5d7"],
+    ["https://api.openai.com/v1/realtime/calls/019eb97d-8e9a-7ff3-94b0-ea019babd5d7", "019eb97d-8e9a-7ff3-94b0-ea019babd5d7"],
+  ])("persists accepted provider IDs from %s", async (location, callId) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("v=0\r\no=answer", {
+      status: 201, headers: { Location: location },
+    })));
+    const { POST } = await import("../app/api/openai/inspection-transcription-token/route");
+    const response = await POST(sessionRequest());
+    expect(response.status).toBe(200);
+    expect((await response.json()).sdp).toBe("v=0\r\no=answer");
+    expect(mocks.record).toHaveBeenCalledWith(expect.objectContaining({
+      provider_request_id: callId, quota_receipt_id: "reservation_1",
+    }));
+  });
+
   it("denies an enforcing budget before contacting OpenAI", async () => {
     mocks.reserve.mockRejectedValueOnce(
       new mocks.AIBudgetDeniedError("denied"),

@@ -76,6 +76,38 @@ describe("POST /api/openai/inspection-transcription-usage", () => {
     });
   });
 
+  it("hangs up and settles the exact UUID provider call from its actor-bound receipt", async () => {
+    const callId = "019eb97d-8e9a-7ff3-94b0-ea019babd5d7";
+    mocks.rpc.mockResolvedValueOnce({ data: {
+      shopId: "shop_1", model: "gpt-live-transcribe", callId,
+      rateCardVersion: "openai-2026-10-06-v3", reservedCostUsd: 1.02,
+      operation: "inspection_transcription_reservation",
+    }, error: null });
+    const { POST } = await import("../app/api/openai/inspection-transcription-usage/route");
+    const response = await POST(request({ usageKey, durationSeconds: 0 }));
+    expect(response.status).toBe(204);
+    expect(fetch).toHaveBeenCalledWith(
+      `https://api.openai.com/v1/realtime/calls/${callId}/hangup`,
+      expect.objectContaining({ method: "POST" }),
+    );
+    expect(mocks.rpc).toHaveBeenCalledWith("confirm_inspection_voice_closure",
+      expect.objectContaining({ p_call_id: callId }));
+    expect(mocks.rpc).toHaveBeenCalledWith("settle_inspection_voice_usage",
+      expect.objectContaining({ p_duration_seconds: 12, p_actual_cost_usd: 0.0034 }));
+  });
+
+  it.each(["rtc_", "not-a-call", "019eb97d-8e9a-7ff3-94b0-ea019babd5dg", "rtc_../other"])(
+    "rejects invalid durable call ID %s before hangup", async (callId) => {
+      mocks.rpc.mockResolvedValueOnce({ data: {
+        shopId: "shop_1", model: "gpt-live-transcribe", callId,
+        operation: "inspection_transcription_reservation",
+      }, error: null });
+      const { POST } = await import("../app/api/openai/inspection-transcription-usage/route");
+      expect((await POST(request({ usageKey, durationSeconds: 0 }))).status).toBe(503);
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
   it("ignores inflated client duration and prices confirmed server duration", async () => {
     const { POST } = await import("../app/api/openai/inspection-transcription-usage/route");
     const response = await POST(request({ usageKey, durationSeconds: 99_999 }));

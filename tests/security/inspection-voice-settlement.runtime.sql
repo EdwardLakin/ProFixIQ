@@ -278,4 +278,80 @@ begin
 end
 $$;
 
+
+-- Lost responses after a pre-provider failure must recover even when the
+-- immediate budget release failed. Unknown provider outcomes stay pending.
+do $$
+begin
+  if has_function_privilege('anon', 'public.get_inspection_voice_session_receipt_for_actor(uuid,text)', 'EXECUTE')
+     or has_function_privilege('authenticated', 'public.get_inspection_voice_session_receipt_for_actor(uuid,text)', 'EXECUTE')
+     or not has_function_privilege('service_role', 'public.get_inspection_voice_session_receipt_for_actor(uuid,text)', 'EXECUTE') then
+    raise exception 'forward no-call recovery repair changed the service-only RPC boundary';
+  end if;
+end
+$$;
+set local role service_role;
+do $$
+declare
+  v_shop uuid := 'c2000000-0000-4000-8000-000000000001';
+  v_actor uuid := 'c1000000-0000-4000-8000-000000000001';
+  v_other_actor uuid := 'c1000000-0000-4000-8000-000000000002';
+  v_key text;
+  v_event_key text;
+  v_error text;
+  v_reservation uuid;
+  v_receipt jsonb;
+  v_caught boolean;
+  v_i integer := 0;
+begin
+  foreach v_error in array array[
+    'inspection_voice_pre_provider_failure', 'inspection_voice_rejected',
+    'inspection_voice_timeout'
+  ] loop
+    v_i := v_i + 1;
+    v_key := 'c3000000-0000-4000-8000-00000000000' || (v_i + 2)::text;
+    v_event_key := 'inspection_voice:' || v_shop::text || ':' || v_key;
+    select reservation_id into v_reservation from public.reserve_ai_budget(
+      v_shop, 'voice', 'openai_realtime_token', 1.02, v_event_key, v_actor, 3600
+    );
+    perform public.record_ai_usage_ledger(v_shop, v_actor,
+      pg_catalog.jsonb_build_object(
+        'event_key', v_event_key || ':error',
+        'feature', 'openai_realtime_token',
+        'endpoint', '/api/openai/inspection-transcription-token',
+        'provider', 'openai', 'model', 'gpt-live-transcribe',
+        'modality', 'realtime', 'duration_seconds', 0,
+        'estimated_cost_usd', 0, 'latency_ms', 1,
+        'quota_receipt_id', v_reservation, 'status', 'error',
+        'error_code', v_error, 'operation', 'inspection_transcription_creation'
+      )
+    );
+    v_caught := false;
+    begin
+      v_receipt := public.get_inspection_voice_session_receipt_for_actor(v_actor, v_key);
+    exception when sqlstate '42501' then v_caught := true;
+    end;
+    if v_error = 'inspection_voice_timeout' then
+      if not v_caught then raise exception 'ambiguous timeout was treated as a no-call receipt'; end if;
+    elsif v_caught or v_receipt->>'operation' <> 'inspection_transcription_rejected'
+       or v_receipt->>'shopId' <> v_shop::text then
+      raise exception 'durable no-call recovery failed for %: %', v_error, v_receipt;
+    else
+      -- Repeat recovery is idempotent and cannot transfer ownership.
+      if public.get_inspection_voice_session_receipt_for_actor(v_actor, v_key)
+         is distinct from v_receipt then
+        raise exception 'duplicate recovery changed the no-call receipt';
+      end if;
+    end if;
+    v_caught := false;
+    begin
+      perform public.get_inspection_voice_session_receipt_for_actor(v_other_actor, v_key);
+    exception when sqlstate '42501' then v_caught := true;
+    end;
+    if not v_caught then raise exception 'no-call recovery admitted another actor'; end if;
+  end loop;
+end
+$$;
+reset role;
+
 rollback;

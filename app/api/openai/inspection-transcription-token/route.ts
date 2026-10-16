@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { openAIRealtimeCallIdFromLocation } from "@/features/shared/lib/openai-realtime-call-id";
 import { NextResponse } from "next/server";
 
 import { AI_RATE_CARD_VERSION, estimateOpenAIInspectionTranscriptionCostUsd } from "@/features/shared/lib/server/ai-cost";
@@ -25,7 +26,6 @@ const TRANSCRIPTION_FEATURE = "openai_realtime_token" as const;
 const OPERATION_KEY_HEADER = "x-profixiq-operation-key";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const CALL_LOCATION_PATTERN = /^\/v1\/realtime\/calls\/(rtc_[a-zA-Z0-9_-]+)$/;
 
 type SessionRequest = {
   sdp?: unknown;
@@ -303,7 +303,7 @@ export async function POST(request: Request) {
       );
     }
     const issuedAt = new Date().toISOString();
-    const callId = CALL_LOCATION_PATTERN.exec(response.headers.get("location") ?? "")?.[1] ?? null;
+    const callId = openAIRealtimeCallIdFromLocation(response.headers.get("location"));
     // A 2xx provider response can create a billable call even if its body fails.
     const answerSdp = await response.text().catch(() => "");
     const telemetryEvent = {

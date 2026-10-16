@@ -10,6 +10,10 @@ const staleGuard = readFileSync(
   "utf8",
 );
 
+const noCallRecovery = readFileSync(
+  "supabase/migrations/20261016213917_inspection_voice_pre_provider_recovery.sql", "utf8",
+);
+
 describe("inspection voice settlement migration", () => {
   it("adds only service-role RPCs with a locked-down execution context", () => {
     for (const signature of [
@@ -56,6 +60,16 @@ describe("inspection voice settlement migration", () => {
     expect(migration).toContain("public.commit_ai_budget(");
     expect(migration).toContain("operation = 'inspection_transcription_settled'");
     expect(migration).toMatch(/begin;[\s\S]*update private\.ai_usage_ledger[\s\S]*commit;\s*$/);
+  });
+
+  it("recognizes only durable rejected or pre-provider receipts in the forward recovery repair", () => {
+    expect(noCallRecovery).toContain("create or replace function public.get_inspection_voice_session_receipt_for_actor(");
+    expect(noCallRecovery).toContain("'inspection_voice_rejected', 'inspection_voice_pre_provider_failure'");
+    expect(noCallRecovery).toContain("reservation.actor_id = p_user_id");
+    expect(noCallRecovery).toContain("reservation.shop_id = rejected.shop_id");
+    expect(noCallRecovery).toContain("rejected.event_key = reservation.idempotency_key || ':error'");
+    expect(noCallRecovery).toContain("revoke all on function public.get_inspection_voice_session_receipt_for_actor(uuid, text)");
+    expect(noCallRecovery).not.toContain("'inspection_voice_timeout'");
   });
 
   it("conservatively adjudicates uncertain inspection holds in the preceding compatibility PR", () => {
