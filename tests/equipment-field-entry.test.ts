@@ -27,6 +27,9 @@ describe("Equipment field entry", () => {
     expect(page).toContain("requireShopPageAccess");
     expect(page).toContain("EQUIPMENT_FIELD_ENTRY_ROLES");
     expect(page).toContain("resolveEquipmentPageEntitlement");
+    // Links only appear once the canonical Field access check passes.
+    expect(page).toContain("getMobileFieldServiceAccess");
+    expect(page).toContain("equipmentFieldEntryState");
     expect(page).not.toContain("createAdminSupabase");
     expect(page).not.toMatch(/\.(from|rpc)\(/);
   });

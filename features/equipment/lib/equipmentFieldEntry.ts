@@ -43,3 +43,25 @@ export const EQUIPMENT_FIELD_ENTRY_LINKS: readonly EquipmentFieldEntryLink[] = [
     href: "/mobile/service/my-truck",
   },
 ];
+
+export type EquipmentFieldEntryState =
+  | "ready"
+  | "operator_required"
+  | "setup_required"
+  | "unavailable";
+
+/** Maps the canonical Field access decision onto what the entry page shows. */
+export function equipmentFieldEntryState(access: {
+  decision: "ready" | "setup_required" | "plan_required" | "forbidden";
+}): EquipmentFieldEntryState {
+  switch (access.decision) {
+    case "ready":
+      return "ready";
+    case "forbidden":
+      return "operator_required";
+    case "setup_required":
+      return "setup_required";
+    default:
+      return "unavailable";
+  }
+}
