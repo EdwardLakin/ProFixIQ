@@ -13,6 +13,7 @@ const priceContract: ProductPackagePriceContract = {
     field_service: "price_usd_field",
     fleet_maintenance: "price_usd_fleet",
     complete_operations: "price_usd_complete",
+    equipment_operations: "price_usd_equipment",
   },
   additionalUserPriceId: "price_usd_user",
   additionalServiceTruckPriceId: "price_usd_truck",
@@ -244,6 +245,88 @@ describe("product package subscription reconciliation", () => {
       }),
       expect.any(Object),
     );
+  });
+
+  it("bills Equipment Operations for staff above ten only, never trucks or fleet assets", async () => {
+    const supabase = supabaseFixture({
+      packageKey: "equipment_operations",
+      activeUsers: 13,
+      activeServiceTrucks: 3,
+      fleetAssetCounts: [12],
+    });
+    const current = subscription("equipment_operations", [
+      item({
+        id: "si_base",
+        priceId: "price_usd_equipment",
+        lookupKey: "profixiq_equipment_operations_monthly_usd_v1",
+      }),
+    ]);
+    const update = vi.fn().mockResolvedValue(current);
+
+    const result = await reconcileProductPackageSubscription({
+      stripe: {
+        subscriptions: {
+          retrieve: vi.fn().mockResolvedValue(current),
+          update,
+        },
+      } as never,
+      supabase: supabase.client,
+      shopId: SHOP_ID,
+      priceContract,
+    });
+
+    expect(result).toMatchObject({
+      state: "updated",
+      package_key: "equipment_operations",
+      active_users: 13,
+      additional_user_quantity: 3,
+      additional_service_truck_quantity: 0,
+      additional_fleet_asset_quantity: 0,
+      estimated_monthly_price: 549,
+    });
+    expect(update).toHaveBeenCalledWith(
+      current.id,
+      expect.objectContaining({
+        items: [{ price: "price_usd_user", quantity: 3 }],
+        metadata: expect.objectContaining({
+          package_key: "equipment_operations",
+          billing_currency: "usd",
+        }),
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("reports an Equipment subscription without its package price as unrecognized", async () => {
+    const supabase = supabaseFixture({
+      packageKey: "equipment_operations",
+      activeUsers: 2,
+      activeServiceTrucks: 0,
+      fleetAssetCounts: [],
+    });
+    const wrong = subscription("equipment_operations", [
+      item({
+        id: "si_other",
+        priceId: "price_cad_complete",
+        lookupKey: "profixiq_complete_operations_monthly_v1",
+      }),
+    ]);
+    const update = vi.fn();
+
+    const result = await reconcileProductPackageSubscription({
+      stripe: {
+        subscriptions: {
+          retrieve: vi.fn().mockResolvedValue(wrong),
+          update,
+        },
+      } as never,
+      supabase: supabase.client,
+      shopId: SHOP_ID,
+      priceContract,
+    });
+
+    expect(result.state).toBe("unrecognized_subscription");
+    expect(update).not.toHaveBeenCalled();
   });
 
   it("never bills Fleet-portal invitees as Shop staff seats", async () => {

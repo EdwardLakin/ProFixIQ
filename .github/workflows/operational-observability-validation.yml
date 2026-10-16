@@ -104,6 +104,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          bash scripts/ci/disable-supabase-pgdelta.sh
           supabase db start 2>&1 | tee operational-observability-db-start.log
       - name: Replay all migrations
         shell: bash

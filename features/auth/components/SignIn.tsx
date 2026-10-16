@@ -88,6 +88,20 @@ const PRODUCT_AUTH_COPY: Record<
     accountDescription:
       "Verify the owner account, then configure the fleet operation covered by this trial.",
   },
+  equipment: {
+    label: "ProFixIQ Equipment",
+    heroTitle: "The repair shop built for heavy equipment.",
+    heroDescription:
+      "Work orders, inspections, parts, approvals, and preventive maintenance connected to every machine you service.",
+    highlights: [
+      "Asset-centered repairs",
+      "Inspection evidence",
+      "Preventive maintenance",
+    ],
+    accountTitle: "Create your Equipment owner account",
+    accountDescription:
+      "Verify the owner account, then set up the repair business covered by this trial.",
+  },
 };
 
 const VERIFYING_TRIAL_COPY = {

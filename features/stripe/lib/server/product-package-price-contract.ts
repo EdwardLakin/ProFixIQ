@@ -6,12 +6,14 @@ import {
   ADDITIONAL_USER_LOOKUP_KEY,
   LEGACY_ADDITIONAL_FLEET_ASSET_LOOKUP_KEY,
   LEGACY_ADDITIONAL_SERVICE_TRUCK_LOOKUP_KEY,
+  LEGACY_CATALOG_PACKAGE_KEYS,
   LEGACY_PRODUCT_PACKAGE_LOOKUP_KEYS,
   PRODUCT_PACKAGE_BILLING_MODEL,
   PRODUCT_PACKAGE_CURRENCY,
   PRODUCT_PACKAGE_KEYS,
   PRODUCT_PACKAGE_LOOKUP_KEYS,
   PRODUCT_PACKAGE_PRICING,
+  type LegacyCatalogPackageKey,
   type ProductPackageKey,
 } from "@/features/stripe/lib/stripe/product-packages";
 
@@ -42,9 +44,9 @@ const CURRENT_PACKAGE_PRICES: readonly ExpectedPackagePrice[] = [
     amountCents: PRODUCT_PACKAGE_PRICING.additionalUserCents,
     currency: PRODUCT_PACKAGE_CURRENCY,
     role: "additional_user" as const,
-    // The same staff-seat price is used by Shop and Complete. Metadata binds
+    // The same staff-seat price is used by Shop, Complete and Equipment. Metadata binds
     // it to Shop for catalog validation; reconciliation only permits the line
-    // on those two packages.
+    // on those packages.
     packageKey: "shop_operations" as const,
   },
   {
@@ -64,7 +66,7 @@ const CURRENT_PACKAGE_PRICES: readonly ExpectedPackagePrice[] = [
 ] as const;
 
 const LEGACY_CAD_PACKAGE_PRICES: readonly ExpectedPackagePrice[] = [
-  ...PRODUCT_PACKAGE_KEYS.map((packageKey) => ({
+  ...LEGACY_CATALOG_PACKAGE_KEYS.map((packageKey) => ({
     lookupKey: LEGACY_PRODUCT_PACKAGE_LOOKUP_KEYS[packageKey],
     amountCents:
       packageKey === "complete_operations"
@@ -90,15 +92,17 @@ const LEGACY_CAD_PACKAGE_PRICES: readonly ExpectedPackagePrice[] = [
   },
 ] as const;
 
-export type ProductPackageCatalogPriceIds = {
-  packagePriceIds: Record<ProductPackageKey, string>;
+export type ProductPackageCatalogPriceIds<
+  K extends ProductPackageKey = ProductPackageKey,
+> = {
+  packagePriceIds: Record<K, string>;
   additionalServiceTruckPriceId: string;
   additionalFleetAssetPriceId: string;
 };
 
 export type ProductPackagePriceContract = ProductPackageCatalogPriceIds & {
   additionalUserPriceId: string;
-  legacyCad: ProductPackageCatalogPriceIds;
+  legacyCad: ProductPackageCatalogPriceIds<LegacyCatalogPackageKey>;
 };
 
 function validatePackagePrice(
@@ -169,19 +173,20 @@ function resolveExpectedPrices(
   return resolved;
 }
 
-function catalogIds(
+function catalogIds<K extends ProductPackageKey>(
   resolved: Map<string, Stripe.Price>,
-  lookupKeys: Record<ProductPackageKey, string>,
+  packageKeys: readonly K[],
+  lookupKeys: Record<K, string>,
   truckLookupKey: string,
   assetLookupKey: string,
-): ProductPackageCatalogPriceIds {
+): ProductPackageCatalogPriceIds<K> {
   return {
     packagePriceIds: Object.fromEntries(
-      PRODUCT_PACKAGE_KEYS.map((packageKey) => [
+      packageKeys.map((packageKey) => [
         packageKey,
         resolved.get(lookupKeys[packageKey])!.id,
       ]),
-    ) as Record<ProductPackageKey, string>,
+    ) as Record<K, string>,
     additionalServiceTruckPriceId: resolved.get(truckLookupKey)!.id,
     additionalFleetAssetPriceId: resolved.get(assetLookupKey)!.id,
   };
@@ -217,6 +222,7 @@ export async function resolveProductPackagePriceContract(
   return {
     ...catalogIds(
       current,
+      PRODUCT_PACKAGE_KEYS,
       PRODUCT_PACKAGE_LOOKUP_KEYS,
       ADDITIONAL_SERVICE_TRUCK_LOOKUP_KEY,
       ADDITIONAL_FLEET_ASSET_LOOKUP_KEY,
@@ -224,6 +230,7 @@ export async function resolveProductPackagePriceContract(
     additionalUserPriceId: current.get(ADDITIONAL_USER_LOOKUP_KEY)!.id,
     legacyCad: catalogIds(
       legacy,
+      LEGACY_CATALOG_PACKAGE_KEYS,
       LEGACY_PRODUCT_PACKAGE_LOOKUP_KEYS,
       LEGACY_ADDITIONAL_SERVICE_TRUCK_LOOKUP_KEY,
       LEGACY_ADDITIONAL_FLEET_ASSET_LOOKUP_KEY,

@@ -33382,15 +33382,6 @@ export type Database = {
         Args: { p_payload: Json; p_shop_id: string; p_user_id: string }
         Returns: string
       }
-      record_inspection_voice_issuance_rate: {
-        Args: {
-          p_actor_id: string
-          p_rate_card_version: string
-          p_reservation_id: string
-          p_shop_id: string
-        }
-        Returns: boolean
-      }
       record_engineering_agent_ai_usage_ledger: {
         Args: { p_payload: Json }
         Returns: string
@@ -33400,6 +33391,15 @@ export type Database = {
           p_accepted_at: string
           p_email_log_id: string
           p_invite_id: string
+          p_shop_id: string
+        }
+        Returns: boolean
+      }
+      record_inspection_voice_issuance_rate: {
+        Args: {
+          p_actor_id: string
+          p_rate_card_version: string
+          p_reservation_id: string
           p_shop_id: string
         }
         Returns: boolean
