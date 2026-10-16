@@ -1,9 +1,13 @@
 import { existsSync, readFileSync } from "node:fs";
-import { render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const nav = vi.hoisted(() => ({ pathname: "/equipment/dashboard" }));
 vi.mock("next/navigation", () => ({ usePathname: () => nav.pathname }));
+vi.mock("@/features/chat/components/InboxModal", () => ({
+  default: ({ open }: { open: boolean }) =>
+    open ? <div role="dialog" aria-label="Inbox" /> : null,
+}));
 
 import EquipmentOperationsBoard, {
   equipmentBoardCards,
@@ -165,6 +169,13 @@ describe("Equipment planned entry points", () => {
 describe("EquipmentShell", () => {
   beforeEach(() => {
     nav.pathname = "/equipment/dashboard";
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => ({
+        ok: true,
+        json: async () => [{ unread_count: 2 }, { unread_count: 1 }, { unread_count: null }],
+      })),
+    );
   });
 
   const items = EQUIPMENT_SHELL_NAV.map(({ key, label, href, state, children }) => ({
@@ -200,6 +211,41 @@ describe("EquipmentShell", () => {
       </EquipmentShell>,
     );
     expect(screen.getAllByText("Soon")).toHaveLength(6);
+  });
+
+  it("keeps the asset-engine links in the markup at every width", () => {
+    render(
+      <EquipmentShell items={items}>
+        <p>page body</p>
+      </EquipmentShell>,
+    );
+    for (const name of ["Components", "Measurements", "Undercarriage", "Fluid analysis"]) {
+      const link = screen.getByRole("link", { name });
+      expect(link).toBeTruthy();
+      // No ancestor may hide the link below lg.
+      let node: HTMLElement | null = link;
+      while (node && node.tagName !== "ASIDE") {
+        expect(node.className).not.toMatch(/(^|\s)hidden(\s|$)/);
+        node = node.parentElement;
+      }
+    }
+  });
+
+  it("provides sign out and the shared inbox with an unread badge", async () => {
+    render(
+      <EquipmentShell items={items}>
+        <p>page body</p>
+      </EquipmentShell>,
+    );
+    expect(screen.getByRole("link", { name: "Sign out" })).toHaveAttribute(
+      "href",
+      "/auth/signout",
+    );
+    const inbox = screen.getByRole("button", { name: /Inbox/ });
+    expect(await screen.findByLabelText("3 unread")).toBeTruthy();
+    expect(screen.queryByRole("dialog", { name: "Inbox" })).toBeNull();
+    fireEvent.click(inbox);
+    expect(screen.getByRole("dialog", { name: "Inbox" })).toBeTruthy();
   });
 
   it("keeps Assets highlighted on a machine's detail page", () => {
