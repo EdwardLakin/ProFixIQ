@@ -53,7 +53,7 @@ describe("Equipment Operations standalone package", () => {
 
   it("widens the package contract in a forward migration without touching grants", () => {
     const sql = readFileSync(
-      "supabase/migrations/20261016120000_equipment_operations_package.sql",
+      "supabase/migrations/20261016183053_equipment_operations_package.sql",
       "utf8",
     );
     expect(sql).toContain("'equipment_operations'");
