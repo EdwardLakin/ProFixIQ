@@ -19,6 +19,12 @@ values
   ('ac000000-0000-4000-8000-000000000005', 'ai-budget-profile-d@example.com', '{"full_name":"Legacy AI Budget Profile"}'::jsonb)
 on conflict (id) do nothing;
 
+-- The auth fixture also creates a default profile keyed by the auth id.
+-- Remove that unscoped row so an auth-id lookup exercises the linked profile.
+delete from public.profiles
+where id = 'ab000000-0000-4000-8000-000000000005'
+  and shop_id is null;
+
 insert into public.profiles (id, user_id, role, full_name)
 values
   ('ab000000-0000-4000-8000-000000000001', 'ab000000-0000-4000-8000-000000000001', 'owner', 'AI Budget Owner A'),
