@@ -313,7 +313,7 @@ describe("inspection voice WebRTC client", () => {
     );
   });
 
-  it("mutes immediately but keeps WebRTC open until server completion resolves", async () => {
+  it.each(["stop", "channel_close"])("mutes immediately on %s but keeps WebRTC open until server completion resolves", async (reason) => {
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(operationKey);
     let finishUsage!: (response: Response) => void;
     const usageResponse = new Promise<Response>((resolve) => { finishUsage = resolve; });
@@ -333,7 +333,7 @@ describe("inspection voice WebRTC client", () => {
     const { result } = renderHook(() => useCostOptimizedInspectionVoice(vi.fn(), (text) => text));
     await act(async () => result.current.start());
     const peer = FakePeerConnection.instance!;
-    act(() => result.current.stop());
+    act(() => { if (reason === "stop") result.current.stop(); else peer.channel.onclose?.(); });
     expect(stream.track.enabled).toBe(false);
     expect(peer.close).not.toHaveBeenCalled();
     finishUsage(new Response(null, { status: 204 }));

@@ -390,10 +390,7 @@ export function useCostOptimizedInspectionVoice(
     events.onerror = failConnection;
     events.onclose = () => {
       if (activeRef.current !== session) return;
-      void finishReport(session);
-      activeRef.current = null;
-      cleanup(session);
-      setState("idle");
+      stop();
     };
     peer.onconnectionstatechange = () => {
       if (peer?.connectionState === "failed") failConnection();
