@@ -50,6 +50,14 @@ describe("inspection gated media track", () => {
     expect(processor.port.postMessage).toHaveBeenCalledWith({ type: "end" });
     expect(processor.state).toBe("awaitingCommit");
     expect(tick(0).some(Boolean)).toBe(false);
+    // Pause may finish the same turn again during the main thread's delayed
+    // provider commit. Keep buffering the next speech without a second end.
+    processor.port.onmessage?.({ data: { type: "finish" } });
+    expect(tick(0.2).some(Boolean)).toBe(false);
+    processor.port.onmessage?.({ data: { type: "finish" } });
+    expect(tick(0.2).some(Boolean)).toBe(false);
+    expect(processor.state).toBe("awaitingCommit");
+    expect(processor.port.postMessage.mock.calls.filter(([event]) => event.type === "end")).toHaveLength(1);
     processor.port.onmessage?.({ data: { type: "committed" } });
     expect(processor.state).toBe("pending");
     expect(processor.port.postMessage).toHaveBeenCalledWith({ type: "start" });

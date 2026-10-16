@@ -423,6 +423,7 @@ begin
   if public.record_inspection_voice_issuance_rate(v_shop, v_actor, v_next, 'openai-2026-10-06-v3') is distinct from true then
     raise exception 'pending operation could not claim issuance';
   end if;
+  insert into voice_test_ids values ('pending_claim', v_next);
   perform public.record_ai_usage_ledger(v_shop, v_actor, pg_catalog.jsonb_build_object(
     'event_key', 'inspection_voice:' || v_shop::text || ':' || v_key,
     'feature', 'openai_realtime_token', 'endpoint', '/api/openai/inspection-transcription-token',
@@ -494,6 +495,16 @@ begin
     raise exception 'pending original operation was incorrectly retired';
   exception when sqlstate '55000' then null;
   end;
+  -- The original call was definitively rejected and its hold released, but
+  -- neither ledger receipt persisted. Recovery must inspect that original hold.
+  perform public.release_ai_budget((select id from voice_test_ids where name = 'pending_claim'), v_shop);
+  v_receipt := public.get_inspection_voice_session_receipt_for_actor(
+    v_actor, 'c3000000-0000-4000-8000-000000000008'
+  );
+  if v_receipt->>'operation' is distinct from 'inspection_transcription_rejected'
+     or v_receipt->>'shopId' is distinct from v_shop::text then
+    raise exception 'released original claim was not terminal across the shop move: %', v_receipt;
+  end if;
   -- A failed pre-provider operation in the other shop can eventually leave a
   -- provider-less stale fallback. It cannot shadow the single issued call.
   perform public.record_ai_usage_ledger(v_other_shop, v_actor, pg_catalog.jsonb_build_object(
