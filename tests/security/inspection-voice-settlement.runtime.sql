@@ -385,4 +385,86 @@ begin
 end
 $$;
 
+
+-- Actor/key closure credentials stay unique when the issuing shop changes.
+-- The issuance claim runs before the token route is allowed to call OpenAI.
+set local role service_role;
+do $$
+declare
+  v_shop uuid := 'c2000000-0000-4000-8000-000000000001';
+  v_other_shop uuid := 'c2000000-0000-4000-8000-000000000002';
+  v_actor uuid := 'c1000000-0000-4000-8000-000000000001';
+  v_other_actor uuid := 'c1000000-0000-4000-8000-000000000002';
+  v_key text := 'c3000000-0000-4000-8000-000000000006';
+  v_next_key text := 'c3000000-0000-4000-8000-000000000007';
+  v_first uuid;
+  v_second uuid;
+  v_next uuid;
+  v_other uuid;
+  v_receipt jsonb;
+begin
+  select reservation_id into v_first from public.reserve_ai_budget(
+    v_shop, 'voice', 'openai_realtime_token', 1.02,
+    'inspection_voice:' || v_shop::text || ':' || v_key, v_actor, 3600
+  );
+  if public.record_inspection_voice_issuance_rate(v_shop, v_actor, v_first, 'openai-2026-10-06-v3') is distinct from true
+     or public.record_inspection_voice_issuance_rate(v_shop, v_actor, v_first, 'openai-2026-10-06-v3') is distinct from true then
+    raise exception 'first issuance claim or its idempotent replay failed';
+  end if;
+  if public.record_inspection_voice_issuance_rate(v_shop, v_other_actor, v_first, 'openai-2026-10-06-v3') is distinct from false then
+    raise exception 'issuance claim accepted actor substitution';
+  end if;
+  perform public.record_ai_usage_ledger(v_shop, v_actor, pg_catalog.jsonb_build_object(
+    'event_key', 'inspection_voice:' || v_shop::text || ':' || v_key,
+    'feature', 'openai_realtime_token', 'endpoint', '/api/openai/inspection-transcription-token',
+    'provider', 'openai', 'provider_request_id', 'rtc_actor_key_guard',
+    'model', 'gpt-live-transcribe', 'modality', 'realtime',
+    'rate_card_version', 'openai-2026-10-06-v3',
+    'duration_seconds', 3600, 'estimated_cost_usd', 1.02, 'latency_ms', 1,
+    'status', 'success', 'quota_receipt_id', v_first,
+    'operation', 'inspection_transcription_reservation'
+  ));
+  -- The shared budget still permits its shop-scoped reservation. The inspection
+  -- issuance claim independently prevents a second provider call for this actor.
+  select reservation_id into v_second from public.reserve_ai_budget(
+    v_other_shop, 'voice', 'openai_realtime_token', 1.02,
+    'inspection_voice:' || v_other_shop::text || ':' || v_key, v_actor, 3600
+  );
+  if v_second is null or public.record_inspection_voice_issuance_rate(
+    v_other_shop, v_actor, v_second, 'openai-2026-10-06-v3'
+  ) is distinct from false then
+    raise exception 'one actor could claim the same closure key in two shops';
+  end if;
+  -- A failed pre-provider operation in the other shop can eventually leave a
+  -- provider-less stale fallback. It cannot shadow the single issued call.
+  perform public.record_ai_usage_ledger(v_other_shop, v_actor, pg_catalog.jsonb_build_object(
+    'event_key', 'inspection_voice:' || v_other_shop::text || ':' || v_key,
+    'feature', 'openai_realtime_token', 'endpoint', '/api/openai/inspection-transcription-token',
+    'provider', 'openai', 'model', 'gpt-live-transcribe', 'modality', 'realtime',
+    'rate_card_version', 'openai-2026-10-06-v3',
+    'duration_seconds', 3600, 'estimated_cost_usd', 1.02, 'latency_ms', 1,
+    'status', 'success', 'quota_receipt_id', v_second,
+    'operation', 'inspection_transcription_settled_fallback'
+  ));
+  v_receipt := public.get_inspection_voice_session_receipt_for_actor(v_actor, v_key);
+  if v_receipt->>'shopId' is distinct from v_shop::text
+     or v_receipt->>'callId' is distinct from 'rtc_actor_key_guard' then
+    raise exception 'actor lookup lost the single issuing-shop receipt: %', v_receipt;
+  end if;
+  select reservation_id into v_next from public.reserve_ai_budget(
+    v_shop, 'voice', 'openai_realtime_token', 1.02,
+    'inspection_voice:' || v_shop::text || ':' || v_next_key, v_actor, 3600
+  );
+  select reservation_id into v_other from public.reserve_ai_budget(
+    v_other_shop, 'voice', 'openai_realtime_token', 1.02,
+    'inspection_voice:' || v_other_shop::text || ':' || v_next_key, v_other_actor, 3600
+  );
+  if public.record_inspection_voice_issuance_rate(v_shop, v_actor, v_next, 'openai-2026-10-06-v3') is distinct from true
+     or public.record_inspection_voice_issuance_rate(v_other_shop, v_other_actor, v_other, 'openai-2026-10-06-v3') is distinct from true then
+    raise exception 'new keys or the same UUID for a different actor were blocked';
+  end if;
+end
+$$;
+reset role;
+
 rollback;

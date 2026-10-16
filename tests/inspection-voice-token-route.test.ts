@@ -193,6 +193,20 @@ describe("POST /api/openai/inspection-transcription-token", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
+  it("does not create a provider call when the actor/key issuance claim is refused", async () => {
+    mocks.issuanceRpc.mockResolvedValueOnce({ data: false, error: null });
+    const { POST } = await import("../app/api/openai/inspection-transcription-token/route");
+    const response = await POST(sessionRequest());
+    expect(response.status).toBe(503);
+    expect((await response.json()).code).toBe("inspection_voice_rate_receipt_unavailable");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(mocks.record).toHaveBeenCalledWith(expect.objectContaining({
+      event_key: `inspection_voice:shop_1:${operationKey}:error`,
+      error_code: "inspection_voice_pre_provider_failure", estimated_cost_usd: 0,
+    }));
+    expect(mocks.release).toHaveBeenCalledWith(expect.objectContaining({ reservationId: "reservation_1" }));
+  });
+
   it("records zero-cost proof before a failed pre-provider release", async () => {
     mocks.issuanceRpc.mockResolvedValueOnce({ data: null, error: { message: "database unavailable" } });
     mocks.release.mockResolvedValueOnce(false);
