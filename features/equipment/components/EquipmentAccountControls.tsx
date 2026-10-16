@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import InboxModal from "@/features/chat/components/InboxModal";
+import PushNotificationSettings from "@/features/notifications/components/PushNotificationSettings";
+import { disablePush } from "@/features/notifications/lib/pushClient";
 import { useNotificationPreferences } from "@/features/shared/hooks/useNotificationPreferences";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
@@ -20,6 +22,7 @@ const BUTTON =
  */
 export default function EquipmentAccountControls() {
   const [open, setOpen] = useState(false);
+  const [alertsOpen, setAlertsOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const generation = useRef(0);
   const [userId, setUserId] = useState<string | null>(null);
@@ -83,11 +86,36 @@ export default function EquipmentAccountControls() {
             </span>
           ) : null}
         </button>
-        {/* GET /auth/signout clears the session server-side and lands on "/". */}
-        <a href="/auth/signout" className={BUTTON}>
+        <button
+          type="button"
+          className={BUTTON}
+          aria-expanded={alertsOpen}
+          onClick={() => setAlertsOpen((value) => !value)}
+        >
+          Phone alerts
+        </button>
+        {/* GET /auth/signout clears the session server-side and lands on "/".
+            Revoke this device's push subscription first, while the session can
+            still authorize it (navigation would not emit a client sign-out). */}
+        <a
+          href="/auth/signout"
+          className={BUTTON}
+          onClick={(event) => {
+            event.preventDefault();
+            void Promise.race([
+              disablePush().catch(() => undefined),
+              new Promise((resolve) => window.setTimeout(resolve, 1500)),
+            ]).finally(() => window.location.assign("/auth/signout"));
+          }}
+        >
           Sign out
         </a>
       </div>
+      {alertsOpen ? (
+        <div className="mt-2 rounded-lg border border-[color:var(--theme-border-soft)] p-3">
+          <PushNotificationSettings />
+        </div>
+      ) : null}
       <InboxModal open={open} onClose={() => setOpen(false)} />
     </>
   );

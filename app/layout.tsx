@@ -5,6 +5,7 @@ import Script from "next/script";
 import { headers } from "next/headers";
 import MarketingEventBridge from "@/features/analytics/MarketingEventBridge";
 import { resolveRootShellContext } from "@/features/dashboard/server/root-shell-context";
+import PushSubscriptionLifecycle from "@/features/notifications/components/PushSubscriptionLifecycle";
 import PwaRuntime from "@/features/shared/components/pwa/PwaRuntime";
 import RootShellBoundary from "./RootShellBoundary";
 import type { Metadata, Viewport } from "next";
@@ -121,6 +122,7 @@ export default async function RootLayout({
         </RootShellBoundary>
 
         {isFleetProductHost ? null : <PwaRuntime />}
+        {isFleetProductHost ? null : <PushSubscriptionLifecycle />}
         <ThemedToaster />
       </body>
     </html>
