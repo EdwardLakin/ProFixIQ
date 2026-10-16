@@ -38,5 +38,15 @@ export default async function EquipmentLayout({
     }),
   );
 
-  return <EquipmentShell items={items}>{children}</EquipmentShell>;
+  // Home is the first page this role can open, so an assigned-work technician is
+  // not sent to a dashboard that bounces them out of Equipment.
+  return (
+    <EquipmentShell
+      items={items}
+      homeHref={items[0]?.href ?? "/dashboard"}
+      isTechnician={role === "mechanic"}
+    >
+      {children}
+    </EquipmentShell>
+  );
 }

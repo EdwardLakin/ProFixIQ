@@ -1,3 +1,4 @@
+import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDirectory";
 import {
   getActorCapabilities,
   ROLE_GROUPS,
@@ -42,9 +43,11 @@ export type EquipmentShellItem = {
   visibleTo: (role: CanonicalRole) => boolean;
 };
 
-const always = () => true;
 const hasRole = (roles: readonly string[]) => (role: CanonicalRole) =>
   roles.includes(role);
+// Equipment pages serve the shop-wide directory roles; assigned-work roles
+// (mechanics) only get the field entry, so nobody is shown a link that bounces.
+const always = hasRole(EQUIPMENT_DIRECTORY_ROLES);
 
 /**
  * Navigation for the standalone Equipment workspace. Equipment's own routes

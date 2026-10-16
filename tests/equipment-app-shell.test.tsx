@@ -4,6 +4,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const nav = vi.hoisted(() => ({ pathname: "/equipment/dashboard" }));
 vi.mock("next/navigation", () => ({ usePathname: () => nav.pathname }));
+const prefs = vi.hoisted(() => ({ navigationIndicators: true, loading: false }));
+vi.mock("@/features/shared/hooks/useNotificationPreferences", () => ({
+  useNotificationPreferences: () => ({
+    preferences: { navigationIndicators: prefs.navigationIndicators },
+    loading: prefs.loading,
+  }),
+}));
+vi.mock("@/features/shared/lib/supabase/client", () => ({
+  createBrowserSupabase: () => ({
+    auth: {
+      getSession: async () => ({ data: { session: { user: { id: "auth-user" } } } }),
+    },
+  }),
+}));
+vi.mock("@/features/copilot/technician/components/TechnicianCopilotShell", () => ({
+  TechnicianCopilotShell: ({ shouldCheck }: { shouldCheck: boolean }) => (
+    <div data-testid="copilot" data-should-check={String(shouldCheck)} />
+  ),
+}));
 vi.mock("@/features/chat/components/InboxModal", () => ({
   default: ({ open }: { open: boolean }) =>
     open ? <div role="dialog" aria-label="Inbox" /> : null,
@@ -120,6 +139,9 @@ describe("Equipment navigation registry", () => {
     const keys = (role: Parameters<typeof equipmentShellNavForRole>[0]) =>
       equipmentShellNavForRole(role).map((item) => item.key);
     expect(keys("owner")).toHaveLength(EQUIPMENT_SHELL_NAV.length);
+    // Assigned-work roles get no link they cannot open.
+    expect(keys("mechanic")).toEqual([]);
+    expect(keys("customer")).toEqual([]);
     expect(keys("parts")).toContain("parts");
     expect(keys("parts")).not.toContain("settings");
     expect(keys("parts")).not.toContain("billing");
@@ -164,6 +186,8 @@ describe("Equipment planned entry points", () => {
 describe("EquipmentShell", () => {
   beforeEach(() => {
     nav.pathname = "/equipment/dashboard";
+    prefs.navigationIndicators = true;
+    prefs.loading = false;
     vi.stubGlobal(
       "fetch",
       vi.fn(async () => ({
@@ -243,6 +267,43 @@ describe("EquipmentShell", () => {
     expect(screen.getByRole("dialog", { name: "Inbox" })).toBeTruthy();
   });
 
+  it("hides the unread badge when the saved navigation-indicator preference is off", async () => {
+    prefs.navigationIndicators = false;
+    render(
+      <EquipmentShell items={items}>
+        <p>page body</p>
+      </EquipmentShell>,
+    );
+    await screen.findByRole("button", { name: /Inbox/ });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(screen.queryByLabelText("3 unread")).toBeNull();
+  });
+
+  it("keeps the technician CoPilot launcher for technicians only", () => {
+    const { unmount } = render(
+      <EquipmentShell items={items} isTechnician>
+        <p>page body</p>
+      </EquipmentShell>,
+    );
+    expect(screen.getByTestId("copilot")).toHaveAttribute("data-should-check", "true");
+    unmount();
+    render(
+      <EquipmentShell items={items}>
+        <p>page body</p>
+      </EquipmentShell>,
+    );
+    expect(screen.getByTestId("copilot")).toHaveAttribute("data-should-check", "false");
+  });
+
+  it("points the brand link at the supplied home", () => {
+    render(
+      <EquipmentShell items={items} homeHref="/dashboard">
+        <p>page body</p>
+      </EquipmentShell>,
+    );
+    expect(screen.getByRole("link", { name: /Equipment/ })).toHaveAttribute("href", "/dashboard");
+  });
+
   it("keeps Assets highlighted on a machine's detail page", () => {
     nav.pathname = "/equipment/3f2b6c1e-0000-4000-8000-000000000000";
     render(
@@ -277,14 +338,30 @@ describe("Equipment operations board", () => {
   });
 
   it("labels unconnected cards instead of showing a number", () => {
-    render(<EquipmentOperationsBoard summary={emptyFleetSummary()} />);
+    render(<EquipmentOperationsBoard summary={emptyFleetSummary()} role="owner" />);
     expect(screen.getAllByText("Not connected yet")).toHaveLength(4);
   });
 
   it("warns when counts are partial", () => {
     const summary = emptyFleetSummary();
     summary.partial = true;
-    render(<EquipmentOperationsBoard summary={summary} />);
+    render(<EquipmentOperationsBoard summary={summary} role="owner" />);
     expect(screen.getByRole("status").textContent).toContain("incomplete");
+  });
+
+  it("links only to destinations the role can open", () => {
+    const { unmount } = render(
+      <EquipmentOperationsBoard summary={emptyFleetSummary()} role="owner" />,
+    );
+    expect(screen.getByText("Parts holds").closest("a")).not.toBeNull();
+    expect(screen.getByText("Dispatch").closest("a")).not.toBeNull();
+    unmount();
+
+    // service: opens Work/Assets/PM but not scheduling or parts.
+    render(<EquipmentOperationsBoard summary={emptyFleetSummary()} role="service" />);
+    expect(screen.getByText("Open work orders").closest("a")).not.toBeNull();
+    for (const title of ["Dispatch", "Active field jobs", "Parts holds"]) {
+      expect(screen.getByText(title).closest("a")).toBeNull();
+    }
   });
 });

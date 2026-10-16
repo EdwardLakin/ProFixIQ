@@ -1,6 +1,11 @@
 import Link from "next/link";
 
 import type { EquipmentFleetSummary } from "@/features/equipment/lib/equipmentDashboard";
+import {
+  equipmentShellItem,
+  type EquipmentShellItemKey,
+} from "@/features/equipment/lib/equipmentShellNav";
+import type { CanonicalRole } from "@/features/shared/lib/rbac";
 import { WORKSPACE_PANEL as PANEL } from "@/features/workspace/components";
 
 type BoardCard =
@@ -8,6 +13,8 @@ type BoardCard =
       key: string;
       title: string;
       href: string;
+      /** Shell section the card links to; the viewer's role must be able to open it. */
+      destination: EquipmentShellItemKey;
       detail: string;
       /** Counted from the same asset records as the Assets list. */
       value: number;
@@ -17,6 +24,8 @@ type BoardCard =
       key: string;
       title: string;
       href: string;
+      /** Shell section the card links to; the viewer's role must be able to open it. */
+      destination: EquipmentShellItemKey;
       detail: string;
       /** No Equipment data source is connected yet; no number is shown. */
       value: null;
@@ -39,6 +48,7 @@ export function equipmentBoardCards(summary: EquipmentFleetSummary): BoardCard[]
       key: "machines-down",
       title: "Machines down",
       href: "/equipment",
+      destination: "assets",
       detail: "Down or out of service",
       value: summary.status.down + summary.status.out_of_service,
       tone: "bad",
@@ -47,6 +57,7 @@ export function equipmentBoardCards(summary: EquipmentFleetSummary): BoardCard[]
       key: "open-work",
       title: "Open work orders",
       href: "/equipment/work-orders",
+      destination: "work",
       detail: `On ${summary.openWork.assets.toLocaleString()} machines`,
       value: summary.openWork.orders,
       tone: "muted",
@@ -55,6 +66,7 @@ export function equipmentBoardCards(summary: EquipmentFleetSummary): BoardCard[]
       key: "pm-due",
       title: "PM due",
       href: "/equipment/pm",
+      destination: "pm",
       detail: "Overdue or due now",
       value: summary.pm.overdue + summary.pm.due,
       tone: summary.pm.overdue > 0 ? "bad" : "warn",
@@ -63,6 +75,7 @@ export function equipmentBoardCards(summary: EquipmentFleetSummary): BoardCard[]
       key: "field-jobs",
       title: "Active field jobs",
       href: "/equipment/dispatch",
+      destination: "dispatch",
       detail: "Jobs in progress on service trucks",
       value: null,
     },
@@ -70,6 +83,7 @@ export function equipmentBoardCards(summary: EquipmentFleetSummary): BoardCard[]
       key: "dispatch",
       title: "Dispatch",
       href: "/equipment/dispatch",
+      destination: "dispatch",
       detail: "Technicians and service trucks available",
       value: null,
     },
@@ -77,6 +91,7 @@ export function equipmentBoardCards(summary: EquipmentFleetSummary): BoardCard[]
       key: "approvals",
       title: "Approvals waiting",
       href: "/equipment/work-orders",
+      destination: "work",
       detail: "Estimates awaiting a customer decision",
       value: null,
     },
@@ -84,6 +99,7 @@ export function equipmentBoardCards(summary: EquipmentFleetSummary): BoardCard[]
       key: "parts-holds",
       title: "Parts holds",
       href: "/equipment/parts",
+      destination: "parts",
       detail: "Repairs waiting on parts",
       value: null,
     },
@@ -92,8 +108,11 @@ export function equipmentBoardCards(summary: EquipmentFleetSummary): BoardCard[]
 
 export default function EquipmentOperationsBoard({
   summary,
+  role,
 }: {
   summary: EquipmentFleetSummary;
+  /** Cards whose destination this role cannot open render as plain tiles, not links. */
+  role: CanonicalRole;
 }) {
   return (
     <section aria-label="Operations" className="flex flex-col gap-3">
@@ -105,12 +124,9 @@ export default function EquipmentOperationsBoard({
         </p>
       ) : null}
       <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {equipmentBoardCards(summary).map((card) => (
-          <li key={card.key}>
-            <Link
-              href={card.href}
-              className={`${PANEL} flex h-full min-h-28 flex-col gap-1 p-4 transition hover:bg-[color:var(--theme-surface-overlay)]`}
-            >
+        {equipmentBoardCards(summary).map((card) => {
+          const body = (
+            <>
               <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">
                 {card.title}
               </span>
@@ -128,9 +144,24 @@ export default function EquipmentOperationsBoard({
                 </span>
               )}
               <span className="text-xs text-[color:var(--theme-text-muted)]">{card.detail}</span>
-            </Link>
-          </li>
-        ))}
+            </>
+          );
+          const tile = `${PANEL} flex h-full min-h-28 flex-col gap-1 p-4`;
+          return (
+            <li key={card.key}>
+              {equipmentShellItem(card.destination).visibleTo(role) ? (
+                <Link
+                  href={card.href}
+                  className={`${tile} transition hover:bg-[color:var(--theme-surface-overlay)]`}
+                >
+                  {body}
+                </Link>
+              ) : (
+                <div className={tile}>{body}</div>
+              )}
+            </li>
+          );
+        })}
       </ul>
     </section>
   );

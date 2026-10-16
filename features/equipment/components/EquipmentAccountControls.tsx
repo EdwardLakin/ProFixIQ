@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import InboxModal from "@/features/chat/components/InboxModal";
+import { useNotificationPreferences } from "@/features/shared/hooks/useNotificationPreferences";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 type ConversationSummary = { unread_count?: number | null };
 
@@ -20,6 +22,22 @@ export default function EquipmentAccountControls() {
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const generation = useRef(0);
+  const [userId, setUserId] = useState<string | null>(null);
+  // The same account-wide preference the Shop shell honors for its Inbox badge.
+  const { preferences, loading: preferencesLoading } = useNotificationPreferences(userId);
+  const showBadge = !preferencesLoading && preferences.navigationIndicators;
+
+  useEffect(() => {
+    let active = true;
+    void createBrowserSupabase()
+      .auth.getSession()
+      .then(({ data }) => {
+        if (active) setUserId(data.session?.user?.id ?? null);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const refresh = useCallback(async () => {
     const current = ++generation.current;
@@ -56,7 +74,7 @@ export default function EquipmentAccountControls() {
       <div className="flex items-center gap-2 lg:flex-col lg:items-stretch">
         <button type="button" className={BUTTON} onClick={() => setOpen(true)}>
           <span>Inbox</span>
-          {unread > 0 ? (
+          {showBadge && unread > 0 ? (
             <span
               className="rounded-full bg-[color:var(--accent-copper)] px-1.5 text-xs font-bold text-white"
               aria-label={`${unread} unread`}
