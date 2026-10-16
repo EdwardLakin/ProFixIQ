@@ -49,6 +49,10 @@ const inspectionVoiceTransportSource = readFileSync(
   "features/inspections/lib/inspection/useCostOptimizedInspectionVoice.ts",
   "utf8",
 );
+const inspectionGatedAudioSource = readFileSync(
+  "public/voice/inspection-gated-processor.js",
+  "utf8",
+);
 
 describe("Technician CoPilot GPT-Live voice bridge boundaries", () => {
   it("returns the resolved voice capability to the call surface", () => {
@@ -137,25 +141,43 @@ describe("Technician CoPilot GPT-Live voice bridge boundaries", () => {
     );
   });
 
-  it("keeps inspection voice off premium GPT-Live and sends only detected speech", () => {
-    expect(inspectionVoiceWrapperSource).toContain(
-      "useCostOptimizedInspectionVoice",
-    );
-    expect(inspectionVoiceTransportSource).toContain(
-      '"/api/openai/inspection-transcription-token"',
-    );
-    expect(inspectionVoiceTransportSource).toContain(
-      'type: "input_audio_buffer.append"',
-    );
-    expect(inspectionVoiceTransportSource).toContain(
-      "if (!session.speaking) return;",
-    );
-    expect(inspectionVoiceTransportSource).toContain(
-      "inspection-transcription-usage",
-    );
-    expect(inspectionVoiceWrapperSource).not.toContain(
-      "useRealtimeTranscription",
-    );
-  });
+  it(
+    "keeps inspection voice off premium GPT-Live and commits only detected speech",
+    () => {
+      expect(inspectionVoiceWrapperSource).toContain(
+        "useCostOptimizedInspectionVoice",
+      );
+      expect(inspectionVoiceTransportSource).toContain(
+        '"/api/openai/inspection-transcription-token"',
+      );
+      expect(inspectionVoiceTransportSource).toContain(
+        "new RTCPeerConnection()",
+      );
+      expect(inspectionVoiceTransportSource).toContain(
+        'createDataChannel("oai-events")',
+      );
+      expect(inspectionVoiceTransportSource).toContain(
+        "body: JSON.stringify({ sdp: offerSdp })",
+      );
+      expect(inspectionVoiceTransportSource).toContain(
+        'type: "input_audio_buffer.commit"',
+      );
+      expect(inspectionVoiceTransportSource).toContain(
+        'addModule("/voice/inspection-gated-processor.js")',
+      );
+      expect(inspectionVoiceTransportSource).toContain(
+        "await sender.replaceTrack(output.stream.getAudioTracks()[0])",
+      );
+      expect(inspectionGatedAudioSource).toContain('this.state === "idle"');
+      expect(inspectionGatedAudioSource).toContain("output.fill(0)");
+      expect(inspectionGatedAudioSource).toContain("output.set(next)");
+      expect(inspectionVoiceTransportSource).toContain(
+        "inspection-transcription-usage",
+      );
+      expect(inspectionVoiceWrapperSource).not.toContain(
+        "useRealtimeTranscription",
+      );
+    },
+  );
 
 });
