@@ -53,6 +53,10 @@ values (
   'd1000000-0000-4000-8000-000000000003',
   'stale-voice-legacy@example.com',
   '{"full_name":"Legacy Voice Technician"}'::jsonb
+), (
+  'd1100000-0000-4000-8000-000000000003',
+  'stale-voice-legacy-profile@example.com',
+  '{"full_name":"Legacy Profile Identity"}'::jsonb
 )
 on conflict (id) do nothing;
 
@@ -543,7 +547,7 @@ delete from public.profiles where user_id in (
   'd1000000-0000-4000-8000-000000000003');
 delete from auth.users where id in (
   'd1000000-0000-4000-8000-000000000001', 'd1000000-0000-4000-8000-000000000002',
-  'd1000000-0000-4000-8000-000000000003');
+  'd1000000-0000-4000-8000-000000000003', 'd1100000-0000-4000-8000-000000000003');
 select cron.alter_job(original.jobid, active => original.active)
 from stale_voice_cron_state original;
 commit;
