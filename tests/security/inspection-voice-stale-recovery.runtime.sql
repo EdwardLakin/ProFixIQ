@@ -566,11 +566,16 @@ delete from private.ai_usage_ledger where shop_id in (
   'd2000000-0000-4000-8000-000000000001', 'd2000000-0000-4000-8000-000000000002');
 delete from private.ai_budget_reservations where shop_id in (
   'd2000000-0000-4000-8000-000000000001', 'd2000000-0000-4000-8000-000000000002');
-delete from public.profiles where user_id in (
+-- Both shop -> owner and profile -> shop can be restrictive in a clean replay.
+-- Detach only these fixture profiles before removing their shops.
+update public.profiles set shop_id = null where user_id in (
   'd1000000-0000-4000-8000-000000000001', 'd1000000-0000-4000-8000-000000000002',
   'd1000000-0000-4000-8000-000000000003');
 delete from public.shops where id in (
   'd2000000-0000-4000-8000-000000000001', 'd2000000-0000-4000-8000-000000000002');
+delete from public.profiles where user_id in (
+  'd1000000-0000-4000-8000-000000000001', 'd1000000-0000-4000-8000-000000000002',
+  'd1000000-0000-4000-8000-000000000003');
 delete from auth.users where id in (
   'd1000000-0000-4000-8000-000000000001', 'd1000000-0000-4000-8000-000000000002',
   'd1000000-0000-4000-8000-000000000003', 'd1100000-0000-4000-8000-000000000003');
