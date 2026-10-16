@@ -222,6 +222,7 @@ export async function POST(request: Request) {
     });
     return result.persisted;
   };
+  let issuanceClaimRefused = false;
   try {
     const { data, error } = await createAdminSupabase().rpc(
       "record_inspection_voice_issuance_rate",
@@ -232,10 +233,13 @@ export async function POST(request: Request) {
         p_rate_card_version: AI_RATE_CARD_VERSION,
       },
     );
+    issuanceClaimRefused = !error && data === false;
     if (error || data !== true) throw new Error("Inspection voice rate receipt unavailable");
   } catch {
     // The provider was never called. Keep durable proof of that fact if the
     // immediate budget release fails, so stale recovery can release at zero.
+    // A refused actor/key claim may belong to an older shop: its receipt and
+    // pending credential remain authoritative over this new hold's proof.
     const recorded = await recordTokenError(
       "inspection_voice_pre_provider_failure", "rate_receipt_unavailable",
     ) || await recordTokenError(
@@ -248,8 +252,10 @@ export async function POST(request: Request) {
       });
     }
     return NextResponse.json(
-      { error: "Inspection voice budget could not be verified", code: "inspection_voice_rate_receipt_unavailable" },
-      { status: 503 },
+      issuanceClaimRefused
+        ? { error: "The previous inspection voice call is still closing. Try again shortly.", code: "inspection_voice_operation_recovery_required" }
+        : { error: "Inspection voice budget could not be verified", code: "inspection_voice_rate_receipt_unavailable" },
+      { status: issuanceClaimRefused ? 409 : 503 },
     );
   }
   const controller = new AbortController();

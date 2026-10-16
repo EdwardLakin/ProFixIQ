@@ -499,7 +499,6 @@ export function useCostOptimizedInspectionVoice(
       ensureActive();
       if (!response.ok || typeof sessionPayload?.sdp !== "string") {
         if (sessionPayload?.code === "inspection_voice_rejected" ||
-            sessionPayload?.code === "inspection_voice_rate_receipt_unavailable" ||
             sessionPayload?.code === "inspection_voice_reservation_released" ||
             sessionPayload?.code === "ai_budget_exceeded") {
           clearPendingCall(operationKey);

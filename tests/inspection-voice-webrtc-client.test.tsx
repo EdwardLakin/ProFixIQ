@@ -423,6 +423,47 @@ describe("inspection voice WebRTC client", () => {
     act(() => result.current.stop());
   });
 
+  it.each(["inspection_voice_operation_recovery_required", "inspection_voice_rate_receipt_unavailable"])(
+    "retains the original key on %s until its issuing call closes", async (code) => {
+      sessionStorage.setItem("profixiq:inspection-voice-pending-call", JSON.stringify({ key: operationKey, startedAt: Date.now() }));
+      vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValueOnce(secondKey);
+      let originalReceiptReady = false;
+      const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        if (init?.method === "GET") return new Response(null, { status: 204 });
+        if (String(input).includes("inspection-transcription-usage")) {
+          if (originalReceiptReady) return new Response(null, { status: 204 });
+          return new Response(JSON.stringify({ code: "inspection_voice_settlement_not_found" }), { status: 403 });
+        }
+        if (JSON.parse(init!.body as string).sdp && !originalReceiptReady) {
+          return new Response(JSON.stringify({ code, error: "Original call is pending" }), { status: 409 });
+        }
+        return new Response(JSON.stringify({ sdp: "answer", usageKey: secondKey }), { status: 200 });
+      });
+      vi.stubGlobal("fetch", fetchMock);
+      vi.stubGlobal("AudioContext", FakeAudioContext);
+      vi.stubGlobal("AudioWorkletNode", FakeWorklet);
+      vi.stubGlobal("RTCPeerConnection", FakePeerConnection);
+      Object.defineProperty(navigator, "mediaDevices", {
+        configurable: true, value: { getUserMedia: vi.fn().mockResolvedValue(new FakeStream()) },
+      });
+      const { result } = renderHook(() => useCostOptimizedInspectionVoice(vi.fn(), (text) => text));
+      await act(async () => { await expect(result.current.start()).rejects.toThrow("Original call is pending"); });
+      expect(JSON.parse(sessionStorage.getItem("profixiq:inspection-voice-pending-call")!).key).toBe(operationKey);
+      expect(fetchMock).toHaveBeenCalledWith("/api/openai/inspection-transcription-token", expect.objectContaining({
+        headers: expect.objectContaining({ "x-profixiq-operation-key": operationKey }),
+      }));
+      originalReceiptReady = true;
+      await act(async () => result.current.start());
+      expect(fetchMock).toHaveBeenCalledWith("/api/openai/inspection-transcription-usage", expect.objectContaining({
+        body: JSON.stringify({ usageKey: operationKey, durationSeconds: 0 }),
+      }));
+      expect(fetchMock).toHaveBeenLastCalledWith("/api/openai/inspection-transcription-token", expect.objectContaining({
+        headers: expect.objectContaining({ "x-profixiq-operation-key": secondKey }),
+      }));
+      act(() => result.current.stop());
+    },
+  );
+
   it("clears a known pre-provider failure key before the next start", async () => {
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValueOnce(operationKey).mockReturnValueOnce(secondKey);
     let postCount = 0;

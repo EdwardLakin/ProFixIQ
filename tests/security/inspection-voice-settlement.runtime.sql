@@ -414,6 +414,15 @@ begin
   if public.record_inspection_voice_issuance_rate(v_shop, v_other_actor, v_first, 'openai-2026-10-06-v3') is distinct from false then
     raise exception 'issuance claim accepted actor substitution';
   end if;
+  -- A second operation has claimed issuance but its provider receipt is still
+  -- in flight when the profile moves. Keep that credential recoverable.
+  select reservation_id into v_next from public.reserve_ai_budget(
+    v_shop, 'voice', 'openai_realtime_token', 1.02,
+    'inspection_voice:' || v_shop::text || ':c3000000-0000-4000-8000-000000000008', v_actor, 3600
+  );
+  if public.record_inspection_voice_issuance_rate(v_shop, v_actor, v_next, 'openai-2026-10-06-v3') is distinct from true then
+    raise exception 'pending operation could not claim issuance';
+  end if;
   perform public.record_ai_usage_ledger(v_shop, v_actor, pg_catalog.jsonb_build_object(
     'event_key', 'inspection_voice:' || v_shop::text || ':' || v_key,
     'feature', 'openai_realtime_token', 'endpoint', '/api/openai/inspection-transcription-token',
@@ -460,6 +469,31 @@ begin
   ) is distinct from false then
     raise exception 'one actor could claim the same closure key in two shops';
   end if;
+  select reservation_id into v_next from public.reserve_ai_budget(
+    v_other_shop, 'voice', 'openai_realtime_token', 1.02,
+    'inspection_voice:' || v_other_shop::text || ':c3000000-0000-4000-8000-000000000008', v_actor, 3600
+  );
+  if public.record_inspection_voice_issuance_rate(v_other_shop, v_actor, v_next, 'openai-2026-10-06-v3') is distinct from false then
+    raise exception 'pending operation was claimed again after transfer';
+  end if;
+  -- Even an ambiguous RPC failure in the new shop can leave no-call proof for
+  -- its own hold. It must not terminate recovery of the original claimed call.
+  perform public.record_ai_usage_ledger(v_other_shop, v_actor, pg_catalog.jsonb_build_object(
+    'event_key', 'inspection_voice:' || v_other_shop::text || ':c3000000-0000-4000-8000-000000000008:error',
+    'feature', 'openai_realtime_token', 'endpoint', '/api/openai/inspection-transcription-token',
+    'provider', 'openai', 'model', 'gpt-live-transcribe', 'modality', 'realtime',
+    'rate_card_version', 'openai-2026-10-06-v3', 'duration_seconds', 0,
+    'estimated_cost_usd', 0, 'latency_ms', 1, 'status', 'error',
+    'error_code', 'inspection_voice_pre_provider_failure',
+    'quota_receipt_id', v_next, 'operation', 'inspection_transcription_creation'
+  ));
+  begin
+    perform public.get_inspection_voice_session_receipt_for_actor(
+      v_actor, 'c3000000-0000-4000-8000-000000000008'
+    );
+    raise exception 'pending original operation was incorrectly retired';
+  exception when sqlstate '55000' then null;
+  end;
   -- A failed pre-provider operation in the other shop can eventually leave a
   -- provider-less stale fallback. It cannot shadow the single issued call.
   perform public.record_ai_usage_ledger(v_other_shop, v_actor, pg_catalog.jsonb_build_object(

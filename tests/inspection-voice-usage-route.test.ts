@@ -140,6 +140,18 @@ describe("POST /api/openai/inspection-transcription-usage", () => {
       expect.objectContaining({ p_shop_id: "shop_1", p_user_id: "actor_1" }));
   });
 
+  it("keeps a claimed operation pending until its original receipt is available", async () => {
+    mocks.rpc.mockResolvedValueOnce({ data: null, error: {
+      code: "55000", message: "INSPECTION_VOICE_CALL_RECEIPT_PENDING",
+    } });
+    const { POST } = await import("../app/api/openai/inspection-transcription-usage/route");
+    const response = await POST(request({ usageKey, durationSeconds: 0 }));
+    expect(response.status).toBe(503);
+    expect((await response.json()).code).toBe("inspection_voice_settlement_unavailable");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(mocks.rpc).toHaveBeenCalledTimes(1);
+  });
+
   it("rejects cross-tenant or unknown reservations before settlement", async () => {
     mocks.rpc.mockResolvedValueOnce({
       data: null,

@@ -193,16 +193,15 @@ describe("POST /api/openai/inspection-transcription-token", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("does not create a provider call when the actor/key issuance claim is refused", async () => {
+  it("preserves the original operation while recording proof only for the refused claim hold", async () => {
     mocks.issuanceRpc.mockResolvedValueOnce({ data: false, error: null });
     const { POST } = await import("../app/api/openai/inspection-transcription-token/route");
     const response = await POST(sessionRequest());
-    expect(response.status).toBe(503);
-    expect((await response.json()).code).toBe("inspection_voice_rate_receipt_unavailable");
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe("inspection_voice_operation_recovery_required");
     expect(fetch).not.toHaveBeenCalled();
     expect(mocks.record).toHaveBeenCalledWith(expect.objectContaining({
-      event_key: `inspection_voice:shop_1:${operationKey}:error`,
-      error_code: "inspection_voice_pre_provider_failure", estimated_cost_usd: 0,
+      error_code: "inspection_voice_pre_provider_failure", quota_receipt_id: "reservation_1", estimated_cost_usd: 0,
     }));
     expect(mocks.release).toHaveBeenCalledWith(expect.objectContaining({ reservationId: "reservation_1" }));
   });
