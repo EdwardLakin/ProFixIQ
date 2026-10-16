@@ -12,7 +12,11 @@ values
   ('ab000000-0000-4000-8000-000000000001', 'ai-budget-owner-a@example.com', '{"full_name":"AI Budget Owner A"}'::jsonb),
   ('ab000000-0000-4000-8000-000000000002', 'ai-budget-owner-b@example.com', '{"full_name":"AI Budget Owner B"}'::jsonb),
   ('ab000000-0000-4000-8000-000000000003', 'ai-budget-owner-c@example.com', '{"full_name":"AI Budget Owner C"}'::jsonb),
-  ('ab000000-0000-4000-8000-000000000004', 'ai-budget-owner-d@example.com', '{"full_name":"AI Budget Owner D"}'::jsonb)
+  ('ab000000-0000-4000-8000-000000000004', 'ai-budget-owner-d@example.com', '{"full_name":"AI Budget Owner D"}'::jsonb),
+  ('ab000000-0000-4000-8000-000000000005', 'ai-budget-legacy-d@example.com', '{"full_name":"Legacy AI Budget User"}'::jsonb),
+  -- profiles.id and profiles.user_id both reference auth.users. Keep them
+  -- distinct to exercise canonical actor normalization.
+  ('ac000000-0000-4000-8000-000000000005', 'ai-budget-profile-d@example.com', '{"full_name":"Legacy AI Budget Profile"}'::jsonb)
 on conflict (id) do nothing;
 
 insert into public.profiles (id, user_id, role, full_name)
@@ -20,11 +24,18 @@ values
   ('ab000000-0000-4000-8000-000000000001', 'ab000000-0000-4000-8000-000000000001', 'owner', 'AI Budget Owner A'),
   ('ab000000-0000-4000-8000-000000000002', 'ab000000-0000-4000-8000-000000000002', 'owner', 'AI Budget Owner B'),
   ('ab000000-0000-4000-8000-000000000003', 'ab000000-0000-4000-8000-000000000003', 'owner', 'AI Budget Owner C'),
-  ('ab000000-0000-4000-8000-000000000004', 'ab000000-0000-4000-8000-000000000004', 'owner', 'AI Budget Owner D')
+  ('ab000000-0000-4000-8000-000000000004', 'ab000000-0000-4000-8000-000000000004', 'owner', 'AI Budget Owner D'),
+  ('ac000000-0000-4000-8000-000000000005', 'ac000000-0000-4000-8000-000000000005', 'mechanic', 'Legacy AI Budget User')
 on conflict (id) do update
 set user_id = excluded.user_id,
     role = excluded.role,
     full_name = excluded.full_name;
+
+-- The BEFORE INSERT identity trigger sets user_id = id. Link the legacy auth
+-- subject afterward to test recorder normalization through profiles.user_id.
+update public.profiles
+set user_id = 'ab000000-0000-4000-8000-000000000005'
+where id = 'ac000000-0000-4000-8000-000000000005';
 
 insert into public.shops (id, owner_id, business_name, name, user_limit)
 values
@@ -33,6 +44,13 @@ values
   ('aaaaaaaa-0000-0000-0000-000000000003', 'ab000000-0000-4000-8000-000000000003', 'AI Budget Shop C', 'AI Budget Shop C', 3),
   ('aaaaaaaa-0000-0000-0000-000000000004', 'ab000000-0000-4000-8000-000000000004', 'AI Budget Shop D', 'AI Budget Shop D', 3)
 on conflict (id) do nothing;
+
+update public.profiles
+set shop_id = 'aaaaaaaa-0000-0000-0000-000000000004'
+where id = 'ab000000-0000-4000-8000-000000000004';
+update public.profiles
+set shop_id = 'aaaaaaaa-0000-0000-0000-000000000004'
+where id = 'ac000000-0000-4000-8000-000000000005';
 
 -- 1. Access control ---------------------------------------------------------
 do $$
@@ -362,6 +380,362 @@ begin
   end if;
 end
 $$;
+
+-- 7. Shadow reservations never count after switching to enforce -------------
+-- Inspection-only stale settlement leaves the ordinary return contract intact.
+reset role;
+update public.profiles set shop_id = 'aaaaaaaa-0000-0000-0000-000000000004'
+where id = 'ab000000-0000-4000-8000-000000000003';
+-- Privileged fixture setup includes simulated persisted closure evidence.
+reset role;
+do $$
+declare
+  shop uuid := 'aaaaaaaa-0000-0000-0000-000000000004';
+  receipt uuid;
+begin
+  perform public.grant_ai_budget(shop, 8.02, 'grant', 'manual', 'test', 'inspection-compat');
+  select reservation_id into receipt from public.reserve_ai_budget(
+    shop, 'voice', 'openai_realtime_token', 1.02,
+    'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000001', null, 3600
+  );
+  perform public.record_ai_usage_ledger(shop, null, pg_catalog.jsonb_build_object(
+    'event_key', 'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000001',
+    'feature', 'openai_realtime_token',
+    'endpoint', '/api/openai/inspection-transcription-token',
+    'provider', 'openai', 'model', 'gpt-live-transcribe', 'modality', 'realtime',
+    'rate_card_version', 'openai-2026-10-06-v3',
+    'duration_seconds', 3600, 'estimated_cost_usd', 1.02,
+    'latency_ms', 1, 'status', 'success', 'quota_receipt_id', receipt
+  ));
+  perform public.reserve_ai_budget(
+    shop, 'voice', 'openai_realtime_token', 1.02,
+    'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000002',
+    'ab000000-0000-4000-8000-000000000004', 3600
+  );
+  select reservation_id into receipt from public.reserve_ai_budget(
+    shop, 'voice', 'openai_realtime_token', 1.02,
+    'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000003', null, 3600
+  );
+  perform public.record_ai_usage_ledger(shop, null, pg_catalog.jsonb_build_object(
+    'event_key', 'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000003:error',
+    'feature', 'openai_realtime_token',
+    'endpoint', '/api/openai/inspection-transcription-token',
+    'provider', 'openai', 'model', 'gpt-live-transcribe', 'modality', 'realtime',
+    'rate_card_version', 'openai-2026-10-06-v3',
+    'duration_seconds', 0, 'estimated_cost_usd', 0,
+    'latency_ms', 1, 'status', 'error', 'error_code', 'inspection_voice_rejected',
+    'quota_receipt_id', receipt
+  ));
+  select reservation_id into receipt from public.reserve_ai_budget(
+    shop, 'voice', 'openai_realtime_token', 0.5,
+    'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000007', null, 3600
+  );
+  perform public.record_ai_usage_ledger(shop, null, pg_catalog.jsonb_build_object(
+    'event_key', 'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000007:error',
+    'feature', 'openai_realtime_token',
+    'endpoint', '/api/openai/inspection-transcription-token',
+    'provider', 'openai', 'model', 'gpt-live-transcribe', 'modality', 'realtime',
+    'rate_card_version', 'openai-2026-10-06-v3',
+    'duration_seconds', 0, 'estimated_cost_usd', 0,
+    'latency_ms', 1, 'status', 'error',
+    'error_code', 'inspection_voice_pre_provider_failure',
+    'quota_receipt_id', receipt
+  ));
+  select reservation_id into receipt from public.reserve_ai_budget(
+    shop, 'voice', 'openai_realtime_token', 0.5,
+    'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000009',
+    'ab000000-0000-4000-8000-000000000005', 3600
+  );
+  perform public.record_ai_usage_ledger(shop,
+    'ab000000-0000-4000-8000-000000000005', pg_catalog.jsonb_build_object(
+    'event_key', 'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000009:error',
+    'feature', 'openai_realtime_token',
+    'endpoint', '/api/openai/inspection-transcription-token',
+    'provider', 'openai', 'model', 'gpt-live-transcribe', 'modality', 'realtime',
+    'rate_card_version', 'openai-2026-10-06-v3',
+    'duration_seconds', 0, 'estimated_cost_usd', 0,
+    'latency_ms', 1, 'status', 'error', 'error_code', 'inspection_voice_rejected',
+    'quota_receipt_id', receipt
+  ));
+  perform public.reserve_ai_budget(shop, 'copilot', 'f', 0.5, 'ordinary-stale', null, 3600);
+  -- Prefix lookalikes are ordinary holds, not inspection provider calls.
+  perform public.reserve_ai_budget(shop, 'copilot', 'openai_realtime_token', 0.1,
+    'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000011', null, 3600);
+  perform public.reserve_ai_budget(shop, 'voice', 'openai_realtime_token', 0.1,
+    'inspection_voice:aaaaaaaa-0000-0000-0000-000000000003:c3000000-0000-4000-8000-000000000012', null, 3600);
+  perform public.reserve_ai_budget(shop, 'voice', 'openai_realtime_token', 0.1,
+    'inspectionXvoice:' || shop::text || ':c3000000-0000-4000-8000-000000000005', null, 3600);
+  perform public.reserve_ai_budget(shop, 'voice', 'openai_realtime_token', 0.1,
+    'inspection_voice:' || shop::text || ':manual', null, 3600);
+  -- This actor subsequently moves away from the issuing shop.
+  perform public.reserve_ai_budget(shop, 'voice', 'openai_realtime_token', 1.02,
+    'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000004',
+    'ab000000-0000-4000-8000-000000000003', 3600);
+  -- Provider closure persisted, but request settlement was interrupted.
+  select reservation_id into receipt from public.reserve_ai_budget(
+    shop, 'voice', 'openai_realtime_token', 1.02,
+    'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000006', null, 3600
+  );
+  perform public.record_ai_usage_ledger(shop, null, pg_catalog.jsonb_build_object(
+    'event_key', 'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000006',
+    'feature', 'openai_realtime_token',
+    'endpoint', '/api/openai/inspection-transcription-token',
+    'provider', 'openai', 'model', 'gpt-live-transcribe', 'modality', 'realtime',
+    'rate_card_version', 'openai-2026-10-06-v3',
+    'provider_request_id', 'call_confirmed_closed',
+    'duration_seconds', 3600, 'estimated_cost_usd', 1.02,
+    'latency_ms', 1, 'status', 'success', 'quota_receipt_id', receipt
+  ));
+  update private.ai_usage_ledger
+  set operation = 'inspection_transcription_closed', duration_seconds = 30
+  where quota_receipt_id = receipt;
+  select reservation_id into receipt from public.reserve_ai_budget(
+    shop, 'voice', 'openai_realtime_token', 1.02,
+    'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000010', null, 3600
+  );
+  perform public.record_ai_usage_ledger(shop, null, pg_catalog.jsonb_build_object(
+    'event_key', 'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000010',
+    'feature', 'openai_realtime_token',
+    'endpoint', '/api/openai/inspection-transcription-token',
+    'provider', 'openai', 'model', 'gpt-live-transcribe', 'modality', 'realtime',
+    'rate_card_version', 'openai-2026-10-06-v3',
+    'duration_seconds', 3600, 'estimated_cost_usd', 1.02,
+    'latency_ms', 1, 'status', 'success', 'quota_receipt_id', receipt
+  ));
+  update private.ai_usage_ledger
+  set operation = 'inspection_transcription_closed', duration_seconds = 7200
+  where quota_receipt_id = receipt;
+end $$;
+
+reset role;
+update public.profiles set shop_id = 'aaaaaaaa-0000-0000-0000-000000000003'
+where id = 'ab000000-0000-4000-8000-000000000003';
+update private.ai_budget_reservations
+set expires_at = pg_catalog.clock_timestamp() - interval '2 hours'
+where shop_id = 'aaaaaaaa-0000-0000-0000-000000000004'
+  and status in ('reserved', 'expired')
+  and idempotency_key not in ('fresh-1', 'after-reconcile');
+set local role service_role;
+
+do $$
+declare
+  shop uuid := 'aaaaaaaa-0000-0000-0000-000000000004';
+  result record;
+begin
+  select * into result from public.release_stale_ai_budget_holds(shop, 3600);
+  if result.released_count <> 8 or result.released_usd <> 2.92 then
+    raise exception 'ordinary and rejected stale releases were not reported: %', result;
+  end if;
+  select * into result from public.release_stale_ai_budget_holds(shop, 3600);
+  if result.released_count <> 0 or result.released_usd <> 0 then
+    raise exception 'duplicate stale reconciliation changed funds: %', result;
+  end if;
+end $$;
+
+reset role;
+do $$
+declare
+  shop uuid := 'aaaaaaaa-0000-0000-0000-000000000004';
+begin
+  if (select count(*) from private.ai_budget_reservations
+      where shop_id = shop and status = 'committed' and cost_basis = 'reserved_fallback'
+        and idempotency_key like 'inspection_voice:%') <> 3 then
+    raise exception 'inspection reservations were not conservatively settled';
+  end if;
+  if not exists (
+    select 1 from private.ai_budget_reservations
+    where shop_id = shop and status = 'released' and actual_usd = 0
+      and idempotency_key = 'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000003'
+  ) or not exists (
+    select 1 from private.ai_usage_ledger
+    where shop_id = shop and operation = 'inspection_transcription_rejected_reconciled'
+  ) then
+    raise exception 'definitive provider rejection was charged at the ceiling';
+  end if;
+  if not exists (
+    select 1 from private.ai_budget_reservations reservation
+    join private.ai_usage_ledger ledger on ledger.quota_receipt_id = reservation.id
+    where reservation.idempotency_key = 'inspection_voice:' || shop::text ||
+      ':c3000000-0000-4000-8000-000000000007'
+      and reservation.status = 'released' and reservation.actual_usd = 0
+      and ledger.error_code = 'inspection_voice_pre_provider_failure'
+      and ledger.operation = 'inspection_transcription_rejected_reconciled'
+  ) then
+    raise exception 'pre-provider failure without a call was charged';
+  end if;
+  if (select count(*) from private.ai_usage_ledger
+      where shop_id = shop and operation = 'inspection_transcription_settled_fallback'
+        and estimated_cost_usd = 1.02) <> 3 or not exists (
+    select 1 from private.ai_usage_ledger
+    where shop_id = shop and error_code = 'inspection_voice_provider_outcome_unknown'
+      and user_id = 'ab000000-0000-4000-8000-000000000004'
+  ) then
+    raise exception 'receiptless fallback uncertainty or actor was not recorded once';
+  end if;
+  if not exists (
+    select 1 from private.ai_usage_ledger
+    where shop_id = shop and error_code = 'inspection_voice_provider_outcome_unknown'
+      and event_key = 'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000004'
+      and user_id is null
+  ) then
+    raise exception 'moved actor prevented conservative receiptless recovery';
+  end if;
+  if not exists (
+    select 1 from private.ai_budget_reservations reservation
+    join private.ai_usage_ledger ledger on ledger.quota_receipt_id = reservation.id
+    where reservation.idempotency_key = 'inspection_voice:' || shop::text ||
+      ':c3000000-0000-4000-8000-000000000006'
+      and reservation.status = 'committed' and reservation.cost_basis = 'actual'
+      and reservation.actual_usd = 0.0085
+      and ledger.operation = 'inspection_transcription_settled'
+      and ledger.duration_seconds = 30 and ledger.estimated_cost_usd = 0.0085
+      and ledger.provider_request_id = 'call_confirmed_closed'
+  ) then
+    raise exception 'stale release overwrote server-confirmed closure evidence';
+  end if;
+  if (select committed_usd from private.ai_shop_budgets where shop_id = shop) <> 3.0685
+     or (select held_usd from private.ai_shop_budgets where shop_id = shop) <> 6.02 then
+    raise exception 'confirmed closure did not release the unused reservation';
+  end if;
+  if not exists (
+    select 1 from private.ai_budget_reservations reservation
+    join private.ai_usage_ledger ledger on ledger.quota_receipt_id = reservation.id
+    where reservation.idempotency_key = 'inspection_voice:' || shop::text ||
+      ':c3000000-0000-4000-8000-000000000009'
+      and reservation.status = 'released' and reservation.actual_usd = 0
+      and ledger.user_id = 'ac000000-0000-4000-8000-000000000005'
+  ) then
+    raise exception 'legacy auth user was charged despite definitive rejection';
+  end if;
+  if not exists (
+    select 1 from private.ai_budget_reservations reservation
+    join private.ai_usage_ledger ledger on ledger.quota_receipt_id = reservation.id
+    where reservation.idempotency_key = 'inspection_voice:' || shop::text ||
+      ':c3000000-0000-4000-8000-000000000010'
+      and reservation.status = 'reserved'
+      and ledger.operation = 'inspection_transcription_closed'
+      and ledger.duration_seconds = 7200
+  ) then
+    raise exception 'malformed closure blocked ordinary cleanup or lost its hold';
+  end if;
+end $$;
+set local role service_role;
+
+-- A conflicting ledger row with the same receipt is still not proof of an
+-- inspection provider call; never rewrite it into a full-hour charge.
+do $$
+declare
+  shop uuid := 'aaaaaaaa-0000-0000-0000-000000000004';
+  receipt uuid;
+begin
+  select reservation_id into receipt from public.reserve_ai_budget(
+    shop, 'voice', 'openai_realtime_token', 1.02,
+    'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000008', null, 3600
+  );
+  perform public.record_ai_usage_ledger(shop, null, pg_catalog.jsonb_build_object(
+    'event_key', 'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000008',
+    'feature', 'openai_realtime_token', 'endpoint', '/api/openai/unrelated-token',
+    'provider', 'openai', 'model', 'gpt-live-transcribe', 'modality', 'realtime',
+    'rate_card_version', 'openai-2026-10-06-v3',
+    'duration_seconds', 0, 'estimated_cost_usd', 0,
+    'latency_ms', 1, 'status', 'error', 'error_code', 'unrelated_receipt',
+    'quota_receipt_id', receipt
+  ));
+end $$;
+reset role;
+update private.ai_budget_reservations
+set expires_at = pg_catalog.clock_timestamp() - interval '2 hours'
+where idempotency_key = 'inspection_voice:aaaaaaaa-0000-0000-0000-000000000004:c3000000-0000-4000-8000-000000000008';
+set local role service_role;
+do $$
+declare
+  shop uuid := 'aaaaaaaa-0000-0000-0000-000000000004';
+begin
+  perform public.reserve_ai_budget(shop, 'copilot', 'f', 0.1, 'ordinary-next-to-conflict');
+end $$;
+reset role;
+update private.ai_budget_reservations set expires_at = clock_timestamp() - interval '2 hours'
+where idempotency_key = 'ordinary-next-to-conflict';
+set local role service_role;
+do $$
+declare r record;
+begin
+  select * into r from public.release_stale_ai_budget_holds('aaaaaaaa-0000-0000-0000-000000000004', 3600);
+  if r.released_count <> 1 or r.released_usd <> 0.1 then
+    raise exception 'conflicting inspection hold blocked ordinary cleanup: %', r;
+  end if;
+  select * into r from public.release_stale_ai_budget_holds('aaaaaaaa-0000-0000-0000-000000000004', 3600);
+  if r.released_count <> 0 or r.released_usd <> 0 then
+    raise exception 'conflict retry changed ordinary funds: %', r;
+  end if;
+end $$;
+reset role;
+do $$
+declare
+  shop uuid := 'aaaaaaaa-0000-0000-0000-000000000004';
+begin
+  if not exists (
+    select 1 from private.ai_budget_reservations reservation
+    where reservation.idempotency_key = 'inspection_voice:' || shop::text ||
+      ':c3000000-0000-4000-8000-000000000008'
+      and reservation.status = 'reserved'
+  ) then
+    raise exception 'conflicting hold was changed';
+  end if;
+end $$;
+set local role service_role;
+
+-- Deterministically interleave a closure insertion between the initial lookup
+-- and the recorder's unique-key insert. The returned receipt must be re-read.
+reset role;
+create function pg_temp.insert_closure_before_fallback() returns trigger
+language plpgsql as $body$
+begin
+  if new.event_key = 'inspection_voice:aaaaaaaa-0000-0000-0000-000000000004:c3000000-0000-4000-8000-000000000013'
+     and new.status = 'error' then
+    insert into private.ai_usage_ledger
+    select (pg_catalog.jsonb_populate_record(null::private.ai_usage_ledger,
+      pg_catalog.to_jsonb(new) || pg_catalog.jsonb_build_object(
+        'id', gen_random_uuid(), 'status', 'success', 'error_code', null,
+        'operation', 'inspection_transcription_closed',
+        'duration_seconds', 30, 'provider_request_id', 'call_interleaved_closure'
+      ))).*;
+    return null;
+  end if;
+  return new;
+end
+$body$;
+create trigger test_closure_before_fallback before insert on private.ai_usage_ledger
+for each row execute function pg_temp.insert_closure_before_fallback();
+set local role service_role;
+do $$
+declare shop uuid := 'aaaaaaaa-0000-0000-0000-000000000004';
+begin
+  perform public.grant_ai_budget(shop, 2, 'grant', 'manual', 'test', 'interleaved-closure-grant');
+  perform public.reserve_ai_budget(shop, 'voice', 'openai_realtime_token', 1.02,
+    'inspection_voice:' || shop::text || ':c3000000-0000-4000-8000-000000000013', null, 3600);
+end $$;
+reset role;
+update private.ai_budget_reservations set expires_at = clock_timestamp() - interval '2 hours'
+where idempotency_key = 'inspection_voice:aaaaaaaa-0000-0000-0000-000000000004:c3000000-0000-4000-8000-000000000013';
+set local role service_role;
+select * from public.release_stale_ai_budget_holds('aaaaaaaa-0000-0000-0000-000000000004', 3600);
+reset role;
+drop trigger test_closure_before_fallback on private.ai_usage_ledger;
+do $$
+begin
+  if not exists (
+    select 1 from private.ai_budget_reservations reservation
+    join private.ai_usage_ledger ledger on ledger.quota_receipt_id = reservation.id
+    where ledger.provider_request_id = 'call_interleaved_closure'
+      and ledger.operation = 'inspection_transcription_settled'
+      and ledger.duration_seconds = 30 and ledger.estimated_cost_usd = 0.0085
+      and reservation.actual_usd = 0.0085 and reservation.cost_basis = 'actual'
+  ) then
+    raise exception 'interleaved closure evidence was overwritten by fallback';
+  end if;
+end $$;
+set local role service_role;
 
 -- 7. Shadow reservations never count after switching to enforce -------------
 do $$

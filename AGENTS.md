@@ -286,6 +286,11 @@ Vercel Git deployments are production-only for cost control. Keep
 `false`. Do not add preview branch allowlists or an `ignoreCommand` override
 unless the user explicitly requests preview deployments.
 
+When stabilizing a PR stack, let existing automated reviews finish, consolidate
+findings, and batch verified fixes with targeted regressions before restacking
+once and freezing the commits. Reuse reviews completed or running on a matching
+head; request at most one automated review for each stable final head.
+
 Green CI is necessary but not sufficient. Before recommending merge, confirm
 the final diff, final head, unresolved findings, migration state, and deployment
 ordering. Never merge or enable auto-merge without explicit approval.
