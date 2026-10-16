@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 
+import EquipmentAccountControls from "@/features/equipment/components/EquipmentAccountControls";
 import {
   activeEquipmentShellKey,
   type EquipmentShellChild,
@@ -51,7 +52,7 @@ export default function EquipmentShell({
   return (
     <div className="flex min-h-screen w-full flex-col text-[color:var(--theme-text-primary)] lg:flex-row">
       <aside
-        className="border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:shrink-0 lg:overflow-y-auto lg:border-b-0 lg:border-r"
+        className="relative flex flex-col border-b border-[color:var(--theme-border-soft)] bg-[color:var(--theme-surface-panel-strong)] lg:sticky lg:top-0 lg:h-screen lg:w-64 lg:shrink-0 lg:overflow-y-auto lg:border-b-0 lg:border-r"
         aria-label="Equipment workspace"
       >
         <div className="flex items-center gap-3 px-4 py-3 lg:py-5">
@@ -74,7 +75,10 @@ export default function EquipmentShell({
           {items.map((item) => {
             const active = activeKey === item.key;
             return (
-              <div key={item.key} className="flex shrink-0 flex-col lg:shrink">
+              <div
+                key={item.key}
+                className="flex shrink-0 flex-row items-center gap-1 lg:flex-col lg:items-stretch lg:gap-0"
+              >
                 <Link
                   href={item.href}
                   className={`${ITEM} ${active ? ACTIVE : ""}`}
@@ -88,7 +92,7 @@ export default function EquipmentShell({
                   {item.state === "planned" ? <PlannedBadge /> : null}
                 </Link>
                 {item.children?.length ? (
-                  <div className="ml-3 hidden flex-col border-l border-[color:var(--theme-border-soft)] pl-2 lg:flex">
+                  <div className="flex flex-row gap-1 lg:ml-3 lg:flex-col lg:gap-0 lg:border-l lg:border-[color:var(--theme-border-soft)] lg:pl-2">
                     {item.children.map((child) => (
                       <Link
                         key={child.href}
@@ -109,6 +113,11 @@ export default function EquipmentShell({
             );
           })}
         </nav>
+
+        {/* Top-right of the bar below lg; pinned to the bottom of the sidebar from lg. */}
+        <div className="absolute right-3 top-2 lg:static lg:mt-auto lg:border-t lg:border-[color:var(--theme-border-soft)] lg:p-3">
+          <EquipmentAccountControls />
+        </div>
       </aside>
 
       <div className="min-w-0 flex-1">{children}</div>
