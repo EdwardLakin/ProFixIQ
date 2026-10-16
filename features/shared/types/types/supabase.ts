@@ -33404,6 +33404,18 @@ export type Database = {
         }
         Returns: boolean
       }
+      record_inspection_voice_issued_call: {
+        Args: {
+          p_actor_id: string
+          p_call_id: string
+          p_issued_at: string
+          p_latency_ms: number
+          p_model: string
+          p_reservation_id: string
+          p_shop_id: string
+        }
+        Returns: boolean
+      }
       record_marketing_onboarding_completed: {
         Args: { p_session_id: string; p_shop_id: string }
         Returns: boolean

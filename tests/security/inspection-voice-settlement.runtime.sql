@@ -424,6 +424,14 @@ begin
     raise exception 'pending operation could not claim issuance';
   end if;
   insert into voice_test_ids values ('pending_claim', v_next);
+  select reservation_id into v_next from public.reserve_ai_budget(
+    v_shop, 'voice', 'openai_realtime_token', 1.02,
+    'inspection_voice:' || v_shop::text || ':c3000000-0000-4000-8000-000000000009', v_actor, 3600
+  );
+  if public.record_inspection_voice_issuance_rate(v_shop, v_actor, v_next, 'openai-2026-10-06-v3') is distinct from true then
+    raise exception 'in-flight operation could not claim issuance';
+  end if;
+  insert into voice_test_ids values ('inflight_claim', v_next);
   perform public.record_ai_usage_ledger(v_shop, v_actor, pg_catalog.jsonb_build_object(
     'event_key', 'inspection_voice:' || v_shop::text || ':' || v_key,
     'feature', 'openai_realtime_token', 'endpoint', '/api/openai/inspection-transcription-token',
@@ -535,6 +543,71 @@ begin
   end if;
 end
 $$;
+do $$
+declare
+  v_shop uuid := 'c2000000-0000-4000-8000-000000000001';
+  v_actor uuid := 'c1000000-0000-4000-8000-000000000001';
+  v_key text := 'c3000000-0000-4000-8000-000000000009';
+  v_id uuid := (select id from voice_test_ids where name = 'inflight_claim');
+  v_issued timestamptz := pg_catalog.date_trunc('milliseconds', pg_catalog.clock_timestamp()) - interval '12 seconds';
+  v_duration numeric;
+  v_caught boolean := false;
+  v_receipt jsonb;
+begin
+  begin
+    perform public.record_ai_usage_ledger(v_shop, v_actor, pg_catalog.jsonb_build_object(
+      'event_key', 'inspection_voice:' || v_shop::text || ':' || v_key,
+      'feature', 'openai_realtime_token', 'endpoint', '/api/openai/inspection-transcription-token',
+      'provider', 'openai', 'model', 'gpt-live-transcribe', 'modality', 'realtime',
+      'rate_card_version', 'openai-2026-10-06-v3', 'duration_seconds', 3600,
+      'estimated_cost_usd', 1.02, 'latency_ms', 1, 'status', 'success'
+    ));
+  exception when sqlstate '42501' then v_caught := true;
+  end;
+  if not v_caught then raise exception 'generic recorder lost its current-membership guard'; end if;
+  if public.record_inspection_voice_issued_call(v_shop, v_actor, v_id,
+    'rtc_inflight_transfer', 'gpt-live-transcribe', v_issued, 1) is distinct from true
+     or public.record_inspection_voice_issued_call(v_shop, v_actor, v_id,
+    'rtc_inflight_transfer', 'gpt-live-transcribe', v_issued, 1) is distinct from true then
+    raise exception 'accepted in-flight call was not recorded idempotently after transfer';
+  end if;
+  if public.record_inspection_voice_issued_call(v_shop, 'c1000000-0000-4000-8000-000000000002', v_id,
+    'rtc_wrong_actor', 'gpt-live-transcribe', v_issued, 1) is distinct from false
+     or public.record_inspection_voice_issued_call('c2000000-0000-4000-8000-000000000002', v_actor, v_id,
+    'rtc_wrong_shop', 'gpt-live-transcribe', v_issued, 1) is distinct from false then
+    raise exception 'issuance adapter accepted a forged actor or shop';
+  end if;
+  v_receipt := public.get_inspection_voice_session_receipt_for_actor(v_actor, v_key);
+  if v_receipt->>'callId' is distinct from 'rtc_inflight_transfer'
+     or v_receipt->>'shopId' is distinct from v_shop::text then
+    raise exception 'transferred actor could not recover the accepted call';
+  end if;
+  v_duration := public.confirm_inspection_voice_closure(v_shop, v_actor, v_key,
+    'rtc_inflight_transfer', v_issued + interval '12 seconds');
+  v_receipt := public.settle_inspection_voice_usage(v_shop, v_actor, v_key,
+    'gpt-live-transcribe', v_duration, pg_catalog.round(1.02 * v_duration / 3600, 8));
+  if v_receipt->>'settled' is distinct from 'true' then
+    raise exception 'accepted call after transfer did not settle its original hold';
+  end if;
+  if public.record_inspection_voice_issued_call(v_shop, v_actor, v_id,
+    'rtc_inflight_transfer', 'gpt-live-transcribe', v_issued, 1) is distinct from true then
+    raise exception 'settled issuance receipt replay failed';
+  end if;
+  v_receipt := public.get_inspection_voice_session_receipt_for_actor(v_actor, v_key);
+  if v_receipt->>'operation' is distinct from 'inspection_transcription_settled'
+     or (v_receipt->>'durationSeconds')::numeric <> 12 then
+    raise exception 'issuance replay changed settled evidence';
+  end if;
+end
+$$;
 reset role;
-
+do $$
+begin
+  if pg_catalog.has_function_privilege('anon', 'public.record_inspection_voice_issued_call(uuid,uuid,uuid,text,text,timestamptz,integer)', 'execute')
+     or pg_catalog.has_function_privilege('authenticated', 'public.record_inspection_voice_issued_call(uuid,uuid,uuid,text,text,timestamptz,integer)', 'execute')
+     or not pg_catalog.has_function_privilege('service_role', 'public.record_inspection_voice_issued_call(uuid,uuid,uuid,text,text,timestamptz,integer)', 'execute') then
+    raise exception 'issued-call adapter privileges are incorrect';
+  end if;
+end
+$$;
 rollback;
