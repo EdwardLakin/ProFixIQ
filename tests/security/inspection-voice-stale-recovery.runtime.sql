@@ -70,7 +70,7 @@ values (
 ), (
   'd1100000-0000-4000-8000-000000000003',
   'd1000000-0000-4000-8000-000000000003',
-  'tech',
+  'mechanic',
   'Legacy Voice Technician'
 )
 on conflict (id) do nothing;
