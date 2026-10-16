@@ -50,6 +50,12 @@ function refineVisit(value: VisitRefinable, ctx: z.RefinementCtx) {
   if (value.leadUserId && value.supportUserIds.includes(value.leadUserId)) {
     issue("The lead technician is already on the visit.", "supportUserIds");
   }
+  if (value.supportUserIds.length > 0 && value.scheduledStart) {
+    issue(
+      "Supporting technicians on a scheduled visit are not supported yet. Dispatch now or schedule the lead only.",
+      "supportUserIds",
+    );
+  }
   if (value.dispatchNow && !value.leadUserId) {
     issue("Choose a technician to dispatch now.", "leadUserId");
   }
@@ -114,7 +120,10 @@ export function buildDispatchNotifications(input: {
       body: input.dispatchedNow
         ? "Dispatched now. Open the job to acknowledge."
         : "A visit was scheduled for you. Open the job for details.",
-      targetPath: `/mobile/work-orders/${input.workOrderId}`,
+      // Mobile work-order access currently follows the visit lead or line
+      // assignment, not visit participation. Supporting technicians land on the
+      // neutral mobile home rather than a job they may not be able to open.
+      targetPath: p.role === "lead" ? `/mobile/work-orders/${input.workOrderId}` : "/mobile",
       priority: input.dispatchedNow ? ("high" as const) : ("normal" as const),
     }));
 }

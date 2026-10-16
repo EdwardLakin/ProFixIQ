@@ -65,6 +65,12 @@ values
    '7d400000-0000-4000-8000-000000000001', '7d300000-0000-4000-8000-000000000001', 'in_progress', 'work_order',
    '7d100000-0000-4000-8000-000000000001');
 
+insert into public.work_orders (id, shop_id, custom_id, vehicle_id, customer_id, status, record_type, advisor_id)
+values
+  ('7d500000-0000-4000-8000-000000000002', '7d200000-0000-4000-8000-000000000001', 'EQD-2',
+   '7d400000-0000-4000-8000-000000000001', '7d300000-0000-4000-8000-000000000001', 'in_progress', 'work_order',
+   '7d100000-0000-4000-8000-000000000001');
+
 insert into public.service_addresses (id, shop_id, customer_id, label, address_line1)
 values ('7d600000-0000-4000-8000-000000000001', '7d200000-0000-4000-8000-000000000001',
         '7d300000-0000-4000-8000-000000000001', 'Quarry', '1 Pit Rd');
@@ -81,6 +87,7 @@ declare
   tech_2 constant uuid := '7d100000-0000-4000-8000-000000000003';
   tech_b constant uuid := '7d100000-0000-4000-8000-000000000005';
   wo_1 constant uuid := '7d500000-0000-4000-8000-000000000001';
+  wo_2 constant uuid := '7d500000-0000-4000-8000-000000000002';
   addr constant uuid := '7d600000-0000-4000-8000-000000000001';
   v_first jsonb;
   v_replay jsonb;
@@ -137,6 +144,34 @@ begin
     raise exception 'A cross-shop technician was dispatched.';
   exception when sqlstate 'P0001' then null;
   end;
+
+  -- A scheduled visit cannot carry supporting technicians until capacity
+  -- projection exists (no silent double-booking).
+  begin
+    perform public.equipment_dispatch_visit_atomic(
+      shop_a, wo_2, 'shop', addr, now() + interval '1 day', now() + interval '1 day 2 hours',
+      tech_1, array[tech_2], null, null, false, owner_a, 'eqd-key-sched-0001');
+    raise exception 'A scheduled visit with supporting technicians was accepted.';
+  exception when sqlstate 'P0001' then null;
+  end;
+
+  -- A receipt stored by another dispatch path under a colliding key must not
+  -- be adopted: no participants are attached to a visit this call did not create.
+  perform public.dispatch_create_service_visit_atomic(
+    shop_a, null, wo_2, 'shop', addr, null, null, tech_1, null, null, null, null, owner_a,
+    'equipment-dispatch:eqd-key-collide-0001:visit');
+  begin
+    perform public.equipment_dispatch_visit_atomic(
+      shop_a, wo_2, 'shop', addr, null, null, tech_1, array[tech_2], null, null, false, owner_a,
+      'eqd-key-collide-0001');
+    raise exception 'A colliding inner receipt was adopted.';
+  exception when sqlstate '22023' then null;
+  end;
+  if exists (select 1 from public.service_visit_participants p
+             join public.service_visits sv on sv.id = p.service_visit_id
+             where sv.work_order_id = wo_2) then
+    raise exception 'Participants were attached to a visit this call did not create.';
+  end if;
 
   -- Acknowledgement: the lead acknowledges; nothing else changes.
   perform set_config('request.jwt.claims',
@@ -197,6 +232,24 @@ begin
   if (v_call #>> '{visit,status}') <> 'dispatched' then
     raise exception 'Dispatch Now did not dispatch the visit.';
   end if;
+
+  -- Field visits require Field access for every technician on them.
+  update public.mobile_field_operators set enabled = false
+  where shop_id = shop_a and profile_id = tech_2;
+  select count(*) into v_wo_count from public.work_orders where shop_id = shop_a;
+  begin
+    perform public.equipment_create_field_call_atomic(
+      shop_a, '7d300000-0000-4000-8000-000000000001', '7d400000-0000-4000-8000-000000000001',
+      'Needs field setup', 3, addr, null, null, tech_1, array[tech_2], null, null, true, owner_a,
+      'eqd-key-call-0003');
+    raise exception 'A supporting technician without Field access was dispatched.';
+  exception when sqlstate '42501' then null;
+  end;
+  if (select count(*) from public.work_orders where shop_id = shop_a) <> v_wo_count then
+    raise exception 'A rejected field call left an orphan work order.';
+  end if;
+  update public.mobile_field_operators set enabled = true
+  where shop_id = shop_a and profile_id = tech_2;
 
   -- A field call that cannot be dispatched leaves no orphan work order.
   select count(*) into v_wo_count from public.work_orders where shop_id = shop_a;

@@ -30,6 +30,7 @@ export class EquipmentDispatchError extends Error {
 
 export function equipmentDispatchHttpStatus(error: EquipmentDispatchError): number {
   const message = error.message;
+  if (error.code === "RETRYABLE") return 503;
   if (error.code === "42501" || message.toLowerCase().includes("denied")) return 403;
   if (
     message.includes("ACTIVE_SERVICE_VISIT_EXISTS") ||
@@ -104,6 +105,7 @@ async function notifyParticipants(input: {
     dispatchedNow: input.dispatchedNow,
   });
   let queued = 0;
+  let failed = 0;
   for (const n of notifications) {
     const result = await createNotification({
       admin,
@@ -117,7 +119,19 @@ async function notifyParticipants(input: {
       priority: n.priority,
     });
     if (result.ok) queued += 1;
-    else console.error("[equipment-dispatch] notification failed", result.reason);
+    else {
+      failed += 1;
+      console.error("[equipment-dispatch] notification failed", result.reason);
+    }
+  }
+  if (failed > 0) {
+    // The dispatch is committed and idempotent: surface a retryable failure so
+    // the client replays the same key, which re-runs this idempotent fan-out.
+    throw new EquipmentDispatchError(
+      "Dispatch saved, but some technicians could not be notified. Retry to finish.",
+      "RETRYABLE",
+      null,
+    );
   }
   return queued;
 }
@@ -205,19 +219,24 @@ export async function acknowledgeVisit(input: {
     p_actor_user_id: input.actorUserId,
   });
   // Acknowledgement is its own record; also settle the in-app notification so
-  // push/in-app prompts for this assignment stop. Failure here is non-fatal.
-  try {
-    const admin = createNotificationAdmin();
-    const now = new Date().toISOString();
-    await admin
-      .from("app_notifications")
-      .update({ acknowledged_at: now, read_at: now })
-      .eq("shop_id", input.shopId)
-      .eq("recipient_user_id", input.actorProfileId)
-      .eq("dedupe_key", `equipment:dispatch.assigned:${input.visitId}:${input.actorProfileId}`)
-      .is("acknowledged_at", null);
-  } catch (error) {
-    console.error("[equipment-dispatch] notification settle failed", error);
+  // push/in-app prompts for this assignment stop.
+  const admin = createNotificationAdmin();
+  const now = new Date().toISOString();
+  const settled = await admin
+    .from("app_notifications")
+    .update({ acknowledged_at: now, read_at: now })
+    .eq("shop_id", input.shopId)
+    .eq("recipient_user_id", input.actorProfileId)
+    .eq("dedupe_key", `equipment:dispatch.assigned:${input.visitId}:${input.actorProfileId}`)
+    .is("acknowledged_at", null);
+  if (settled.error) {
+    // The acknowledgement itself is recorded and replays idempotently; ask the
+    // client to retry so the notification is settled too.
+    throw new EquipmentDispatchError(
+      "Acknowledged, but the alert could not be cleared. Retry to finish.",
+      "RETRYABLE",
+      null,
+    );
   }
   return {
     ok: true,

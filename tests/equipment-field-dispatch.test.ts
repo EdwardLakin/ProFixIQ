@@ -41,6 +41,16 @@ describe("dispatch request validation", () => {
     expect(DispatchWorkOrderSchema.safeParse({ ...base, scheduledStart: t(10), scheduledEnd: t(9) }).success).toBe(false);
   });
 
+  it("does not allow supporting technicians on a scheduled visit yet", () => {
+    const t = (h: number) => `2026-11-01T${String(h).padStart(2, "0")}:00:00Z`;
+    expect(DispatchWorkOrderSchema.safeParse({
+      ...base, leadUserId: U(2), supportUserIds: [U(3)], scheduledStart: t(9), scheduledEnd: t(10),
+    }).success).toBe(false);
+    expect(DispatchWorkOrderSchema.safeParse({
+      ...base, leadUserId: U(2), scheduledStart: t(9), scheduledEnd: t(10),
+    }).success).toBe(true);
+  });
+
   it("requires a lead before supporting technicians and forbids duplicates", () => {
     expect(DispatchWorkOrderSchema.safeParse({ ...base, supportUserIds: [U(3)] }).success).toBe(false);
     expect(DispatchWorkOrderSchema.safeParse({ ...base, leadUserId: U(2), supportUserIds: [U(2)] }).success).toBe(false);
@@ -80,6 +90,9 @@ describe("dispatch notifications", () => {
     const [lead] = buildDispatchNotifications(input);
     expect(lead?.dedupeKey).toBe(`equipment:dispatch.assigned:${U(10)}:${U(2)}`);
     expect(lead?.targetPath).toBe(`/mobile/work-orders/${U(11)}`);
+    // Supporting technicians are not sent to a job link they may not be able to open.
+    const support = buildDispatchNotifications(input).find((n) => n.recipientUserId === U(3));
+    expect(support?.targetPath).toBe("/mobile");
     expect(lead?.priority).toBe("high");
     expect(buildDispatchNotifications({ ...input, dispatchedNow: false })[0]?.priority).toBe("normal");
   });
@@ -100,6 +113,7 @@ describe("error mapping", () => {
     expect(map("EQUIPMENT_DISPATCH_OPERATION_KEY_CONFLICT", "22023")).toBe(409);
     expect(map("Service visit changed since it was loaded.", "40001")).toBe(409);
     expect(map("A technician is required to dispatch a visit.", "P0001")).toBe(400);
+    expect(map("Dispatch saved, but some technicians could not be notified.", "RETRYABLE")).toBe(503);
   });
 });
 
@@ -139,6 +153,10 @@ describe("route and migration boundaries", () => {
     expect(sql).toContain("create_work_order_with_custom_id");
     expect(sql).toContain("pg_advisory_xact_lock");
     expect(sql).not.toMatch(/grant\s+(select|insert|update|delete|all)[^;]*on table[^;]*to\s+(authenticated|anon)/i);
+    // Dispatch and acknowledgement are server-only; only the session-bound field call is authenticated.
+    expect(sql).toMatch(/revoke all on function public\.equipment_dispatch_visit_atomic\([^)]*\)\s+from public, anon, authenticated;/);
+    expect(sql).toMatch(/revoke all on function public\.equipment_acknowledge_visit_atomic\([^)]*\)\s+from public, anon, authenticated;/);
+    expect(sql).toContain("mobile_profile_has_field_service_access");
   });
 
   it("acknowledgement never changes status or touches labor", () => {

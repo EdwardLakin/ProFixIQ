@@ -115,6 +115,14 @@ begin
     raise exception using errcode = 'P0001',
       message = 'A lead technician is required when adding supporting technicians.';
   end if;
+  if cardinality(v_supports) > 0 and (p_scheduled_start is not null or p_scheduled_end is not null) then
+    -- The canonical scheduler reserves capacity only for the lead. Until
+    -- supporting technicians are projected into capacity, a scheduled visit
+    -- must not silently leave them bookable elsewhere. Dispatch Now is
+    -- unaffected.
+    raise exception using errcode = 'P0001',
+      message = 'Supporting technicians on a scheduled visit are not supported yet. Dispatch now or schedule the lead only.';
+  end if;
   if coalesce(p_dispatch_now, false) and p_lead_user_id is null then
     raise exception using errcode = 'P0001',
       message = 'A technician is required to dispatch a visit.';
@@ -186,6 +194,24 @@ begin
       detail = v_active::text;
   end if;
 
+  -- Field visits require the same Field prerequisites the canonical mobile
+  -- routes enforce later: completed onboarding and enabled operators for the
+  -- dispatcher, the lead and every supporting technician.
+  if v_mode = 'mobile' then
+    if not public.mobile_actor_has_field_service_access(p_shop_id, p_actor_user_id) then
+      raise exception using errcode = '42501', message = 'Field Service access is required to dispatch a field visit.';
+    end if;
+    if p_lead_user_id is not null
+       and not public.mobile_profile_has_field_service_access(p_shop_id, p_lead_user_id) then
+      raise exception using errcode = '42501', message = 'The lead technician requires Field Service access.';
+    end if;
+    foreach v_user in array v_supports loop
+      if not public.mobile_profile_has_field_service_access(p_shop_id, v_user) then
+        raise exception using errcode = '42501', message = 'A supporting technician requires Field Service access.';
+      end if;
+    end loop;
+  end if;
+
   -- Supporting technicians must be dispatchable in this shop. The lead is
   -- validated (including Field access for mobile visits) by the canonical
   -- visit command below.
@@ -206,9 +232,19 @@ begin
   v_created := public.dispatch_create_service_visit_atomic(
     p_shop_id, null, p_work_order_id, v_mode, p_service_address_id,
     p_scheduled_start, p_scheduled_end, p_lead_user_id, p_service_vehicle_id,
-    p_dispatch_notes, null, null, p_actor_user_id, p_operation_key || ':visit'
+    p_dispatch_notes, null, null, p_actor_user_id, 'equipment-dispatch:' || p_operation_key || ':visit'
   );
+  -- Everything here is one transaction, so a stored inner receipt can only be
+  -- a collision with a key used through another dispatch path. Never attach
+  -- participants to a visit this call did not create.
   v_visit_id := (v_created #>> '{visit,id}')::uuid;
+  if coalesce((v_created ->> 'idempotent')::boolean, false)
+     or not exists (
+       select 1 from public.service_visits sv
+       where sv.id = v_visit_id and sv.shop_id = p_shop_id and sv.work_order_id = p_work_order_id
+     ) then
+    raise exception using errcode = '22023', message = 'EQUIPMENT_DISPATCH_OPERATION_KEY_CONFLICT';
+  end if;
   v_visit := v_created -> 'visit';
 
   if p_lead_user_id is not null then
@@ -224,7 +260,7 @@ begin
     v_transition := public.dispatch_transition_service_visit_atomic(
       p_shop_id, v_visit_id, 'dispatched', null, null,
       nullif(v_visit ->> 'version', '')::integer,
-      p_actor_user_id, p_operation_key || ':dispatch'
+      p_actor_user_id, 'equipment-dispatch:' || p_operation_key || ':dispatch'
     );
     v_visit := coalesce(v_transition -> 'visit', v_visit);
   end if;
@@ -354,7 +390,7 @@ begin
     p_shop_id, v_work_order.id, 'mobile', p_service_address_id,
     p_scheduled_start, p_scheduled_end, p_lead_user_id, p_support_user_ids,
     p_service_vehicle_id, p_dispatch_notes, p_dispatch_now,
-    p_actor_user_id, p_operation_key || ':dispatch'
+    p_actor_user_id, 'equipment-field-call:' || p_operation_key || ':dispatch'
   );
 
   v_result := jsonb_build_object(
@@ -429,21 +465,24 @@ $$;
 
 revoke all on function public.equipment_dispatch_visit_atomic(
   uuid,uuid,text,uuid,timestamptz,timestamptz,uuid,uuid[],uuid,text,boolean,uuid,text
-) from public, anon;
+) from public, anon, authenticated;
 revoke all on function public.equipment_create_field_call_atomic(
   uuid,uuid,uuid,text,integer,uuid,timestamptz,timestamptz,uuid,uuid[],uuid,text,boolean,uuid,text
 ) from public, anon;
 revoke all on function public.equipment_acknowledge_visit_atomic(uuid,uuid,uuid)
-  from public, anon;
+  from public, anon, authenticated;
 
+-- Dispatch and acknowledgement are server-only like the other Equipment
+-- mutations: the HTTP routes enforce the Equipment entitlement (which includes
+-- the Stripe-derived add-on) and authenticate the actor before calling.
 grant execute on function public.equipment_dispatch_visit_atomic(
   uuid,uuid,text,uuid,timestamptz,timestamptz,uuid,uuid[],uuid,text,boolean,uuid,text
-) to authenticated, service_role;
+) to service_role;
 grant execute on function public.equipment_create_field_call_atomic(
   uuid,uuid,uuid,text,integer,uuid,timestamptz,timestamptz,uuid,uuid[],uuid,text,boolean,uuid,text
 ) to authenticated, service_role;
 grant execute on function public.equipment_acknowledge_visit_atomic(uuid,uuid,uuid)
-  to authenticated, service_role;
+  to service_role;
 
 notify pgrst, 'reload schema';
 

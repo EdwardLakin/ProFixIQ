@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 import { DispatchWorkOrderSchema } from "@/features/equipment/dispatch/lib/equipmentDispatch";
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import {
   equipmentJson,
   readOperationKey,
@@ -28,7 +29,9 @@ export async function POST(request: Request) {
 
   try {
     const result = await dispatchExistingWorkOrder({
-      supabase: access.supabase,
+      // Server-only command: the route has authenticated the actor and the
+      // Equipment entitlement above.
+      supabase: createAdminSupabase(),
       shopId: access.profile.shop_id,
       actorUserId: access.profile.id,
       actorProfileId: access.profile.id,

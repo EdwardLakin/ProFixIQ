@@ -1916,12 +1916,14 @@
     "hasRequireShopScopedApiAccess": false,
     "hasRouteHandlerSupabaseAuthClient": false,
     "hasAuthGetUser": false,
-    "hasServiceRolePattern": false,
+    "hasServiceRolePattern": true,
     "hasShopReference": true,
     "hasRoleOrCapabilityReference": true,
     "routeClassGuess": "staff_or_admin",
     "riskFlags": [
-      "mutating_without_obvious_auth_marker"
+      "mutating_with_service_role_without_obvious_auth_or_boundary",
+      "mutating_without_obvious_auth_marker",
+      "service_role_with_shop_identifier_input_or_reference"
     ],
     "riskLevel": "high"
   },
@@ -1934,12 +1936,14 @@
     "hasRequireShopScopedApiAccess": false,
     "hasRouteHandlerSupabaseAuthClient": false,
     "hasAuthGetUser": false,
-    "hasServiceRolePattern": false,
+    "hasServiceRolePattern": true,
     "hasShopReference": true,
     "hasRoleOrCapabilityReference": false,
     "routeClassGuess": "staff_or_admin",
     "riskFlags": [
-      "mutating_without_obvious_auth_marker"
+      "mutating_with_service_role_without_obvious_auth_or_boundary",
+      "mutating_without_obvious_auth_marker",
+      "service_role_with_shop_identifier_input_or_reference"
     ],
     "riskLevel": "high"
   },

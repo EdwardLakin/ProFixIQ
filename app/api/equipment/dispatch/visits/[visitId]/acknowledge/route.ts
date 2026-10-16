@@ -1,6 +1,7 @@
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import {
   equipmentJson,
   requireEquipmentDispatchAccess,
@@ -30,7 +31,9 @@ export async function POST(
 
   try {
     const result = await acknowledgeVisit({
-      supabase: access.supabase,
+      // Server-only command: the route has authenticated the actor and the
+      // Equipment entitlement above.
+      supabase: createAdminSupabase(),
       shopId: access.profile.shop_id,
       actorUserId: access.profile.id,
       actorProfileId: access.profile.id,
