@@ -1454,6 +1454,200 @@ export type Database = {
         }
         Relationships: []
       }
+      app_notification_push_deliveries: {
+        Row: {
+          attempts: number
+          created_at: string
+          id: string
+          last_error_code: string | null
+          next_attempt_at: string
+          notification_id: string
+          sent_at: string | null
+          status: string
+          subscription_id: string
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          last_error_code?: string | null
+          next_attempt_at?: string
+          notification_id: string
+          sent_at?: string | null
+          status?: string
+          subscription_id: string
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          id?: string
+          last_error_code?: string | null
+          next_attempt_at?: string
+          notification_id?: string
+          sent_at?: string | null
+          status?: string
+          subscription_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_notification_push_deliveries_notification_id_fkey"
+            columns: ["notification_id"]
+            isOneToOne: false
+            referencedRelation: "app_notifications"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "app_notification_push_deliveries_subscription_id_fkey"
+            columns: ["subscription_id"]
+            isOneToOne: false
+            referencedRelation: "app_push_subscriptions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      app_notifications: {
+        Row: {
+          acknowledged_at: string | null
+          body: string | null
+          created_at: string
+          dedupe_key: string
+          event_type: string
+          expires_at: string | null
+          id: string
+          priority: string
+          read_at: string | null
+          recipient_user_id: string
+          shop_id: string
+          target_path: string
+          title: string
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          body?: string | null
+          created_at?: string
+          dedupe_key: string
+          event_type: string
+          expires_at?: string | null
+          id?: string
+          priority?: string
+          read_at?: string | null
+          recipient_user_id: string
+          shop_id: string
+          target_path: string
+          title: string
+        }
+        Update: {
+          acknowledged_at?: string | null
+          body?: string | null
+          created_at?: string
+          dedupe_key?: string
+          event_type?: string
+          expires_at?: string | null
+          id?: string
+          priority?: string
+          read_at?: string | null
+          recipient_user_id?: string
+          shop_id?: string
+          target_path?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_notifications_recipient_user_id_fkey"
+            columns: ["recipient_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "app_notifications_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "app_notifications_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      app_push_subscriptions: {
+        Row: {
+          auth_secret: string
+          consecutive_failures: number
+          created_at: string
+          endpoint: string
+          endpoint_hash: string
+          expires_at: string | null
+          id: string
+          last_seen_at: string
+          p256dh: string
+          revoked_at: string | null
+          revoked_reason: string | null
+          shop_id: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          auth_secret: string
+          consecutive_failures?: number
+          created_at?: string
+          endpoint: string
+          endpoint_hash: string
+          expires_at?: string | null
+          id?: string
+          last_seen_at?: string
+          p256dh: string
+          revoked_at?: string | null
+          revoked_reason?: string | null
+          shop_id: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          auth_secret?: string
+          consecutive_failures?: number
+          created_at?: string
+          endpoint?: string
+          endpoint_hash?: string
+          expires_at?: string | null
+          id?: string
+          last_seen_at?: string
+          p256dh?: string
+          revoked_at?: string | null
+          revoked_reason?: string | null
+          shop_id?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_push_subscriptions_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "app_push_subscriptions_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "app_push_subscriptions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       appointment_preparations: {
         Row: {
           booking_id: string
@@ -30909,6 +31103,26 @@ export type Database = {
         Returns: string
       }
       check_plan_limit: { Args: { _feature: string }; Returns: boolean }
+      claim_app_push_deliveries: {
+        Args: { p_lease_seconds?: number; p_limit?: number }
+        Returns: {
+          attempts: number
+          created_at: string
+          id: string
+          last_error_code: string | null
+          next_attempt_at: string
+          notification_id: string
+          sent_at: string | null
+          status: string
+          subscription_id: string
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "app_notification_push_deliveries"
+          isOneToOne: false
+          isSetofReturn: true
+        }
+      }
       claim_completed_repair_learning_atomic: {
         Args: {
           p_actor_user_id: string
@@ -33382,15 +33596,6 @@ export type Database = {
         Args: { p_payload: Json; p_shop_id: string; p_user_id: string }
         Returns: string
       }
-      record_inspection_voice_issuance_rate: {
-        Args: {
-          p_actor_id: string
-          p_rate_card_version: string
-          p_reservation_id: string
-          p_shop_id: string
-        }
-        Returns: boolean
-      }
       record_engineering_agent_ai_usage_ledger: {
         Args: { p_payload: Json }
         Returns: string
@@ -33400,6 +33605,27 @@ export type Database = {
           p_accepted_at: string
           p_email_log_id: string
           p_invite_id: string
+          p_shop_id: string
+        }
+        Returns: boolean
+      }
+      record_inspection_voice_issuance_rate: {
+        Args: {
+          p_actor_id: string
+          p_rate_card_version: string
+          p_reservation_id: string
+          p_shop_id: string
+        }
+        Returns: boolean
+      }
+      record_inspection_voice_issued_call: {
+        Args: {
+          p_actor_id: string
+          p_call_id: string
+          p_issued_at: string
+          p_latency_ms: number
+          p_model: string
+          p_reservation_id: string
           p_shop_id: string
         }
         Returns: boolean

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Bell, Check } from "lucide-react";
+import PushNotificationSettings from "@/features/notifications/components/PushNotificationSettings";
 import type { NotificationPreferences } from "@/features/shared/hooks/useNotificationPreferences";
 
 type Props = {
@@ -85,6 +86,7 @@ export default function NotificationPreferencesButton({
               {loading ? "Loading preferences…" : "Saving…"}
             </span>
           )}
+          <PushNotificationSettings />
         </div>
       ) : null}
     </div>

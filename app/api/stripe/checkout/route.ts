@@ -20,6 +20,7 @@ import {
   type ProductAcquisitionSurface,
   type ProductPackageKey,
 } from "@/features/stripe/lib/stripe/product-packages";
+import { isPackagePubliclyPurchasable } from "@/features/stripe/lib/server/package-checkout-availability";
 import { resolveEquipmentAddonPriceId } from "@/features/stripe/lib/server/equipment-addon-price-contract";
 import { resolveProductPackagePriceId } from "@/features/stripe/lib/server/product-package-price-contract";
 import { resolveStripePlanPriceId } from "@/features/stripe/lib/server/stripe-price-contract";
@@ -74,6 +75,12 @@ const checkoutSchema = z
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Choose exactly one subscription package",
+      });
+    }
+    if (value.packageKey && !isPackagePubliclyPurchasable(value.packageKey)) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "This subscription package is not available yet",
       });
     }
     if (value.equipmentAddon && value.packageKey !== "complete_operations") {

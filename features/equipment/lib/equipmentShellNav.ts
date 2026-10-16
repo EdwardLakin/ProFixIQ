@@ -1,4 +1,5 @@
 import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDirectory";
+import { EQUIPMENT_FIELD_ENTRY_ROLES } from "@/features/equipment/lib/equipmentFieldEntry";
 import {
   getActorCapabilities,
   ROLE_GROUPS,
@@ -9,6 +10,7 @@ export type EquipmentShellItemKey =
   | "dashboard"
   | "work"
   | "dispatch"
+  | "field"
   | "assets"
   | "pm"
   | "inspections"
@@ -82,6 +84,13 @@ export const EQUIPMENT_SHELL_NAV: readonly EquipmentShellItem[] = [
       "One-click dispatch of a technician and service truck to a machine, from the same work order that carries the repair.",
     canonical: { label: "Dispatch board", href: "/dashboard/dispatch" },
     visibleTo: (role) => getActorCapabilities({ role }).canManageScheduling,
+  },
+  {
+    key: "field",
+    label: "Field",
+    href: "/equipment/field",
+    state: "live",
+    visibleTo: hasRole(EQUIPMENT_FIELD_ENTRY_ROLES),
   },
   {
     key: "assets",

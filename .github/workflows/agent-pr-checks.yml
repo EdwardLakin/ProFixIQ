@@ -28,8 +28,6 @@ jobs:
     steps:
       - name: Check out pull request
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v4
@@ -67,14 +65,27 @@ jobs:
           path: ${{ runner.temp }}/regression-inventory
           if-no-files-found: warn
 
+      - name: Restore incremental type-check and build caches
+        uses: actions/cache@v4
+        with:
+          path: |
+            .next/cache
+            tsconfig.tsbuildinfo
+          key: pr-validation-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-${{ env.HEAD_SHA }}
+          restore-keys: |
+            pr-validation-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
+
       - name: Type-check
         run: pnpm typecheck
 
       - name: Lint changed JavaScript and TypeScript files
         shell: bash
         run: |
+          # The checkout is the PR merge commit, so a two-point diff against the
+          # base commit is exactly the PR's changes without fetching full history.
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
           mapfile -t changed_files < <(
-            git diff --name-only --diff-filter=ACMR "$BASE_SHA...$HEAD_SHA" -- \
+            git diff --name-only --diff-filter=ACMR "$BASE_SHA" HEAD -- \
               '*.js' '*.jsx' '*.mjs' '*.cjs' '*.ts' '*.tsx'
           )
           if (( ${#changed_files[@]} == 0 )); then

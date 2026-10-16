@@ -38,11 +38,21 @@ describe("Equipment layout access", () => {
   it("keeps an assigned-work technician out of links that would bounce them", async () => {
     mocks.profile = { id: "p2", role: "mechanic", must_change_password: false };
     const element = (await EquipmentLayout({ children: null })) as {
-      props: { items: unknown[]; homeHref: string; isTechnician: boolean };
+      props: { items: Array<{ key: string }>; homeHref: string; isTechnician: boolean };
+    };
+    // Technicians get the field entry only, and it is their home.
+    expect(element.props.items.map((item) => item.key)).toEqual(["field"]);
+    expect(element.props.homeHref).toBe("/equipment/field");
+    expect(element.props.isTechnician).toBe(true);
+  });
+
+  it("falls back to the main workspace for a role with no Equipment page", async () => {
+    mocks.profile = { id: "p3", role: "customer", must_change_password: false };
+    const element = (await EquipmentLayout({ children: null })) as {
+      props: { items: unknown[]; homeHref: string };
     };
     expect(element.props.items).toEqual([]);
     expect(element.props.homeHref).toBe("/dashboard");
-    expect(element.props.isTechnician).toBe(true);
   });
 
   it("gives directory roles the dashboard as home and no technician CoPilot", async () => {
@@ -59,5 +69,20 @@ describe("Equipment layout access", () => {
     const element = await EquipmentLayout({ children: null });
     expect(element).toBeTruthy();
     expect(mocks.redirect).not.toHaveBeenCalled();
+  });
+
+  it("sends each role's brand link to a page that role can open", async () => {
+    mocks.profile = { id: "p1", role: "owner", must_change_password: false };
+    const owner = (await EquipmentLayout({ children: null })) as {
+      props: { homeHref: string };
+    };
+    expect(owner.props.homeHref).toBe("/equipment/dashboard");
+
+    mocks.profile = { id: "p2", role: "mechanic", must_change_password: false };
+    const mechanic = (await EquipmentLayout({ children: null })) as {
+      props: { homeHref: string; items: Array<{ key: string }> };
+    };
+    expect(mechanic.props.homeHref).toBe("/equipment/field");
+    expect(mechanic.props.items.map((item) => item.key)).toEqual(["field"]);
   });
 });

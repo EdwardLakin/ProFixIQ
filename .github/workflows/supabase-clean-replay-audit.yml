@@ -87,6 +87,26 @@ jobs:
           git diff --exit-code -- \
             supabase/migrations/20260705000000_public_schema_baseline.sql
 
+      - name: Check changed SQL syntax before starting the database
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          mapfile -t changed_sql < <(
+            git diff --name-only --diff-filter=ACMR "$BASE_SHA" HEAD -- \
+              'supabase/migrations/*.sql' 'tests/**/*.runtime.sql'
+          )
+          if (( ${#changed_sql[@]} == 0 )); then
+            echo "No changed migration or runtime SQL files."
+            exit 0
+          fi
+          python3 -m venv "$RUNNER_TEMP/sqlcheck"
+          "$RUNNER_TEMP/sqlcheck/bin/pip" install --quiet pglast==7.11
+          "$RUNNER_TEMP/sqlcheck/bin/python" scripts/ci/check-sql-syntax.py "${changed_sql[@]}"
+
       - name: Initialize ephemeral Supabase configuration
         shell: bash
         run: |
@@ -94,6 +114,7 @@ jobs:
           if [[ ! -f supabase/config.toml ]]; then
             supabase init
           fi
+          bash scripts/ci/disable-supabase-pgdelta.sh
           supabase --version
 
       - name: Start a fresh local database and apply migrations

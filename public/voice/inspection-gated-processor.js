@@ -16,7 +16,9 @@ class InspectionGatedProcessor extends AudioWorkletProcessor {
         this.state = "ready";
         this.clearLeadFrames = Math.ceil(sampleRate * 0.2 / 128);
       }
-      if (data?.type === "finish" && this.state !== "idle") this.state = "draining";
+      if (data?.type === "finish" && ["pending", "ready", "active"].includes(this.state)) {
+        this.state = "draining";
+      }
       if (data?.type === "committed" && this.state === "awaitingCommit") {
         this.frames = this.nextFrames;
         this.nextFrames = [];
