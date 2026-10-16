@@ -2,7 +2,6 @@ import { unstable_noStore as noStore } from "next/cache";
 import Link from "next/link";
 
 import EquipmentAccessState from "@/features/equipment/components/EquipmentAccessState";
-import EquipmentSectionNav from "@/features/equipment/components/EquipmentSectionNav";
 import {
   EQUIPMENT_DIRECTORY_ROLES,
   equipmentAssetTitle,
@@ -134,7 +133,6 @@ export default async function EquipmentSectionPage({
 
   return (
     <>
-      <EquipmentSectionNav current={section} role={canonicalRole} />
       <WorkspaceShell>
         <WorkspaceHeader>
           <p className={EYEBROW}>Equipment</p>

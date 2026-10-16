@@ -65,7 +65,14 @@ function Tile({
   );
 }
 
-export default function EquipmentDashboardView({ summary }: { summary: EquipmentFleetSummary }) {
+export default function EquipmentDashboardView({
+  summary,
+  operations,
+}: {
+  summary: EquipmentFleetSummary;
+  /** Operations board rendered between the header and the asset-health tiles. */
+  operations?: ReactNode;
+}) {
   return (
     <WorkspaceShell>
       <WorkspaceHeader>
@@ -76,6 +83,8 @@ export default function EquipmentDashboardView({ summary }: { summary: Equipment
           order records as the Assets list.
         </p>
       </WorkspaceHeader>
+
+      {operations}
 
       {summary.total === 0 ? (
         <EmptyState>

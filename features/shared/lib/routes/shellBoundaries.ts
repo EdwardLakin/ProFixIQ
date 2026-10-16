@@ -59,6 +59,8 @@ export function isOutsideDesktopAppShell(pathname: string): boolean {
   if (matchesRoutePrefix(pathname, "/portal")) return true;
   if (matchesRoutePrefix(pathname, "/mobile")) return true;
   if (matchesRoutePrefix(pathname, "/ops")) return true;
+  // Equipment renders its own product shell (app/equipment/layout.tsx).
+  if (matchesRoutePrefix(pathname, "/equipment")) return true;
   if (matchesRoutePrefix(pathname, "/coming-soon")) return true;
   return pathname === "/auth" || pathname.startsWith("/auth/");
 }

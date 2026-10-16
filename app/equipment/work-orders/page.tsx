@@ -1,7 +1,6 @@
 import { unstable_noStore as noStore } from "next/cache";
 
 import EquipmentAccessState from "@/features/equipment/components/EquipmentAccessState";
-import EquipmentSectionNav from "@/features/equipment/components/EquipmentSectionNav";
 import EquipmentWorkOrdersView from "@/features/equipment/components/EquipmentWorkOrdersView";
 import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDirectory";
 import { loadEquipmentWorkOrders } from "@/features/equipment/server/loadEquipmentWorkOrders";
@@ -30,10 +29,5 @@ export default async function EquipmentWorkOrdersPage() {
     role: canonicalRole,
   });
 
-  return (
-    <>
-      <EquipmentSectionNav current="work-orders" role={canonicalRole} />
-      <EquipmentWorkOrdersView rows={workOrders.rows} truncated={workOrders.truncated} />
-    </>
-  );
+  return <EquipmentWorkOrdersView rows={workOrders.rows} truncated={workOrders.truncated} />;
 }
