@@ -37,6 +37,10 @@
       "schedule": "*/10 * * * *"
     },
     {
+      "path": "/api/internal/push-deliveries",
+      "schedule": "* * * * *"
+    },
+    {
       "path": "/api/internal/import-jobs/tick",
       "schedule": "* * * * *"
     },

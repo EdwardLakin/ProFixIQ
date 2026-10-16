@@ -8,6 +8,10 @@ import {
 } from "serwist";
 
 import {
+  parsePushEventPayload,
+  PUSH_SUBSCRIPTION_CHANGED_MESSAGE,
+} from "@/features/notifications/lib/pushClientContracts";
+import {
   clearPrivateNavigationCaches,
   isSafePrivateNavigationShell,
   PRIVATE_NAVIGATION_CACHE_CLEAR_MESSAGE,
@@ -22,8 +26,42 @@ type MessageEventLike = ExtendableEventLike & {
   data: unknown;
 };
 
+type PushEventLike = ExtendableEventLike & {
+  data: { text(): string } | null;
+};
+
+type NotificationClickEventLike = ExtendableEventLike & {
+  notification: { close(): void; data?: unknown };
+};
+
+type WindowClientLike = {
+  url: string;
+  focus(): Promise<unknown>;
+  navigate?(url: string): Promise<unknown>;
+  postMessage(message: unknown): void;
+};
+
 declare const self: {
   location: Location;
+  registration: {
+    showNotification(
+      title: string,
+      options: { body: string; tag?: string; data: unknown; icon: string; badge: string },
+    ): Promise<void>;
+  };
+  clients: {
+    matchAll(options: { type: "window"; includeUncontrolled: boolean }): Promise<WindowClientLike[]>;
+    openWindow(url: string): Promise<unknown>;
+  };
+  addEventListener(type: "push", listener: (event: PushEventLike) => void): void;
+  addEventListener(
+    type: "notificationclick",
+    listener: (event: NotificationClickEventLike) => void,
+  ): void;
+  addEventListener(
+    type: "pushsubscriptionchange",
+    listener: (event: ExtendableEventLike) => void,
+  ): void;
   __SW_MANIFEST: Array<string | { url: string; revision?: string | null }>;
   addEventListener(
     type: "activate",
@@ -185,6 +223,52 @@ self.addEventListener("message", (event) => {
   if (message?.type === PRIVATE_NAVIGATION_CACHE_CLEAR_MESSAGE) {
     event.waitUntil(clearPrivateNavigationCaches());
   }
+});
+
+// Web Push. Payloads are generic by contract (no job details on lock screens);
+// the target page re-authorizes when opened.
+self.addEventListener("push", (event) => {
+  const payload = parsePushEventPayload(event.data ? event.data.text() : null);
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      tag: payload.id ?? undefined,
+      data: { path: payload.path },
+      icon: "/pwa-icons/icon-192",
+      badge: "/pwa-icons/icon-192",
+    }),
+  );
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const data = event.notification.data as { path?: unknown } | undefined;
+  const target = parsePushEventPayload(JSON.stringify({ path: data?.path })).path;
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      const existing = windows[0];
+      if (existing) {
+        await existing.focus();
+        if (existing.navigate) {
+          await existing.navigate(target);
+          return;
+        }
+      }
+      await self.clients.openWindow(target);
+    })(),
+  );
+});
+
+self.addEventListener("pushsubscriptionchange", (event) => {
+  // The page re-subscribes with the signed-in user's session; the worker has none.
+  event.waitUntil(
+    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+      for (const client of windows) {
+        client.postMessage({ type: PUSH_SUBSCRIPTION_CHANGED_MESSAGE });
+      }
+    }),
+  );
 });
 
 serwist.addEventListeners();
