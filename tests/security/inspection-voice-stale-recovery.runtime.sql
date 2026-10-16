@@ -60,7 +60,7 @@ values (
 )
 on conflict (id) do nothing;
 
--- Auth's insertion trigger creates one profile per user. Replace the legacy
+-- Some environments create a profile for each auth user. Remove the legacy
 -- actor's automatic profile so the canonical recorder must resolve user_id to
 -- a distinct profile ID, as it does for historical accounts.
 delete from public.profiles
@@ -85,6 +85,12 @@ values (
 )
 on conflict (id) do update
 set user_id = excluded.user_id, role = excluded.role, full_name = excluded.full_name;
+
+-- The profile insert trigger assigns user_id := id, so establish the legacy
+-- mapping after the insert; both IDs have matching auth.users fixture rows.
+update public.profiles
+set user_id = 'd1000000-0000-4000-8000-000000000003'
+where id = 'd1100000-0000-4000-8000-000000000003';
 
 insert into public.shops (id, owner_id, business_name, name, user_limit)
 values (
@@ -111,6 +117,19 @@ where id = 'd1000000-0000-4000-8000-000000000002';
 update public.profiles
 set shop_id = 'd2000000-0000-4000-8000-000000000001'
 where id = 'd1100000-0000-4000-8000-000000000003';
+
+do $$
+begin
+  if not exists (
+    select 1 from public.profiles
+    where id = 'd1100000-0000-4000-8000-000000000003'
+      and user_id = 'd1000000-0000-4000-8000-000000000003'
+      and shop_id = 'd2000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'legacy actor profile mapping was not established';
+  end if;
+end
+$$;
 
 create temp table stale_voice_ids (name text primary key, id uuid not null);
 grant select, insert on stale_voice_ids to service_role;
