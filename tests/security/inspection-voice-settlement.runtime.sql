@@ -424,6 +424,31 @@ begin
     'status', 'success', 'quota_receipt_id', v_first,
     'operation', 'inspection_transcription_reservation'
   ));
+end
+$$;
+reset role;
+-- Model the real transfer before recording an event in the new shop. The
+-- canonical recorder must keep rejecting a user scoped to the wrong shop.
+update public.profiles
+set shop_id = case id
+  when 'c1000000-0000-4000-8000-000000000001'::uuid then 'c2000000-0000-4000-8000-000000000002'::uuid
+  when 'c1000000-0000-4000-8000-000000000002'::uuid then 'c2000000-0000-4000-8000-000000000001'::uuid
+end
+where id in ('c1000000-0000-4000-8000-000000000001', 'c1000000-0000-4000-8000-000000000002');
+set local role service_role;
+do $$
+declare
+  v_shop uuid := 'c2000000-0000-4000-8000-000000000001';
+  v_other_shop uuid := 'c2000000-0000-4000-8000-000000000002';
+  v_actor uuid := 'c1000000-0000-4000-8000-000000000001';
+  v_other_actor uuid := 'c1000000-0000-4000-8000-000000000002';
+  v_key text := 'c3000000-0000-4000-8000-000000000006';
+  v_next_key text := 'c3000000-0000-4000-8000-000000000007';
+  v_second uuid;
+  v_next uuid;
+  v_other uuid;
+  v_receipt jsonb;
+begin
   -- The shared budget still permits its shop-scoped reservation. The inspection
   -- issuance claim independently prevents a second provider call for this actor.
   select reservation_id into v_second from public.reserve_ai_budget(
@@ -452,15 +477,15 @@ begin
     raise exception 'actor lookup lost the single issuing-shop receipt: %', v_receipt;
   end if;
   select reservation_id into v_next from public.reserve_ai_budget(
-    v_shop, 'voice', 'openai_realtime_token', 1.02,
-    'inspection_voice:' || v_shop::text || ':' || v_next_key, v_actor, 3600
+    v_other_shop, 'voice', 'openai_realtime_token', 1.02,
+    'inspection_voice:' || v_other_shop::text || ':' || v_next_key, v_actor, 3600
   );
   select reservation_id into v_other from public.reserve_ai_budget(
-    v_other_shop, 'voice', 'openai_realtime_token', 1.02,
-    'inspection_voice:' || v_other_shop::text || ':' || v_next_key, v_other_actor, 3600
+    v_shop, 'voice', 'openai_realtime_token', 1.02,
+    'inspection_voice:' || v_shop::text || ':' || v_next_key, v_other_actor, 3600
   );
-  if public.record_inspection_voice_issuance_rate(v_shop, v_actor, v_next, 'openai-2026-10-06-v3') is distinct from true
-     or public.record_inspection_voice_issuance_rate(v_other_shop, v_other_actor, v_other, 'openai-2026-10-06-v3') is distinct from true then
+  if public.record_inspection_voice_issuance_rate(v_other_shop, v_actor, v_next, 'openai-2026-10-06-v3') is distinct from true
+     or public.record_inspection_voice_issuance_rate(v_shop, v_other_actor, v_other, 'openai-2026-10-06-v3') is distinct from true then
     raise exception 'new keys or the same UUID for a different actor were blocked';
   end if;
 end
