@@ -152,12 +152,13 @@ export function estimateOpenAIInspectionTranscriptionCostUsd(
   durationSeconds: number,
 ): number | null {
   const normalized = model?.trim().toLowerCase();
+  // Only duration-billed models with the existing session configuration have
+  // a proven reservation ceiling. Token-billed transcription models and other
+  // session schemas fail closed until actual tokens/options are accounted for.
   const perMinuteUsd =
-    normalized === "gpt-live-transcribe" ||
-    normalized?.startsWith("gpt-live-transcribe-")
+    normalized === "gpt-live-transcribe" || normalized?.startsWith("gpt-live-transcribe-")
       ? 0.017
-      : normalized === "gpt-transcribe" ||
-          normalized?.startsWith("gpt-transcribe-")
+      : normalized === "gpt-transcribe" || normalized?.startsWith("gpt-transcribe-")
         ? 0.0045
         : null;
   if (perMinuteUsd == null) return null;
