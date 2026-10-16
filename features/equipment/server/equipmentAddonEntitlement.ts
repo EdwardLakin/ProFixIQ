@@ -17,6 +17,7 @@ export type EquipmentAddonEntitlement = {
   enabled: boolean;
   hasAddonItem: boolean;
   hasCompleteBaseItem: boolean;
+  hasStandaloneEquipmentItem: boolean;
   packageKey: string | null;
   subscriptionStatus: string | null;
 };
@@ -41,6 +42,7 @@ function disabledEntitlement(): EquipmentAddonEntitlement {
     enabled: false,
     hasAddonItem: false,
     hasCompleteBaseItem: false,
+    hasStandaloneEquipmentItem: false,
     packageKey: null,
     subscriptionStatus: null,
   };
@@ -51,6 +53,7 @@ function internalDemoEntitlement(): EquipmentAddonEntitlement {
     enabled: true,
     hasAddonItem: true,
     hasCompleteBaseItem: true,
+    hasStandaloneEquipmentItem: false,
     packageKey: "complete_operations",
     subscriptionStatus: INTERNAL_DEMO_ENTITLEMENT,
   };
@@ -80,6 +83,24 @@ export function subscriptionHasCompleteBaseItem(
   });
 }
 
+export function subscriptionHasStandaloneEquipmentItem(
+  subscription: Stripe.Subscription,
+): boolean {
+  return subscription.items.data.some((item) => {
+    if (!positiveQuantity(item)) return false;
+
+    const packageKey = String(item.price?.metadata?.package_key ?? "")
+      .trim()
+      .toLowerCase();
+    const lookupKey = String(item.price?.lookup_key ?? "").trim();
+
+    return (
+      packageKey === "equipment_operations" ||
+      lookupKey === PRODUCT_PACKAGE_LOOKUP_KEYS.equipment_operations
+    );
+  });
+}
+
 export function subscriptionHasEquipmentAddon(
   subscription: Stripe.Subscription,
 ): boolean {
@@ -100,8 +121,10 @@ export function subscriptionHasEquipmentAddon(
 
 /**
  * Equipment is deliberately not part of Complete Operations itself. Paying
- * shops receive access only when the same canonical subscription contains
- * both a real Complete base-price item and an active Equipment add-on item.
+ * shops receive access either through the standalone Equipment Operations base
+ * item, or (legacy bridge, unchanged) when the same canonical subscription
+ * contains both a real Complete base-price item and an active Equipment add-on
+ * item.
  * The server-owned `internal_demo` billing override is the sole non-Stripe
  * exception so the canonical ProFixIQ demo can permanently exercise Equipment
  * without creating a billable subscription item.
@@ -113,14 +136,16 @@ export function resolveEquipmentAddonEntitlement(
   const subscriptionStatus = String(subscription.status ?? "").trim() || null;
   const hasCompleteBaseItem = subscriptionHasCompleteBaseItem(subscription);
   const hasAddonItem = subscriptionHasEquipmentAddon(subscription);
+  const hasStandaloneEquipmentItem =
+    subscriptionHasStandaloneEquipmentItem(subscription);
 
   return {
     enabled:
-      hasCompleteBaseItem &&
       isProductSubscriptionEntitled(subscriptionStatus) &&
-      hasAddonItem,
+      ((hasCompleteBaseItem && hasAddonItem) || hasStandaloneEquipmentItem),
     hasAddonItem,
     hasCompleteBaseItem,
+    hasStandaloneEquipmentItem,
     packageKey,
     subscriptionStatus,
   };

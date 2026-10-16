@@ -1,80 +1,64 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import type Stripe from "stripe";
 
 import {
-  EQUIPMENT_OPERATIONS_LOOKUP_KEY,
-  EQUIPMENT_OPERATIONS_PRICING,
+  EQUIPMENT_ACQUISITION_SURFACE,
   estimateEquipmentOperationsMonthlyCents,
 } from "@/features/equipment/lib/equipmentProduct";
-import { resolveEquipmentOperationsPriceId } from "@/features/stripe/lib/server/equipment-operations-price-contract";
+import { acquisitionHomeHref } from "@/features/auth/lib/acquisitionSurfaceRouting";
 import {
-  PRODUCT_PACKAGE_KEYS,
-  PRODUCT_PACKAGE_PRICING,
+  PRODUCT_PACKAGE_LOOKUP_KEYS,
+  normalizeProductAcquisitionSurface,
+  normalizeProductPackageKey,
+  productPackageAllows,
 } from "@/features/stripe/lib/stripe/product-packages";
 
-function price(overrides: Record<string, unknown> = {}) {
-  return {
-    id: "price_equipment",
-    active: true,
-    lookup_key: EQUIPMENT_OPERATIONS_LOOKUP_KEY,
-    currency: "usd",
-    unit_amount: 39_900,
-    type: "recurring",
-    recurring: { interval: "month", interval_count: 1, usage_type: "licensed" },
-    metadata: {
-      app: "profixiq",
-      billing_model: "product_packages_v1",
-      price_role: "base",
-      package_key: "equipment_operations",
-    },
-    ...overrides,
-  };
-}
-
-function stripeWith(data: unknown[]) {
-  return {
-    prices: { list: async () => ({ data }) },
-  } as unknown as Stripe;
-}
-
-describe("Equipment Operations standalone product", () => {
+describe("Equipment Operations standalone package", () => {
   it("prices at $399 with 10 included users and $50 per additional user", () => {
-    expect(EQUIPMENT_OPERATIONS_PRICING).toEqual({
-      monthlyCents: 39_900,
-      includedUsers: 10,
-      additionalUserCents: 5_000,
-    });
     expect(estimateEquipmentOperationsMonthlyCents(4)).toBe(39_900);
     expect(estimateEquipmentOperationsMonthlyCents(10)).toBe(39_900);
     expect(estimateEquipmentOperationsMonthlyCents(13)).toBe(54_900);
+    expect(PRODUCT_PACKAGE_LOOKUP_KEYS.equipment_operations).toBe(
+      "profixiq_equipment_operations_monthly_usd_v1",
+    );
   });
 
-  it("does not alter the shared package catalog", () => {
-    expect([...PRODUCT_PACKAGE_KEYS]).toEqual([
+  it("grants shop and equipment capabilities but never Field or Fleet", () => {
+    expect(productPackageAllows("equipment_operations", "shop")).toBe(true);
+    expect(productPackageAllows("equipment_operations", "equipment")).toBe(true);
+    expect(productPackageAllows("equipment_operations", "field_service")).toBe(
+      false,
+    );
+    expect(
+      productPackageAllows("equipment_operations", "fleet_maintenance"),
+    ).toBe(false);
+    for (const key of [
       "shop_operations",
       "field_service",
       "fleet_maintenance",
       "complete_operations",
-    ]);
-    expect(PRODUCT_PACKAGE_PRICING.equipmentAddonCents).toBe(14_900);
+    ] as const) {
+      expect(productPackageAllows(key, "equipment")).toBe(false);
+    }
   });
 
-  it("resolves a valid Stripe price", async () => {
-    await expect(
-      resolveEquipmentOperationsPriceId(stripeWith([price()])),
-    ).resolves.toBe("price_equipment");
+  it("routes the equipment surface to its own onboarding home", () => {
+    expect(EQUIPMENT_ACQUISITION_SURFACE).toBe("equipment");
+    expect(normalizeProductAcquisitionSurface("Equipment")).toBe("equipment");
+    expect(normalizeProductPackageKey("equipment_operations")).toBe(
+      "equipment_operations",
+    );
+    expect(acquisitionHomeHref("equipment")).toBe("/equipment/dashboard");
   });
 
-  it.each([
-    ["missing", []],
-    ["duplicate", [price(), price({ id: "price_dup" })]],
-    ["wrong amount", [price({ unit_amount: 14_900 })]],
-    ["wrong currency", [price({ currency: "cad" })]],
-    ["wrong interval", [price({ recurring: { interval: "year", interval_count: 1, usage_type: "licensed" } })]],
-    ["wrong metadata", [price({ metadata: { app: "profixiq", package_key: "shop_operations" } })]],
-  ])("rejects a %s price", async (_name, data) => {
-    await expect(
-      resolveEquipmentOperationsPriceId(stripeWith(data)),
-    ).rejects.toThrow();
+  it("widens the package contract in a forward migration without touching grants", () => {
+    const sql = readFileSync(
+      "supabase/migrations/20261016120000_equipment_operations_package.sql",
+      "utf8",
+    );
+    expect(sql).toContain("'equipment_operations'");
+    expect(sql).toContain("p_capability = 'equipment'");
+    expect(sql).not.toMatch(/\b(grant|revoke)\b/i);
+    expect(sql).not.toMatch(/create (or replace )?trigger/i);
   });
 });
