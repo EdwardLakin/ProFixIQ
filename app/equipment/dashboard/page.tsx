@@ -37,7 +37,7 @@ export default async function EquipmentDashboardPage() {
   return (
     <EquipmentDashboardView
       summary={summary}
-      operations={<EquipmentOperationsBoard summary={summary} />}
+      operations={<EquipmentOperationsBoard summary={summary} role={canonicalRole} />}
     />
   );
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   profile: null as null | Record<string, unknown>,
@@ -23,6 +23,11 @@ vi.mock("@/features/equipment/components/EquipmentShell", () => ({
 import EquipmentLayout from "../app/equipment/layout";
 
 describe("Equipment layout access", () => {
+  beforeEach(() => {
+    mocks.profile = null;
+    mocks.redirect.mockClear();
+  });
+
   it("sends an account that must change its password to set-password", async () => {
     mocks.profile = { id: "p1", role: "owner", must_change_password: true };
     await expect(EquipmentLayout({ children: null })).rejects.toThrow(
@@ -30,11 +35,40 @@ describe("Equipment layout access", () => {
     );
   });
 
+  it("keeps an assigned-work technician out of links that would bounce them", async () => {
+    mocks.profile = { id: "p2", role: "mechanic", must_change_password: false };
+    const element = (await EquipmentLayout({ children: null })) as {
+      props: { items: Array<{ key: string }>; homeHref: string; isTechnician: boolean };
+    };
+    // Technicians get the field entry only, and it is their home.
+    expect(element.props.items.map((item) => item.key)).toEqual(["field"]);
+    expect(element.props.homeHref).toBe("/equipment/field");
+    expect(element.props.isTechnician).toBe(true);
+  });
+
+  it("falls back to the main workspace for a role with no Equipment page", async () => {
+    mocks.profile = { id: "p3", role: "customer", must_change_password: false };
+    const element = (await EquipmentLayout({ children: null })) as {
+      props: { items: unknown[]; homeHref: string };
+    };
+    expect(element.props.items).toEqual([]);
+    expect(element.props.homeHref).toBe("/dashboard");
+  });
+
+  it("gives directory roles the dashboard as home and no technician CoPilot", async () => {
+    mocks.profile = { id: "p1", role: "owner", must_change_password: false };
+    const element = (await EquipmentLayout({ children: null })) as {
+      props: { homeHref: string; isTechnician: boolean };
+    };
+    expect(element.props.homeHref).toBe("/equipment/dashboard");
+    expect(element.props.isTechnician).toBe(false);
+  });
+
   it("renders the shell for a normal account", async () => {
     mocks.profile = { id: "p1", role: "owner", must_change_password: false };
     const element = await EquipmentLayout({ children: null });
     expect(element).toBeTruthy();
-    expect(mocks.redirect).toHaveBeenCalledTimes(1);
+    expect(mocks.redirect).not.toHaveBeenCalled();
   });
 
   it("sends each role's brand link to a page that role can open", async () => {
