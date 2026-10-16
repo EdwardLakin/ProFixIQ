@@ -14,6 +14,10 @@ const noCallRecovery = readFileSync(
   "supabase/migrations/20261016213917_inspection_voice_pre_provider_recovery.sql", "utf8",
 );
 
+const errorReceiptIndex = readFileSync(
+  "supabase/migrations/20261016214607_inspection_voice_error_receipt_index.sql", "utf8",
+);
+
 describe("inspection voice settlement migration", () => {
   it("adds only service-role RPCs with a locked-down execution context", () => {
     for (const signature of [
@@ -60,6 +64,13 @@ describe("inspection voice settlement migration", () => {
     expect(migration).toContain("public.commit_ai_budget(");
     expect(migration).toContain("operation = 'inspection_transcription_settled'");
     expect(migration).toMatch(/begin;[\s\S]*update private\.ai_usage_ledger[\s\S]*commit;\s*$/);
+  });
+
+  it("indexes actor-bound errors independently of the existing successful-call lookup", () => {
+    expect(errorReceiptIndex).toContain("create index if not exists idx_ai_usage_inspection_actor_error_event");
+    expect(errorReceiptIndex).toContain("on private.ai_usage_ledger (user_id, event_key)");
+    expect(errorReceiptIndex).toContain("and status = 'error'");
+    expect(errorReceiptIndex).not.toContain("drop index");
   });
 
   it("recognizes only durable rejected or pre-provider receipts in the forward recovery repair", () => {

@@ -323,6 +323,7 @@ begin
         'modality', 'realtime', 'duration_seconds', 0,
         'estimated_cost_usd', 0, 'latency_ms', 1,
         'quota_receipt_id', v_reservation, 'status', 'error',
+        'rate_card_version', 'openai-2026-10-06-v3',
         'error_code', v_error, 'operation', 'inspection_transcription_creation'
       )
     );
@@ -353,5 +354,35 @@ begin
 end
 $$;
 reset role;
+
+
+-- Prove the actor-first error lookup can use its partial index even before
+-- recovery has discovered the issuing shop. Do not rely on tiny fixture costs
+-- choosing an index naturally; disable sequential scans for this plan check.
+do $$
+declare
+  v_plan json;
+  v_seqscan text := pg_catalog.current_setting('enable_seqscan');
+begin
+  perform pg_catalog.set_config('enable_seqscan', 'off', true);
+  execute $query$
+    explain (format json)
+    select rejected.id from private.ai_usage_ledger rejected
+    where rejected.user_id = 'c1000000-0000-4000-8000-000000000001'::uuid
+      and rejected.event_key = 'inspection_voice:' || rejected.shop_id::text ||
+        ':c3000000-0000-4000-8000-000000000003:error'
+      and rejected.provider = 'openai'
+      and rejected.feature = 'openai_realtime_token'
+      and rejected.endpoint = '/api/openai/inspection-transcription-token'
+      and rejected.modality = 'realtime'
+      and rejected.status = 'error'
+      and rejected.error_code in ('inspection_voice_rejected', 'inspection_voice_pre_provider_failure')
+  $query$ into v_plan;
+  perform pg_catalog.set_config('enable_seqscan', v_seqscan, true);
+  if v_plan::text not like '%idx_ai_usage_inspection_actor_error_event%' then
+    raise exception 'actor-bound error receipt lookup lacks its indexed path: %', v_plan;
+  end if;
+end
+$$;
 
 rollback;
