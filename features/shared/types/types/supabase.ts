@@ -31995,11 +31995,7 @@ export type Database = {
       }
       dispatch_visit_snapshot: { Args: { p_visit_id: string }; Returns: Json }
       equipment_acknowledge_visit_atomic: {
-        Args: {
-          p_actor_user_id: string
-          p_shop_id: string
-          p_visit_id: string
-        }
+        Args: { p_actor_user_id: string; p_shop_id: string; p_visit_id: string }
         Returns: Json
       }
       equipment_component_claim_operation: {
