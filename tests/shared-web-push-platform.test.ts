@@ -14,7 +14,7 @@ import {
 import { parsePushEventPayload } from "@/features/notifications/lib/pushClientContracts";
 import type { NotificationAdmin } from "@/features/notifications/server/db";
 import { createNotification } from "@/features/notifications/server/notificationStore";
-import { processPushDeliveries } from "@/features/notifications/server/pushDelivery";
+import { processPushDeliveries, type PushSendOptions } from "@/features/notifications/server/pushDelivery";
 
 type Row = Record<string, unknown>;
 
@@ -139,7 +139,7 @@ describe("createNotification", () => {
     const first = await createNotification({ admin, ...input });
     const retry = await createNotification({ admin, ...input });
     expect(first).toMatchObject({ ok: true, created: true, pushQueued: 1 });
-    expect(retry).toMatchObject({ ok: true, created: false, pushQueued: 0 });
+    expect(retry).toMatchObject({ ok: true, created: false, pushQueued: 1 });
     expect(admin.db.app_notifications).toHaveLength(1);
     expect(admin.db.app_notification_push_deliveries).toHaveLength(1);
   });
@@ -159,10 +159,11 @@ describe("createNotification", () => {
 });
 
 describe("processPushDeliveries", () => {
-  const baseSeed = (): Record<"app_notifications" | "app_push_subscriptions" | "app_notification_push_deliveries", Row[]> => ({
+  const baseSeed = (): Record<"profiles" | "app_notifications" | "app_push_subscriptions" | "app_notification_push_deliveries", Row[]> => ({
     app_notifications: [
       { id: "n1", shop_id: "shop-1", recipient_user_id: "user-1", target_path: "/mobile", priority: "normal", expires_at: null, acknowledged_at: null },
     ],
+    profiles: [{ id: "user-1", shop_id: "shop-1" }],
     app_push_subscriptions: [
       { id: "s1", shop_id: "shop-1", user_id: "user-1", endpoint: "https://p/1", p256dh: "k", auth_secret: "a", revoked_at: null, expires_at: null },
     ],
@@ -174,7 +175,7 @@ describe("processPushDeliveries", () => {
 
   it("marks success and sends only the generic payload", async () => {
     const admin = fakeAdmin(baseSeed(), claim);
-    const send = vi.fn(async (_sub: unknown, _payload: string) => ({ ok: true as const }));
+    const send = vi.fn(async (_sub: unknown, _payload: string, _opts: PushSendOptions) => ({ ok: true as const }));
     const summary = await processPushDeliveries({ admin, send });
     expect(summary.sent).toBe(1);
     expect(admin.db.app_notification_push_deliveries[0]?.status).toBe("sent");
@@ -196,6 +197,73 @@ describe("processPushDeliveries", () => {
     expect(done.failed).toBe(1);
   });
 
+  it("passes priority urgency and a TTL capped by the notification's remaining life", async () => {
+    const seed = baseSeed();
+    const now = new Date("2026-01-01T00:00:00Z");
+    seed.app_notifications[0]!.priority = "high";
+    seed.app_notifications[0]!.expires_at = "2026-01-01T00:05:00Z";
+    const admin = fakeAdmin(seed, claim);
+    const send = vi.fn(async (_s: unknown, _p: string, _o: PushSendOptions) => ({ ok: true as const }));
+    await processPushDeliveries({ admin, send, now });
+    expect(send.mock.calls[0]?.[2]).toEqual({ urgency: "high", ttlSeconds: 300 });
+    const normal = baseSeed();
+    const second = vi.fn(async (_s: unknown, _p: string, _o: PushSendOptions) => ({ ok: true as const }));
+    await processPushDeliveries({ admin: fakeAdmin(normal, claim), send: second, now });
+    expect(second.mock.calls[0]?.[2]).toEqual({ urgency: "normal", ttlSeconds: 3600 });
+  });
+
+  it("suppresses and revokes when the recipient has since left the shop", async () => {
+    const seed = baseSeed();
+    seed.profiles[0]!.shop_id = "shop-2";
+    const admin = fakeAdmin(seed, claim);
+    const send = vi.fn(async (_s: unknown, _p: string, _o: PushSendOptions) => ({ ok: true as const }));
+    const summary = await processPushDeliveries({ admin, send });
+    expect(summary.suppressed).toBe(1);
+    expect(send).not.toHaveBeenCalled();
+    expect(admin.db.app_push_subscriptions[0]?.revoked_reason).toBe("recipient_left_shop");
+  });
+
+  it("retries rather than suppresses when a state read fails", async () => {
+    const admin = fakeAdmin(baseSeed(), claim);
+    const realFrom = admin.from;
+    (admin as unknown as { from: (t: string) => unknown }).from = (table: string) => {
+      const b = realFrom(table) as unknown as Record<string, unknown>;
+      if (table === "app_notifications") {
+        b.maybeSingle = async () => ({ data: null, error: { message: "boom" } });
+      }
+      return b;
+    };
+    const send = vi.fn(async (_s: unknown, _p: string, _o: PushSendOptions) => ({ ok: true as const }));
+    const summary = await processPushDeliveries({ admin, send });
+    expect(summary.retried).toBe(1);
+    expect(summary.suppressed).toBe(0);
+    expect(admin.db.app_notification_push_deliveries[0]?.status).toBe("pending");
+  });
+
+  it("releases unprocessed leases when the run budget is spent", async () => {
+    const admin = fakeAdmin(baseSeed(), claim);
+    const send = vi.fn(async (_s: unknown, _p: string, _o: PushSendOptions) => ({ ok: true as const }));
+    const summary = await processPushDeliveries({ admin, send, runBudgetMs: -1 });
+    expect(summary.released).toBe(1);
+    expect(send).not.toHaveBeenCalled();
+  });
+
+  it("reports (not hides) a failed status write after an accepted send", async () => {
+    const admin = fakeAdmin(baseSeed(), claim);
+    const realFrom = admin.from;
+    (admin as unknown as { from: (t: string) => unknown }).from = (table: string) => {
+      const b = realFrom(table) as unknown as Record<string, unknown>;
+      if (table === "app_notification_push_deliveries") {
+        b.update = () => ({ eq: async () => ({ error: { message: "write failed" } }) });
+      }
+      return b;
+    };
+    const send = vi.fn(async (_s: unknown, _p: string, _o: PushSendOptions) => ({ ok: true as const }));
+    const summary = await processPushDeliveries({ admin, send });
+    expect(summary.persistFailures).toBe(1);
+    expect(summary.sent).toBe(0);
+  });
+
   it("revokes expired subscriptions", async () => {
     const admin = fakeAdmin(baseSeed(), claim);
     const summary = await processPushDeliveries({
@@ -215,7 +283,7 @@ describe("processPushDeliveries", () => {
     const seed = baseSeed();
     mutate(seed);
     const admin = fakeAdmin(seed, claim);
-    const send = vi.fn(async (_sub: unknown, _payload: string) => ({ ok: true as const }));
+    const send = vi.fn(async (_sub: unknown, _payload: string, _opts: PushSendOptions) => ({ ok: true as const }));
     const summary = await processPushDeliveries({ admin, send });
     expect(summary.suppressed).toBe(1);
     expect(send).not.toHaveBeenCalled();
@@ -239,6 +307,11 @@ describe("route and migration boundaries", () => {
     expect(ack).toContain('.eq("shop_id"');
     const sub = read("app/api/notifications/push/subscription/route.ts");
     expect(sub).toContain('.eq("user_id", access.profile.id)');
+  });
+
+  it("mounts the opt-in on the standalone Equipment and mobile shells", () => {
+    expect(read("features/equipment/components/EquipmentAccountControls.tsx")).toContain("PushNotificationSettings");
+    expect(read("features/mobile/settings/MobileSettingsScreen.tsx")).toContain("PushNotificationSettings");
   });
 
   it("protects the delivery worker with the internal secret and schedules it", () => {

@@ -79,7 +79,20 @@ export async function createNotification(
     if (existing.error || !existing.data) return { ok: false, reason: "error" };
     id = existing.data.id as string;
   }
-  if (!created) return { ok: true, id, created: false, pushQueued: 0 };
+  // Reconcile deliveries on every call (not only first creation): if a prior
+  // attempt inserted the row but failed to queue pushes, the producer retry
+  // repairs it. Delivery rows are unique per (notification, device).
+  const state = await admin
+    .from("app_notifications")
+    .select("acknowledged_at, expires_at")
+    .eq("id", id)
+    .maybeSingle();
+  if (state.error) return { ok: false, reason: "error" };
+  const expired =
+    state.data?.expires_at && Date.parse(state.data.expires_at) <= Date.now();
+  if (state.data?.acknowledged_at || expired) {
+    return { ok: true, id, created, pushQueued: 0 };
+  }
 
   const { data: subs, error: subsError } = await admin
     .from("app_push_subscriptions")
@@ -87,9 +100,9 @@ export async function createNotification(
     .eq("shop_id", input.shopId)
     .eq("user_id", input.recipientUserId)
     .is("revoked_at", null);
-  if (subsError) return { ok: true, id, created, pushQueued: 0 };
+  if (subsError) return { ok: false, reason: "error" };
 
-  const deliveries = ((subs ?? []) as Array<{ id: string }>).map((sub) => ({
+  const deliveries = (subs ?? []).map((sub) => ({
     notification_id: id,
     subscription_id: sub.id,
   }));
@@ -101,5 +114,6 @@ export async function createNotification(
       onConflict: "notification_id,subscription_id",
       ignoreDuplicates: true,
     });
-  return { ok: true, id, created, pushQueued: queued.error ? 0 : deliveries.length };
+  if (queued.error) return { ok: false, reason: "error" };
+  return { ok: true, id, created, pushQueued: deliveries.length };
 }

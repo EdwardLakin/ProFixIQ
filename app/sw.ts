@@ -44,6 +44,9 @@ type WindowClientLike = {
 declare const self: {
   location: Location;
   registration: {
+    pushManager: {
+      subscribe(options: PushSubscriptionOptionsInit): Promise<{ toJSON(): unknown }>;
+    };
     showNotification(
       title: string,
       options: { body: string; tag?: string; data: unknown; icon: string; badge: string },
@@ -261,13 +264,34 @@ self.addEventListener("notificationclick", (event) => {
 });
 
 self.addEventListener("pushsubscriptionchange", (event) => {
-  // The page re-subscribes with the signed-in user's session; the worker has none.
+  // Preserve consent: re-subscribe from the worker (same-origin fetch carries the
+  // session cookie), even when no window is open. Fall back to asking open pages.
+  const change = event as ExtendableEventLike & {
+    oldSubscription?: { options?: PushSubscriptionOptionsInit } | null;
+    newSubscription?: { toJSON(): unknown } | null;
+  };
   event.waitUntil(
-    self.clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
-      for (const client of windows) {
-        client.postMessage({ type: PUSH_SUBSCRIPTION_CHANGED_MESSAGE });
+    (async () => {
+      try {
+        let next = change.newSubscription ?? null;
+        if (!next && change.oldSubscription?.options) {
+          next = await self.registration.pushManager.subscribe(change.oldSubscription.options);
+        }
+        if (!next) throw new Error("no subscription");
+        const response = await fetch("/api/notifications/push/subscription", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(next.toJSON()),
+        });
+        if (!response.ok) throw new Error("register failed");
+      } catch {
+        const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        for (const client of windows) {
+          client.postMessage({ type: PUSH_SUBSCRIPTION_CHANGED_MESSAGE });
+        }
       }
-    }),
+    })(),
   );
 });
 

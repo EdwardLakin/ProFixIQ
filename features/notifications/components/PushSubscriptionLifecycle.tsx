@@ -6,6 +6,7 @@ import { PUSH_SUBSCRIPTION_CHANGED_MESSAGE } from "@/features/notifications/lib/
 import {
   dropLocalSubscription,
   refreshExistingSubscription,
+  renewSubscription,
 } from "@/features/notifications/lib/pushClient";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
@@ -27,7 +28,8 @@ export default function PushSubscriptionLifecycle() {
     });
     const onMessage = (event: MessageEvent) => {
       if ((event.data as { type?: unknown } | null)?.type === PUSH_SUBSCRIPTION_CHANGED_MESSAGE) {
-        void dropLocalSubscription();
+        // Keep the user's consent: re-associate whatever subscription now exists.
+        void renewSubscription().catch(() => undefined);
       }
     };
     navigator.serviceWorker.addEventListener("message", onMessage);

@@ -8,7 +8,20 @@ export type PushSupportState =
   | "unconfigured"
   | "denied"
   | "off"
+  /** Permission granted; Safari/iOS need a second, fresh tap to subscribe. */
+  | "ready_to_finish"
   | "on";
+
+export type PreparedPush = {
+  publicKey: string;
+  registration: ServiceWorkerRegistration;
+};
+
+export function isWebKitBrowser(): boolean {
+  if (typeof navigator === "undefined") return false;
+  const ua = navigator.userAgent;
+  return isIosDevice() || (/Safari\//.test(ua) && !/Chrome|Chromium|Android|Edg\//.test(ua));
+}
 
 export function urlBase64ToUint8Array(value: string): Uint8Array {
   const padding = "=".repeat((4 - (value.length % 4)) % 4);
@@ -55,8 +68,38 @@ export async function readPushState(): Promise<PushSupportState> {
   if (Notification.permission === "denied") return "denied";
   const registration = await getRegistration();
   const existing = await registration?.pushManager.getSubscription();
-  if (existing && Notification.permission === "granted") return "on";
+  if (existing && Notification.permission === "granted") {
+    // A local subscription must not mask a server-wide outage (VAPID missing).
+    const config = await fetchPushConfig();
+    if (config && !config.supported) return "unconfigured";
+    return "on";
+  }
   return "off";
+}
+
+async function fetchPushConfig(): Promise<{ supported: boolean; publicKey: string | null } | null> {
+  try {
+    const response = await fetch("/api/notifications/push/config", { cache: "no-store" });
+    if (!response.ok) return null;
+    const body = (await response.json()) as { supported?: boolean; publicKey?: string | null };
+    return { supported: Boolean(body.supported && body.publicKey), publicKey: body.publicKey ?? null };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Loads everything subscribing needs ahead of the click, so the gesture handler
+ * can call pushManager.subscribe() without awaiting network first (WebKit
+ * rejects subscriptions that lose their user activation).
+ */
+export async function preparePush(): Promise<PreparedPush | "unconfigured" | null> {
+  if (!pushApisAvailable()) return null;
+  const config = await fetchPushConfig();
+  if (!config) return null;
+  if (!config.supported || !config.publicKey) return "unconfigured";
+  const registration = await navigator.serviceWorker.ready;
+  return { publicKey: config.publicKey, registration };
 }
 
 async function postSubscription(subscription: PushSubscription): Promise<void> {
@@ -68,26 +111,33 @@ async function postSubscription(subscription: PushSubscription): Promise<void> {
   if (!response.ok) throw new Error("Could not save this device for notifications.");
 }
 
-/** Must be called from a click handler (explicit user action). */
-export async function enablePush(): Promise<PushSupportState> {
+/**
+ * Must be called from a click handler (explicit user action). Pass the result of
+ * preparePush() so no network await precedes subscribe(). On WebKit, answering
+ * the permission prompt consumes the activation, so the subscription is
+ * created on a second tap ("ready_to_finish").
+ */
+export async function enablePush(
+  prepared: PreparedPush | "unconfigured" | null,
+): Promise<PushSupportState> {
   if (isIosDevice() && !isStandaloneApp()) return "ios_install_required";
   if (!pushApisAvailable()) return "unsupported";
+  if (prepared === "unconfigured") return "unconfigured";
+  if (!prepared) throw new Error("Notifications are still loading. Try again in a moment.");
 
-  const configResponse = await fetch("/api/notifications/push/config", { cache: "no-store" });
-  const config = (await configResponse.json().catch(() => null)) as
-    | { supported?: boolean; publicKey?: string | null }
-    | null;
-  if (!configResponse.ok || !config?.supported || !config.publicKey) return "unconfigured";
+  if (Notification.permission === "default") {
+    const permission = await Notification.requestPermission();
+    if (permission === "denied") return "denied";
+    if (permission !== "granted") return "off";
+    if (isWebKitBrowser()) return "ready_to_finish";
+  }
+  if (Notification.permission !== "granted") return "denied";
 
-  const permission = await Notification.requestPermission();
-  if (permission !== "granted") return permission === "denied" ? "denied" : "off";
-
-  const registration = await navigator.serviceWorker.ready;
   const subscription =
-    (await registration.pushManager.getSubscription()) ??
-    (await registration.pushManager.subscribe({
+    (await prepared.registration.pushManager.getSubscription()) ??
+    (await prepared.registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(config.publicKey) as BufferSource,
+      applicationServerKey: urlBase64ToUint8Array(prepared.publicKey) as BufferSource,
     }));
   await postSubscription(subscription);
   return "on";
@@ -122,4 +172,20 @@ export async function dropLocalSubscription(): Promise<void> {
   const registration = await getRegistration();
   const subscription = await registration?.pushManager.getSubscription();
   await subscription?.unsubscribe().catch(() => undefined);
+}
+
+/** Best-effort renewal after the browser rotated/expired the subscription. */
+export async function renewSubscription(): Promise<void> {
+  if (!pushApisAvailable() || Notification.permission !== "granted") return;
+  const registration = await getRegistration();
+  if (!registration) return;
+  const existing = await registration.pushManager.getSubscription();
+  if (existing) return postSubscription(existing);
+  const config = await fetchPushConfig();
+  if (!config?.supported || !config.publicKey) return;
+  const created = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(config.publicKey) as BufferSource,
+  });
+  await postSubscription(created);
 }

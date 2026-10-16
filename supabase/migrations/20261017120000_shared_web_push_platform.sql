@@ -102,6 +102,13 @@ security definer
 set search_path = public, pg_temp
 as $$
 begin
+  -- A delivery whose lease keeps expiring must not be re-sent forever.
+  update public.app_notification_push_deliveries d
+  set status = 'failed', last_error_code = coalesce(d.last_error_code, 'lease_exhausted')
+  where d.status in ('pending', 'sending')
+    and d.next_attempt_at <= now()
+    and d.attempts >= 5;
+
   return query
   with due as (
     select d.id

@@ -4,6 +4,8 @@ import webpush from "web-push";
 
 import type { PushSender } from "@/features/notifications/server/pushDelivery";
 
+const PUSH_REQUEST_TIMEOUT_MS = 8_000;
+
 export function readVapidConfig(): {
   publicKey: string;
   privateKey: string;
@@ -20,12 +22,14 @@ export function readVapidConfig(): {
 export function createWebPushSender(): PushSender | null {
   const config = readVapidConfig();
   if (!config) return null;
-  return async (subscription, payload) => {
+  return async (subscription, payload, options) => {
     try {
       await webpush.sendNotification(subscription, payload, {
         vapidDetails: config,
-        TTL: 60 * 60,
-        urgency: "high",
+        TTL: options.ttlSeconds,
+        urgency: options.urgency,
+        // Bounded so one slow endpoint cannot stall the whole batch.
+        timeout: PUSH_REQUEST_TIMEOUT_MS,
       });
       return { ok: true };
     } catch (error) {

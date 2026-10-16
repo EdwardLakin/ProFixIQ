@@ -9,6 +9,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import type { Database } from "@shared/types/types/supabase";
 
+import PushNotificationSettings from "@/features/notifications/components/PushNotificationSettings";
 import SignaturePad, {
   openSignaturePad,
 } from "@/features/shared/signaturePad/controller";
@@ -565,6 +566,10 @@ export default function MobileTechSettingsPage(): JSX.Element {
               Need a password reset? Ask your manager or owner to issue a new
               temporary password from the admin screen.
             </p>
+          </section>
+
+          <section className="glass-card rounded-2xl border border-[color:var(--theme-border-soft)] px-4 py-4">
+            <PushNotificationSettings />
           </section>
 
           {/* ✅ Host for the signature modal */}
