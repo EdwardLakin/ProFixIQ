@@ -20,11 +20,24 @@ export const PRODUCT_PACKAGE_KEYS = [
   "field_service",
   "fleet_maintenance",
   "complete_operations",
+  "equipment_operations",
 ] as const;
 
 export type ProductPackageKey = (typeof PRODUCT_PACKAGE_KEYS)[number];
-export type ProductCapability = "shop" | "field_service" | "fleet_maintenance";
-export type ProductAcquisitionSurface = "shop" | "field" | "fleet";
+export type LegacyCatalogPackageKey = Exclude<
+  ProductPackageKey,
+  "equipment_operations"
+>;
+export const LEGACY_CATALOG_PACKAGE_KEYS: readonly LegacyCatalogPackageKey[] =
+  PRODUCT_PACKAGE_KEYS.filter(
+    (key): key is LegacyCatalogPackageKey => key !== "equipment_operations",
+  );
+export type ProductCapability =
+  | "shop"
+  | "field_service"
+  | "fleet_maintenance"
+  | "equipment";
+export type ProductAcquisitionSurface = "shop" | "field" | "fleet" | "equipment";
 
 export const PRODUCT_PACKAGE_ACQUISITION_SURFACE: Record<
   ProductPackageKey,
@@ -36,6 +49,7 @@ export const PRODUCT_PACKAGE_ACQUISITION_SURFACE: Record<
   // Complete Operations starts with the Shop owner workspace, which owns the
   // shared location and unlocks the Field and Fleet capabilities afterward.
   complete_operations: "shop",
+  equipment_operations: "equipment",
 };
 
 // The active acquisition catalog is versioned separately from the entitlement
@@ -47,10 +61,13 @@ export const PRODUCT_PACKAGE_LOOKUP_KEYS: Record<ProductPackageKey, string> = {
   field_service: "profixiq_field_service_monthly_usd_v2",
   fleet_maintenance: "profixiq_fleet_maintenance_monthly_usd_v2",
   complete_operations: "profixiq_complete_operations_monthly_usd_v2",
+  equipment_operations: "profixiq_equipment_operations_monthly_usd_v1",
 };
 
+// Equipment Operations launched after the CAD catalog was retired, so it has
+// no legacy entry.
 export const LEGACY_PRODUCT_PACKAGE_LOOKUP_KEYS: Record<
-  ProductPackageKey,
+  LegacyCatalogPackageKey,
   string
 > = {
   shop_operations: "profixiq_shop_operations_monthly_v1",
@@ -87,6 +104,7 @@ export const LIVE_PRODUCT_PACKAGE_PRICE_IDS: Record<ProductPackageKey, string> =
   field_service: "price_1UIgbuITYwJQigUI3Nfl8FqC",
   fleet_maintenance: "price_1UIgbvITYwJQigUIq0RhgFkL",
   complete_operations: "price_1UIgbxITYwJQigUIZvVBxp9Q",
+  equipment_operations: "price_1URBcwITYwJQigUIrWiO9kga",
 };
 
 export const LIVE_ADDITIONAL_USER_PRICE_ID =
@@ -127,6 +145,12 @@ export const PRODUCT_PACKAGE_PRICING = {
     includedUsers: PRODUCT_PACKAGE_INCLUDED_USERS,
     includedServiceTrucks: 2,
     includedFleetAssets: 10,
+  },
+  equipment_operations: {
+    monthlyCents: 39_900,
+    includedUsers: PRODUCT_PACKAGE_INCLUDED_USERS,
+    includedServiceTrucks: 0,
+    includedFleetAssets: 0,
   },
   additionalUserCents: PRODUCT_PACKAGE_ADDITIONAL_USER_CENTS,
   additionalServiceTruckCents: 4_900,
@@ -170,6 +194,18 @@ export const PRODUCT_PACKAGE_CATALOG: Record<
       "Shop, Field Service, and Fleet Maintenance in one operating system.",
     capabilities: ["shop", "field_service", "fleet_maintenance"],
   },
+  equipment_operations: {
+    name: "Equipment Operations",
+    shortName: "Equipment",
+    description:
+      "Repair-shop operations for heavy equipment and machinery: work orders, inspections, parts, approvals, PM, and service history.",
+    // Equipment repairs run on the canonical work-order engine and field
+    // service is native to the product, so the package carries the shop and
+    // field_service engine capabilities alongside its own. This is capability
+    // composition only: it does not make Equipment a Field Service package, and
+    // the field_service package itself is unchanged.
+    capabilities: ["shop", "field_service", "equipment"],
+  },
 };
 
 const PACKAGE_KEY_SET = new Set<string>(PRODUCT_PACKAGE_KEYS);
@@ -206,7 +242,8 @@ export function normalizeProductAcquisitionSurface(
     .toLowerCase();
   return normalized === "shop" ||
     normalized === "field" ||
-    normalized === "fleet"
+    normalized === "fleet" ||
+    normalized === "equipment"
     ? normalized
     : null;
 }

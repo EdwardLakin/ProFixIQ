@@ -238,6 +238,9 @@ function catalogForSubscription(input: {
     };
   }
 
+  // Equipment Operations launched after the CAD catalog retired.
+  if (packageKey === "equipment_operations") return null;
+
   const legacyPrimary = subscription.items.data.some((item) =>
     isPrice(
       item,
@@ -248,8 +251,13 @@ function catalogForSubscription(input: {
   if (!legacyPrimary) return null;
 
   return {
-    catalog: contract.legacyCad,
-    lookupKeys: LEGACY_PRODUCT_PACKAGE_LOOKUP_KEYS,
+    // The legacy catalog has no Equipment entry; that package returned above,
+    // so every key reachable here is present.
+    catalog: contract.legacyCad as ProductPackageCatalogPriceIds,
+    lookupKeys: LEGACY_PRODUCT_PACKAGE_LOOKUP_KEYS as Record<
+      ProductPackageKey,
+      string
+    >,
     truckLookupKey: LEGACY_ADDITIONAL_SERVICE_TRUCK_LOOKUP_KEY,
     assetLookupKey: LEGACY_ADDITIONAL_FLEET_ASSET_LOOKUP_KEY,
     legacyCad: true,
@@ -317,7 +325,9 @@ export async function reconcileProductPackageSubscription(params: {
     const includedAssets =
       PRODUCT_PACKAGE_PRICING[packageKey].includedFleetAssets;
     const currentCatalogAdditionalUsers =
-      packageKey === "shop_operations" || packageKey === "complete_operations"
+      packageKey === "shop_operations" ||
+      packageKey === "complete_operations" ||
+      packageKey === "equipment_operations"
         ? Math.max(0, capacity.activeUsers - PRODUCT_PACKAGE_INCLUDED_USERS)
         : 0;
     const additionalTruckQuantity =

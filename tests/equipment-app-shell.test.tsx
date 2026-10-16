@@ -60,6 +60,7 @@ describe("Equipment navigation registry", () => {
       "Dashboard",
       "Work",
       "Dispatch",
+      "Field",
       "Assets",
       "PM",
       "Inspections",
@@ -116,6 +117,9 @@ describe("Equipment navigation registry", () => {
     const keys = (role: Parameters<typeof equipmentShellNavForRole>[0]) =>
       equipmentShellNavForRole(role).map((item) => item.key);
     expect(keys("owner")).toHaveLength(EQUIPMENT_SHELL_NAV.length);
+    // Technicians get the field entry only; no link that bounces them.
+    expect(keys("mechanic")).toEqual(["field"]);
+    expect(keys("customer")).toEqual([]);
     expect(keys("parts")).toContain("parts");
     expect(keys("parts")).not.toContain("settings");
     expect(keys("parts")).not.toContain("billing");
@@ -127,6 +131,7 @@ describe("Equipment navigation registry", () => {
     expect(activeEquipmentShellKey("/equipment/dashboard")).toBe("dashboard");
     expect(activeEquipmentShellKey("/equipment/work-orders")).toBe("work");
     expect(activeEquipmentShellKey("/equipment/dispatch/")).toBe("dispatch");
+    expect(activeEquipmentShellKey("/equipment/field")).toBe("field");
     expect(activeEquipmentShellKey("/equipment")).toBe("assets");
     expect(activeEquipmentShellKey("/equipment/abc-123")).toBe("assets");
     expect(activeEquipmentShellKey("/equipment/components")).toBe("assets");
