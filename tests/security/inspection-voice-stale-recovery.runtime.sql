@@ -25,17 +25,7 @@ begin
     from cron.job
     where jobname = 'inspection-voice-budget-reconciliation-minute'
       and schedule = '* * * * *'
-      and command = 'commit;
-do $$
-begin
-  if exists (select 1 from pg_catalog.pg_locks
-    where pid = pg_catalog.pg_backend_pid() and locktype = 'advisory') then
-    raise exception 'previous cron transaction retained its shop lock';
-  end if;
-end $$;
--- In autocommit, the cron statement releases its shop lock on completion.
-select private.reconcile_stale_inspection_voice_holds();
-begin;'
+      and command = 'select private.reconcile_stale_inspection_voice_holds();'
   ) then
     raise exception 'stale voice reconciliation schedule is missing';
   end if;
