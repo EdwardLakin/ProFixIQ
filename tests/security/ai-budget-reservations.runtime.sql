@@ -22,7 +22,7 @@ values
   ('ab000000-0000-4000-8000-000000000002', 'ab000000-0000-4000-8000-000000000002', 'owner', 'AI Budget Owner B'),
   ('ab000000-0000-4000-8000-000000000003', 'ab000000-0000-4000-8000-000000000003', 'owner', 'AI Budget Owner C'),
   ('ab000000-0000-4000-8000-000000000004', 'ab000000-0000-4000-8000-000000000004', 'owner', 'AI Budget Owner D'),
-  ('ac000000-0000-4000-8000-000000000005', 'ab000000-0000-4000-8000-000000000005', 'tech', 'Legacy AI Budget User')
+  ('ac000000-0000-4000-8000-000000000005', 'ab000000-0000-4000-8000-000000000005', 'mechanic', 'Legacy AI Budget User')
 on conflict (id) do update
 set user_id = excluded.user_id,
     role = excluded.role,
