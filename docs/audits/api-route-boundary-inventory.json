@@ -1908,6 +1908,42 @@
     "riskLevel": "medium"
   },
   {
+    "path": "app/api/equipment/dispatch/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": false,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "mutating_without_obvious_auth_marker"
+    ],
+    "riskLevel": "high"
+  },
+  {
+    "path": "app/api/equipment/dispatch/visits/[visitId]/acknowledge/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": false,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": false,
+    "routeClassGuess": "staff_or_admin",
+    "riskFlags": [
+      "mutating_without_obvious_auth_marker"
+    ],
+    "riskLevel": "high"
+  },
+  {
     "path": "app/api/equipment/entitlement/route.ts",
     "methods": [
       "GET"
@@ -1923,6 +1959,22 @@
     "riskFlags": [
       "has_stronger_boundary_signal"
     ],
+    "riskLevel": "low"
+  },
+  {
+    "path": "app/api/equipment/field-calls/route.ts",
+    "methods": [
+      "POST"
+    ],
+    "isMutating": true,
+    "hasRequireShopScopedApiAccess": false,
+    "hasRouteHandlerSupabaseAuthClient": false,
+    "hasAuthGetUser": false,
+    "hasServiceRolePattern": false,
+    "hasShopReference": true,
+    "hasRoleOrCapabilityReference": true,
+    "routeClassGuess": "customer_or_portal",
+    "riskFlags": [],
     "riskLevel": "low"
   },
   {
