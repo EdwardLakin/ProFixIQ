@@ -155,10 +155,11 @@ begin
   exception when sqlstate 'P0001' then null;
   end;
 
-  -- A receipt stored by another dispatch path under a colliding key must not
-  -- be adopted: no participants are attached to a visit this call did not create.
+  -- A receipt stored by another dispatch path under a colliding key (here for
+  -- a visit on a DIFFERENT work order) must not be adopted: no participants are
+  -- attached to a visit this call did not create, and wo_2 gets no visit.
   perform public.dispatch_create_service_visit_atomic(
-    shop_a, null, wo_2, 'shop', addr, null, null, tech_1, null, null, null, null, owner_a,
+    shop_a, null, wo_1, 'shop', addr, null, null, tech_1, null, null, null, null, owner_a,
     'equipment-dispatch:eqd-key-collide-0001:visit');
   begin
     perform public.equipment_dispatch_visit_atomic(
@@ -167,9 +168,10 @@ begin
     raise exception 'A colliding inner receipt was adopted.';
   exception when sqlstate '22023' then null;
   end;
-  if exists (select 1 from public.service_visit_participants p
-             join public.service_visits sv on sv.id = p.service_visit_id
-             where sv.work_order_id = wo_2) then
+  if exists (select 1 from public.service_visits where work_order_id = wo_2) then
+    raise exception 'A visit was created on the work order despite the key collision.';
+  end if;
+  if (select count(*) from public.service_visit_participants where shop_id = shop_a) <> 2 then
     raise exception 'Participants were attached to a visit this call did not create.';
   end if;
 
