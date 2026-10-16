@@ -47,8 +47,8 @@ $$;
 create temp table stale_voice_cron_state as
 select jobid, active from cron.job
 where jobname = 'inspection-voice-budget-reconciliation-minute';
-update cron.job set active = false
-where jobid in (select jobid from stale_voice_cron_state);
+select cron.alter_job(jobid, active => false)
+from stale_voice_cron_state where active;
 
 insert into auth.users (id, email, raw_user_meta_data)
 values (
@@ -554,6 +554,6 @@ delete from public.profiles where user_id in (
 delete from auth.users where id in (
   'd1000000-0000-4000-8000-000000000001', 'd1000000-0000-4000-8000-000000000002',
   'd1000000-0000-4000-8000-000000000003');
-update cron.job job set active = original.active
-from stale_voice_cron_state original where job.jobid = original.jobid;
+select cron.alter_job(original.jobid, active => original.active)
+from stale_voice_cron_state original;
 commit;
