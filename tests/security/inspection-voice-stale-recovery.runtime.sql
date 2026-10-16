@@ -60,6 +60,12 @@ values (
 )
 on conflict (id) do nothing;
 
+-- Auth's insertion trigger creates one profile per user. Replace the legacy
+-- actor's automatic profile so the canonical recorder must resolve user_id to
+-- a distinct profile ID, as it does for historical accounts.
+delete from public.profiles
+where id = 'd1000000-0000-4000-8000-000000000003';
+
 insert into public.profiles (id, user_id, role, full_name)
 values (
   'd1000000-0000-4000-8000-000000000001',
@@ -77,7 +83,8 @@ values (
   'mechanic',
   'Legacy Voice Technician'
 )
-on conflict (id) do nothing;
+on conflict (id) do update
+set user_id = excluded.user_id, role = excluded.role, full_name = excluded.full_name;
 
 insert into public.shops (id, owner_id, business_name, name, user_limit)
 values (
