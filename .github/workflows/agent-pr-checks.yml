@@ -65,17 +65,6 @@ jobs:
           path: ${{ runner.temp }}/regression-inventory
           if-no-files-found: warn
 
-      - name: List changed JavaScript and TypeScript files
-        shell: bash
-        run: |
-          # The checkout is the PR merge commit, so a two-point diff against the
-          # base commit is exactly the PR's changes without fetching full history.
-          git fetch --no-tags --depth=1 origin "$BASE_SHA"
-          git diff --name-only --diff-filter=ACMR "$BASE_SHA" HEAD -- \
-            '*.js' '*.jsx' '*.mjs' '*.cjs' '*.ts' '*.tsx' \
-            > "$RUNNER_TEMP/changed-js-ts-files.txt"
-          wc -l < "$RUNNER_TEMP/changed-js-ts-files.txt"
-
       - name: Restore incremental type-check and build caches
         uses: actions/cache@v4
         with:
@@ -86,9 +75,30 @@ jobs:
           restore-keys: |
             pr-validation-${{ runner.os }}-${{ hashFiles('pnpm-lock.yaml') }}-
 
-      - name: Type-check, lint, test and build
+      - name: Type-check
+        run: pnpm typecheck
+
+      - name: Lint changed JavaScript and TypeScript files
+        shell: bash
+        run: |
+          # The checkout is the PR merge commit, so a two-point diff against the
+          # base commit is exactly the PR's changes without fetching full history.
+          git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          mapfile -t changed_files < <(
+            git diff --name-only --diff-filter=ACMR "$BASE_SHA" HEAD -- \
+              '*.js' '*.jsx' '*.mjs' '*.cjs' '*.ts' '*.tsx'
+          )
+          if (( ${#changed_files[@]} == 0 )); then
+            echo "No changed JavaScript or TypeScript files."
+            exit 0
+          fi
+          pnpm exec eslint "${changed_files[@]}"
+
+      - name: Run complete test suite
+        run: pnpm test
+
+      - name: Build production application
         env:
-          CHANGED_FILES_LIST: ${{ runner.temp }}/changed-js-ts-files.txt
           # Pull requests do not receive production secrets. These values only
           # let Next.js evaluate route modules while compiling; no network calls
           # are made and deploys still use environment-scoped credentials.
@@ -98,7 +108,7 @@ jobs:
           OPENAI_API_KEY: ci-build-placeholder-openai-key
           STRIPE_SECRET_KEY: sk_test_ci_build_placeholder
           NEXT_PUBLIC_SITE_URL: https://ci-build.example.test
-        run: bash scripts/ci/run-pr-validation.sh
+        run: pnpm build
 
       - name: Enforce regression inventory gate
         if: always() && steps.regression_inventory.outcome == 'failure'
