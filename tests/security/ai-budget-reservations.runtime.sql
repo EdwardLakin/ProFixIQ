@@ -13,7 +13,10 @@ values
   ('ab000000-0000-4000-8000-000000000002', 'ai-budget-owner-b@example.com', '{"full_name":"AI Budget Owner B"}'::jsonb),
   ('ab000000-0000-4000-8000-000000000003', 'ai-budget-owner-c@example.com', '{"full_name":"AI Budget Owner C"}'::jsonb),
   ('ab000000-0000-4000-8000-000000000004', 'ai-budget-owner-d@example.com', '{"full_name":"AI Budget Owner D"}'::jsonb),
-  ('ab000000-0000-4000-8000-000000000005', 'ai-budget-legacy-d@example.com', '{"full_name":"Legacy AI Budget User"}'::jsonb)
+  ('ab000000-0000-4000-8000-000000000005', 'ai-budget-legacy-d@example.com', '{"full_name":"Legacy AI Budget User"}'::jsonb),
+  -- profiles.id and profiles.user_id both reference auth.users. Keep them
+  -- distinct to exercise canonical actor normalization.
+  ('ac000000-0000-4000-8000-000000000005', 'ai-budget-profile-d@example.com', '{"full_name":"Legacy AI Budget Profile"}'::jsonb)
 on conflict (id) do nothing;
 
 insert into public.profiles (id, user_id, role, full_name)
