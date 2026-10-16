@@ -2,7 +2,11 @@
 
 import { useEffect, useRef } from "react";
 
-export type InspectionVoiceState = "idle" | "connecting" | "listening" | "error";
+export type InspectionVoiceState =
+  | "idle"
+  | "connecting"
+  | "listening"
+  | "error";
 export type InspectionVoiceAutoStopReason = "max_duration" | "idle";
 
 export type InspectionVoiceOptions = {
@@ -17,88 +21,109 @@ export type InspectionVoiceOptions = {
 };
 
 const SAMPLE_RATE = 24_000;
-const PRE_ROLL_MS = 450;
-const END_SILENCE_MS = 900;
-const MAX_TURN_MS = 20_000;
 const DEFAULT_MAX_STREAMING_MS = 60 * 60_000;
 const DEFAULT_IDLE_TIMEOUT_MS = 10 * 60_000;
 const GUARD_TICK_MS = 1_000;
+const CONNECTION_TIMEOUT_MS = 15_000;
+const PENDING_CALL_STORAGE_KEY = "profixiq:inspection-voice-pending-call";
+const PROVIDER_MAX_CALL_MS = 60 * 60_000;
+
+type PendingCall = { key: string; startedAt: number };
+
+function readPendingCall(): PendingCall | null {
+  try {
+    const value = JSON.parse(sessionStorage.getItem(PENDING_CALL_STORAGE_KEY) ?? "null") as PendingCall | null;
+    return value && /^[0-9a-f-]{36}$/i.test(value.key) && Number.isFinite(value.startedAt)
+      ? value : null;
+  } catch { return null; }
+}
+
+function writePendingCall(value: PendingCall | null): void {
+  try {
+    if (value) sessionStorage.setItem(PENDING_CALL_STORAGE_KEY, JSON.stringify(value));
+    else sessionStorage.removeItem(PENDING_CALL_STORAGE_KEY);
+  } catch {}
+}
 
 type Session = {
-  ws: WebSocket | null;
+  peer: RTCPeerConnection | null;
+  events: RTCDataChannel | null;
   stream: MediaStream | null;
+  outputStream: MediaStream | null;
   audio: AudioContext | null;
   worklet: AudioWorkletNode | null;
-  zeroGain: GainNode | null;
+  abort: AbortController;
   paused: boolean;
-  sentAudioMs: number;
+  providerStartedAt: number | null;
   lastTranscriptAt: number;
   guard: ReturnType<typeof setInterval> | null;
   pauseTimer: ReturnType<typeof setTimeout> | null;
-  preRoll: Float32Array[];
-  preRollMs: number;
   speaking: boolean;
-  silenceMs: number;
-  turnMs: number;
-  noiseFloor: number;
   usageKey: string | null;
   usageReported: boolean;
+  dataChannelOpen: boolean;
 };
 
-function encodePcm(data: Float32Array): string {
-  const pcm = new Int16Array(data.length);
-  for (let i = 0; i < data.length; i += 1) {
-    const sample = Math.max(-1, Math.min(1, data[i] ?? 0));
-    pcm[i] = sample < 0 ? sample * 0x8000 : sample * 0x7fff;
-  }
-  const bytes = new Uint8Array(pcm.buffer);
-  let binary = "";
-  const chunk = 0x8000;
-  for (let i = 0; i < bytes.length; i += chunk) {
-    binary += String.fromCharCode(...bytes.subarray(i, i + chunk));
-  }
-  return btoa(binary);
-}
+type UsageReportOutcome = "closed" | "not_found" | "pending";
 
-function level(data: Float32Array): number {
-  if (!data.length) return 0;
-  let sum = 0;
-  for (const value of data) sum += value * value;
-  return Math.sqrt(sum / data.length);
-}
-
-function reportUsage(session: Session): void {
-  if (session.usageReported || !session.usageKey) return;
-  session.usageReported = true;
+function sendUsageReport(usageKey: string, durationSeconds: number): Promise<UsageReportOutcome> {
   const payload = JSON.stringify({
-    usageKey: session.usageKey,
-    durationSeconds: Math.max(0, session.sentAudioMs / 1_000),
+    usageKey,
+    durationSeconds: Math.max(0, durationSeconds),
   });
-  try {
-    if (
-      typeof navigator !== "undefined" &&
-      typeof navigator.sendBeacon === "function"
-    ) {
-      const blob = new Blob([payload], { type: "application/json" });
+  const sendBeacon = () => {
+    try {
       if (
+        typeof navigator !== "undefined" &&
+        typeof navigator.sendBeacon === "function"
+      ) {
         navigator.sendBeacon(
           "/api/openai/inspection-transcription-usage",
-          blob,
-        )
-      ) {
-        return;
+          new Blob([payload], { type: "application/json" }),
+        );
       }
+    } catch {}
+  };
+  const send = async (attempt: number): Promise<UsageReportOutcome> => {
+    try {
+      const response = await fetch(
+        "/api/openai/inspection-transcription-usage",
+        {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "Content-Type": "application/json" },
+          body: payload,
+          keepalive: true,
+          signal: AbortSignal.timeout(4_000),
+        },
+      );
+      if (response.status === 204) return "closed";
+      if (response.status === 403 &&
+          (await response.json().catch(() => null))?.code === "inspection_voice_settlement_not_found") {
+        return "not_found";
+      }
+    } catch {}
+
+    if (attempt < 2 && typeof window !== "undefined") {
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 500 * (attempt + 1));
+      });
+      return send(attempt + 1);
+    } else {
+      sendBeacon();
+      return "pending";
     }
-  } catch {}
-  try {
-    void fetch("/api/openai/inspection-transcription-usage", {
-      method: "POST",
-      credentials: "same-origin",
-      headers: { "Content-Type": "application/json" },
-      body: payload,
-      keepalive: true,
-    }).catch(() => undefined);
-  } catch {}
+  };
+  return send(0);
+}
+
+function reportUsage(session: Session): Promise<boolean> {
+  if (session.usageReported || !session.usageKey) return Promise.resolve(false);
+  session.usageReported = true;
+  const durationMs = session.providerStartedAt
+    ? Date.now() - session.providerStartedAt
+    : 0;
+  return sendUsageReport(session.usageKey, durationMs / 1_000).then((outcome) => outcome === "closed");
 }
 
 function stopStream(stream: MediaStream | null): void {
@@ -116,22 +141,39 @@ function cleanup(session: Session): void {
     session.worklet?.disconnect();
   } catch {}
   try {
-    session.zeroGain?.disconnect();
+    session.events?.close();
   } catch {}
   try {
-    session.ws?.close();
+    session.peer?.close();
   } catch {}
   stopStream(session.stream);
+  stopStream(session.outputStream);
   try {
     void session.audio?.close();
   } catch {}
-  session.ws = null;
+  session.events = null;
+  session.peer = null;
   session.stream = null;
+  session.outputStream = null;
   session.audio = null;
   session.worklet = null;
-  session.zeroGain = null;
-  session.preRoll = [];
-  session.preRollMs = 0;
+}
+
+function waitForIceGathering(peer: RTCPeerConnection): Promise<void> {
+  if (peer.iceGatheringState === "complete") return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const timeoutId = window.setTimeout(() => {
+      peer.removeEventListener("icegatheringstatechange", onStateChange);
+      reject(new Error("Inspection voice connection setup timed out."));
+    }, 5_000);
+    const onStateChange = () => {
+      if (peer.iceGatheringState !== "complete") return;
+      window.clearTimeout(timeoutId);
+      peer.removeEventListener("icegatheringstatechange", onStateChange);
+      resolve();
+    };
+    peer.addEventListener("icegatheringstatechange", onStateChange);
+  });
 }
 
 function transcriptText(message: Record<string, unknown>): string {
@@ -157,6 +199,9 @@ export function useCostOptimizedInspectionVoice(
   opts?: InspectionVoiceOptions,
 ) {
   const activeRef = useRef<Session | null>(null);
+  const startPromiseRef = useRef<Promise<void> | null>(null);
+  const startGenerationRef = useRef(0);
+  const pendingCallRef = useRef<PendingCall | null>(null);
   const handlerRef = useRef(handleTranscript);
   const wakeRef = useRef(maybeHandleWakeWord);
   const queueRef = useRef<Promise<unknown>>(Promise.resolve());
@@ -168,129 +213,114 @@ export function useCostOptimizedInspectionVoice(
     wakeRef.current = maybeHandleWakeWord;
   }, [maybeHandleWakeWord]);
 
-  const setState = (state: InspectionVoiceState) => opts?.onStateChange?.(state);
+  const setState = (state: InspectionVoiceState) =>
+    opts?.onStateChange?.(state);
 
-  function sendAudio(session: Session, frame: Float32Array): void {
-    if (!session.ws || session.ws.readyState !== WebSocket.OPEN) return;
-    session.ws.send(
-      JSON.stringify({
-        type: "input_audio_buffer.append",
-        audio: encodePcm(frame),
-      }),
-    );
-    session.sentAudioMs += (frame.length / SAMPLE_RATE) * 1_000;
-  }
+  const clearPendingCall = (key: string) => {
+    if (pendingCallRef.current?.key !== key) return;
+    pendingCallRef.current = null;
+    writePendingCall(null);
+  };
+
+  const finishReport = (session: Session) =>
+    reportUsage(session).then((closed) => {
+      if (closed && session.usageKey) clearPendingCall(session.usageKey);
+    });
 
   function commit(session: Session): void {
-    if (!session.ws || session.ws.readyState !== WebSocket.OPEN) return;
-    session.ws.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+    if (!session.events || session.events.readyState !== "open") return;
+    session.events.send(JSON.stringify({ type: "input_audio_buffer.commit" }));
+    session.worklet?.port.postMessage({ type: "committed" });
     session.speaking = false;
-    session.silenceMs = 0;
-    session.turnMs = 0;
-    session.preRoll = [];
-    session.preRollMs = 0;
   }
 
   function stop(reason?: InspectionVoiceAutoStopReason): void {
+    startGenerationRef.current += 1;
+    startPromiseRef.current = null;
     const session = activeRef.current;
     activeRef.current = null;
     if (session) {
-      reportUsage(session);
-      cleanup(session);
+      session.abort.abort();
+      // Keep the provider call alive long enough for the server to hang up
+      // that exact call. Mute locally at once and clean up after bounded
+      // report attempts; an unconfirmed closure retains its budget hold.
+      session.stream?.getAudioTracks().forEach((track) => {
+        track.enabled = false;
+      });
+      void finishReport(session).finally(() => cleanup(session));
     }
     setState("idle");
     if (reason) opts?.onAutoStop?.(reason);
   }
 
-  async function start(): Promise<void> {
+  async function startSession(operationKey: string): Promise<void> {
     if (activeRef.current) return;
     setState("connecting");
 
-    const response = await fetch("/api/openai/inspection-transcription-token", {
-      method: "GET",
-      cache: "no-store",
-      credentials: "same-origin",
-    });
-    const tokenPayload = (await response.json().catch(() => null)) as
-      | {
-          token?: unknown;
-          transcriptionModel?: unknown;
-          usageKey?: unknown;
-          error?: unknown;
-        }
-      | null;
-    if (!response.ok || typeof tokenPayload?.token !== "string") {
-      const message =
-        typeof tokenPayload?.error === "string"
-          ? tokenPayload.error
-          : "Inspection voice could not start.";
-      setState("error");
-      opts?.onError?.(message);
-      throw new Error(message);
-    }
+    let stream: MediaStream | null = null;
+    let audio: AudioContext | null = null;
+    let worklet: AudioWorkletNode | null = null;
+    let peer: RTCPeerConnection | null = null;
+    let events: RTCDataChannel | null = null;
 
-    const stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
-      },
-    });
-    const audio = new AudioContext({ sampleRate: SAMPLE_RATE });
-    if (audio.state === "suspended") await audio.resume();
-    await audio.audioWorklet.addModule("/voice/pcm-processor.js");
-
-    const worklet = new AudioWorkletNode(audio, "pcm-processor");
-    const zeroGain = audio.createGain();
-    zeroGain.gain.value = 0;
-    audio.createMediaStreamSource(stream).connect(worklet);
-    worklet.connect(zeroGain);
-    zeroGain.connect(audio.destination);
+    peer = new RTCPeerConnection();
+    events = peer.createDataChannel("oai-events");
+    const sender = peer.addTransceiver("audio", { direction: "sendrecv" }).sender;
 
     const session: Session = {
-      ws: null,
+      peer,
+      events,
       stream,
+      outputStream: null,
       audio,
       worklet,
-      zeroGain,
+      abort: new AbortController(),
       paused: false,
-      sentAudioMs: 0,
+      providerStartedAt: null,
       lastTranscriptAt: Date.now(),
       guard: null,
       pauseTimer: null,
-      preRoll: [],
-      preRollMs: 0,
       speaking: false,
-      silenceMs: 0,
-      turnMs: 0,
-      noiseFloor: 0.006,
-      usageKey:
-        typeof tokenPayload.usageKey === "string"
-          ? tokenPayload.usageKey
-          : null,
+      usageKey: null,
       usageReported: false,
+      dataChannelOpen: false,
     };
     activeRef.current = session;
+    const ensureActive = () => {
+      if (activeRef.current !== session) throw new Error("Inspection voice start cancelled.");
+    };
 
-    const ws = new WebSocket(
-      "wss://api.openai.com/v1/realtime?intent=transcription",
-      ["realtime", `openai-insecure-api-key.${tokenPayload.token}`],
-    );
-    session.ws = ws;
-
-    ws.onopen = () => {
+    const failConnection = () => {
       if (activeRef.current !== session) return;
-      setState("listening");
-      session.lastTranscriptAt = Date.now();
+      session.stream?.getAudioTracks().forEach((track) => { track.enabled = false; });
+      void finishReport(session).finally(() => cleanup(session));
+      activeRef.current = null;
+      setState("error");
+      opts?.onError?.("Inspection voice connection failed.");
+    };
+
+    const installGuard = () => {
+      if (session.guard) return;
       const maxStreamingMs = opts?.maxStreamingMs ?? DEFAULT_MAX_STREAMING_MS;
       const idleTimeoutMs = opts?.idleTimeoutMs ?? DEFAULT_IDLE_TIMEOUT_MS;
       session.guard = setInterval(() => {
-        if (activeRef.current !== session || session.paused) return;
-        if (maxStreamingMs > 0 && session.sentAudioMs >= maxStreamingMs) {
+        if (activeRef.current !== session) return;
+        if (
+          maxStreamingMs > 0 &&
+          session.providerStartedAt &&
+          Date.now() - session.providerStartedAt >= maxStreamingMs
+        ) {
           stop("max_duration");
           return;
         }
+        if (!session.dataChannelOpen) {
+          if (session.providerStartedAt &&
+              Date.now() - session.providerStartedAt >= CONNECTION_TIMEOUT_MS) {
+            failConnection();
+          }
+          return;
+        }
+        if (session.paused) return;
         if (
           idleTimeoutMs > 0 &&
           Date.now() - session.lastTranscriptAt >= idleTimeoutMs &&
@@ -300,65 +330,21 @@ export function useCostOptimizedInspectionVoice(
         }
       }, GUARD_TICK_MS);
     };
-
-    worklet.port.onmessage = (event: MessageEvent) => {
-      if (
-        activeRef.current !== session ||
-        session.paused ||
-        !(event.data instanceof Float32Array)
-      ) {
-        return;
+    events.onopen = () => {
+      if (activeRef.current !== session || !session.stream || session.dataChannelOpen) return;
+      session.dataChannelOpen = true;
+      setState("listening");
+      if (session.speaking) {
+        events?.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
+        session.worklet?.port.postMessage({ type: "open" });
       }
-
-      const frame = event.data as Float32Array;
-      const frameMs = (frame.length / SAMPLE_RATE) * 1_000;
-      const rms = level(frame);
-
-      if (!session.speaking) {
-        session.noiseFloor = session.noiseFloor * 0.97 + rms * 0.03;
-        session.preRoll.push(frame.slice());
-        session.preRollMs += frameMs;
-        while (session.preRollMs > PRE_ROLL_MS && session.preRoll.length > 1) {
-          const removed = session.preRoll.shift();
-          if (removed) {
-            session.preRollMs -= (removed.length / SAMPLE_RATE) * 1_000;
-          }
-        }
-      }
-
-      const threshold = Math.max(0.014, session.noiseFloor * 2.4);
-      if (rms >= threshold) {
-        opts?.onPulse?.();
-        if (!session.speaking) {
-          session.speaking = true;
-          session.silenceMs = 0;
-          session.turnMs = 0;
-          for (const buffered of session.preRoll) sendAudio(session, buffered);
-          session.preRoll = [];
-          session.preRollMs = 0;
-          // The current frame is already part of pre-roll; do not send it twice.
-          session.turnMs += frameMs;
-          return;
-        }
-      }
-
-      if (!session.speaking) return;
-
-      sendAudio(session, frame);
-      session.turnMs += frameMs;
-      if (rms < threshold) session.silenceMs += frameMs;
-      else session.silenceMs = 0;
-
-      if (
-        session.silenceMs >= END_SILENCE_MS ||
-        session.turnMs >= MAX_TURN_MS
-      ) {
-        commit(session);
-      }
+      session.lastTranscriptAt = Date.now();
+      installGuard();
     };
 
-    ws.onmessage = (event) => {
-      if (activeRef.current !== session || typeof event.data !== "string") return;
+    events.onmessage = (event) => {
+      if (activeRef.current !== session || typeof event.data !== "string")
+        return;
       let parsed: unknown;
       try {
         parsed = JSON.parse(event.data);
@@ -391,30 +377,203 @@ export function useCostOptimizedInspectionVoice(
           message.error && typeof message.error === "object"
             ? (message.error as Record<string, unknown>)
             : null;
-        const text =
+        const errorMessage =
           error && typeof error.message === "string"
             ? error.message
             : "Inspection voice error";
-        opts?.onError?.(text);
+        stop();
+        opts?.onError?.(errorMessage);
       }
     };
 
-    ws.onerror = () => {
+    events.onerror = failConnection;
+    events.onclose = () => {
       if (activeRef.current !== session) return;
-      reportUsage(session);
-      cleanup(session);
+      void finishReport(session);
       activeRef.current = null;
-      setState("error");
-      opts?.onError?.("Inspection voice connection failed.");
-    };
-
-    ws.onclose = () => {
-      if (activeRef.current !== session) return;
-      reportUsage(session);
       cleanup(session);
-      activeRef.current = null;
       setState("idle");
     };
+    peer.onconnectionstatechange = () => {
+      if (peer?.connectionState === "failed") failConnection();
+    };
+
+    const onAudioFrame = (event: MessageEvent<{ type?: string }>) => {
+      if (activeRef.current !== session) return;
+      if (session.paused && event.data?.type !== "end") {
+        // A start already put the processor in pending. Drain/commit that turn
+        // while the microphone is disabled so resume can open the next turn.
+        if (event.data?.type === "start") session.worklet?.port.postMessage({ type: "finish" });
+        return;
+      }
+      if (event.data?.type === "start") {
+        session.speaking = true;
+        opts?.onPulse?.();
+        if (session.events?.readyState === "open") {
+          session.events.send(JSON.stringify({ type: "input_audio_buffer.clear" }));
+          session.worklet?.port.postMessage({ type: "open" });
+        }
+      } else if (event.data?.type === "pulse") {
+        opts?.onPulse?.();
+      } else if (event.data?.type === "end") {
+        // Let the final media frames reach the provider before the data-channel commit.
+        window.setTimeout(() => {
+          if (activeRef.current === session) commit(session);
+        }, 300);
+      }
+    };
+
+    try {
+      const preflight = await fetch("/api/openai/inspection-transcription-token?protocol=server-webrtc", {
+        method: "GET", cache: "no-store", credentials: "same-origin",
+        signal: session.abort.signal,
+      });
+      ensureActive();
+      if (!preflight.ok) {
+        const body = await preflight.json().catch(() => null);
+        throw new Error(typeof body?.error === "string" ? body.error : "Inspection voice could not start.");
+      }
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
+      if (activeRef.current !== session) {
+        stopStream(stream);
+        return;
+      }
+      session.stream = stream;
+      audio = new AudioContext({ sampleRate: SAMPLE_RATE });
+      session.audio = audio;
+      if (audio.state === "suspended") await audio.resume();
+      ensureActive();
+      await audio.audioWorklet.addModule("/voice/inspection-gated-processor.js");
+      ensureActive();
+      worklet = new AudioWorkletNode(audio, "inspection-gated-processor");
+      const output = audio.createMediaStreamDestination();
+      worklet.connect(output);
+      session.worklet = worklet;
+      session.outputStream = output.stream;
+      worklet.port.onmessage = onAudioFrame;
+      await sender.replaceTrack(output.stream.getAudioTracks()[0]);
+      ensureActive();
+      const offer = await peer.createOffer();
+      ensureActive();
+      await peer.setLocalDescription(offer);
+      ensureActive();
+      await waitForIceGathering(peer);
+      ensureActive();
+      const offerSdp = peer.localDescription?.sdp;
+      if (!offerSdp)
+        throw new Error("Inspection voice offer could not be created.");
+
+      session.usageKey = operationKey;
+      const pendingCall = { key: operationKey, startedAt: Date.now() };
+      pendingCallRef.current = pendingCall;
+      writePendingCall(pendingCall);
+      const response = await fetch(
+        "/api/openai/inspection-transcription-token",
+        {
+          method: "POST",
+          cache: "no-store",
+          credentials: "same-origin",
+          headers: {
+            "Content-Type": "application/json",
+            "x-profixiq-operation-key": operationKey,
+          },
+          body: JSON.stringify({ sdp: offerSdp }),
+          signal: session.abort.signal,
+        },
+      );
+      ensureActive();
+      const sessionPayload = (await response.json().catch(() => null)) as {
+        sdp?: unknown;
+        transcriptionModel?: unknown;
+        usageKey?: unknown;
+        error?: unknown;
+        code?: unknown;
+      } | null;
+      ensureActive();
+      if (!response.ok || typeof sessionPayload?.sdp !== "string") {
+        if (sessionPayload?.code === "inspection_voice_rejected" ||
+            sessionPayload?.code === "inspection_voice_rate_receipt_unavailable" ||
+            sessionPayload?.code === "inspection_voice_reservation_released" ||
+            sessionPayload?.code === "ai_budget_exceeded") {
+          clearPendingCall(operationKey);
+        }
+        throw new Error(
+          typeof sessionPayload?.error === "string"
+            ? sessionPayload.error
+            : "Inspection voice could not start.",
+        );
+      }
+
+      if (sessionPayload.usageKey !== operationKey) {
+        throw new Error("Inspection voice operation receipt did not match its request.");
+      }
+      session.providerStartedAt = Date.now();
+      installGuard();
+      await peer.setRemoteDescription({
+        type: "answer",
+        sdp: sessionPayload.sdp,
+      });
+      ensureActive();
+      audio.createMediaStreamSource(stream).connect(worklet);
+      if (events.readyState === "open") events.onopen?.(new Event("open"));
+    } catch (caught) {
+      if (activeRef.current !== session) return;
+      if (activeRef.current === session) {
+        session.stream?.getAudioTracks().forEach((track) => { track.enabled = false; });
+        void finishReport(session).finally(() => cleanup(session));
+        activeRef.current = null;
+        setState("error");
+        const message =
+          caught instanceof Error
+            ? caught.message
+            : "Inspection voice could not start.";
+        opts?.onError?.(message);
+      }
+      throw caught;
+    }
+  }
+
+  async function start(): Promise<void> {
+    if (activeRef.current) return;
+    if (startPromiseRef.current) return startPromiseRef.current;
+    const generation = ++startGenerationRef.current;
+    const starting = (async () => {
+      const pending = pendingCallRef.current ?? readPendingCall();
+      if (pending) {
+        pendingCallRef.current = pending;
+        if (Date.now() - pending.startedAt >= PROVIDER_MAX_CALL_MS + 60_000) {
+          clearPendingCall(pending.key);
+        } else {
+          const outcome = await sendUsageReport(pending.key, 0);
+          if (outcome === "closed") {
+            clearPendingCall(pending.key);
+          } else if (outcome === "not_found") {
+            // The first POST may never have reached the server. Reuse its
+            // idempotency key; an existing hold rejects replay before OpenAI.
+            if (generation !== startGenerationRef.current) return;
+            await startSession(pending.key);
+            return;
+          } else {
+            throw new Error("The previous inspection voice call is still closing. Try again shortly.");
+          }
+        }
+      }
+      if (generation !== startGenerationRef.current) return;
+      await startSession(globalThis.crypto.randomUUID());
+    })();
+    startPromiseRef.current = starting;
+    try {
+      await starting;
+    } finally {
+      if (startPromiseRef.current === starting) startPromiseRef.current = null;
+    }
   }
 
   function pause(): boolean {
@@ -424,7 +583,7 @@ export function useCostOptimizedInspectionVoice(
     session.stream?.getAudioTracks().forEach((track) => {
       track.enabled = false;
     });
-    if (session.speaking) commit(session);
+    if (session.speaking) session.worklet?.port.postMessage({ type: "finish" });
     const maxPausedMs = opts?.maxPausedMs ?? 0;
     if (maxPausedMs > 0) {
       session.pauseTimer = setTimeout(() => resume(), maxPausedMs);

@@ -31115,6 +31115,16 @@ export type Database = {
         Args: { p_claim_token: string; p_event_id: string }
         Returns: boolean
       }
+      confirm_inspection_voice_closure: {
+        Args: {
+          p_call_id: string
+          p_closed_at: string
+          p_shop_id: string
+          p_usage_key: string
+          p_user_id: string
+        }
+        Returns: number
+      }
       consume_agent_human_approval_intent: {
         Args: {
           p_approval_kind: string
@@ -32225,6 +32235,14 @@ export type Database = {
         Returns: Json
       }
       get_fleet_defect_queue: { Args: { p_fleet_id?: string }; Returns: Json }
+      get_inspection_voice_session_receipt: {
+        Args: { p_shop_id: string; p_usage_key: string; p_user_id: string }
+        Returns: Json
+      }
+      get_inspection_voice_session_receipt_for_actor: {
+        Args: { p_usage_key: string; p_user_id: string }
+        Returns: Json
+      }
       get_invoice_net_issued_parts: {
         Args: { p_shop_id: string; p_work_order_id: string }
         Returns: Json
@@ -33364,6 +33382,15 @@ export type Database = {
         Args: { p_payload: Json; p_shop_id: string; p_user_id: string }
         Returns: string
       }
+      record_inspection_voice_issuance_rate: {
+        Args: {
+          p_actor_id: string
+          p_rate_card_version: string
+          p_reservation_id: string
+          p_shop_id: string
+        }
+        Returns: boolean
+      }
       record_engineering_agent_ai_usage_ledger: {
         Args: { p_payload: Json }
         Returns: string
@@ -33966,6 +33993,17 @@ export type Database = {
       set_technician_copilot_licensed_seats: {
         Args: { p_seats: number; p_shop_id: string }
         Returns: boolean
+      }
+      settle_inspection_voice_usage: {
+        Args: {
+          p_actual_cost_usd: number
+          p_duration_seconds: number
+          p_model: string
+          p_shop_id: string
+          p_usage_key: string
+          p_user_id: string
+        }
+        Returns: Json
       }
       settle_live_ai_usage_ledger: {
         Args: {

@@ -518,6 +518,20 @@ jobs:
             -f tests/security/ai-budget-reservations.runtime.sql \
             2>&1 | tee ai-budget-reservations-runtime.log
 
+      - name: Execute inspection voice settlement integration
+        shell: bash
+        env:
+          DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+        run: |
+          set -euo pipefail
+          if ! command -v psql >/dev/null 2>&1; then
+            sudo apt-get update
+            sudo apt-get install -y postgresql-client
+          fi
+          psql "$DB_URL" -X -v ON_ERROR_STOP=1 \
+            -f tests/security/inspection-voice-settlement.runtime.sql \
+            2>&1 | tee inspection-voice-settlement-runtime.log
+
       - name: Execute P0 Stripe identity integration
         shell: bash
         env:
