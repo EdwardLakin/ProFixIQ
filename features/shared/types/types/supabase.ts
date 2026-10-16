@@ -31116,6 +31116,12 @@ export type Database = {
           status: string
           subscription_id: string
         }[]
+        SetofOptions: {
+          from: "*"
+          to: "app_notification_push_deliveries"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       claim_completed_repair_learning_atomic: {
         Args: {
