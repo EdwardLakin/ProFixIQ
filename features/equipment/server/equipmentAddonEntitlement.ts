@@ -29,7 +29,13 @@ type EquipmentBillingLink = {
   billing_entitlement_override: string | null;
 };
 
+type EquipmentPackageLink = {
+  subscription_package: string | null;
+  stripe_subscription_status: string | null;
+};
+
 const INTERNAL_DEMO_ENTITLEMENT = "internal_demo";
+const STANDALONE_EQUIPMENT_PACKAGE = "equipment_operations";
 
 function mustEnv(name: string): string {
   const value = process.env[name];
@@ -83,24 +89,6 @@ export function subscriptionHasCompleteBaseItem(
   });
 }
 
-export function subscriptionHasStandaloneEquipmentItem(
-  subscription: Stripe.Subscription,
-): boolean {
-  return subscription.items.data.some((item) => {
-    if (!positiveQuantity(item)) return false;
-
-    const packageKey = String(item.price?.metadata?.package_key ?? "")
-      .trim()
-      .toLowerCase();
-    const lookupKey = String(item.price?.lookup_key ?? "").trim();
-
-    return (
-      packageKey === "equipment_operations" ||
-      lookupKey === PRODUCT_PACKAGE_LOOKUP_KEYS.equipment_operations
-    );
-  });
-}
-
 export function subscriptionHasEquipmentAddon(
   subscription: Stripe.Subscription,
 ): boolean {
@@ -120,11 +108,12 @@ export function subscriptionHasEquipmentAddon(
 }
 
 /**
- * Equipment is deliberately not part of Complete Operations itself. Paying
- * shops receive access either through the standalone Equipment Operations base
- * item, or (legacy bridge, unchanged) when the same canonical subscription
- * contains both a real Complete base-price item and an active Equipment add-on
- * item.
+ * Legacy bridge, unchanged: Equipment is not part of Complete Operations
+ * itself, so a Complete shop receives access only when the same canonical
+ * subscription contains both a real Complete base-price item and an active
+ * Equipment add-on item. Standalone Equipment Operations shops never reach this
+ * function; they are decided by the canonical product-access capability in
+ * resolveEquipmentAddonEntitlementForShop.
  * The server-owned `internal_demo` billing override is the sole non-Stripe
  * exception so the canonical ProFixIQ demo can permanently exercise Equipment
  * without creating a billable subscription item.
@@ -136,16 +125,15 @@ export function resolveEquipmentAddonEntitlement(
   const subscriptionStatus = String(subscription.status ?? "").trim() || null;
   const hasCompleteBaseItem = subscriptionHasCompleteBaseItem(subscription);
   const hasAddonItem = subscriptionHasEquipmentAddon(subscription);
-  const hasStandaloneEquipmentItem =
-    subscriptionHasStandaloneEquipmentItem(subscription);
 
   return {
     enabled:
+      hasCompleteBaseItem &&
       isProductSubscriptionEntitled(subscriptionStatus) &&
-      ((hasCompleteBaseItem && hasAddonItem) || hasStandaloneEquipmentItem),
+      hasAddonItem,
     hasAddonItem,
     hasCompleteBaseItem,
-    hasStandaloneEquipmentItem,
+    hasStandaloneEquipmentItem: false,
     packageKey,
     subscriptionStatus,
   };
@@ -174,6 +162,34 @@ export async function resolveEquipmentAddonEntitlementForShop(
 
   if (shop.billing_entitlement_override === INTERNAL_DEMO_ENTITLEMENT) {
     return internalDemoEntitlement();
+  }
+
+  // Standalone Equipment Operations is decided by the one canonical
+  // entitlement function, so subscription status, billing grace and billing
+  // overrides behave exactly as they do for Shop and Field. It is deliberately
+  // not applied to other shops: legacy (null package) shops resolve true for
+  // every capability there, which would hand them Equipment for free.
+  const { data: packageLink, error: packageError } = await admin
+    .from("shops")
+    .select("subscription_package,stripe_subscription_status")
+    .eq("id", shopId)
+    .maybeSingle<EquipmentPackageLink>();
+  if (packageError) throw new Error(packageError.message);
+
+  if (packageLink?.subscription_package === STANDALONE_EQUIPMENT_PACKAGE) {
+    const { data: entitled, error: entitlementError } = await admin.rpc(
+      "profixiq_shop_has_product_access",
+      { p_shop_id: shopId, p_capability: "equipment" },
+    );
+    if (entitlementError) throw new Error(entitlementError.message);
+    return {
+      enabled: entitled === true,
+      hasAddonItem: false,
+      hasCompleteBaseItem: false,
+      hasStandaloneEquipmentItem: true,
+      packageKey: STANDALONE_EQUIPMENT_PACKAGE,
+      subscriptionStatus: packageLink.stripe_subscription_status ?? null,
+    };
   }
 
   const subscriptionId = String(shop.stripe_subscription_id ?? "").trim();

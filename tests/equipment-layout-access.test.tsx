@@ -36,4 +36,19 @@ describe("Equipment layout access", () => {
     expect(element).toBeTruthy();
     expect(mocks.redirect).toHaveBeenCalledTimes(1);
   });
+
+  it("sends each role's brand link to a page that role can open", async () => {
+    mocks.profile = { id: "p1", role: "owner", must_change_password: false };
+    const owner = (await EquipmentLayout({ children: null })) as {
+      props: { homeHref: string };
+    };
+    expect(owner.props.homeHref).toBe("/equipment/dashboard");
+
+    mocks.profile = { id: "p2", role: "mechanic", must_change_password: false };
+    const mechanic = (await EquipmentLayout({ children: null })) as {
+      props: { homeHref: string; items: Array<{ key: string }> };
+    };
+    expect(mechanic.props.homeHref).toBe("/equipment/field");
+    expect(mechanic.props.items.map((item) => item.key)).toEqual(["field"]);
+  });
 });

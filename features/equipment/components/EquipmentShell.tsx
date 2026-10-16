@@ -41,9 +41,12 @@ function PlannedBadge() {
  */
 export default function EquipmentShell({
   items,
+  homeHref = "/equipment/dashboard",
   children,
 }: {
   items: readonly EquipmentShellNavItem[];
+  /** Brand-link destination; the layout passes the first page the role can open. */
+  homeHref?: string;
   children: ReactNode;
 }) {
   const pathname = usePathname() ?? "/equipment";
@@ -60,7 +63,7 @@ export default function EquipmentShell({
             aria-hidden="true"
             className="h-8 w-1.5 rounded-full bg-[color:var(--accent-copper)]"
           />
-          <Link href="/equipment/dashboard" className="leading-tight">
+          <Link href={homeHref} className="leading-tight">
             <span className="block text-[10px] font-semibold uppercase tracking-[0.2em] text-[color:var(--theme-text-muted)]">
               ProFixIQ
             </span>
