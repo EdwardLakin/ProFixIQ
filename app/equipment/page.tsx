@@ -2,7 +2,6 @@ import { unstable_noStore as noStore } from "next/cache";
 
 import EquipmentAccessState from "@/features/equipment/components/EquipmentAccessState";
 import EquipmentDirectoryView from "@/features/equipment/components/EquipmentDirectoryView";
-import EquipmentSectionNav from "@/features/equipment/components/EquipmentSectionNav";
 import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDirectory";
 import { parseDirectoryFilters } from "@/features/equipment/lib/equipmentDirectoryQuery";
 import { EVIDENCE_SCAN_MAX_ASSETS } from "@/features/equipment/lib/equipmentDirectoryQuery";
@@ -106,7 +105,6 @@ export default async function EquipmentDirectoryPage({
 
   return (
     <>
-      <EquipmentSectionNav current="assets" role={canonicalRole} />
       <EquipmentDirectoryView
         rows={directory.rows}
         info={directory.info}
