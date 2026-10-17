@@ -1,3 +1,4 @@
+import { vehicleWorkspacePermissionsForRole } from "@/features/vehicles/server/vehicleWorkspacePermissions";
 import { unstable_noStore as noStore } from "next/cache";
 
 import EquipmentAccessState from "@/features/equipment/components/EquipmentAccessState";
@@ -20,7 +21,12 @@ export default async function EquipmentWorkOrdersPage() {
 
   const entitlement = await resolveEquipmentPageEntitlement(profile.shop_id);
   if (entitlement !== "enabled") {
-    return <EquipmentAccessState state={entitlement} retryHref="/equipment/work-orders" />;
+    return (
+      <EquipmentAccessState
+        state={entitlement}
+        retryHref="/equipment/work-orders"
+      />
+    );
   }
 
   const workOrders = await loadEquipmentWorkOrders({
@@ -29,5 +35,13 @@ export default async function EquipmentWorkOrdersPage() {
     role: canonicalRole,
   });
 
-  return <EquipmentWorkOrdersView rows={workOrders.rows} truncated={workOrders.truncated} />;
+  return (
+    <EquipmentWorkOrdersView
+      rows={workOrders.rows}
+      truncated={workOrders.truncated}
+      canCreateWorkOrder={
+        vehicleWorkspacePermissionsForRole(canonicalRole).canCreateWorkOrder
+      }
+    />
+  );
 }

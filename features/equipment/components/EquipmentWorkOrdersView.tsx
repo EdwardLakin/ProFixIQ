@@ -22,9 +22,11 @@ function formatDate(value: string | null): string {
 export default function EquipmentWorkOrdersView({
   rows,
   truncated,
+  canCreateWorkOrder = false,
 }: {
   rows: EquipmentWorkOrderRow[];
   truncated: boolean;
+  canCreateWorkOrder?: boolean;
 }) {
   return (
     <WorkspaceShell>
@@ -34,13 +36,24 @@ export default function EquipmentWorkOrdersView({
           <div>
             <h1 className="text-2xl font-bold">Work orders</h1>
             <p className="mt-1 max-w-3xl text-sm text-[color:var(--theme-text-muted)]">
-              Recent canonical ProFixIQ work orders attached to Equipment assets. Execution, parts,
-              inspections, approvals and billing continue through the existing work-order workspace.
+              Recent canonical ProFixIQ work orders attached to Equipment
+              assets. Execution, parts, inspections, approvals and billing
+              continue through the existing work-order workspace.
             </p>
           </div>
-          <Link className={BUTTON} href="/equipment">
-            Equipment assets
-          </Link>
+          <div className="flex flex-wrap gap-2">
+            <Link className={BUTTON} href="/equipment">
+              Equipment assets
+            </Link>
+            {canCreateWorkOrder ? (
+              <Link
+                className="inline-flex min-h-11 items-center rounded-lg bg-[color:var(--accent-copper)] px-4 py-2 text-sm font-semibold text-white transition hover:opacity-90"
+                href="/equipment/work-orders/new"
+              >
+                New Work Order
+              </Link>
+            ) : null}
+          </div>
         </div>
       </WorkspaceHeader>
 
@@ -66,7 +79,9 @@ export default function EquipmentWorkOrdersView({
                     {[
                       item.customerName,
                       `Created ${formatDate(item.createdAt)}`,
-                      item.scheduledAt ? `Scheduled ${formatDate(item.scheduledAt)}` : null,
+                      item.scheduledAt
+                        ? `Scheduled ${formatDate(item.scheduledAt)}`
+                        : null,
                     ]
                       .filter(Boolean)
                       .join(" · ")}
@@ -80,7 +95,9 @@ export default function EquipmentWorkOrdersView({
           ))}
         </ul>
       ) : (
-        <EmptyState>No canonical work orders are recorded for Equipment assets yet.</EmptyState>
+        <EmptyState>
+          No canonical work orders are recorded for Equipment assets yet.
+        </EmptyState>
       )}
 
       {truncated ? (
