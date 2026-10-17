@@ -31,6 +31,8 @@ export class EquipmentDispatchError extends Error {
 export function equipmentDispatchHttpStatus(error: EquipmentDispatchError): number {
   const message = error.message;
   if (error.code === "RETRYABLE") return 503;
+  // Database-level one-executing-visit-per-work-order guarantee.
+  if (message.includes("service_visits_one_executing_per_work_order_uniq")) return 409;
   if (error.code === "42501" || message.toLowerCase().includes("denied")) return 403;
   if (
     message.includes("ACTIVE_SERVICE_VISIT_EXISTS") ||

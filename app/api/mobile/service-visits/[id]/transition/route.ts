@@ -114,19 +114,23 @@ export async function POST(
     const stale =
       error.code === "40001" || /STATE_CHANGED|VERSION_CHANGED/i.test(error.message);
     const workOrderRequired = /linked work order is required/i.test(error.message);
+    const visitInProgress =
+      /service_visits_one_executing_per_work_order_uniq/i.test(error.message);
     return NextResponse.json(
       {
         error: stale
           ? "This service call changed on another device. Refresh before continuing."
           : workOrderRequired
             ? "Create the work order before starting or completing repair."
-            : error.message,
+            : visitInProgress
+              ? "This work order already has a visit in progress."
+              : error.message,
       },
       {
         status:
           error.code === "42501"
             ? 403
-            : stale || workOrderRequired
+            : stale || workOrderRequired || visitInProgress
               ? 409
               : 400,
       },
