@@ -19,7 +19,7 @@ export default async function EquipmentWorkQueuePage({
   searchParams,
 }: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
-} = {}) {
+}) {
   noStore();
   const { profile, canonicalRole } = await requireShopPageAccess({
     allowRoles: EQUIPMENT_DIRECTORY_ROLES,

@@ -110,7 +110,7 @@ describe("Equipment Work creation entry", () => {
     "offers creation to %s and uses the existing handoff",
     async (role) => {
       mocks.role = role;
-      const { unmount } = render(await WorkPage());
+      const { unmount } = render(await WorkPage({}));
       expect(
         screen.getByRole("link", { name: "New Work Order" }),
       ).toHaveAttribute("href", "/equipment/work-orders/new");
@@ -133,7 +133,7 @@ describe("Equipment Work creation entry", () => {
 
   it("preserves the parts role's read-only queue while denying the creation route", async () => {
     mocks.role = "parts";
-    render(await WorkPage());
+    render(await WorkPage({}));
     expect(screen.queryByRole("link", { name: "New Work Order" })).toBeNull();
     mocks.admin.mockClear();
     await expect(NewWorkPage({})).rejects.toThrow("Access denied");
