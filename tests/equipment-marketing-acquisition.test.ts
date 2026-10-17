@@ -33,16 +33,18 @@ describe("Equipment marketing and acquisition contract", () => {
     }
   });
 
-  it("prices Equipment as a Complete-only premium add-on", () => {
+  it("prices Equipment as a standalone $399 product that is Coming soon", () => {
     const pricing = source("features/shared/components/ui/PricingSection.tsx");
     const catalog = source("features/stripe/lib/stripe/product-packages.ts");
 
-    expect(catalog).toContain("EQUIPMENT_ADDON_MONTHLY_CENTS = 14_900");
-    expect(pricing).toContain("EQUIPMENT_ADDON_MONTHLY_CENTS");
-    expect(pricing).toContain("Equipment add-on");
-    expect(pricing).toContain("Requires Complete Operations");
+    expect(catalog).toContain("monthlyCents: 39_900");
+    expect(pricing).toContain("PRODUCT_PACKAGE_PRICING.equipment_operations.monthlyCents");
+    expect(pricing).not.toContain("EQUIPMENT_ADDON_MONTHLY_CENTS");
+    expect(pricing).toContain("Equipment Operations · Coming soon");
+    expect(pricing).toContain("does not require Complete Operations");
+    expect(pricing).not.toContain("completePrice + equipmentPrice");
     expect(pricing).toContain('startCheckout("complete_operations", "trial", true)');
-    expect(pricing).toContain("Complete + Equipment");
+    expect(pricing).toContain("Subscribe to Equipment Operations");
     expect(pricing).toContain('id="equipment"');
     expect(pricing).toContain('window.location.pathname !== "/compare-plans"');
     expect(pricing).toContain('window.location.href = "/compare-plans#equipment"');
@@ -80,7 +82,8 @@ describe("Equipment marketing and acquisition contract", () => {
 
     expect(definitions).toContain("Equipment Asset Health");
     expect(definitions).toContain("20 equipment-family groups");
-    expect(definitions).toContain("$149 USD per month");
+    expect(definitions).toContain("$399 USD per month");
+    expect(definitions).not.toContain("$149 USD per month");
     expect(definitions).toContain("/equipment-maintenance-software");
     expect(definitions).not.toContain("master inspection foundation is being expanded");
   });

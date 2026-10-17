@@ -88,7 +88,7 @@ export default function ComparePlansPage() {
               Choose your operation
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-[color:var(--theme-text-secondary)]">
-              Choose Shop, Field, Fleet, or Complete Operations. Equipment, a premium add-on to Complete for off-road and industrial asset maintenance, is coming soon.
+              Choose Shop, Field, Fleet, or Complete Operations. Equipment Operations, a standalone $399 USD / month / location product for off-road and industrial asset maintenance, is coming soon.
             </p>
 
             {demoId ? (

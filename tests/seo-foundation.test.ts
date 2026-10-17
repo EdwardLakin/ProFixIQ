@@ -73,7 +73,7 @@ describe("public SEO foundation", () => {
 
     expect(rootLayout).not.toContain('openGraph: {\n    type: "website",\n    siteName: "ProFixIQ",\n    title:');
     expect(pricing).toContain("ProFixIQ Pricing");
-    expect(pricing).toContain("Equipment add-on");
+    expect(pricing).toContain("Equipment Operations (coming soon)");
     expect(pricing).toContain('url: "/compare-plans"');
     expect(field).toContain('url: "/field-service"');
     expect(fleet).toContain('url: "/fleet-maintenance"');

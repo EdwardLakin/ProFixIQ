@@ -105,7 +105,7 @@ export const fieldEquipmentSearchPages = {
       faqs: [
         { question: "What equipment can ProFixIQ Equipment support?", answer: "The Equipment catalog spans excavators, loaders, dozers, graders, haul trucks, forklifts and telehandlers, aerial equipment, compactors, road-building machines, crushing and screening equipment, drilling and mining equipment, forestry and agricultural machines, stationary equipment, and attachments." },
         { question: "Can heavy equipment be serviced in the field?", answer: "Yes. With Complete Operations, equipment work can use the Shop or Field Service workflow while the Equipment layer keeps the machine-specific asset, inspection, component, measurement, wear, and service history together." },
-        { question: "Is Equipment included in Complete Operations?", answer: "Equipment is a $149 USD per month, per location premium add-on that requires Complete Operations." },
+        { question: "Is Equipment included in Complete Operations?", answer: "Equipment Operations is a standalone $399 USD per month, per location subscription and does not require Complete Operations. It is coming soon." },
         { question: "Does ProFixIQ claim OEM telematics integration for heavy equipment?", answer: "No. ProFixIQ does not position Equipment as an OEM telematics or machine-control integration." },
       ],
     },
@@ -136,7 +136,7 @@ export const fieldEquipmentSearchPages = {
       finalCta: {
         eyebrow: "ProFixIQ Equipment",
         heading: "Add heavy-equipment maintenance to Complete Operations.",
-        body: "Equipment is $149 USD per month per location and requires Complete Operations. Start the combined subscription or request a walkthrough with your actual equipment mix.",
+        body: "Equipment Operations is coming soon at $399 USD per month per location as a standalone subscription. Request a walkthrough with your actual equipment mix.",
         primary: { label: "See Complete + Equipment pricing", href: "/compare-plans#equipment" },
         secondary: { label: "Request demo access", href: "/request-demo" },
       },
@@ -150,8 +150,8 @@ export const fieldEquipmentSearchPages = {
       keywords: ["off highway equipment repair software", "off road equipment maintenance software", "mining equipment maintenance software"],
       faqs: [
         { question: "What off-highway equipment families are covered?", answer: "The Equipment catalog includes excavation, loading, dozing and grading, hauling, material handling, aerial access, compaction, road construction, crushing and screening, drilling, trenching, surface and underground mining, forestry, agriculture, oilfield and energy, snow and municipal, utility/site vehicles, stationary or towable equipment, and attachments." },
-        { question: "Can the same platform cover trucks and equipment?", answer: "Yes. Complete Operations connects Shop, Field Service, and Fleet Maintenance, while the Equipment add-on adds equipment-specific records, inspections, Asset Health, components, measurements, wear evidence, and history." },
-        { question: "Is Equipment a standalone plan?", answer: "No. Equipment is a $149 USD per month, per location add-on that requires Complete Operations." },
+        { question: "Can the same platform cover trucks and equipment?", answer: "Yes. Complete Operations connects Shop, Field Service, and Fleet Maintenance, while Equipment Operations adds equipment-specific records, inspections, Asset Health, components, measurements, wear evidence, and history." },
+        { question: "Is Equipment a standalone plan?", answer: "Yes. Equipment Operations is a standalone $399 USD per month, per location subscription that is coming soon. It does not require Complete Operations." },
       ],
     },
     config: {
@@ -175,13 +175,13 @@ export const fieldEquipmentSearchPages = {
       productProof: { heading: "From material handling to mining, keep one equipment model without flattening the machines.", media: brandMedia, items: [
         { title: "Broad machine-family catalog", body: "Equipment content spans construction, industrial, mining, forestry, agriculture, energy, municipal, utility, stationary, and attachment categories." },
         { title: "Machine-centered Asset Health", body: "Current meters, status, defects, work, service evidence, components, and measurements stay organized around the asset." },
-        { title: "Connected commercial model", body: "Equipment is an add-on to Complete Operations so Shop, Field Service, and Fleet remain connected around the same equipment population." },
+        { title: "Connected commercial model", body: "Equipment Operations is a standalone product with its own workspace, and it connects to Shop, Field Service, and Fleet for shops that run them." },
       ]},
       faqs: [],
       finalCta: {
         eyebrow: "ProFixIQ Equipment",
         heading: "Bring mixed off-highway equipment into Complete Operations.",
-        body: "Equipment is $149 USD per month per location and requires Complete Operations. See the combined price or request a walkthrough of the machine families you maintain.",
+        body: "Equipment Operations is coming soon at $399 USD per month per location. Request a walkthrough of the machine families you maintain.",
         primary: { label: "See Complete + Equipment pricing", href: "/compare-plans#equipment" },
         secondary: { label: "Request demo access", href: "/request-demo" },
       },

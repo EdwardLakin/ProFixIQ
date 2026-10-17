@@ -37,7 +37,7 @@ export const equipmentMaintenancePage = {
       {
         question: "Is ProFixIQ Equipment a standalone subscription?",
         answer:
-          "No. Equipment is a $149 USD per month, per location premium add-on to Complete Operations. Complete Operations keeps Shop, Field Service, and Fleet Maintenance connected while Equipment adds equipment-specific asset health, preventive maintenance, inspection, component, measurement, and wear workflows.",
+          "Yes. Equipment Operations is a standalone $399 USD per month, per location subscription that is coming soon and does not require Complete Operations. It adds equipment-specific asset health, preventive maintenance, inspection, component, measurement, and wear workflows.",
       },
       {
         question: "Can equipment repairs be handled in the shop and in the field?",
@@ -55,7 +55,7 @@ export const equipmentMaintenancePage = {
     eyebrow: "Equipment maintenance software",
     title: "Know what is due, what is wearing, what is open, and what has happened to every machine.",
     lead:
-      "ProFixIQ Equipment adds an equipment-specific maintenance layer to Complete Operations for off-road, construction, industrial, mining, material-handling, aerial, forestry, agricultural, energy, municipal, stationary, and attachment assets.",
+      "ProFixIQ Equipment is a standalone equipment maintenance workspace for off-road, construction, industrial, mining, material-handling, aerial, forestry, agricultural, energy, municipal, stationary, and attachment assets.",
     primaryCta: {
       label: "Equipment — coming soon",
       href: "/compare-plans#equipment",
@@ -132,7 +132,7 @@ export const equipmentMaintenancePage = {
         width: 1200,
         height: 630,
         caption:
-          "Equipment is a premium add-on to Complete Operations, connecting equipment-specific PM, asset health, and maintenance evidence to Shop, Field Service, and Fleet workflows.",
+          "Equipment Operations is a standalone workspace for equipment-specific PM, asset health, and maintenance evidence.",
       },
       items: [
         {
@@ -155,9 +155,9 @@ export const equipmentMaintenancePage = {
     faqs: [],
     finalCta: {
       eyebrow: "ProFixIQ Equipment",
-      heading: "Add the equipment maintenance layer to Complete Operations.",
+      heading: "A standalone workspace for equipment maintenance.",
       body:
-        "Equipment is coming soon and is not open for trial or purchase yet. Planned pricing is $149 USD per month per location and requires Complete Operations. New Complete + Equipment subscriptions are $648 USD per month per location before taxes or added capacity.",
+        "Equipment Operations is coming soon and is not open for trial or purchase yet. Standalone pricing is $399 USD per month per location before taxes or added capacity, and it does not require Complete Operations.",
       primary: {
         label: "Equipment — coming soon",
         href: "/compare-plans#equipment",
