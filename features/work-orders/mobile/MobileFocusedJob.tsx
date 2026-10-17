@@ -36,7 +36,13 @@ import AIAssistantModal from "@/features/work-orders/components/workorders/AiAss
 
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@/features/work-orders/components/SuggestedQuickAdd";
-import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import { describePunchOff, type PunchOffResult } from "@/features/equipment/dispatch/lib/punchOff";
+import { useEquipmentViewer } from "@/features/equipment/lib/useEquipmentViewer";
+import { JOB_FINISH_REPLAYED_EVENT } from "@/features/shared/lib/offline/jobFinishEvents";
+import {
+  runJobPunchTransition,
+  type JobPunchTransitionResult,
+} from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import {
   getWorkOrderJobChatContext,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
@@ -170,6 +176,9 @@ export default function MobileFocusedJob(props: {
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState<WorkOrderLine | null>(null);
   const [activeTechnicianIds, setActiveTechnicianIds] = useState<string[]>([]);
+  // Equipment shops decide Start/Finish from the viewer's own timer. Until both
+  // are known the screen behaves exactly as it always has.
+  const { equipmentClass, viewerProfileId } = useEquipmentViewer(mode === "tech", supabase);
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -644,6 +653,39 @@ export default function MobileFocusedJob(props: {
     };
   }, [refresh]);
 
+  // A queued Equipment Finish finally reached the server: now we know whether
+  // it closed the line. Failed or conflicted replays never emit this event.
+  useEffect(() => {
+    const onFinishReplayed = (evt: Event) => {
+      const detail = (evt as CustomEvent<{ lineId?: string; lineClosed?: boolean }>).detail;
+      if (!detail || detail.lineId !== workOrderLineId) return;
+      void (async () => {
+        const scope = getOfflineMutationScope();
+        if (detail.lineClosed === false) {
+          await refresh();
+          toast.success("Punched off. Other technicians are still working on this job.");
+          return;
+        }
+        if (scope) {
+          await clearTechnicianJobEditorDraftFields({
+            scope,
+            lineId: workOrderLineId,
+            fields: ["cause", "correction"],
+          });
+        }
+        await refresh();
+        toast.success("Job completed");
+        window.dispatchEvent(
+          new CustomEvent("work-order-line:completed", {
+            detail: { workOrderLineId },
+          }),
+        );
+      })();
+    };
+    window.addEventListener(JOB_FINISH_REPLAYED_EVENT, onFinishReplayed);
+    return () => window.removeEventListener(JOB_FINISH_REPLAYED_EVENT, onFinishReplayed);
+  }, [refresh, workOrderLineId]);
+
   // inspection done → open complete (mobile page still listens like app modal)
   useEffect(() => {
     const onInspectionDone = (evt: Event) => {
@@ -879,17 +921,39 @@ export default function MobileFocusedJob(props: {
   const isAwaiting =
     operationalState !== null && !isActive && !isOnHold && !isCompleted;
   const canStartOrResume = !!line && canPunch(line) && !isCompleted;
-  const canPrimaryAction = isOnHold || (canStartOrResume && (isActive || isAwaiting));
+  // Equipment: a technician who punched off while others keep working sees
+  // Start (to rejoin); the line itself stays Active. Everyone else is unchanged.
+  const viewerMustRejoin =
+    mode === "tech" &&
+    equipmentClass === "equipment" &&
+    viewerProfileId !== null &&
+    isActive &&
+    !activeTechnicianIds.includes(viewerProfileId);
+  const showFinish = isActive && !viewerMustRejoin;
+  const showStart = isAwaiting || viewerMustRejoin;
+  // Equipment: a queued Start/Finish has not changed this technician's timer
+  // yet, so the same action must not be offered again until replay answers.
+  const punchSyncPending =
+    equipmentClass === "equipment" &&
+    offlineMutations.some(
+      (item) =>
+        item.actionType === "job:punch-transition" &&
+        (item.payload as { lineId?: string } | null)?.lineId === workOrderLineId,
+    );
+  const canPrimaryAction =
+    !punchSyncPending && (isOnHold || (canStartOrResume && (showFinish || showStart)));
   const needsApprovalGate =
     line?.status === "awaiting_approval" ||
     (line?.approval_state != null && line.approval_state !== "approved") ||
     line?.status === "declined";
 
-  const primaryActionLabel = isOnHold
+  const primaryActionLabel = punchSyncPending
+    ? "Sync pending"
+    : isOnHold
     ? "Remove Hold"
-    : isActive
+    : showFinish
       ? "Finish Job"
-      : isAwaiting
+      : showStart
         ? "Start Job"
         : "View Details";
 
@@ -1056,14 +1120,14 @@ export default function MobileFocusedJob(props: {
                             setOpenHold(true);
                             return;
                           }
-                          if (isActive) {
+                          if (showFinish) {
                             closeAllSubModals();
                             setPrefillCause(line.cause ?? "");
                             setPrefillCorrection(line.correction ?? "");
                             setOpenComplete(true);
                             return;
                           }
-                          if (isAwaiting) {
+                          if (showStart) {
                             void (async () => {
                               setBusy(true);
                               try {
@@ -1527,6 +1591,7 @@ export default function MobileFocusedJob(props: {
             );
           }}
           onSubmit={async (cause: string, correction: string) => {
+            let outcome: JobPunchTransitionResult | void;
             try {
               const conflict = navigator.onLine
                 ? await getLineConflict(line.id, "finish")
@@ -1535,12 +1600,16 @@ export default function MobileFocusedJob(props: {
                 toast.error(conflict);
                 return;
               }
-              await runJobPunchTransition(line.id, "finish", {
+              outcome = await runJobPunchTransition(line.id, "finish", {
                 cause,
                 correction,
               });
+              // A non-final punch-off does not save the story, so keep the
+              // technician's draft until the line actually closes.
+              const keepDraft =
+                outcome && (outcome.lineClosed === false || outcome.awaitingServer === true);
               const scope = getOfflineMutationScope();
-              if (scope)
+              if (scope && !keepDraft)
                 await clearTechnicianJobEditorDraftFields({
                   scope,
                   lineId: line.id,
@@ -1548,6 +1617,29 @@ export default function MobileFocusedJob(props: {
                 });
             } catch (error) {
               return showErr("Complete job failed", error as { message?: string });
+            }
+
+            // Queued Equipment finish: the server has not said whether the line
+            // closed, so do not announce or emit a completion.
+            if (outcome && outcome.awaitingServer === true) {
+              toast.warning("Finish saved. It will sync when you're back online.");
+              setOpenComplete(false);
+              await refresh();
+              return;
+            }
+
+            // Equipment shops: other technicians are still on the job, so this
+            // was a punch-off and the line stays open.
+            if (outcome && outcome.lineClosed === false) {
+              toast.success(
+                describePunchOff({
+                  lineClosed: false,
+                  remaining: (outcome.remaining ?? []) as PunchOffResult["remaining"],
+                }),
+              );
+              setOpenComplete(false);
+              await refresh();
+              return;
             }
 
             toast.success("Job completed");

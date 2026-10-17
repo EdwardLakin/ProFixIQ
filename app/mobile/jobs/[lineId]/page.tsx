@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import CauseCorrectionModal from "@/features/work-orders/components/workorders/CauseCorrectionModal";
@@ -10,7 +10,9 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { runMutationWithOfflineQueue } from "@/features/shared/lib/offline/mutations";
 import { postOfflineServerMutation } from "@/features/shared/lib/offline/server-mutations";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { describePunchOff, type PunchOffResult } from "@/features/equipment/dispatch/lib/punchOff";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import { useQueuedEquipmentFinish } from "@/features/work-orders/lib/useQueuedEquipmentFinish";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 
 type StoryLine = {
@@ -42,6 +44,7 @@ export default function MobileJobPage() {
   const [line, setLine] = useState<StoryLine | null>(null);
   const [loadingStory, setLoadingStory] = useState(true);
   const [canAddJob, setCanAddJob] = useState(false);
+  const finishQueued = useQueuedEquipmentFinish(lineId);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -137,7 +140,7 @@ export default function MobileJobPage() {
   );
 
   const saveStory = useCallback(
-    async (cause: string, correction: string) => {
+    async (cause: string, correction: string, freshUpdatedAt?: string | null) => {
       if (!line) throw new Error("Job story is still loading.");
 
       const clientMutationId = operationKey(line.id);
@@ -145,7 +148,7 @@ export default function MobileJobPage() {
         lineId: line.id,
         cause,
         correction,
-        baseUpdatedAt: line.updated_at,
+        baseUpdatedAt: freshUpdatedAt === undefined ? line.updated_at : freshUpdatedAt,
       };
       const result = await runMutationWithOfflineQueue({
         clientMutationId,
@@ -182,23 +185,84 @@ export default function MobileJobPage() {
     [checkStoryConflict, line, loadStory],
   );
 
+  // Set once a non-final punch-off has happened but the technician's story has
+  // not been saved yet. A retry then only saves the story: it must not punch off
+  // again, and the typed text must not be replaced by a reload.
+  const storyOnlyRetry = useRef<{ remaining: PunchOffResult["remaining"] } | null>(null);
+
   const completeJob = useCallback(
     async (cause: string, correction: string) => {
-      const conflict = await checkStoryConflict("finish");
-      if (conflict) throw new Error(conflict);
+      if (finishQueued) {
+        throw new Error("A Finish for this job is already waiting to sync.");
+      }
+      if (!storyOnlyRetry.current) {
+        const conflict = await checkStoryConflict("finish");
+        if (conflict) throw new Error(conflict);
 
-      await runJobPunchTransition(lineId, "finish", { cause, correction });
+        const outcome = await runJobPunchTransition(lineId, "finish", { cause, correction });
+
+        // Queued Equipment finish: the server has not confirmed a completion.
+        if (outcome && outcome.awaitingServer === true) {
+          setStoryOpen(false);
+          toast.warning("Finish saved. It will sync when you're back online.");
+          await loadStory();
+          router.refresh();
+          return;
+        }
+
+        if (outcome && outcome.lineClosed === false) {
+          // Equipment shops: others are still working, so this was a punch-off,
+          // which does not save the story. Save it below.
+          storyOnlyRetry.current = {
+            remaining: (outcome.remaining ?? []) as PunchOffResult["remaining"],
+          };
+        } else {
+          setStoryOpen(false);
+          toast.success("Job completed.");
+          await loadStory();
+          router.refresh();
+          window.dispatchEvent(
+            new CustomEvent("work-order-line:completed", {
+              detail: { workOrderLineId: lineId },
+            }),
+          );
+          return;
+        }
+      }
+
+      // Punched off, story not yet saved. A failure keeps the modal open with
+      // the text intact (and no reload), so the technician can retry the save.
+      const pending = storyOnlyRetry.current;
+      try {
+        // The punch-off itself may have advanced the line's version, so the
+        // story save must be based on the current one, not the pre-punch copy.
+        // Offline, the queued save keeps the version it was written against.
+        let freshUpdatedAt: string | null | undefined;
+        if (typeof navigator === "undefined" || navigator.onLine) {
+          const response = await fetch(
+            `/api/work-order-lines/operational?lineId=${encodeURIComponent(lineId)}&limit=1`,
+            { cache: "no-store" },
+          );
+          const body = (await response.json().catch(() => null)) as {
+            lines?: Array<{ updated_at: string | null }>;
+          } | null;
+          if (!response.ok) throw new Error("Job line could not be loaded.");
+          freshUpdatedAt = body?.lines?.[0]?.updated_at ?? null;
+        }
+        await saveStory(cause, correction, freshUpdatedAt);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "Save failed.";
+        throw new Error(
+          `You are punched off, but your story was not saved: ${reason} Your text is still here. Submit again to retry.`,
+        );
+      }
+      storyOnlyRetry.current = null;
       setStoryOpen(false);
-      toast.success("Job completed.");
+      toast.success(describePunchOff({ lineClosed: false, remaining: pending?.remaining ?? [] }));
       await loadStory();
       router.refresh();
-      window.dispatchEvent(
-        new CustomEvent("work-order-line:completed", {
-          detail: { workOrderLineId: lineId },
-        }),
-      );
     },
-    [checkStoryConflict, lineId, loadStory, router],
+    [checkStoryConflict, finishQueued, lineId, loadStory, router, saveStory],
   );
 
   const openStory = () => {
@@ -210,6 +274,7 @@ export default function MobileJobPage() {
       );
       return;
     }
+    storyOnlyRetry.current = null;
     setStoryOpen(true);
   };
 
@@ -236,17 +301,24 @@ export default function MobileJobPage() {
           type="button"
           onClick={openStory}
           aria-label="Open cause and correction editor"
-          disabled={loadingStory}
+          disabled={loadingStory || finishQueued}
           className="mx-auto flex min-h-12 w-full max-w-4xl items-center justify-center rounded-2xl border border-[var(--accent-copper-soft)]/70 bg-[color:var(--theme-surface-panel-strong)] px-4 text-sm font-semibold text-[color:var(--theme-text-primary)] active:scale-[0.99] disabled:opacity-50"
         >
-          {loadingStory ? "Loading job story…" : "Cause & Correction"}
+          {loadingStory
+            ? "Loading job story…"
+            : finishQueued
+              ? "Finish waiting to sync"
+              : "Cause & Correction"}
         </button>
       </div>
 
       {storyOpen && line ? (
         <CauseCorrectionModal
           isOpen={storyOpen}
-          onClose={() => setStoryOpen(false)}
+          onClose={() => {
+            storyOnlyRetry.current = null;
+            setStoryOpen(false);
+          }}
           jobId={line.id}
           lineLabel={lineLabel}
           initialCause={line.cause ?? ""}

@@ -30,7 +30,13 @@ import AIAssistantModal from "@/features/work-orders/components/workorders/AiAss
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@/features/work-orders/components/SuggestedQuickAdd";
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
-import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import { describePunchOff, type PunchOffResult } from "@/features/equipment/dispatch/lib/punchOff";
+import { useEquipmentViewer } from "@/features/equipment/lib/useEquipmentViewer";
+import {
+  runJobPunchTransition,
+  type JobPunchTransitionResult,
+} from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import { postOfflineServerMutation } from "@/features/shared/lib/offline/server-mutations";
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
 import { hasActivePartsWaitingSignal } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 import {
@@ -234,6 +240,16 @@ export default function FocusedJobModal(props: {
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const lastSetShopId = useRef<string | null>(null);
 
+  // Equipment shops decide Start/Finish from the viewer's own timer, read from
+  // the same scoped detail route this modal already loads. Until the
+  // classification, the viewer and the active list are all known, the modal
+  // behaves exactly as it always has.
+  const { equipmentClass, viewerProfileId } = useEquipmentViewer(mode === "tech", supabase);
+  const [activeTechnicianIds, setActiveTechnicianIds] = useState<string[] | null>(null);
+  // Set once a non-final punch-off happened but the technician's story is not
+  // saved yet. A retry then only saves the story and never punches off again.
+  const storyOnlyRetry = useRef<{ remaining: PunchOffResult["remaining"] } | null>(null);
+
   const [busy, setBusy] = useState(false);
   const [line, setLine] = useState<WorkOrderLine | null>(null);
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
@@ -404,6 +420,9 @@ export default function FocusedJobModal(props: {
     setShopLaborRate(snapshot.shopLaborRate);
     setVehicle(snapshot.vehicle);
     setCustomer(snapshot.customer);
+    setActiveTechnicianIds(
+      snapshot.lineContext.activeTechnicianIdsByLine?.[workOrderLineId] ?? [],
+    );
     setAllocs(snapshot.lineContext.allocationsByLine[workOrderLineId] ?? []);
     setRequiredParts(
       snapshot.lineContext.canonicalPartsByLine[workOrderLineId] ?? [],
@@ -731,6 +750,64 @@ export default function FocusedJobModal(props: {
   const isOperationallyActive =
     isPunchedInSnapshot ??
     (Boolean(line?.punched_in_at) && !line?.punched_out_at);
+  // Equipment: a technician who punched off while others keep working is
+  // offered Start (to rejoin) instead of Finish. The line itself stays Active.
+  const viewerMustRejoin =
+    mode === "tech" &&
+    equipmentClass === "equipment" &&
+    viewerProfileId !== null &&
+    activeTechnicianIds !== null &&
+    isOperationallyActive &&
+    !activeTechnicianIds.includes(viewerProfileId);
+  const punchButtonIsActive = isOperationallyActive && !viewerMustRejoin;
+
+  // Closing the story dialog abandons any story-only retry.
+  useEffect(() => {
+    if (!openComplete) storyOnlyRetry.current = null;
+  }, [openComplete]);
+
+  const saveStoryAfterPunchOff = async (cause: string, correction: string): Promise<void> => {
+    if (!line) return;
+    try {
+      // Another technician may have closed the line since this punch-off, so
+      // save through the version-checked story mutation (which refuses a
+      // completed line) against the line's current version.
+      const response = await fetch(
+        `/api/work-order-lines/operational?lineId=${encodeURIComponent(line.id)}&limit=1`,
+        { cache: "no-store" },
+      );
+      const body = (await response.json().catch(() => null)) as {
+        lines?: Array<{ updated_at: string | null }>;
+      } | null;
+      if (!response.ok) throw new Error("Job line could not be loaded.");
+      const operationKey = `${line.id}:story:${
+        typeof globalThis.crypto?.randomUUID === "function"
+          ? globalThis.crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      }`;
+      await postOfflineServerMutation({
+        actionType: "save_story_draft",
+        operationKey,
+        payload: {
+          lineId: line.id,
+          cause,
+          correction,
+          baseUpdatedAt: body?.lines?.[0]?.updated_at ?? null,
+        },
+      });
+    } catch (storyError) {
+      // Keep the dialog open with the text intact (no reload) and say what happened.
+      const reason = storyError instanceof Error ? storyError.message : "Save failed.";
+      throw new Error(
+        `You are punched off, but your story was not saved: ${reason} Your text is still here. Submit again to retry.`,
+      );
+    }
+    const remaining = storyOnlyRetry.current?.remaining ?? [];
+    storyOnlyRetry.current = null;
+    toast.success(describePunchOff({ lineClosed: false, remaining }));
+    setOpenComplete(false);
+    await refresh();
+  };
   const statusLabel = line
     ? resolveOperationalLineStatusLabel(line, { isActive: isOperationallyActive })
     : "Loading";
@@ -900,7 +977,7 @@ export default function FocusedJobModal(props: {
                       punchedInAt={line.punched_in_at}
                       punchedOutAt={line.punched_out_at}
                       status={line.status as WorkflowStatus}
-                      isActive={isOperationallyActive}
+                      isActive={punchButtonIsActive}
                       onFinishRequested={() => {
                         closeAllSubModals();
                         setPrefillCause(line.cause ?? "");
@@ -922,7 +999,7 @@ export default function FocusedJobModal(props: {
                         setPrefillCorrection(line?.correction ?? "");
                         setOpenComplete(true);
                       }}
-                      disabled={completionBlocked}
+                      disabled={completionBlocked || viewerMustRejoin}
                     >
                       Complete
                     </button>
@@ -1716,7 +1793,7 @@ export default function FocusedJobModal(props: {
                     punchedInAt={line.punched_in_at}
                     punchedOutAt={line.punched_out_at}
                     status={line.status as WorkflowStatus}
-                    isActive={isOperationallyActive}
+                    isActive={punchButtonIsActive}
                     onFinishRequested={() => {
                       closeAllSubModals();
                       setPrefillCause(line.cause ?? "");
@@ -1941,14 +2018,39 @@ export default function FocusedJobModal(props: {
           onSubmit={async (cause: string, correction: string) => {
             await ensureShopContext((workOrder?.shop_id as string | null) ?? null);
 
+            // Already punched off; only the story still needs saving.
+            if (storyOnlyRetry.current) {
+              await saveStoryAfterPunchOff(cause, correction);
+              return;
+            }
+
+            let outcome: JobPunchTransitionResult | void;
             try {
-              await runJobPunchTransition(line.id, "finish", {
+              outcome = await runJobPunchTransition(line.id, "finish", {
                 cause,
                 correction,
               });
             } catch (error) {
               showErr("Complete job failed", error as { message?: string });
               throw error;
+            }
+
+            // Queued Equipment finish: the server has not confirmed a completion.
+            if (outcome && outcome.awaitingServer === true) {
+              toast.warning("Finish saved. It will sync when you're back online.");
+              setOpenComplete(false);
+              await refresh();
+              return;
+            }
+
+            // Equipment shops: others are still working, so this was a punch-off,
+            // which does not save the story. Save it (and retry just the save).
+            if (outcome && outcome.lineClosed === false) {
+              storyOnlyRetry.current = {
+                remaining: (outcome.remaining ?? []) as PunchOffResult["remaining"],
+              };
+              await saveStoryAfterPunchOff(cause, correction);
+              return;
             }
 
             toast.success("Job completed");

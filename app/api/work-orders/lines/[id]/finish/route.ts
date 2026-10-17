@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { createServerSupabaseRoute } from "@/features/shared/lib/supabase/server";
+import { finishViaEquipmentLastOff } from "@/features/equipment/dispatch/server/equipmentFinish";
 import { completeWorkOrderLine } from "@/features/work-orders/server/completeWorkOrderLine";
 
 type Body = {
@@ -48,6 +49,23 @@ export async function POST(req: NextRequest) {
       { error: "A stable Idempotency-Key is required." },
       { status: 400 },
     );
+  }
+
+  // Equipment shops: the last technician to punch off closes the line. Returns
+  // `handled: false` for every other case, so the existing finish below is unchanged.
+  const equipment = await finishViaEquipmentLastOff({
+    userSupabase: supabase,
+    authUserId: user.id,
+    lineId: id,
+    operationKey,
+    cause: body.cause,
+    correction: body.correction,
+  });
+  if (equipment.handled) {
+    if (!equipment.ok) {
+      return NextResponse.json({ error: equipment.error }, { status: equipment.status });
+    }
+    return NextResponse.json(equipment.payload);
   }
 
   const result = await completeWorkOrderLine({

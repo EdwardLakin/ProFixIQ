@@ -1,5 +1,6 @@
 "use client";
 
+import { replayJobPunchTransition } from "@/features/shared/lib/offline/jobPunchReplay";
 import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import {
   getOfflineBlob,
@@ -153,24 +154,7 @@ const handlers: Record<string, OfflineMutationRunner> = {
     });
     await removeOfflineBlob(blobId);
   },
-  "job:punch-transition": async (mutation) => {
-    const payload = mutation.payload as ReplayPayload;
-    const lineId = text(payload.lineId);
-    const action = text(payload.action);
-    const operationKey = text(payload.operationKey);
-    if (
-      !lineId ||
-      !["start", "pause", "resume", "finish"].includes(action) ||
-      !operationKey
-    ) {
-      return { conflicted: "Job transition is missing required offline data." };
-    }
-    await apiPost(
-      `/api/work-orders/lines/${lineId}/${action}`,
-      payload.body ?? {},
-      operationKey,
-    );
-  },
+  "job:punch-transition": replayJobPunchTransition,
   "field-inventory:use-part": async (mutation) => {
     const payload = mutation.payload as ReplayPayload;
     const visitId = text(payload.visitId);
