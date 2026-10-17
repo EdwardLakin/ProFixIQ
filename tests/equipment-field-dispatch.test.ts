@@ -114,6 +114,9 @@ describe("error mapping", () => {
     expect(map("Service visit changed since it was loaded.", "40001")).toBe(409);
     expect(map("A technician is required to dispatch a visit.", "P0001")).toBe(400);
     expect(map("Dispatch saved, but some technicians could not be notified.", "RETRYABLE")).toBe(503);
+    expect(
+      map('duplicate key value violates unique constraint "service_visits_one_executing_per_work_order_uniq"', "23505"),
+    ).toBe(409);
   });
 });
 
