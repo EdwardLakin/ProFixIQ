@@ -123,7 +123,7 @@ export const EQUIPMENT_SHELL_NAV: readonly EquipmentShellItem[] = [
     key: "parts",
     label: "Parts",
     href: "/equipment/parts",
-    state: "planned",
+    state: "live",
     summary:
       "Parts requests, holds, purchasing and truck stock for equipment repairs, on the shared parts and inventory records.",
     canonical: { label: "Parts", href: "/parts" },
