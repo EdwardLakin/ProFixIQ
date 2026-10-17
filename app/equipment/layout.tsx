@@ -5,6 +5,7 @@ import EquipmentShell, {
   type EquipmentShellNavItem,
 } from "@/features/equipment/components/EquipmentShell";
 import { equipmentShellNavForRole } from "@/features/equipment/lib/equipmentShellNav";
+import { WORKFORCE_STAFF_ROLES } from "@/features/workforce/lib/roster";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { requireActiveDemoAccessForPage } from "@/features/shared/lib/server/admin-access";
 
@@ -45,6 +46,11 @@ export default async function EquipmentLayout({
       items={items}
       homeHref={items[0]?.href ?? "/dashboard"}
       isTechnician={role === "mechanic"}
+      shiftUserId={
+        profile.shop_id && WORKFORCE_STAFF_ROLES.some((allowed) => allowed === role)
+          ? profile.id
+          : null
+      }
     >
       {children}
     </EquipmentShell>

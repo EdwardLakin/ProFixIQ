@@ -11,6 +11,7 @@ import {
 } from "react";
 import { Dialog } from "@headlessui/react";
 import { Menu, X } from "lucide-react";
+import ShiftTracker from "@/features/shared/components/ShiftTracker";
 import ThemeToggleButton from "@/features/shared/components/ThemeToggleButton";
 import styles from "./equipmentTheme.module.css";
 
@@ -59,6 +60,7 @@ export default function EquipmentShell({
   items,
   homeHref = "/equipment/dashboard",
   isTechnician = false,
+  shiftUserId = null,
   children,
 }: {
   items: readonly EquipmentShellNavItem[];
@@ -66,6 +68,8 @@ export default function EquipmentShell({
   homeHref?: string;
   /** Technicians keep the persistent CoPilot launcher the Shop shell gave them. */
   isTechnician?: boolean;
+  /** Server-resolved staff identity; the shift API still authorizes every request. */
+  shiftUserId?: string | null;
   children: ReactNode;
 }) {
   const pathname = usePathname() ?? "/equipment";
@@ -162,6 +166,15 @@ export default function EquipmentShell({
             );
           })}
         </nav>
+        {shiftUserId ? (
+          <section
+            aria-label="Shift Tracker"
+            className={`${styles.shiftTracker} border-t border-[color:var(--theme-border-soft)] p-3`}
+          >
+            <h2 className="text-sm font-semibold">Shift Tracker</h2>
+            <ShiftTracker key={shiftUserId} userId={shiftUserId} />
+          </section>
+        ) : null}
         <div className="border-t border-[color:var(--theme-border-soft)] p-3">
           <div className="mb-3 flex items-center justify-between gap-3 text-sm font-semibold">
             Appearance <ThemeToggleButton />
