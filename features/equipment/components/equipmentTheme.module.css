@@ -1,0 +1,150 @@
+/* Scoped adapters let existing Equipment/Workspace presentation inherit the
+   product palette without changing shared themes or workflow components. */
+.theme {
+  --theme-surface-page: #161c23;
+  --theme-surface-panel: #252e38;
+  --theme-surface-panel-strong: #1d252e;
+  --theme-surface-inset: #1d252e;
+  --theme-surface-subtle: #2c3743;
+  --theme-surface-hover: #334150;
+  --theme-surface-overlay: #334150;
+  --theme-text-primary: #f1f5f9;
+  --theme-text-secondary: #ced7e1;
+  --theme-text-muted: #afbdcc;
+  --theme-border-soft: #465463;
+  --equipment-amber: #f4b544;
+  --equipment-amber-ink: #161c23;
+  --equipment-focus: #f4b544;
+  --accent-copper: var(--equipment-amber);
+  --accent-copper-soft: var(--equipment-focus);
+  --accent-copper-light: var(--equipment-amber);
+  --desktop-panel-bg-soft: var(--theme-surface-panel);
+  --desktop-item-bg: var(--theme-surface-inset);
+  --metal-border-soft: var(--theme-border-soft);
+  --theme-gradient-panel: var(--theme-surface-panel);
+  --theme-shadow-medium: none;
+  --theme-shadow-soft: none;
+  color: var(--theme-text-primary);
+  color-scheme: dark;
+}
+
+:global(html[data-theme-mode="light"]) .theme {
+  --theme-surface-page: #eef2f5;
+  --theme-surface-panel: #ffffff;
+  --theme-surface-panel-strong: #f8fafc;
+  --theme-surface-inset: #f1f5f8;
+  --theme-surface-subtle: #e7edf2;
+  --theme-surface-hover: #dbe4ec;
+  --theme-surface-overlay: #e0e8ef;
+  --theme-text-primary: #161c23;
+  --theme-text-secondary: #344454;
+  --theme-text-muted: #4c5e70;
+  --theme-border-soft: #b4c1ce;
+  --equipment-amber: #f4b544;
+  --equipment-focus: #805300;
+  color-scheme: light;
+}
+
+.shell {
+  display: flex;
+  min-height: 100dvh;
+  width: 100%;
+  background: var(--theme-surface-page);
+}
+.sidebar {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 16rem;
+  height: 100dvh;
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  border-right: 1px solid var(--theme-border-soft);
+  background: var(--theme-surface-panel-strong);
+}
+.mobileHeader {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: max(12px, env(safe-area-inset-top))
+    max(16px, env(safe-area-inset-right)) 12px
+    max(16px, env(safe-area-inset-left));
+  border-bottom: 1px solid var(--theme-border-soft);
+  background: var(--theme-surface-panel-strong);
+}
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid var(--theme-border-soft);
+  border-radius: 10px;
+  background: var(--theme-surface-panel);
+}
+.drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 400;
+}
+.backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgb(5 10 16 / 65%);
+}
+.drawerPanel {
+  position: fixed;
+  inset: 0 auto 0 0;
+  display: flex;
+  flex-direction: column;
+  width: min(21rem, calc(100vw - 32px));
+  height: 100dvh;
+  padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px)
+    env(safe-area-inset-left, 0px);
+  border-right: 1px solid var(--theme-border-soft);
+  background: var(--theme-surface-panel-strong);
+}
+.drawerPanel .iconButton {
+  margin-left: auto;
+}
+.theme :is(button, a):focus-visible {
+  outline: 2px solid var(--equipment-focus);
+  outline-offset: 2px;
+}
+.theme :is(button, a)[class*="rounded"] {
+  border-radius: 10px;
+}
+.theme button[aria-label^="Switch to"] {
+  min-width: 44px;
+  min-height: 44px;
+  box-shadow: none;
+}
+/* Existing Equipment actions (including the separate line-detail page) use
+   this exact shared accent utility with white text. Amber requires dark ink. */
+.theme [class~="bg-[color:var(--accent-copper)]"] {
+  color: var(--equipment-amber-ink);
+}
+.theme [class*="backdrop-blur"] {
+  backdrop-filter: none;
+}
+@media (max-width: 1023px) {
+  .shell {
+    flex-direction: column;
+  }
+  .sidebar {
+    display: none;
+  }
+}
+/* Preserve status meanings with legible foregrounds on pale Equipment panels. */
+:global(html[data-theme-mode="light"]) .theme [class~="text-red-400"] {
+  color: #b42318;
+}
+:global(html[data-theme-mode="light"]) .theme [class~="text-amber-400"] {
+  color: #805300;
+}
+:global(html[data-theme-mode="light"]) .theme [class~="text-emerald-400"] {
+  color: #087447;
+}

@@ -1,10 +1,31 @@
 import { existsSync, readFileSync } from "node:fs";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+let desktop = true;
+const mediaListeners = new Set<() => void>();
+const pushCleanup = vi.hoisted(() => vi.fn(async () => undefined));
+vi.mock("@/features/notifications/lib/pushClient", () => ({
+  disablePush: pushCleanup,
+}));
+vi.mock("@/features/notifications/components/PushNotificationSettings", () => ({
+  default: () => <div>Phone notification settings</div>,
+}));
 
 const nav = vi.hoisted(() => ({ pathname: "/equipment/dashboard" }));
 vi.mock("next/navigation", () => ({ usePathname: () => nav.pathname }));
-const prefs = vi.hoisted(() => ({ navigationIndicators: true, loading: false }));
+const prefs = vi.hoisted(() => ({
+  navigationIndicators: true,
+  loading: false,
+}));
 vi.mock("@/features/shared/hooks/useNotificationPreferences", () => ({
   useNotificationPreferences: () => ({
     preferences: { navigationIndicators: prefs.navigationIndicators },
@@ -14,15 +35,20 @@ vi.mock("@/features/shared/hooks/useNotificationPreferences", () => ({
 vi.mock("@/features/shared/lib/supabase/client", () => ({
   createBrowserSupabase: () => ({
     auth: {
-      getSession: async () => ({ data: { session: { user: { id: "auth-user" } } } }),
+      getSession: async () => ({
+        data: { session: { user: { id: "auth-user" } } },
+      }),
     },
   }),
 }));
-vi.mock("@/features/copilot/technician/components/TechnicianCopilotShell", () => ({
-  TechnicianCopilotShell: ({ shouldCheck }: { shouldCheck: boolean }) => (
-    <div data-testid="copilot" data-should-check={String(shouldCheck)} />
-  ),
-}));
+vi.mock(
+  "@/features/copilot/technician/components/TechnicianCopilotShell",
+  () => ({
+    TechnicianCopilotShell: ({ shouldCheck }: { shouldCheck: boolean }) => (
+      <div data-testid="copilot" data-should-check={String(shouldCheck)} />
+    ),
+  }),
+);
 vi.mock("@/features/chat/components/InboxModal", () => ({
   default: ({ open }: { open: boolean }) =>
     open ? <div role="dialog" aria-label="Inbox" /> : null,
@@ -65,7 +91,9 @@ describe("Equipment owns its product shell", () => {
     expect(isOutsideDesktopAppShell("/equipmentx")).toBe(false);
     expect(isOutsideDesktopAppShell("/mobile/service")).toBe(true);
     expect(isStandalonePublicRoute("/equipment")).toBe(false);
-    expect(isStandalonePublicRoute("/equipment-maintenance-software")).toBe(true);
+    expect(isStandalonePublicRoute("/equipment-maintenance-software")).toBe(
+      true,
+    );
   });
 
   it("has a layout that shapes navigation without granting access or reading data", () => {
@@ -115,13 +143,17 @@ describe("Equipment navigation registry", () => {
         ...(item.children ?? []).map((child) => child.href),
       ]),
     );
-    for (const section of EQUIPMENT_SECTIONS.filter((entry) => !entry.external)) {
+    for (const section of EQUIPMENT_SECTIONS.filter(
+      (entry) => !entry.external,
+    )) {
       expect(reachable.has(section.href)).toBe(true);
     }
   });
 
   it("points planned items at a canonical workspace instead of a copy", () => {
-    const planned = EQUIPMENT_SHELL_NAV.filter((item) => item.state === "planned");
+    const planned = EQUIPMENT_SHELL_NAV.filter(
+      (item) => item.state === "planned",
+    );
     expect(planned.map((item) => item.key)).toEqual([
       "dispatch",
       "parts",
@@ -187,6 +219,20 @@ describe("Equipment planned entry points", () => {
 
 describe("EquipmentShell", () => {
   beforeEach(() => {
+    desktop = true;
+    mediaListeners.clear();
+    localStorage.clear();
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      get matches() {
+        return query.includes("1024") ? desktop : false;
+      },
+      media: query,
+      addEventListener: (_: string, listener: () => void) => {
+        if (query.includes("1024")) mediaListeners.add(listener);
+      },
+      removeEventListener: (_: string, listener: () => void) =>
+        mediaListeners.delete(listener),
+    }));
     nav.pathname = "/equipment/dashboard";
     prefs.navigationIndicators = true;
     prefs.loading = false;
@@ -194,18 +240,24 @@ describe("EquipmentShell", () => {
       "fetch",
       vi.fn(async () => ({
         ok: true,
-        json: async () => [{ unread_count: 2 }, { unread_count: 1 }, { unread_count: null }],
+        json: async () => [
+          { unread_count: 2 },
+          { unread_count: 1 },
+          { unread_count: null },
+        ],
       })),
     );
   });
 
-  const items = EQUIPMENT_SHELL_NAV.map(({ key, label, href, state, children }) => ({
-    key,
-    label,
-    href,
-    state,
-    children,
-  }));
+  const items = EQUIPMENT_SHELL_NAV.map(
+    ({ key, label, href, state, children }) => ({
+      key,
+      label,
+      href,
+      state,
+      children,
+    }),
+  );
 
   it("renders Equipment navigation and marks the current page", () => {
     render(
@@ -213,15 +265,15 @@ describe("EquipmentShell", () => {
         <p>page body</p>
       </EquipmentShell>,
     );
-    const sections = screen.getByRole("navigation", { name: "Equipment sections" });
-    expect(within(sections).getByRole("link", { name: "Dashboard" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-    expect(within(sections).getByRole("link", { name: "Work" })).toHaveAttribute(
-      "href",
-      "/equipment/work-orders",
-    );
+    const sections = screen.getByRole("navigation", {
+      name: "Equipment sections",
+    });
+    expect(
+      within(sections).getByRole("link", { name: "Dashboard" }),
+    ).toHaveAttribute("aria-current", "page");
+    expect(
+      within(sections).getByRole("link", { name: "Work" }),
+    ).toHaveAttribute("href", "/equipment/work-orders");
     expect(screen.getByText("page body")).toBeTruthy();
   });
 
@@ -240,7 +292,12 @@ describe("EquipmentShell", () => {
         <p>page body</p>
       </EquipmentShell>,
     );
-    for (const name of ["Components", "Measurements", "Undercarriage", "Fluid analysis"]) {
+    for (const name of [
+      "Components",
+      "Measurements",
+      "Undercarriage",
+      "Fluid analysis",
+    ]) {
       const link = screen.getByRole("link", { name });
       expect(link).toBeTruthy();
       // No ancestor may hide the link below lg.
@@ -287,14 +344,20 @@ describe("EquipmentShell", () => {
         <p>page body</p>
       </EquipmentShell>,
     );
-    expect(screen.getByTestId("copilot")).toHaveAttribute("data-should-check", "true");
+    expect(screen.getByTestId("copilot")).toHaveAttribute(
+      "data-should-check",
+      "true",
+    );
     unmount();
     render(
       <EquipmentShell items={items}>
         <p>page body</p>
       </EquipmentShell>,
     );
-    expect(screen.getByTestId("copilot")).toHaveAttribute("data-should-check", "false");
+    expect(screen.getByTestId("copilot")).toHaveAttribute(
+      "data-should-check",
+      "false",
+    );
   });
 
   it("points the brand link at the supplied home", () => {
@@ -303,7 +366,143 @@ describe("EquipmentShell", () => {
         <p>page body</p>
       </EquipmentShell>,
     );
-    expect(screen.getByRole("link", { name: /Equipment/ })).toHaveAttribute("href", "/dashboard");
+    expect(screen.getByRole("link", { name: /Equipment/ })).toHaveAttribute(
+      "href",
+      "/dashboard",
+    );
+  });
+
+  it("opens a mobile drawer, retains every destination and returns focus on Escape", async () => {
+    desktop = false;
+    const user = userEvent.setup();
+    render(
+      <EquipmentShell items={items}>
+        <button>Page action</button>
+      </EquipmentShell>,
+    );
+    const trigger = screen.getByRole("button", { name: "Open Equipment menu" });
+    expect(screen.queryByRole("navigation")).toBeNull();
+    await user.click(trigger);
+    const drawer = screen.getByRole("dialog", { name: "Equipment menu" });
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    for (const item of items) {
+      expect(
+        within(drawer).getByRole("link", {
+          name: new RegExp(`^${item.label}`),
+        }),
+      ).toHaveAttribute("href", item.href);
+    }
+    for (const name of [
+      "Components",
+      "Measurements",
+      "Undercarriage",
+      "Fluid analysis",
+    ]) {
+      expect(within(drawer).getByRole("link", { name })).toBeTruthy();
+    }
+    expect(await screen.findByLabelText("3 unread")).toBeTruthy();
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(trigger).toHaveFocus());
+  });
+
+  it("closes the drawer after navigation and when switching to desktop", async () => {
+    desktop = false;
+    const user = userEvent.setup();
+    render(
+      <EquipmentShell items={items}>
+        <p>page body</p>
+      </EquipmentShell>,
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Open Equipment menu" }),
+    );
+    fireEvent.click(screen.getByRole("link", { name: "Dashboard" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await user.click(
+      screen.getByRole("button", { name: "Open Equipment menu" }),
+    );
+    act(() => {
+      desktop = true;
+      mediaListeners.forEach((listener) => listener());
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(
+      screen.getByRole("complementary", { name: "Equipment workspace" }),
+    ).toBeTruthy();
+    act(() => {
+      desktop = false;
+      mediaListeners.forEach((listener) => listener());
+    });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("keeps technician navigation restricted in the mobile drawer", async () => {
+    desktop = false;
+    const user = userEvent.setup();
+    render(
+      <EquipmentShell
+        items={equipmentShellNavForRole("mechanic")}
+        homeHref="/equipment/field"
+        isTechnician
+      >
+        <p>Field work</p>
+      </EquipmentShell>,
+    );
+    await user.click(
+      screen.getByRole("button", { name: "Open Equipment menu" }),
+    );
+    const navigation = screen.getByRole("navigation");
+    expect(within(navigation).getAllByRole("link")).toHaveLength(1);
+    expect(
+      within(navigation).getByRole("link", { name: "Field" }),
+    ).toHaveAttribute("href", "/equipment/field");
+    expect(screen.getByTestId("copilot")).toHaveAttribute(
+      "data-should-check",
+      "true",
+    );
+  });
+
+  it("keeps phone alert settings and saved theme switching available", async () => {
+    const user = userEvent.setup();
+    render(
+      <EquipmentShell items={items}>
+        <p>page body</p>
+      </EquipmentShell>,
+    );
+    await user.click(screen.getByRole("button", { name: "Phone alerts" }));
+    expect(screen.getByText("Phone notification settings")).toBeTruthy();
+    expect(
+      screen.getByRole("button", { name: "Phone alerts" }),
+    ).toHaveAttribute("aria-expanded", "true");
+    await user.click(
+      screen.getByRole("button", { name: "Switch to dark mode" }),
+    );
+    expect(document.documentElement).toHaveAttribute("data-theme-mode", "dark");
+    expect(localStorage.getItem("pfq-theme-mode")).toBe("dark");
+    await user.click(
+      screen.getByRole("button", { name: "Switch to light mode" }),
+    );
+    expect(document.documentElement).toHaveAttribute(
+      "data-theme-mode",
+      "light",
+    );
+    expect(localStorage.getItem("pfq-theme-mode")).toBe("light");
+  });
+
+  it("revokes phone push before the existing sign-out destination", () => {
+    render(
+      <EquipmentShell items={items}>
+        <p>page body</p>
+      </EquipmentShell>,
+    );
+    // Leave cleanup pending here; browser validation checks the navigation too.
+    vi.useFakeTimers();
+    pushCleanup.mockImplementationOnce(() => new Promise(() => {}));
+    fireEvent.click(screen.getByRole("link", { name: "Sign out" }));
+    expect(pushCleanup).toHaveBeenCalled();
+    vi.clearAllTimers();
+    vi.useRealTimers();
   });
 
   it("keeps Assets highlighted on a machine's detail page", () => {
@@ -313,7 +512,9 @@ describe("EquipmentShell", () => {
         <p>page body</p>
       </EquipmentShell>,
     );
-    const sections = screen.getByRole("navigation", { name: "Equipment sections" });
+    const sections = screen.getByRole("navigation", {
+      name: "Equipment sections",
+    });
     const assets = within(sections).getByRole("link", { name: "Assets" });
     expect(assets.className).toContain("accent-copper");
   });
@@ -330,7 +531,9 @@ describe("Equipment operations board", () => {
     summary.pm.due = 2;
 
     const cards = equipmentBoardCards(summary);
-    const byKey = Object.fromEntries(cards.map((card) => [card.key, card.value]));
+    const byKey = Object.fromEntries(
+      cards.map((card) => [card.key, card.value]),
+    );
     expect(byKey["machines-down"]).toBe(3);
     expect(byKey["open-work"]).toBe(6);
     expect(byKey["pm-due"]).toBe(5);
@@ -340,7 +543,9 @@ describe("Equipment operations board", () => {
   });
 
   it("labels unconnected cards instead of showing a number", () => {
-    render(<EquipmentOperationsBoard summary={emptyFleetSummary()} role="owner" />);
+    render(
+      <EquipmentOperationsBoard summary={emptyFleetSummary()} role="owner" />,
+    );
     expect(screen.getAllByText("Not connected yet")).toHaveLength(4);
   });
 
@@ -360,7 +565,9 @@ describe("Equipment operations board", () => {
     unmount();
 
     // service: opens Work/Assets/PM but not scheduling or parts.
-    render(<EquipmentOperationsBoard summary={emptyFleetSummary()} role="service" />);
+    render(
+      <EquipmentOperationsBoard summary={emptyFleetSummary()} role="service" />,
+    );
     expect(screen.getByText("Open work orders").closest("a")).not.toBeNull();
     for (const title of ["Dispatch", "Active field jobs", "Parts holds"]) {
       expect(screen.getByText(title).closest("a")).toBeNull();
