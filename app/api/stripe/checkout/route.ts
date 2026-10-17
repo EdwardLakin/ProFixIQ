@@ -20,7 +20,13 @@ import {
   type ProductAcquisitionSurface,
   type ProductPackageKey,
 } from "@/features/stripe/lib/stripe/product-packages";
-import { isPackagePubliclyPurchasable } from "@/features/stripe/lib/server/package-checkout-availability";
+import {
+  EQUIPMENT_COMING_SOON_CODE,
+  EQUIPMENT_COMING_SOON_MESSAGE,
+  isBlockedEquipmentCheckoutRequest,
+  isEquipmentAddonPubliclyPurchasable,
+  isPackagePubliclyPurchasable,
+} from "@/features/stripe/lib/server/package-checkout-availability";
 import { resolveEquipmentAddonPriceId } from "@/features/stripe/lib/server/equipment-addon-price-contract";
 import { resolveProductPackagePriceId } from "@/features/stripe/lib/server/product-package-price-contract";
 import { resolveStripePlanPriceId } from "@/features/stripe/lib/server/stripe-price-contract";
@@ -87,6 +93,12 @@ const checkoutSchema = z
       context.addIssue({
         code: z.ZodIssueCode.custom,
         message: "Equipment requires Complete Operations",
+      });
+    }
+    if (value.equipmentAddon && !isEquipmentAddonPubliclyPurchasable()) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "The Equipment add-on is not available yet",
       });
     }
   });
@@ -325,6 +337,18 @@ export async function POST(req: Request) {
               : "Invalid request",
         },
         bodyResult.reason === "too_large" ? 413 : 400,
+      );
+    }
+    // Equipment is Coming soon: answer every Equipment acquisition spelling
+    // (standalone package, Complete + Equipment add-on) before validation and
+    // before any Stripe or ledger side effect.
+    if (isBlockedEquipmentCheckoutRequest(bodyResult.value)) {
+      return noStoreJson(
+        {
+          error: EQUIPMENT_COMING_SOON_MESSAGE,
+          code: EQUIPMENT_COMING_SOON_CODE,
+        },
+        403,
       );
     }
     const parsed = checkoutSchema.safeParse(bodyResult.value);

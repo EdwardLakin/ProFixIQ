@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 
 import { readBoundedJson } from "@/features/shared/lib/server/bounded-json";
 import { enforcePublicRouteRateLimit } from "@/features/shared/lib/server/publicRouteRateLimit";
+import { EQUIPMENT_COMING_SOON_MESSAGE } from "@/features/stripe/lib/server/package-checkout-availability";
 import { createEarlyAccessCheckout } from "@/features/stripe/lib/server/early-access-checkout";
 
 const REQUEST_MAX_BYTES = 2 * 1024;
@@ -20,6 +21,7 @@ const APPLICANT_SAFE_ERRORS = new Set([
   "Early Access approval has expired.",
   "Early Access approval is invalid.",
   "Early Access approval is no longer valid.",
+  EQUIPMENT_COMING_SOON_MESSAGE,
 ]);
 
 const RENEW_LINK_MESSAGE =
