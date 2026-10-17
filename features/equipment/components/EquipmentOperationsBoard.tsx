@@ -1,3 +1,4 @@
+import type { EquipmentOperationCounts } from "@/features/equipment/lib/equipmentOperationCounts";
 import Link from "next/link";
 
 import type { EquipmentFleetSummary } from "@/features/equipment/lib/equipmentDashboard";
@@ -42,8 +43,11 @@ const TONE = {
  * a source in today's asset records show their real count; the rest say they are
  * not connected rather than showing a placeholder number.
  */
-export function equipmentBoardCards(summary: EquipmentFleetSummary): BoardCard[] {
-  return [
+export function equipmentBoardCards(
+  summary: EquipmentFleetSummary,
+  operations?: EquipmentOperationCounts,
+): BoardCard[] {
+  const cards: BoardCard[] = [
     {
       key: "machines-down",
       title: "Machines down",
@@ -104,27 +108,63 @@ export function equipmentBoardCards(summary: EquipmentFleetSummary): BoardCard[]
       value: null,
     },
   ];
+  if (!operations) return cards;
+  return cards.map((card): BoardCard => {
+    const metric =
+      card.key === "approvals"
+        ? operations.approvals
+        : card.key === "parts-holds"
+          ? operations.parts
+          : card.key === "field-jobs"
+            ? operations.field
+            : null;
+    if (!metric) return card;
+    const detail =
+      card.key === "field-jobs"
+        ? "Scheduled through paused mobile visits: last 12 hours through next 7 days, plus unscheduled"
+        : card.key === "approvals"
+          ? "Sent estimates awaiting a customer decision"
+          : "Work orders waiting on parts";
+    const common = {
+      ...card,
+      title: card.key === "field-jobs" ? "Active field visits" : card.title,
+      href: metric.href,
+      destination:
+        card.key === "field-jobs" ? ("dispatch" as const) : ("work" as const),
+      detail:
+        metric.value === null
+          ? `${detail}. Count unavailable.`
+          : metric.partial
+            ? `${detail}. Incomplete scan; additional records may be omitted.`
+            : detail,
+    };
+    return metric.value === null
+      ? { ...common, value: null }
+      : { ...common, value: metric.value, tone: "muted" };
+  });
 }
 
 export default function EquipmentOperationsBoard({
   summary,
   role,
+  operations,
 }: {
   summary: EquipmentFleetSummary;
   /** Cards whose destination this role cannot open render as plain tiles, not links. */
   role: CanonicalRole;
+  operations?: EquipmentOperationCounts;
 }) {
   return (
     <section aria-label="Operations" className="flex flex-col gap-3">
       <h2 className="text-sm font-semibold">Operations</h2>
       {summary.partial ? (
         <p className={`${PANEL} p-3 text-sm text-amber-400`} role="status">
-          Counts cover the {summary.total.toLocaleString()} most recently updated assets and are
-          incomplete.
+          Asset summary counts cover {summary.total.toLocaleString()} scanned
+          assets and are incomplete.
         </p>
       ) : null}
       <ul className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        {equipmentBoardCards(summary).map((card) => {
+        {equipmentBoardCards(summary, operations).map((card) => {
           const body = (
             <>
               <span className="text-xs font-semibold text-[color:var(--theme-text-muted)]">
@@ -132,7 +172,10 @@ export default function EquipmentOperationsBoard({
               </span>
               {card.value === null ? (
                 <span className="text-sm font-semibold text-[color:var(--theme-text-muted)]">
-                  Not connected yet
+                  {operations &&
+                  ["field-jobs", "approvals", "parts-holds"].includes(card.key)
+                    ? "Unavailable"
+                    : "Not connected yet"}
                 </span>
               ) : (
                 <span
@@ -143,7 +186,9 @@ export default function EquipmentOperationsBoard({
                   {card.value.toLocaleString()}
                 </span>
               )}
-              <span className="text-xs text-[color:var(--theme-text-muted)]">{card.detail}</span>
+              <span className="text-xs text-[color:var(--theme-text-muted)]">
+                {card.detail}
+              </span>
             </>
           );
           const tile = `${PANEL} flex h-full min-h-28 flex-col gap-1 p-4`;
