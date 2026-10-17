@@ -47,6 +47,7 @@ describe("Equipment native Dispatch view", () => {
     render(
       <View
         data={data}
+        dispatchAccess="ready"
         filters={parseEquipmentQueueFilters({})}
         shopId="shop"
         actorId="actor"
@@ -74,6 +75,7 @@ describe("Equipment native Dispatch view", () => {
     render(
       <View
         data={data}
+        dispatchAccess="ready"
         filters={parseEquipmentQueueFilters({})}
         shopId="shop"
         actorId="other"
@@ -84,6 +86,38 @@ describe("Equipment native Dispatch view", () => {
     ).not.toBeInTheDocument();
     expect(screen.getByText(/Formerly eligible support/)).toBeInTheDocument();
   });
+  it.each([
+    "forbidden",
+    "setup_required",
+    "plan_required",
+    "unavailable",
+  ] as const)(
+    "keeps the board readable but removes creation controls for Field access %s",
+    (dispatchAccess) => {
+      render(
+        <View
+          data={data}
+          dispatchAccess={dispatchAccess}
+          filters={parseEquipmentQueueFilters({})}
+          shopId="shop"
+          actorId="other"
+        />,
+      );
+      expect(screen.getByText("WO-42")).toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Prepare dispatch" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Dispatch now" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("button", { name: "Retry saved dispatch" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByRole("link", { name: "Field access and setup" }),
+      ).toHaveAttribute("href", "/equipment/field");
+    },
+  );
   it("distinguishes errors from a genuinely empty board", () => {
     render(
       <View

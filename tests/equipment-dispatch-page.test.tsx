@@ -4,6 +4,7 @@ import {
   type CanonicalRole,
 } from "@/features/shared/lib/rbac";
 const mocks = vi.hoisted(() => ({
+  field: vi.fn(),
   role: "owner",
   entitlement: "enabled",
   load: vi.fn(),
@@ -30,7 +31,9 @@ vi.mock("@/features/shared/lib/server/admin-access", () => ({
 }));
 vi.mock("@/features/shared/lib/supabase/server", () => ({
   createAdminSupabase: mocks.admin,
-  createServerSupabaseRSC: () => ({}),
+  createServerSupabaseRSC: () => ({
+    auth: { getUser: async () => ({ data: { user: { id: "auth-actor" } } }) },
+  }),
 }));
 vi.mock("@/features/equipment/server/pageEntitlement", () => ({
   resolveEquipmentPageEntitlement: async () => mocks.entitlement,
@@ -38,8 +41,12 @@ vi.mock("@/features/equipment/server/pageEntitlement", () => ({
 vi.mock("@/features/equipment/dispatch/server/loadEquipmentDispatch", () => ({
   loadEquipmentDispatch: mocks.load,
 }));
+vi.mock("@/features/mobile/service/server/access", () => ({
+  getMobileFieldServiceAccess: mocks.field,
+}));
 import Page from "../app/equipment/dispatch/page";
 beforeEach(() => {
+  mocks.field.mockReset().mockResolvedValue({ decision: "ready" });
   mocks.role = "owner";
   mocks.entitlement = "enabled";
   mocks.load.mockReset().mockResolvedValue({});
@@ -102,6 +109,29 @@ describe("Equipment Dispatch page access", () => {
       expect(mocks.admin).not.toHaveBeenCalled();
     },
   );
+  it.each(["ready", "forbidden", "setup_required", "plan_required"])(
+    "uses canonical actor Field decision %s without blocking board reads",
+    async (decision) => {
+      mocks.field.mockResolvedValue({ decision });
+      const result = await Page({});
+      expect(result.props.dispatchAccess).toBe(decision);
+      expect(result.props.data).toBeDefined();
+      expect(mocks.load).toHaveBeenCalledOnce();
+      expect(mocks.field).toHaveBeenCalledWith(
+        expect.objectContaining({
+          authUserId: "auth-actor",
+          profile: { id: "server-actor", shop_id: "server-shop" },
+          canonicalRole: "owner",
+        }),
+      );
+    },
+  );
+  it("fails closed for dispatch controls when Field access cannot be read, retaining the board", async () => {
+    mocks.field.mockRejectedValue(new Error("Field lookup failed"));
+    const result = await Page({});
+    expect(result.props.dispatchAccess).toBe("unavailable");
+    expect(result.props.data).toBeDefined();
+  });
   it("renders failure as failure, never an empty successful board", async () => {
     mocks.load.mockRejectedValue(new Error("private details"));
     const result = await Page({});

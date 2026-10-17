@@ -15,6 +15,9 @@ changing the canonical Shop/Field board or any command contract.
   entitlement before privileged reads. Uses the session client for canonical
   scheduling, work-order identity and address reads; privileged participant
   reads are scoped to the shop and only the displayed Equipment visit IDs.
+- The canonical actor Field-access decision gates Dispatch Now and saved-request
+  retry controls. Missing setup, operator assignment, product access or a failed
+  access read shows an explanation while preserving read-only board access.
 - Dispatch Now calls the existing `POST /api/equipment/dispatch` with a lead,
   optional supporting technicians/truck, jobsite and notes. It retains the
   service's approval, Field access, participant, notification and active-visit

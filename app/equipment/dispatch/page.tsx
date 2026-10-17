@@ -5,6 +5,10 @@ import { loadEquipmentDispatch } from "@/features/equipment/dispatch/server/load
 import { EQUIPMENT_DIRECTORY_ROLES } from "@/features/equipment/lib/equipmentDirectory";
 import { parseEquipmentQueueFilters } from "@/features/equipment/lib/equipmentWorkQueue";
 import { resolveEquipmentPageEntitlement } from "@/features/equipment/server/pageEntitlement";
+import {
+  getMobileFieldServiceAccess,
+  type ShopAccess,
+} from "@/features/mobile/service/server/access";
 import { requireShopPageAccess } from "@/features/shared/lib/server/admin-access";
 import {
   createAdminSupabase,
@@ -36,19 +40,38 @@ export default async function EquipmentDispatchPage({
   const filters = parseEquipmentQueueFilters(params);
   const workOrderId =
     typeof params.workOrder === "string" ? params.workOrder : "";
+  const supabase = createServerSupabaseRSC();
+  // Field eligibility gates dispatch creation, never read-only board access.
+  const dispatchAccessPromise = (async () => {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    return (
+      await getMobileFieldServiceAccess({
+        supabase,
+        profile,
+        canonicalRole,
+        authUserId: user?.id ?? profile.id,
+      } as unknown as ShopAccess)
+    ).decision;
+  })().catch(() => "unavailable" as const);
   try {
-    const data = await loadEquipmentDispatch({
-      supabase: createServerSupabaseRSC(),
-      admin: createAdminSupabase(),
-      shopId: profile.shop_id,
-      actorUserId: profile.id,
-      role: canonicalRole,
-      filters,
-      workOrderId,
-    });
+    const [data, dispatchAccess] = await Promise.all([
+      loadEquipmentDispatch({
+        supabase,
+        admin: createAdminSupabase(),
+        shopId: profile.shop_id,
+        actorUserId: profile.id,
+        role: canonicalRole,
+        filters,
+        workOrderId,
+      }),
+      dispatchAccessPromise,
+    ]);
     return (
       <EquipmentDispatchView
         data={data}
+        dispatchAccess={dispatchAccess}
         filters={filters}
         shopId={profile.shop_id}
         actorId={profile.id}

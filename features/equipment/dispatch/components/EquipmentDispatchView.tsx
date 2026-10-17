@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { FieldServiceAccessDecision } from "@/features/mobile/service/fieldServiceAccessContract";
 import EquipmentPager from "@/features/equipment/components/EquipmentPager";
 import {
   EquipmentDispatchForm,
@@ -33,12 +34,14 @@ export default function EquipmentDispatchView({
   shopId,
   actorId,
   error = false,
+  dispatchAccess = "unavailable",
 }: {
   data?: EquipmentDispatchData;
   filters: EquipmentQueueFilters;
   shopId: string;
   actorId: string;
   error?: boolean;
+  dispatchAccess?: FieldServiceAccessDecision | "unavailable";
 }) {
   return (
     <WorkspaceShell>
@@ -68,39 +71,59 @@ export default function EquipmentDispatchView({
             </p>
           ) : null}
           <section className={`${WORKSPACE_PANEL} space-y-4 p-4`}>
-            <form action={PATH} className="flex flex-wrap items-end gap-3">
-              <label className="min-w-0 flex-1 text-sm">
-                Active Equipment work order
-                <select
-                  name="workOrder"
-                  defaultValue={data.selected?.id ?? ""}
-                  className={INPUT}
-                >
-                  <option value="">Choose work order</option>
-                  {data.work.map((row) => (
-                    <option key={row.id} value={row.id}>
-                      {row.title} · {row.assetLabel}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <button className={BUTTON}>Prepare dispatch</button>
-              <Link href="/equipment/work-orders" className={BUTTON}>
-                Work queue
-              </Link>
-            </form>
-            <EquipmentDispatchForm
-              key={`${shopId}:${actorId}:${data.selected?.id ?? "none"}`}
-              data={{
-                selected: data.selected,
-                addresses: data.addresses,
-                addressesPartial: data.addressesPartial,
-                technicians: data.technicians,
-                serviceVehicles: data.serviceVehicles,
-              }}
-              shopId={shopId}
-              actorId={actorId}
-            />
+            {dispatchAccess === "ready" ? (
+              <>
+                <form action={PATH} className="flex flex-wrap items-end gap-3">
+                  <label className="min-w-0 flex-1 text-sm">
+                    Active Equipment work order
+                    <select
+                      name="workOrder"
+                      defaultValue={data.selected?.id ?? ""}
+                      className={INPUT}
+                    >
+                      <option value="">Choose work order</option>
+                      {data.work.map((row) => (
+                        <option key={row.id} value={row.id}>
+                          {row.title} · {row.assetLabel}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <button className={BUTTON}>Prepare dispatch</button>
+                  <Link href="/equipment/work-orders" className={BUTTON}>
+                    Work queue
+                  </Link>
+                </form>
+                <EquipmentDispatchForm
+                  key={`${shopId}:${actorId}:${data.selected?.id ?? "none"}`}
+                  data={{
+                    selected: data.selected,
+                    addresses: data.addresses,
+                    addressesPartial: data.addressesPartial,
+                    technicians: data.technicians,
+                    serviceVehicles: data.serviceVehicles,
+                  }}
+                  shopId={shopId}
+                  actorId={actorId}
+                />
+              </>
+            ) : (
+              <div className="space-y-2">
+                <h2 className="font-semibold">Dispatch now</h2>
+                <p role="status" className="text-sm">
+                  {dispatchAccess === "forbidden"
+                    ? "You must be enabled as a Field operator to dispatch. You can still view the board."
+                    : dispatchAccess === "setup_required"
+                      ? "Complete Field service setup before dispatching. You can still view the board."
+                      : dispatchAccess === "plan_required"
+                        ? "Field service access is not enabled for this business. You can still view the board."
+                        : "Field access could not be verified. Refresh to try again. The board remains available."}
+                </p>
+                <Link href="/equipment/field" className={BUTTON}>
+                  Field access and setup
+                </Link>
+              </div>
+            )}
           </section>
           <section
             className={`${WORKSPACE_PANEL} space-y-4 p-4`}
