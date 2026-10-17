@@ -187,7 +187,7 @@ begin
   perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', t1), true);
   v_failed := false;
   begin
-    perform public.equipment_close_line_atomic(shop, line3, t1, t1, 'eqp-close-tech-key', 'forgot');
+    perform public.equipment_close_line_atomic(shop, line3, t1, 'eqp-close-tech-key', 'forgot');
   exception when others then v_failed := sqlerrm like '%denied%';
   end;
   if not v_failed then raise exception 'a technician must not use the office override'; end if;
@@ -195,7 +195,7 @@ begin
   perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', owner_id), true);
   v_failed := false;
   begin
-    perform public.equipment_close_line_atomic(shop, line3, owner_id, owner_id, 'eqp-close-noreason', '', 'Cause', 'Fix');
+    perform public.equipment_close_line_atomic(shop, line3, owner_id, 'eqp-close-noreason', '', 'Cause', 'Fix');
   exception when others then v_failed := sqlerrm like '%reason is required%';
   end;
   if not v_failed then raise exception 'override without a reason must be refused'; end if;
