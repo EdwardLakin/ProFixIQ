@@ -32,6 +32,10 @@ on conflict (id) do nothing;
 update public.profiles set shop_id = '7e200000-0000-4000-8000-000000000001'
 where id::text like '7e100000-%';
 
+-- The canonical punch requires active shop entitlement.
+update public.shops set billing_entitlement_override = 'active'
+where id = '7e200000-0000-4000-8000-000000000001';
+
 insert into public.customers (id, shop_id, name)
 values ('7e300000-0000-4000-8000-000000000001', '7e200000-0000-4000-8000-000000000001', 'EQP Customer');
 
