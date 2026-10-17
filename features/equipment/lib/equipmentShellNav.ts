@@ -133,7 +133,7 @@ export const EQUIPMENT_SHELL_NAV: readonly EquipmentShellItem[] = [
     key: "customers",
     label: "Customers",
     href: "/equipment/customers",
-    state: "planned",
+    state: "live",
     summary:
       "The businesses whose machines you repair, their equipment, and portal invitations for service requests, approvals and payment.",
     canonical: { label: "Customers", href: "/customers" },

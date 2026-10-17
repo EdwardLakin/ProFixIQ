@@ -155,7 +155,6 @@ describe("Equipment navigation registry", () => {
       (item) => item.state === "planned",
     );
     expect(planned.map((item) => item.key)).toEqual([
-      "customers",
       "billing",
       "reports",
       "settings",
@@ -195,7 +194,7 @@ describe("Equipment navigation registry", () => {
 });
 
 describe("Equipment planned entry points", () => {
-  it.each(["customers", "billing", "reports", "settings"])(
+  it.each(["billing", "reports", "settings"])(
     "serves /equipment/%s through the shared planned-page gate",
     (key) => {
       const page = read(pageFile(`/equipment/${key}`));
@@ -281,7 +280,8 @@ describe("EquipmentShell", () => {
         <p>page body</p>
       </EquipmentShell>,
     );
-    expect(screen.getAllByText("Soon")).toHaveLength(4);
+    expect(screen.getAllByText("Soon")).toHaveLength(3);
+    expect(EQUIPMENT_SHELL_NAV.find((item) => item.key === "customers")?.state).toBe("live");
     expect(EQUIPMENT_SHELL_NAV.find((item) => item.key === "parts")?.state).toBe("live");
     expect(EQUIPMENT_SHELL_NAV.find((item) => item.key === "dispatch")?.state).toBe("live");
   });
