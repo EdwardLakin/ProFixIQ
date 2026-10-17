@@ -1,6 +1,9 @@
 /* Scoped adapters let existing Equipment/Workspace presentation inherit the
    product palette without changing shared themes or workflow components. */
-.theme {
+/* Shared dialogs portal under body. Scope their tokens to a mounted Equipment
+   shell so Inbox and other Equipment dialogs retain the same product palette. */
+.theme,
+:global(body):has(.shell) :global([data-headlessui-portal]) {
   --theme-surface-page: #161c23;
   --theme-surface-panel: #252e38;
   --theme-surface-panel-strong: #1d252e;
@@ -12,6 +15,10 @@
   --theme-text-secondary: #ced7e1;
   --theme-text-muted: #afbdcc;
   --theme-border-soft: #465463;
+  --theme-input-bg: var(--theme-surface-inset);
+  --theme-input-border: var(--theme-border-soft);
+  --theme-input-text: var(--theme-text-primary);
+  --theme-text-on-accent: var(--equipment-amber-ink);
   --equipment-amber: #f4b544;
   --equipment-amber-ink: #161c23;
   --equipment-focus: #f4b544;
@@ -28,7 +35,10 @@
   color-scheme: dark;
 }
 
-:global(html[data-theme-mode="light"]) .theme {
+:global(html[data-theme-mode="light"]) .theme,
+:global(html[data-theme-mode="light"])
+  :global(body):has(.shell)
+  :global([data-headlessui-portal]) {
   --theme-surface-page: #eef2f5;
   --theme-surface-panel: #ffffff;
   --theme-surface-panel-strong: #f8fafc;
@@ -110,11 +120,17 @@
 .drawerPanel .iconButton {
   margin-left: auto;
 }
-.theme :is(button, a):focus-visible {
+.theme :is(button, a):focus-visible,
+:global(body):has(.shell)
+  :global([data-headlessui-portal])
+  :is(button, a):focus-visible {
   outline: 2px solid var(--equipment-focus);
   outline-offset: 2px;
 }
-.theme :is(button, a)[class*="rounded"] {
+.theme :is(button, a)[class*="rounded"],
+:global(body):has(.shell)
+  :global([data-headlessui-portal])
+  :is(button, a)[class*="rounded"] {
   border-radius: 10px;
 }
 .theme button[aria-label^="Switch to"] {
@@ -124,10 +140,16 @@
 }
 /* Existing Equipment actions (including the separate line-detail page) use
    this exact shared accent utility with white text. Amber requires dark ink. */
-.theme [class~="bg-[color:var(--accent-copper)]"] {
+.theme [class~="bg-[color:var(--accent-copper)]"],
+:global(body):has(.shell)
+  :global([data-headlessui-portal])
+  [class~="bg-[color:var(--accent-copper)]"] {
   color: var(--equipment-amber-ink);
 }
-.theme [class*="backdrop-blur"] {
+.theme [class*="backdrop-blur"],
+:global(body):has(.shell)
+  :global([data-headlessui-portal])
+  [class*="backdrop-blur"] {
   backdrop-filter: none;
 }
 @media (max-width: 1023px) {
@@ -139,7 +161,13 @@
   }
 }
 /* Preserve status meanings with legible foregrounds on pale Equipment panels. */
-:global(html[data-theme-mode="light"]) .theme [class~="text-red-400"] {
+:global(html[data-theme-mode="light"])
+  .theme
+  :is([class~="text-red-400"], [class~="text-red-300"]),
+:global(html[data-theme-mode="light"])
+  :global(body):has(.shell)
+  :global([data-headlessui-portal])
+  :is([class~="text-red-400"], [class~="text-red-300"]) {
   color: #b42318;
 }
 :global(html[data-theme-mode="light"]) .theme [class~="text-amber-400"] {
@@ -147,4 +175,19 @@
 }
 :global(html[data-theme-mode="light"]) .theme [class~="text-emerald-400"] {
   color: #087447;
+}
+
+/* Shared Inbox tabs/actions use the soft accent; keep fills amber while the
+   soft token remains a contrasting text/focus color in light mode. */
+.theme [class~="bg-[var(--accent-copper-soft)]"],
+:global(body):has(.shell)
+  :global([data-headlessui-portal])
+  [class~="bg-[var(--accent-copper-soft)]"] {
+  background-color: var(--equipment-amber);
+  color: var(--equipment-amber-ink);
+}
+:global(body):has(.shell)
+  :global([data-headlessui-portal])
+  [class~="absolute"][class*="gradient"] {
+  background-image: none;
 }
