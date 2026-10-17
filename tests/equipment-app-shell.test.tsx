@@ -155,7 +155,6 @@ describe("Equipment navigation registry", () => {
       (item) => item.state === "planned",
     );
     expect(planned.map((item) => item.key)).toEqual([
-      "dispatch",
       "parts",
       "customers",
       "billing",
@@ -197,7 +196,7 @@ describe("Equipment navigation registry", () => {
 });
 
 describe("Equipment planned entry points", () => {
-  it.each(["dispatch", "parts", "customers", "billing", "reports", "settings"])(
+  it.each(["parts", "customers", "billing", "reports", "settings"])(
     "serves /equipment/%s through the shared planned-page gate",
     (key) => {
       const page = read(pageFile(`/equipment/${key}`));
@@ -283,7 +282,8 @@ describe("EquipmentShell", () => {
         <p>page body</p>
       </EquipmentShell>,
     );
-    expect(screen.getAllByText("Soon")).toHaveLength(6);
+    expect(screen.getAllByText("Soon")).toHaveLength(5);
+    expect(EQUIPMENT_SHELL_NAV.find((item) => item.key === "dispatch")?.state).toBe("live");
   });
 
   it("keeps the asset-engine links in the markup at every width", () => {

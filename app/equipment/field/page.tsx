@@ -1,6 +1,7 @@
 import { unstable_noStore as noStore } from "next/cache";
 
 import EquipmentAccessState from "@/features/equipment/components/EquipmentAccessState";
+import EquipmentPersonalAcknowledgements from "@/features/equipment/dispatch/server/EquipmentPersonalAcknowledgements";
 import EquipmentFieldEntryView from "@/features/equipment/components/EquipmentFieldEntryView";
 import {
   EQUIPMENT_FIELD_ENTRY_ROLES,
@@ -32,7 +33,9 @@ export default async function EquipmentFieldPage() {
 
   const entitlement = await resolveEquipmentPageEntitlement(profile.shop_id);
   if (entitlement !== "enabled") {
-    return <EquipmentAccessState state={entitlement} retryHref="/equipment/field" />;
+    return (
+      <EquipmentAccessState state={entitlement} retryHref="/equipment/field" />
+    );
   }
 
   const supabase = createServerSupabaseRSC();
@@ -59,5 +62,14 @@ export default async function EquipmentFieldPage() {
     console.error("[equipment/field] field access check failed", error);
   }
 
-  return <EquipmentFieldEntryView state={state} canConfigure={canConfigure} />;
+  return (
+    <EquipmentFieldEntryView state={state} canConfigure={canConfigure}>
+      {state === "ready" ? (
+        <EquipmentPersonalAcknowledgements
+          shopId={profile.shop_id}
+          actorId={profile.id}
+        />
+      ) : null}
+    </EquipmentFieldEntryView>
+  );
 }

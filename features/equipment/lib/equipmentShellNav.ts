@@ -79,7 +79,7 @@ export const EQUIPMENT_SHELL_NAV: readonly EquipmentShellItem[] = [
     key: "dispatch",
     label: "Dispatch",
     href: "/equipment/dispatch",
-    state: "planned",
+    state: "live",
     summary:
       "One-click dispatch of a technician and service truck to a machine, from the same work order that carries the repair.",
     canonical: { label: "Dispatch board", href: "/dashboard/dispatch" },
