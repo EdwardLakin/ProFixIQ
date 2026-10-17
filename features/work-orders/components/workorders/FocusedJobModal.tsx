@@ -1958,6 +1958,13 @@ export default function FocusedJobModal(props: {
 
             // Equipment shops: others are still working, so this was a punch-off.
             if (outcome && outcome.lineClosed === false) {
+              // A non-final punch-off does not save the story; keep it on the
+              // line the same way Save draft does so it is not lost.
+              const { error: storyError } = await supabase
+                .from("work_order_lines")
+                .update({ cause, correction } as DB["public"]["Tables"]["work_order_lines"]["Update"])
+                .eq("id", line.id);
+              if (storyError) showErr("Save story failed", storyError);
               toast.success(
                 describePunchOff({
                   lineClosed: false,

@@ -6,7 +6,9 @@ import type { Database } from "@shared/types/types/supabase";
 import { EquipmentDispatchError } from "@/features/equipment/dispatch/server/equipmentDispatchService";
 import { punchOffLine } from "@/features/equipment/dispatch/server/punchOffService";
 import { resolveEquipmentAddonEntitlementForShop } from "@/features/equipment/server/equipmentAddonEntitlement";
+import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { resolveAuthenticatedStaffProfile } from "@/features/shared/lib/server/admin-access";
+import { isDemoAccessExpired } from "@/features/shared/lib/server/demo-shop";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
 import { errorStatus } from "@/features/work-orders/server/applyJobPunchTransition";
 
@@ -26,8 +28,12 @@ const NO_RUNNING_TIMER = /no running timer/i;
  * holds the Equipment add-on AND the technician has a running timer on the
  * line. Every other case returns `handled: false` and the route continues with
  * the existing finish exactly as before (other products, technicians without a
- * timer, entitlement or profile lookups that fail). Failing open to the
- * existing behavior is deliberate: this never blocks a Finish that worked.
+ * timer, a failed profile lookup).
+ *
+ * If the add-on cannot be verified, the existing finish is only safe when nobody
+ * else is running on the line (the two paths then do the same thing). When
+ * another technician is running, completing the line would strand their timer,
+ * so the request fails with a retryable 503 instead.
  *
  * The database command wraps the canonical punch transition, so assignment,
  * product-access, approval, inspection and cause/correction rules still apply.
@@ -47,12 +53,26 @@ export async function finishViaEquipmentLastOff(input: {
   );
   if (!profile?.shop_id) return { handled: false };
 
+  let entitled: boolean;
   try {
-    const entitlement = await resolveEquipmentAddonEntitlementForShop(profile.shop_id);
-    if (!entitlement.enabled) return { handled: false };
+    entitled = (await resolveEquipmentAddonEntitlementForShop(profile.shop_id)).enabled;
   } catch (error) {
-    console.error("[equipment/finish] entitlement lookup failed; using standard finish", error);
-    return { handled: false };
+    console.error("[equipment/finish] entitlement lookup failed", error);
+    return failClosedIfOthersRunning({ shopId: profile.shop_id, lineId: input.lineId, technicianId: profile.id });
+  }
+  if (!entitled) return { handled: false };
+
+  // The same gates the standard finish applies before it reaches the database.
+  if (isDemoAccessExpired(profile.demo_access_expires_at)) {
+    return { handled: true, ok: false, status: 403, error: "Forbidden" };
+  }
+  if (!getActorCapabilities({ role: profile.role }).canPerformAssignedWork) {
+    return {
+      handled: true,
+      ok: false,
+      status: 403,
+      error: "This staff role is not permitted to perform assigned work.",
+    };
   }
 
   try {
@@ -63,7 +83,10 @@ export async function finishViaEquipmentLastOff(input: {
       shopId: profile.shop_id,
       technicianId: profile.id,
       actorUserId: profile.id,
-      operationKey: input.operationKey,
+      // The route accepts any non-empty key; the command needs at least 8
+      // characters, so derive a longer one. It stays stable for a given
+      // (line, key), which keeps retries idempotent.
+      operationKey: `finish:${input.lineId}:${input.operationKey}`,
       request: {
         lineId: input.lineId,
         cause: input.cause?.trim() || undefined,
@@ -93,4 +116,28 @@ export async function finishViaEquipmentLastOff(input: {
     }
     throw error;
   }
+}
+
+const RETRY_MESSAGE = "Equipment status could not be verified. Try again in a moment.";
+
+async function failClosedIfOthersRunning(input: {
+  shopId: string;
+  lineId: string;
+  technicianId: string;
+}): Promise<EquipmentFinishOutcome> {
+  const { data, error } = await createAdminSupabase()
+    .from("work_order_line_labor_segments")
+    .select("technician_id")
+    .eq("shop_id", input.shopId)
+    .eq("work_order_line_id", input.lineId)
+    .neq("technician_id", input.technicianId)
+    .is("ended_at", null)
+    .limit(1);
+  // Unknown or someone else running: do not complete the line around them.
+  if (error || (data ?? []).length > 0) {
+    return { handled: true, ok: false, status: 503, error: RETRY_MESSAGE };
+  }
+  // Nobody else is running, so the standard finish does exactly what the
+  // punch-off would have done.
+  return { handled: false };
 }

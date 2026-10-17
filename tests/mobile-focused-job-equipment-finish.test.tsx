@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   punch: vi.fn(),
+  clearDraft: vi.fn(),
   toastSuccess: vi.fn(),
   findProjectedTechnicianJob: vi.fn(),
   getTechnicianJobEditorDraft: vi.fn(),
@@ -93,7 +94,7 @@ vi.mock(
     >();
     return {
       ...actual,
-      clearTechnicianJobEditorDraftFields: vi.fn(),
+      clearTechnicianJobEditorDraftFields: mocks.clearDraft,
       findProjectedTechnicianJob: mocks.findProjectedTechnicianJob,
       getTechnicianJobEditorDraft: mocks.getTechnicianJobEditorDraft,
       saveTechnicianJobEditorDraft: vi.fn(),
@@ -272,6 +273,7 @@ describe("mobile focused-job Finish: Equipment last-one-off", () => {
     for (const outcome of [undefined, { lineClosed: true }]) {
       mocks.punch.mockReset();
       mocks.toastSuccess.mockReset();
+      mocks.clearDraft.mockReset();
       mocks.punch.mockResolvedValue(outcome);
       const view = await (async () => {
         const rendered = render(
@@ -287,6 +289,8 @@ describe("mobile focused-job Finish: Equipment last-one-off", () => {
         cause: "Worn seal",
         correction: "Replaced seal",
       });
+      // A finished job clears the technician's local story draft, as before.
+      expect(mocks.clearDraft).toHaveBeenCalled();
       view.unmount();
     }
   });
@@ -303,6 +307,8 @@ describe("mobile focused-job Finish: Equipment last-one-off", () => {
       expect(mocks.toastSuccess).toHaveBeenCalledWith("Punched off. 1 other technician is still on this job."),
     );
     expect(mocks.toastSuccess).not.toHaveBeenCalledWith("Job completed");
+    // The story was not saved by a non-final punch-off, so the draft is kept.
+    expect(mocks.clearDraft).not.toHaveBeenCalled();
     expect(window.dispatchEvent).not.toHaveBeenCalledWith(
       expect.objectContaining({ type: "work-order-line:completed" }),
     );

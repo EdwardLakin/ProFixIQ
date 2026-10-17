@@ -1544,8 +1544,11 @@ export default function MobileFocusedJob(props: {
                 cause,
                 correction,
               });
+              // A non-final punch-off does not save the story, so keep the
+              // technician's draft until the line actually closes.
+              const keepDraft = outcome && outcome.lineClosed === false;
               const scope = getOfflineMutationScope();
-              if (scope)
+              if (scope && !keepDraft)
                 await clearTechnicianJobEditorDraftFields({
                   scope,
                   lineId: line.id,

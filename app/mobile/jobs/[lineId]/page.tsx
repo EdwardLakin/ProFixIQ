@@ -192,6 +192,9 @@ export default function MobileJobPage() {
       setStoryOpen(false);
       // Equipment shops: others are still working, so this was a punch-off.
       if (outcome && outcome.lineClosed === false) {
+        // A non-final punch-off does not save the story; keep it the same way
+        // Save draft does so it is not lost.
+        await saveStory(cause, correction).catch(() => undefined);
         toast.success(
           describePunchOff({
             lineClosed: false,
@@ -211,7 +214,7 @@ export default function MobileJobPage() {
         }),
       );
     },
-    [checkStoryConflict, lineId, loadStory, router],
+    [checkStoryConflict, lineId, loadStory, router, saveStory],
   );
 
   const openStory = () => {
