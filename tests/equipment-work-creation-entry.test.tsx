@@ -37,8 +37,8 @@ vi.mock("@/features/equipment/server/pageEntitlement", () => ({
 vi.mock("@/features/equipment/server/loadEquipmentDirectoryPage", () => ({
   loadEquipmentDirectoryPage: mocks.load,
 }));
-vi.mock("@/features/equipment/server/loadEquipmentWorkOrders", () => ({
-  loadEquipmentWorkOrders: mocks.work,
+vi.mock("@/features/equipment/server/loadEquipmentWorkQueue", () => ({
+  loadEquipmentWorkQueue: mocks.work,
 }));
 
 import NewWorkPage from "../app/equipment/work-orders/new/page";
@@ -101,7 +101,7 @@ beforeEach(() => {
   mocks.role = "owner";
   mocks.entitlement = "enabled";
   mocks.load.mockReset().mockResolvedValue(directory());
-  mocks.work.mockReset().mockResolvedValue({ rows: [], truncated: false });
+  mocks.work.mockReset().mockResolvedValue({ rows: [], partial: false, assets: [], statuses: [], summary: {records: 0, workOrders: 0, estimates: 0, active: 0}, info: {page: 1, pageCount: 1, total: 0, from: 0, to: 0} });
   mocks.admin.mockClear();
 });
 
@@ -110,7 +110,7 @@ describe("Equipment Work creation entry", () => {
     "offers creation to %s and uses the existing handoff",
     async (role) => {
       mocks.role = role;
-      const { unmount } = render(await WorkPage());
+      const { unmount } = render(await WorkPage({}));
       expect(
         screen.getByRole("link", { name: "New Work Order" }),
       ).toHaveAttribute("href", "/equipment/work-orders/new");
@@ -133,7 +133,7 @@ describe("Equipment Work creation entry", () => {
 
   it("preserves the parts role's read-only queue while denying the creation route", async () => {
     mocks.role = "parts";
-    render(await WorkPage());
+    render(await WorkPage({}));
     expect(screen.queryByRole("link", { name: "New Work Order" })).toBeNull();
     mocks.admin.mockClear();
     await expect(NewWorkPage({})).rejects.toThrow("Access denied");
