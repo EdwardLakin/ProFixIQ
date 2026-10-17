@@ -1,3 +1,4 @@
+import { getEquipmentClassification } from "@/features/equipment/lib/equipmentClassification";
 import {
   getSessionMatchedOfflineScope,
   runMutationWithOfflineQueue,
@@ -32,6 +33,13 @@ type ApiError = { error?: string };
 export type JobPunchTransitionResult = {
   lineClosed?: boolean;
   remaining?: Array<{ technicianId: string; state: string }>;
+  /**
+   * A Finish was queued (offline or not yet sent) and the server has not said
+   * whether it closed the line. Set for Equipment and for shops whose Equipment
+   * status could not be determined: callers must show "pending sync", never a
+   * completion. Absent for ordinary Shop finishes, which keep today's behavior.
+   */
+  awaitingServer?: boolean;
 };
 
 function buildTransitionPath(lineId: string, action: JobPunchAction): string {
@@ -105,6 +113,10 @@ export async function runJobPunchTransition(
   if (!scope) {
     return post();
   }
+  // Only a Finish can end up as a punch-off, so only a Finish needs the
+  // classification, which is remembered with the queued request.
+  const equipmentClass =
+    action === "finish" ? await getEquipmentClassification(scope) : undefined;
   // The queue's runner cannot return a value, so keep the server's answer here.
   // It is only reported when the request actually ran online and was neither
   // queued nor conflicted; queued or replayed requests have no answer yet.
@@ -112,13 +124,27 @@ export async function runJobPunchTransition(
   const outcome = await runMutationWithOfflineQueue({
     clientMutationId,
     actionType: "job:punch-transition",
-    payload: { lineId, action, body: payload, operationKey, occurredAt },
+    payload: {
+      lineId,
+      action,
+      body: payload,
+      operationKey,
+      occurredAt,
+      ...(equipmentClass ? { equipmentClass } : {}),
+    },
     orderKey: `${lineId}:job-punch:${operationKey}`,
     scope,
     runner: async () => {
       serverResult = (await post()) ?? undefined;
     },
   });
-  if (outcome?.queued || outcome?.conflicted) return undefined;
+  if (outcome?.queued) {
+    // Not answered yet. Ordinary Shop finishes keep the optimistic behavior;
+    // Equipment (or undetermined) finishes must wait for the server.
+    return action === "finish" && equipmentClass !== "standard"
+      ? { awaitingServer: true }
+      : undefined;
+  }
+  if (outcome?.conflicted) return undefined;
   return serverResult;
 }

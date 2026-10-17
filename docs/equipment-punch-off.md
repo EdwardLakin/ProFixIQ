@@ -73,3 +73,27 @@ every line in an Equipment shop, not only lines on Equipment assets.
 
 Rollback: remove the `finishViaEquipmentLastOff` call from the finish route. No data migration is
 involved.
+
+### Per-technician Start / Finish and pending sync (Equipment shops)
+
+The decision to treat a shop as Equipment on a screen comes from the authoritative entitlement endpoint
+(`/api/equipment/entitlement`). The last good answer is remembered per shop and user so it still works
+offline. If it has never been learned, the answer is "unknown": the screen then behaves exactly as it
+always has, and a queued Finish is shown as pending, never completed.
+
+- **Start / Finish follows your own timer.** On the technician job screen, a technician who punched off
+  while others keep working sees **Start Job** (to rejoin). Technicians still working see **Finish Job**.
+  The line stays **Active** while anyone is on it. The server still decides who the last technician is.
+- **A queued Finish is pending, not completed**, for Equipment (and for an unknown classification). The
+  job shows "Finish saved. It will sync when you're back online.", the queued request does not project as
+  completed, no `work-order-line:completed` event is emitted, and the technician's story is kept as a draft.
+- **When the queued Finish reaches the server** the open screen is told the result: `lineClosed=true`
+  shows "Job completed" and emits the completion event; `lineClosed=false` refreshes the line and shows
+  that the technician punched off while work continues. A replay that fails or conflicts emits nothing
+  and goes through the existing retry/conflict handling, so the Finish stays pending.
+- **Ordinary Shops are unchanged**, including the optimistic "Job completed" for a queued Finish.
+
+Known limits: the desktop job modal (`FocusedJobModal`) has no per-technician timer data, so its
+Start/Finish button still reflects the line as a whole (it does show the pending-sync message and the
+punch-off message). A request queued before this change keeps the old behavior until it syncs. The
+classification is shop-level, matching the server rule, which applies to every line in an Equipment shop.

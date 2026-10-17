@@ -1,12 +1,16 @@
 import React from "react";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   fetch: vi.fn(),
   punch: vi.fn(),
   clearDraft: vi.fn(),
+  entitlement: { status: 200, body: { enabled: true } as unknown },
+  viewerProfileId: "tech-a",
+  active: ["tech-b"] as string[],
   toastSuccess: vi.fn(),
+  toastWarning: vi.fn(),
   findProjectedTechnicianJob: vi.fn(),
   getTechnicianJobEditorDraft: vi.fn(),
   realtimeHandlers: {} as Record<string, (payload: unknown) => void>,
@@ -16,7 +20,7 @@ vi.mock("sonner", () => ({
   toast: {
     error: vi.fn(),
     success: mocks.toastSuccess,
-    warning: vi.fn(),
+    warning: mocks.toastWarning,
   },
 }));
 
@@ -77,6 +81,7 @@ vi.mock("@/features/shared/lib/supabase/client", () => {
   channel.subscribe = vi.fn(() => channel);
   return {
     createBrowserSupabase: vi.fn(() => ({
+      auth: { getUser: async () => ({ data: { user: { id: "user-1" } } }) },
       channel: vi.fn(() => channel),
       removeChannel: vi.fn(),
       storage: {
@@ -159,6 +164,12 @@ vi.mock("@/features/shared/voice/VoiceDictationButton", () => ({
   default: () => null,
 }));
 
+vi.mock("@/features/shared/lib/authenticated-profile", () => ({
+  resolveCanonicalStaffProfile: async () => ({ profile: { id: mocks.viewerProfileId }, error: null }),
+}));
+
+import { resetEquipmentClassificationForTests } from "@/features/equipment/lib/equipmentClassification";
+import { JOB_FINISH_REPLAYED_EVENT } from "@/features/shared/lib/offline/jobFinishEvents";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 
 const WORK_ORDER_ID = "11111111-1111-4111-8111-111111111111";
@@ -254,9 +265,16 @@ describe("mobile focused-job Finish: Equipment last-one-off", () => {
     mocks.findProjectedTechnicianJob.mockResolvedValue(null);
     mocks.getTechnicianJobEditorDraft.mockResolvedValue(null);
     // A fresh Response per call: the screen reads the body more than once.
-    mocks.fetch.mockImplementation(async () =>
-      response(workOrderSnapshot(line({ status: "awaiting" }), ["tech-1"])),
-    );
+    resetEquipmentClassificationForTests();
+    mocks.entitlement = { status: 200, body: { enabled: true } };
+    mocks.viewerProfileId = "tech-a";
+    mocks.active = ["tech-a"];
+    mocks.fetch.mockImplementation(async (url: string) => {
+      if (String(url).startsWith("/api/equipment/entitlement")) {
+        return new Response(JSON.stringify(mocks.entitlement.body), { status: mocks.entitlement.status });
+      }
+      return response(workOrderSnapshot(line({ status: "awaiting" }), mocks.active));
+    });
     vi.stubGlobal("fetch", mocks.fetch);
     vi.spyOn(console, "error").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
@@ -312,5 +330,188 @@ describe("mobile focused-job Finish: Equipment last-one-off", () => {
     expect(window.dispatchEvent).not.toHaveBeenCalledWith(
       expect.objectContaining({ type: "work-order-line:completed" }),
     );
+  });
+});
+
+describe("mobile focused-job: each technician's own Start/Finish (Equipment)", () => {
+  async function renderAs(options: {
+    viewer: string;
+    active: string[];
+    entitlement?: { status: number; body: unknown };
+  }) {
+    mocks.viewerProfileId = options.viewer;
+    mocks.active = options.active;
+    mocks.entitlement = options.entitlement ?? { status: 200, body: { enabled: true } };
+    renderFocusedJob();
+    // Let the classification and viewer lookups settle.
+    await screen.findByRole("button", { name: /Finish Job|Start Job/ });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+    });
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    setOnline(true);
+    resetEquipmentClassificationForTests();
+    mocks.findProjectedTechnicianJob.mockResolvedValue(null);
+    mocks.getTechnicianJobEditorDraft.mockResolvedValue(null);
+    mocks.punch.mockReset().mockResolvedValue(undefined);
+    mocks.fetch.mockImplementation(async (url: string) => {
+      if (String(url).startsWith("/api/equipment/entitlement")) {
+        return new Response(JSON.stringify(mocks.entitlement.body), { status: mocks.entitlement.status });
+      }
+      return response(workOrderSnapshot(line({ status: "in_progress" }), mocks.active));
+    });
+    vi.stubGlobal("fetch", mocks.fetch);
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  it("after A punches off while B continues: A can rejoin, the line stays Active", async () => {
+    await renderAs({ viewer: "tech-a", active: ["tech-b"] });
+
+    expect(await screen.findByRole("button", { name: "Start Job" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Finish Job" })).toBeNull();
+    expect(screen.getByText("Active", { selector: "span" })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Start Job" }));
+    await waitFor(() => expect(mocks.punch).toHaveBeenCalledWith(LINE_ID, "start"));
+  });
+
+  it("B, still working, keeps Finish Job and the line stays Active", async () => {
+    await renderAs({ viewer: "tech-b", active: ["tech-b"] });
+    expect(await screen.findByRole("button", { name: "Finish Job" })).toBeEnabled();
+    expect(screen.queryByRole("button", { name: "Start Job" })).toBeNull();
+    expect(screen.getByText("Active", { selector: "span" })).toBeInTheDocument();
+  });
+
+  it("with both on the job, each sees Finish Job (the server decides who is last)", async () => {
+    await renderAs({ viewer: "tech-a", active: ["tech-a", "tech-b"] });
+    expect(await screen.findByRole("button", { name: "Finish Job" })).toBeEnabled();
+  });
+
+  it("the final technician's Finish closes the line and announces the completion", async () => {
+    mocks.punch.mockResolvedValue({ lineClosed: true });
+    window.dispatchEvent = vi.fn(window.dispatchEvent.bind(window));
+    await renderAs({ viewer: "tech-b", active: ["tech-b"] });
+
+    fireEvent.click(await screen.findByRole("button", { name: "Finish Job" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Submit story" }));
+
+    await waitFor(() => expect(mocks.toastSuccess).toHaveBeenCalledWith("Job completed"));
+    expect(window.dispatchEvent).toHaveBeenCalledWith(
+      expect.objectContaining({ type: "work-order-line:completed" }),
+    );
+  });
+
+  describe("unchanged for everyone else", () => {
+    it("an ordinary Shop keeps Finish Job for any active line, whoever is active", async () => {
+      await renderAs({ viewer: "tech-a", active: ["tech-b"], entitlement: { status: 200, body: { enabled: false } } });
+      expect(await screen.findByRole("button", { name: "Finish Job" })).toBeEnabled();
+      expect(screen.queryByRole("button", { name: "Start Job" })).toBeNull();
+    });
+
+    it("an undetermined classification is never guessed: the screen behaves as it always has", async () => {
+      await renderAs({ viewer: "tech-a", active: ["tech-b"], entitlement: { status: 503, body: { error: "x" } } });
+      expect(await screen.findByRole("button", { name: "Finish Job" })).toBeEnabled();
+      expect(screen.queryByRole("button", { name: "Start Job" })).toBeNull();
+    });
+
+    it("an unclaimed line still offers Start Job", async () => {
+      mocks.viewerProfileId = "tech-a";
+      mocks.active = [];
+      mocks.fetch.mockImplementation(async (url: string) =>
+        String(url).startsWith("/api/equipment/entitlement")
+          ? new Response(JSON.stringify({ enabled: true }), { status: 200 })
+          : response(workOrderSnapshot(line({ status: "awaiting" }), [])),
+      );
+      renderFocusedJob();
+      expect(await screen.findByRole("button", { name: "Start Job" })).toBeEnabled();
+    });
+  });
+
+  describe("a Finish that is still pending sync", () => {
+    async function submitFinish() {
+      await renderAs({ viewer: "tech-b", active: ["tech-b"] });
+      window.dispatchEvent = vi.fn(window.dispatchEvent.bind(window));
+      fireEvent.click(await screen.findByRole("button", { name: "Finish Job" }));
+      fireEvent.click(await screen.findByRole("button", { name: "Submit story" }));
+    }
+
+    it("shows pending sync, not completed, and emits no completion", async () => {
+      mocks.punch.mockResolvedValue({ awaitingServer: true });
+      await submitFinish();
+
+      await waitFor(() =>
+        expect(mocks.toastWarning).toHaveBeenCalledWith("Finish saved. It will sync when you're back online."),
+      );
+      expect(mocks.toastSuccess).not.toHaveBeenCalledWith("Job completed");
+      expect(window.dispatchEvent).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "work-order-line:completed" }),
+      );
+      // The story stays as a draft until the server confirms.
+      expect(mocks.clearDraft).not.toHaveBeenCalled();
+    });
+
+    it("replay says lineClosed=true: now it is completed", async () => {
+      mocks.punch.mockResolvedValue({ awaitingServer: true });
+      await submitFinish();
+      await waitFor(() => expect(mocks.toastWarning).toHaveBeenCalled());
+
+      await act(async () => {
+        window.dispatchEvent(
+          new CustomEvent(JOB_FINISH_REPLAYED_EVENT, { detail: { lineId: LINE_ID, lineClosed: true } }),
+        );
+      });
+
+      await waitFor(() => expect(mocks.toastSuccess).toHaveBeenCalledWith("Job completed"));
+      expect(window.dispatchEvent).toHaveBeenCalledWith(
+        expect.objectContaining({ type: "work-order-line:completed" }),
+      );
+      expect(mocks.clearDraft).toHaveBeenCalled();
+    });
+
+    it("replay says lineClosed=false: refreshes and reports a punch-off, without completing", async () => {
+      mocks.punch.mockResolvedValue({ awaitingServer: true });
+      await submitFinish();
+      await waitFor(() => expect(mocks.toastWarning).toHaveBeenCalled());
+      const loadsBefore = mocks.fetch.mock.calls.filter(([url]) => !String(url).startsWith("/api/equipment")).length;
+
+      await act(async () => {
+        window.dispatchEvent(
+          new CustomEvent(JOB_FINISH_REPLAYED_EVENT, { detail: { lineId: LINE_ID, lineClosed: false } }),
+        );
+      });
+
+      await waitFor(() =>
+        expect(mocks.toastSuccess).toHaveBeenCalledWith(
+          "Punched off. Other technicians are still working on this job.",
+        ),
+      );
+      const loadsAfter = mocks.fetch.mock.calls.filter(([url]) => !String(url).startsWith("/api/equipment")).length;
+      expect(loadsAfter).toBeGreaterThan(loadsBefore);
+      expect(mocks.toastSuccess).not.toHaveBeenCalledWith("Job completed");
+      expect(window.dispatchEvent).not.toHaveBeenCalledWith(
+        expect.objectContaining({ type: "work-order-line:completed" }),
+      );
+    });
+
+    it("ignores a replay for another line, and stays pending if the replay failed or conflicted (no event)", async () => {
+      mocks.punch.mockResolvedValue({ awaitingServer: true });
+      await submitFinish();
+      await waitFor(() => expect(mocks.toastWarning).toHaveBeenCalled());
+      mocks.toastSuccess.mockClear();
+
+      await act(async () => {
+        window.dispatchEvent(
+          new CustomEvent(JOB_FINISH_REPLAYED_EVENT, { detail: { lineId: "some-other-line", lineClosed: true } }),
+        );
+      });
+      await act(async () => {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+      });
+      expect(mocks.toastSuccess).not.toHaveBeenCalled();
+    });
   });
 });

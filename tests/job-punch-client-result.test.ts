@@ -2,6 +2,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 
+const classification = vi.hoisted(() => ({ value: vi.fn() }));
+vi.mock("@/features/equipment/lib/equipmentClassification", () => ({
+  getEquipmentClassification: (...args: unknown[]) => classification.value(...args),
+}));
+
 const offline = vi.hoisted(() => ({
   getSessionMatchedOfflineScope: vi.fn(),
   runMutationWithOfflineQueue: vi.fn(),
@@ -13,6 +18,7 @@ describe("runJobPunchTransition result", () => {
     vi.restoreAllMocks();
     offline.getSessionMatchedOfflineScope.mockReset().mockResolvedValue(null);
     offline.runMutationWithOfflineQueue.mockReset();
+    classification.value.mockReset().mockResolvedValue("standard");
   });
 
   it("returns what the server reported, so Equipment shops can tell a punch-off from a completion", async () => {
@@ -83,9 +89,42 @@ describe("runJobPunchTransition result", () => {
       await expect(runJobPunchTransition("line-1", "finish", {})).resolves.toMatchObject({ lineClosed: true });
     });
 
-    it("returns nothing for a request that was queued, because there is no answer yet", async () => {
-      offline.runMutationWithOfflineQueue.mockResolvedValue({ queued: true, conflicted: false });
-      await expect(runJobPunchTransition("line-1", "finish", {})).resolves.toBeUndefined();
+    describe("a queued Finish (no answer from the server yet)", () => {
+      beforeEach(() => {
+        offline.runMutationWithOfflineQueue.mockResolvedValue({ queued: true, conflicted: false });
+      });
+
+      it("is pending, never completed, for an Equipment shop", async () => {
+        classification.value.mockResolvedValue("equipment");
+        await expect(runJobPunchTransition("line-1", "finish", {})).resolves.toEqual({ awaitingServer: true });
+      });
+
+      it("is pending when the classification is unknown, instead of guessing completion", async () => {
+        classification.value.mockResolvedValue("unknown");
+        await expect(runJobPunchTransition("line-1", "finish", {})).resolves.toEqual({ awaitingServer: true });
+      });
+
+      it("keeps today's optimistic behavior for an ordinary Shop", async () => {
+        classification.value.mockResolvedValue("standard");
+        await expect(runJobPunchTransition("line-1", "finish", {})).resolves.toBeUndefined();
+      });
+
+      it("remembers the classification on the queued request so projection and replay can use it", async () => {
+        classification.value.mockResolvedValue("equipment");
+        await runJobPunchTransition("line-1", "finish", {});
+        const queued = offline.runMutationWithOfflineQueue.mock.calls[0][0] as { payload: Record<string, unknown> };
+        expect(queued.payload).toMatchObject({ lineId: "line-1", action: "finish", equipmentClass: "equipment" });
+      });
+
+      it("does not classify or change anything for other actions", async () => {
+        for (const action of ["start", "pause", "resume"] as const) {
+          classification.value.mockClear();
+          await expect(runJobPunchTransition("line-1", action, {})).resolves.toBeUndefined();
+          expect(classification.value).not.toHaveBeenCalled();
+          const queued = offline.runMutationWithOfflineQueue.mock.calls.at(-1)?.[0] as { payload: Record<string, unknown> };
+          expect(queued.payload).not.toHaveProperty("equipmentClass");
+        }
+      });
     });
 
     it("returns nothing for a conflicted request", async () => {

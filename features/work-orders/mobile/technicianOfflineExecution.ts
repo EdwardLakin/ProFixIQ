@@ -100,6 +100,17 @@ function projectLine(
     };
   }
   if (action === "finish") {
+    // Equipment (or undetermined) finishes may only punch this technician off,
+    // so a queued one must not look completed until the server confirms it.
+    // Requests queued before this field existed keep the original behavior.
+    const equipmentClass = text(payload.equipmentClass);
+    if (equipmentClass !== null && equipmentClass !== "standard") {
+      return {
+        ...line,
+        cause: text(body.cause) ?? line.cause,
+        correction: text(body.correction) ?? line.correction,
+      };
+    }
     return {
       ...line,
       status: "completed",

@@ -1956,6 +1956,14 @@ export default function FocusedJobModal(props: {
               throw error;
             }
 
+            // Queued Equipment finish: the server has not confirmed a completion.
+            if (outcome && outcome.awaitingServer === true) {
+              toast.warning("Finish saved. It will sync when you're back online.");
+              setOpenComplete(false);
+              await refresh();
+              return;
+            }
+
             // Equipment shops: others are still working, so this was a punch-off.
             if (outcome && outcome.lineClosed === false) {
               // A non-final punch-off does not save the story; keep it on the
