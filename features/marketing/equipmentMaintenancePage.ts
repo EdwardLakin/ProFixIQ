@@ -57,7 +57,7 @@ export const equipmentMaintenancePage = {
     lead:
       "ProFixIQ Equipment adds an equipment-specific maintenance layer to Complete Operations for off-road, construction, industrial, mining, material-handling, aerial, forestry, agricultural, energy, municipal, stationary, and attachment assets.",
     primaryCta: {
-      label: "See Equipment pricing",
+      label: "Equipment — coming soon",
       href: "/compare-plans#equipment",
     },
     secondaryCta: {
@@ -157,9 +157,9 @@ export const equipmentMaintenancePage = {
       eyebrow: "ProFixIQ Equipment",
       heading: "Add the equipment maintenance layer to Complete Operations.",
       body:
-        "Equipment is $149 USD per month per location and requires Complete Operations. New Complete + Equipment subscriptions are $648 USD per month per location before taxes or added capacity.",
+        "Equipment is coming soon and is not open for trial or purchase yet. Planned pricing is $149 USD per month per location and requires Complete Operations. New Complete + Equipment subscriptions are $648 USD per month per location before taxes or added capacity.",
       primary: {
-        label: "See Complete + Equipment pricing",
+        label: "Equipment — coming soon",
         href: "/compare-plans#equipment",
       },
       secondary: {

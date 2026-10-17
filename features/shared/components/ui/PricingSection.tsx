@@ -114,6 +114,9 @@ export default function PricingSection({
     equipmentAddon = false,
   ) => {
     if (busyKey) return;
+    // Equipment is Coming soon. The server rejects it too; this keeps a stale
+    // handler or hand-edited DOM from even attempting the request.
+    if (equipmentAddon) return;
     if (equipmentAddon && window.location.pathname !== "/compare-plans") {
       window.location.href = "/compare-plans#equipment";
       return;
@@ -264,7 +267,9 @@ export default function PricingSection({
           <article className={`${styles.card} rounded-[1.5rem] border p-6 sm:p-7`}>
             <div className="grid gap-7 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
               <div>
-                <div className={`${styles.accentText} text-sm font-bold`}>Equipment add-on</div>
+                <div className={`${styles.accentText} text-sm font-bold`}>
+                  Equipment add-on · Coming soon
+                </div>
                 <div className="mt-4 flex flex-wrap items-end gap-x-2 gap-y-1">
                   <span className={`${styles.primaryText} text-4xl font-semibold tracking-[-0.045em]`}>
                     +${equipmentPrice}
@@ -275,7 +280,7 @@ export default function PricingSection({
                   Add the Equipment workspace to Complete Operations for preventive maintenance, Asset Health, inspections, wear tracking, and repair history across off-road and industrial assets—from excavators and haul trucks to forklifts, aerial lifts, mining equipment, generators, and attachments.
                 </p>
                 <div className={`${styles.boundary} mt-4 rounded-xl border px-3.5 py-3 text-xs font-semibold leading-5`}>
-                  Requires Complete Operations. New subscriptions are ${completePrice + equipmentPrice} USD / month / location for Complete + Equipment before taxes or added capacity.
+                  Coming soon — Equipment is not open for trial or purchase yet. Requires Complete Operations. New subscriptions are ${completePrice + equipmentPrice} USD / month / location for Complete + Equipment before taxes or added capacity.
                 </div>
                 <ul className="mt-5 grid gap-3 text-sm md:grid-cols-2">
                   {[
@@ -297,19 +302,21 @@ export default function PricingSection({
                 <button
                   type="button"
                   onClick={() => void startCheckout("complete_operations", "trial", true)}
-                  disabled={Boolean(busyKey)}
+                  disabled
+                  aria-disabled="true"
                   aria-busy={equipmentCheckoutBusy}
-                  className={`${styles.button} ${styles.primaryButton} rounded-xl border px-4 py-3 text-sm font-bold transition`}
+                  className={`${styles.button} ${styles.primaryButton} cursor-not-allowed rounded-xl border px-4 py-3 text-sm font-bold opacity-60 transition`}
                 >
-                  {equipmentCheckoutBusy ? "Starting…" : "Start Complete + Equipment trial"}
+                  Equipment trial — Coming soon
                 </button>
                 <button
                   type="button"
                   onClick={() => void startCheckout("complete_operations", "paid", true)}
-                  disabled={Boolean(busyKey)}
-                  className={`${styles.button} ${styles.secondaryButton} rounded-xl border px-4 py-3 text-sm font-bold transition`}
+                  disabled
+                  aria-disabled="true"
+                  className={`${styles.button} ${styles.secondaryButton} cursor-not-allowed rounded-xl border px-4 py-3 text-sm font-bold opacity-60 transition`}
                 >
-                  Subscribe to Complete + Equipment
+                  Complete + Equipment — Coming soon
                 </button>
                 <a
                   href="/equipment-maintenance-software"

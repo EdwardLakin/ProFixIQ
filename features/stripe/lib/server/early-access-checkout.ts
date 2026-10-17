@@ -9,6 +9,10 @@ import {
   PRODUCT_PACKAGE_BILLING_MODEL,
   productAcquisitionSurface,
 } from "@/features/stripe/lib/stripe/product-packages";
+import {
+  EQUIPMENT_COMING_SOON_MESSAGE,
+  isPackagePubliclyPurchasable,
+} from "@/features/stripe/lib/server/package-checkout-availability";
 import { resolveProductPackagePriceId } from "@/features/stripe/lib/server/product-package-price-contract";
 import {
   attachStripeAcquisitionCheckout,
@@ -258,6 +262,12 @@ export async function createEarlyAccessCheckout(token: string): Promise<{
   url: string;
 }> {
   const grant = await findEarlyAccessGrantByToken(token);
+  // grant.productPackage comes from the stored approval, not the request, so
+  // it bypasses the public checkout route's schema gate. Apply the same launch
+  // gate before any Stripe customer, coupon, intent or session is created.
+  if (!isPackagePubliclyPurchasable(grant.productPackage)) {
+    throw new Error(EQUIPMENT_COMING_SOON_MESSAGE);
+  }
   const stripe = createStripeClient(mustEnv("STRIPE_SECRET_KEY"));
   const admin = createAdminSupabase();
   const priceId = await resolveProductPackagePriceId(
