@@ -80,4 +80,12 @@ describe("AI ledger rate calculations", () => {
       ),
     ).toBe(0.51);
   });
+  it("fails closed for unsupported session schemas and token-priced transcription", () => {
+    expect(estimateOpenAIInspectionTranscriptionCostUsd("gpt-realtime-whisper", 60)).toBeNull();
+    expect(estimateOpenAIInspectionTranscriptionCostUsd("gpt-4o-transcribe-2025-03-20", 60)).toBeNull();
+    expect(estimateOpenAIInspectionTranscriptionCostUsd("gpt-4o-mini-transcribe", 60)).toBeNull();
+    expect(estimateOpenAIInspectionTranscriptionCostUsd("whisper-1", 60)).toBeNull();
+    expect(estimateOpenAIInspectionTranscriptionCostUsd("gpt-live-transcribe", 60)).toBe(0.017);
+    expect(estimateOpenAIInspectionTranscriptionCostUsd("unknown-transcriber", 60)).toBeNull();
+  });
 });

@@ -19940,6 +19940,91 @@ export type Database = {
           },
         ]
       }
+      service_visit_participants: {
+        Row: {
+          acknowledged_at: string | null
+          added_at: string
+          added_by: string | null
+          id: string
+          removed_at: string | null
+          removed_by: string | null
+          removed_reason: string | null
+          role: string
+          service_visit_id: string
+          shop_id: string
+          user_id: string | null
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          added_at?: string
+          added_by?: string | null
+          id?: string
+          removed_at?: string | null
+          removed_by?: string | null
+          removed_reason?: string | null
+          role: string
+          service_visit_id: string
+          shop_id: string
+          user_id?: string | null
+        }
+        Update: {
+          acknowledged_at?: string | null
+          added_at?: string
+          added_by?: string | null
+          id?: string
+          removed_at?: string | null
+          removed_by?: string | null
+          removed_reason?: string | null
+          role?: string
+          service_visit_id?: string
+          shop_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_visit_participants_added_by_fkey"
+            columns: ["added_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visit_participants_removed_by_fkey"
+            columns: ["removed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visit_participants_service_visit_id_fkey"
+            columns: ["service_visit_id"]
+            isOneToOne: false
+            referencedRelation: "service_visits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visit_participants_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shop_public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visit_participants_shop_id_fkey"
+            columns: ["shop_id"]
+            isOneToOne: false
+            referencedRelation: "shops"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_visit_participants_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       service_visits: {
         Row: {
           actual_distance_km: number | null
@@ -31919,6 +32004,10 @@ export type Database = {
         Returns: Json
       }
       dispatch_visit_snapshot: { Args: { p_visit_id: string }; Returns: Json }
+      equipment_acknowledge_visit_atomic: {
+        Args: { p_actor_user_id: string; p_shop_id: string; p_visit_id: string }
+        Returns: Json
+      }
       equipment_component_claim_operation: {
         Args: {
           p_action: string
@@ -31978,6 +32067,44 @@ export type Database = {
           p_vehicle_id: string
         }
         Returns: number
+      }
+      equipment_create_field_call_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_complaint: string
+          p_customer_id: string
+          p_dispatch_notes: string
+          p_dispatch_now: boolean
+          p_lead_user_id: string
+          p_operation_key: string
+          p_priority: number
+          p_scheduled_end: string
+          p_scheduled_start: string
+          p_service_address_id: string
+          p_service_vehicle_id: string
+          p_shop_id: string
+          p_support_user_ids: string[]
+          p_vehicle_id: string
+        }
+        Returns: Json
+      }
+      equipment_dispatch_visit_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_dispatch_notes: string
+          p_dispatch_now: boolean
+          p_lead_user_id: string
+          p_mode: string
+          p_operation_key: string
+          p_scheduled_end: string
+          p_scheduled_start: string
+          p_service_address_id: string
+          p_service_vehicle_id: string
+          p_shop_id: string
+          p_support_user_ids: string[]
+          p_work_order_id: string
+        }
+        Returns: Json
       }
       equipment_fluid_sample_record: {
         Args: {
