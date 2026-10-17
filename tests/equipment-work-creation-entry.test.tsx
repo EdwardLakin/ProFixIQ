@@ -37,8 +37,8 @@ vi.mock("@/features/equipment/server/pageEntitlement", () => ({
 vi.mock("@/features/equipment/server/loadEquipmentDirectoryPage", () => ({
   loadEquipmentDirectoryPage: mocks.load,
 }));
-vi.mock("@/features/equipment/server/loadEquipmentWorkOrders", () => ({
-  loadEquipmentWorkOrders: mocks.work,
+vi.mock("@/features/equipment/server/loadEquipmentWorkQueue", () => ({
+  loadEquipmentWorkQueue: mocks.work,
 }));
 
 import NewWorkPage from "../app/equipment/work-orders/new/page";
@@ -101,7 +101,7 @@ beforeEach(() => {
   mocks.role = "owner";
   mocks.entitlement = "enabled";
   mocks.load.mockReset().mockResolvedValue(directory());
-  mocks.work.mockReset().mockResolvedValue({ rows: [], truncated: false });
+  mocks.work.mockReset().mockResolvedValue({ rows: [], partial: false, assets: [], statuses: [], summary: {records: 0, workOrders: 0, estimates: 0, active: 0}, info: {page: 1, pageCount: 1, total: 0, from: 0, to: 0} });
   mocks.admin.mockClear();
 });
 
