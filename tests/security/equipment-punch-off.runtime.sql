@@ -107,16 +107,19 @@ declare
   r jsonb;
   r2 jsonb;
   v_status text;
+  v_before text;
   v_failed boolean;
 begin
   perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', t1), true);
+
+  select status::text into v_before from public.work_order_lines where id = line1;
 
   -- 1. First technician off: only their own labor ends, the line stays open.
   r := public.equipment_punch_off_line_atomic(shop, line1, t1, t1, 'eqp-line1-t1-key');
   if (r ->> 'lineClosed')::boolean then raise exception 'first punch-off must not close the line: %', r; end if;
   if jsonb_array_length(r -> 'remaining') <> 1 then raise exception 'one technician should remain: %', r; end if;
   select status::text into v_status from public.work_order_lines where id = line1;
-  if v_status <> 'in_progress' then raise exception 'line status must be preserved, got %', v_status; end if;
+  if v_status is distinct from v_before then raise exception 'line status must be preserved: % -> %', v_before, v_status; end if;
   if exists (select 1 from public.work_order_line_labor_segments
              where work_order_line_id = line1 and technician_id = t1 and ended_at is null) then
     raise exception 'first technician timer should be stopped';
