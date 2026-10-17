@@ -105,14 +105,20 @@ export async function runJobPunchTransition(
   if (!scope) {
     return post();
   }
-  await runMutationWithOfflineQueue({
+  // The queue's runner cannot return a value, so keep the server's answer here.
+  // It is only reported when the request actually ran online and was neither
+  // queued nor conflicted; queued or replayed requests have no answer yet.
+  let serverResult: JobPunchTransitionResult | void;
+  const outcome = await runMutationWithOfflineQueue({
     clientMutationId,
     actionType: "job:punch-transition",
     payload: { lineId, action, body: payload, operationKey, occurredAt },
     orderKey: `${lineId}:job-punch:${operationKey}`,
     scope,
     runner: async () => {
-      await post();
+      serverResult = await post();
     },
   });
+  if (outcome?.queued || outcome?.conflicted) return undefined;
+  return serverResult;
 }
