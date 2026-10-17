@@ -80,7 +80,7 @@ describe("punch-off migration contract", () => {
 });
 
 describe("review-fix migration", () => {
-  const fix = readFileSync("supabase/migrations/20261017041800_equipment_punch_off_review_fixes.sql", "utf8");
+  const fix = readFileSync("supabase/migrations/20261017045026_equipment_punch_off_review_fixes.sql", "utf8");
   it("persists the technician note", () => {
     expect(fix).toContain("equipment_punch_off_note");
   });
