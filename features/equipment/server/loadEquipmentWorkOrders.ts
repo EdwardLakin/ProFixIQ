@@ -1,4 +1,5 @@
 import "server-only";
+import { loadEquipmentWorkCustomerNames } from "./loadEquipmentWorkCustomerNames";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -99,7 +100,9 @@ export async function loadEquipmentWorkOrders(input: {
 
   candidates.sort(compareNewest);
   const accepted = candidates.slice(0, RESULT_LIMIT + 1);
-  const rows = accepted.slice(0, RESULT_LIMIT).map((row) => {
+  const displayed = accepted.slice(0, RESULT_LIMIT);
+  const customerNames = await loadEquipmentWorkCustomerNames(input.admin, input.shopId, displayed);
+  const rows = displayed.map((row) => {
     const status = workOrderDisplayStatus(row);
     const canOpen = isEstimateRecord(row)
       ? permissions.canViewEstimates
@@ -113,7 +116,7 @@ export async function loadEquipmentWorkOrders(input: {
       assetId: row.vehicle_id!,
       assetHref: `/equipment/${row.vehicle_id}`,
       assetLabel: assetLabel(row),
-      customerName: row.customer_name?.trim() || null,
+      customerName: row.customer_name?.trim() || (row.customer_id ? customerNames.get(row.customer_id) ?? null : null),
       createdAt: row.created_at,
       scheduledAt: row.scheduled_at,
     };

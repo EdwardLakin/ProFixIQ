@@ -448,23 +448,34 @@ function extractInspectionTemplateId(
   );
 }
 
-export default function CreateWorkOrderPage() {
+export type EquipmentCreationContext = { assetId: string; customerId: string; shopId: string };
+
+// Equipment uses route-local state; do not import or overwrite Shop's scan drafts.
+const isolatedCustomerVehicleDraft: CustomerVehicleDraftHook = {
+  setCustomerField: () => {}, setVehicleField: () => {}, bulkSet: () => {}, reset: () => {},
+};
+const isolatedWorkOrderDraft: WorkOrderDraftHook = { setVehicle: () => {}, reset: () => {} };
+
+export default function CreateWorkOrderPage({ equipmentContext }: { equipmentContext?: EquipmentCreationContext } = {}) {
+  const [equipmentContextLoaded, setEquipmentContextLoaded] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
   const supabase = useMemo(() => createBrowserSupabase(), []);
   const queryCustomerId =
+    equipmentContext?.customerId ||
     searchParams.get("customerId")?.trim() ||
     searchParams.get("customer_id")?.trim() ||
     searchParams.get("customer")?.trim() ||
     null;
   const queryVehicleId =
+    equipmentContext?.assetId ||
     searchParams.get("vehicleId")?.trim() ||
     searchParams.get("vehicle_id")?.trim() ||
     searchParams.get("vehicle")?.trim() ||
     null;
-  const bookingId = searchParams.get("bookingId")?.trim() || null;
+  const bookingId = equipmentContext ? null : searchParams.get("bookingId")?.trim() || null;
   const resumeWorkOrderId =
-    searchParams.get("resumeWorkOrderId")?.trim() || null;
+    equipmentContext ? null : searchParams.get("resumeWorkOrderId")?.trim() || null;
   const returnTo = searchParams.get("returnTo")?.trim() || null;
 
   useEffect(() => {
@@ -542,8 +553,8 @@ export default function CreateWorkOrderPage() {
   );
 
   // CV draft (session persisted)
-  const cvDraft =
-    useCustomerVehicleDraft() as unknown as CustomerVehicleDraftHook;
+  const sharedCvDraft = useCustomerVehicleDraft() as unknown as CustomerVehicleDraftHook;
+  const cvDraft = equipmentContext ? isolatedCustomerVehicleDraft : sharedCvDraft;
 
   // Hydrate from CV draft on first load (only fill empty fields)
   useEffect(() => {
@@ -752,7 +763,7 @@ export default function CreateWorkOrderPage() {
       setLines([]);
       setValidatedWorkOrderId(null);
       setResumeNotice(null);
-      setResumeBlocked(Boolean(resumeWorkOrderId));
+      setResumeBlocked(Boolean(resumeWorkOrderId || equipmentContext));
       setError(message);
       toast.error(message);
     };
@@ -762,7 +773,7 @@ export default function CreateWorkOrderPage() {
         CREATE_WORK_ORDER_STALE_EVENT,
         handleStaleDraft,
       );
-  }, [resumeWorkOrderId, setError, setLines, setWo, wo?.id]);
+  }, [equipmentContext, resumeWorkOrderId, setError, setLines, setWo, wo?.id]);
 
   // Current user id (for VIN modal)
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -804,7 +815,8 @@ export default function CreateWorkOrderPage() {
   }, [supabase]);
 
   // VIN / OCR draft hydration
-  const draft = useWorkOrderDraft() as unknown as WorkOrderDraftHook;
+  const sharedDraft = useWorkOrderDraft() as unknown as WorkOrderDraftHook;
+  const draft = equipmentContext ? isolatedWorkOrderDraft : sharedDraft;
 
   useEffect(() => {
     const hasVeh = Object.values(draft.vehicle || {}).some((v) => Boolean(v));
@@ -966,7 +978,7 @@ export default function CreateWorkOrderPage() {
     setValidatedWorkOrderId(null);
     setResumeNotice(null);
     if (!workOrderId) {
-      setResumeBlocked(false);
+      if (!equipmentContext) setResumeBlocked(false);
       return;
     }
 
@@ -990,6 +1002,9 @@ export default function CreateWorkOrderPage() {
             shopId,
           });
 
+        if (equipmentContext && (persisted.shop_id !== equipmentContext.shopId || persisted.vehicle_id !== equipmentContext.assetId || persisted.customer_id !== equipmentContext.customerId)) {
+          throw new Error("This saved draft no longer matches the Equipment asset and customer. Start a new draft.");
+        }
         if (!persisted.customer_id || !persisted.vehicle_id) {
           throw new Error(
             "This saved work order is missing its customer or vehicle.",
@@ -1066,7 +1081,7 @@ export default function CreateWorkOrderPage() {
           return;
         }
         setResumeNotice(null);
-        setResumeBlocked(Boolean(resumeWorkOrderId));
+        setResumeBlocked(Boolean(resumeWorkOrderId || equipmentContext));
         setError(message);
       }
     })();
@@ -1075,6 +1090,7 @@ export default function CreateWorkOrderPage() {
       cancelled = true;
     };
   }, [
+    equipmentContext,
     getOrLinkShopId,
     resumeWorkOrderId,
     setCustomer,
@@ -1301,6 +1317,7 @@ export default function CreateWorkOrderPage() {
   // Prefill from DB → session shapes, always scoped to the current user's shop.
   useEffect(() => {
     let cancelled = false;
+    setEquipmentContextLoaded(false);
     (async () => {
       try {
         if (!prefillCustomerId && !prefillVehicleId) return;
@@ -1312,6 +1329,7 @@ export default function CreateWorkOrderPage() {
 
         const shopId = await getOrLinkShopId(user.id);
         if (!shopId || cancelled) return;
+        if (equipmentContext && shopId !== equipmentContext.shopId) throw new Error("Equipment shop context changed. Reload this page.");
 
         let effectiveCustomerId = prefillCustomerId;
 
@@ -1322,6 +1340,7 @@ export default function CreateWorkOrderPage() {
             .eq("id", prefillCustomerId)
             .eq("shop_id", shopId)
             .maybeSingle();
+          if (equipmentContext && !data) throw new Error("Equipment customer is unavailable.");
           if (!cancelled && data) {
             setCustomer(
               hydrateCustomerFromRow(data as CustomerRowWithBusiness),
@@ -1347,6 +1366,7 @@ export default function CreateWorkOrderPage() {
           if (!cancelled && data) {
             setVehicle(hydrateVehicleFromRow(data as VehicleRow));
             setVehicleId(data.id);
+            if (equipmentContext && data.id === equipmentContext.assetId && data.customer_id === equipmentContext.customerId) setEquipmentContextLoaded(true);
 
             if (!effectiveCustomerId && data.customer_id) {
               const { data: cust } = await supabase
@@ -1391,6 +1411,7 @@ export default function CreateWorkOrderPage() {
       cancelled = true;
     };
   }, [
+    equipmentContext,
     prefillCustomerId,
     prefillVehicleId,
     supabase,
@@ -1663,6 +1684,9 @@ export default function CreateWorkOrderPage() {
           "Please enter at least a customer name, business name, phone, or email.",
         );
       }
+      if (equipmentContext && (!equipmentContextLoaded || customerId !== equipmentContext.customerId || vehicleId !== equipmentContext.assetId)) {
+        throw new Error("Wait for the linked Equipment customer and asset to load. To change assets, return to Equipment Work.");
+      }
       validateVehicleSaveInput(vehicle);
 
       const {
@@ -1672,6 +1696,10 @@ export default function CreateWorkOrderPage() {
 
       const shopId = await getOrLinkShopId(user.id);
       if (!shopId) throw new Error("Your profile isn’t linked to a shop yet.");
+
+      if (equipmentContext && shopId !== equipmentContext.shopId) {
+        throw new Error("Equipment shop context changed. Reload this page.");
+      }
 
       if (wo?.id) {
         await requireResumableCreateWorkOrder({
@@ -2398,7 +2426,9 @@ export default function CreateWorkOrderPage() {
       setPriority(3);
       setType("maintenance");
 
-      router.push(`/work-orders/${latest.id}/approve`);
+      router.push(equipmentContext
+        ? `/equipment/work-orders/${latest.id}`
+        : `/work-orders/${latest.id}/approve`);
     } catch (ex) {
       const message =
         ex instanceof Error ? ex.message : "Failed to create work order.";
@@ -2545,7 +2575,7 @@ export default function CreateWorkOrderPage() {
     <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between lg:flex-col-reverse lg:items-stretch">
       <button
         type="button"
-        onClick={() => router.push("/work-orders")}
+        onClick={() => router.push(equipmentContext ? "/equipment/work-orders" : "/work-orders")}
         className="min-h-11 px-3 text-sm font-medium text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]"
         disabled={loading}
       >
@@ -2600,7 +2630,9 @@ export default function CreateWorkOrderPage() {
               <button
                 type="button"
                 onClick={() => {
-                  if (returnTo?.startsWith("/")) {
+                  if (equipmentContext) {
+                    router.push(`/equipment/${equipmentContext.assetId}`);
+                  } else if (returnTo?.startsWith("/")) {
                     router.push(returnTo);
                   } else {
                     router.back();
@@ -2611,7 +2643,7 @@ export default function CreateWorkOrderPage() {
                 <span className="inline-flex items-center gap-2">
                   <ArrowLeft className="h-4 w-4" aria-hidden="true" />
                   <span className="hidden sm:inline">
-                    {returnTo ? "Appointments" : "Work orders"}
+                    {equipmentContext ? "Equipment asset" : returnTo ? "Appointments" : "Work orders"}
                   </span>
                 </span>
               </button>
@@ -2652,7 +2684,7 @@ export default function CreateWorkOrderPage() {
                 onClick={() => {
                   handleClearForm();
                   setResumeBlocked(false);
-                  router.replace("/work-orders/create");
+                  router.replace(equipmentContext ? "/equipment/work-orders/new" : "/work-orders/create");
                 }}
                 className="mt-2 rounded-lg border border-[color:var(--desktop-border)] px-3 py-1.5 text-xs font-semibold"
               >
@@ -2851,13 +2883,13 @@ export default function CreateWorkOrderPage() {
 
                 <button
                   type="button"
-                  onClick={handleClearForm}
+                  onClick={equipmentContext ? () => router.push("/equipment/work-orders/new") : handleClearForm}
                   className={cx(
                     "px-4 py-2 text-sm font-semibold text-[color:var(--theme-text-secondary)] hover:text-[color:var(--theme-text-primary)]",
                     softButton,
                   )}
                 >
-                  Clear form
+                  {equipmentContext ? "Choose another asset" : "Clear form"}
                 </button>
 
                 <VinCaptureModal

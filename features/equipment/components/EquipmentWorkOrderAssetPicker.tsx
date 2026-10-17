@@ -127,7 +127,7 @@ export default function EquipmentWorkOrderAssetPicker({
                 </Link>
                 {row.actions.createWorkOrderHref ? (
                   <Link
-                    href={row.actions.createWorkOrderHref}
+                    href={`/equipment/work-orders/create/${row.assetId}`}
                     className={PRIMARY}
                     aria-label={`Create work order for ${equipmentAssetTitle(row)}`}
                   >

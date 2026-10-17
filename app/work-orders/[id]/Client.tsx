@@ -238,13 +238,14 @@ function groupIssuesByLine(issues: ReviewIssue[]): Record<string, ReviewIssue[]>
 
 /* ------------------------------------------------------------------------- */
 
-export default function WorkOrderIdClient(): JSX.Element {
+export default function WorkOrderIdClient({ equipment = false }: { equipment?: boolean } = {}): JSX.Element {
   const params = useParams();
   const router = useRouter();
   const searchParams = useSearchParams();
   const { updateActiveTab, canonicalizeActiveTab } = useTabs();
 
   const routeId = (params?.id as string) || "";
+  const workspaceHref = `${equipment ? "/equipment/work-orders" : "/work-orders"}/${routeId}`;
 
   const [wo, setWo] = useTabState<WorkOrder | null>("wo:id:wo", null);
   const [lines, setLines] = useTabState<WorkOrderLine[]>("wo:id:lines", []);
@@ -473,7 +474,7 @@ export default function WorkOrderIdClient(): JSX.Element {
 
       if (prefersPanel) {
         // ✅ IMPORTANT: keep SAME route; just swap query param so it DOES NOT create a new tab
-        router.replace(`/work-orders/${routeId}?job=${encodeURIComponent(lineId)}`);
+        router.replace(`${workspaceHref}?job=${encodeURIComponent(lineId)}`);
         return;
       }
 
@@ -481,12 +482,12 @@ export default function WorkOrderIdClient(): JSX.Element {
       setFocusedJobId(lineId);
       setFocusedOpen(true);
     },
-    [prefersPanel, router, routeId],
+    [prefersPanel, router, workspaceHref],
   );
 
   const closeFocusedPanel = useCallback(() => {
-    router.replace(`/work-orders/${routeId}`);
-  }, [router, routeId]);
+    router.replace(workspaceHref);
+  }, [router, workspaceHref]);
 
   const openQuoteReview = useCallback(() => {
     router.push(`/quote-review/${wo?.id ?? routeId}`);
@@ -1210,8 +1211,8 @@ export default function WorkOrderIdClient(): JSX.Element {
     if (sortedLines.length === 0) return;
     const fallbackLineId = sortedLines[0]?.id;
     if (!fallbackLineId) return;
-    router.replace(`/work-orders/${routeId}?job=${encodeURIComponent(fallbackLineId)}`);
-  }, [prefersPanel, jobFromQuery, sortedLines, routeId, router]);
+    router.replace(`${workspaceHref}?job=${encodeURIComponent(fallbackLineId)}`);
+  }, [prefersPanel, jobFromQuery, sortedLines, workspaceHref, router]);
 
   const createdAt = wo?.created_at ? new Date(wo.created_at) : null;
   const createdAtText =
@@ -1918,7 +1919,7 @@ export default function WorkOrderIdClient(): JSX.Element {
                 ) : null}
                 <div className="flex min-w-0 flex-1 flex-col justify-center gap-1.5">
                   <div className="flex flex-wrap items-center gap-2">
-                    <PreviousPageButton />
+                    <PreviousPageButton to={equipment ? "/equipment/work-orders" : undefined} />
                     <div className="text-sm font-semibold text-foreground">
                       {wo.custom_id ?? `WO-${wo.id.slice(0, 8)}`}
                     </div>

@@ -136,7 +136,7 @@ export default async function AssetHealthPage({ params }: AssetHealthPageProps) 
         />
       ) : null}
       <EquipmentWorkOrderActions
-        createWorkOrderHref={vehicleWorkspaceCreateWorkOrderHref(health.snapshot)}
+        createWorkOrderHref={vehicleWorkspaceCreateWorkOrderHref(health.snapshot) ? `/equipment/work-orders/create/${assetId}` : null}
       />
       <AssetHealthView
         health={health}

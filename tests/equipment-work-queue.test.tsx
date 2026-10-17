@@ -177,7 +177,7 @@ describe("Equipment work queue read model", () => {
     const queue = await loadEquipmentWorkQueue(input(db));
     expect(queue.rows.map((r) => [r.kind, r.active, r.href])).toEqual([
       ["estimate", true, "/estimates/wo-00001"],
-      ["work_order", true, "/work-orders/wo-00002"],
+      ["work_order", true, "/equipment/work-orders/wo-00002"],
       ["estimate", false, "/estimates/wo-00003"],
     ]);
     const estimates = await loadEquipmentWorkQueue(
