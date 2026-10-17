@@ -8,6 +8,14 @@ export function dispatchErrorResponse(error: unknown): NextResponse {
   const normalized = message.toLowerCase();
   const code = error instanceof DispatchCommandError ? error.code : null;
 
+  // Only this index: other unique violations keep their existing handling.
+  if (normalized.includes("service_visits_one_executing_per_work_order_uniq")) {
+    return NextResponse.json(
+      { error: "This work order already has a visit in progress." },
+      { status: 409 },
+    );
+  }
+
   const status =
     code === "42501" || normalized.includes("denied") || normalized.includes("actor mismatch")
       ? 403
