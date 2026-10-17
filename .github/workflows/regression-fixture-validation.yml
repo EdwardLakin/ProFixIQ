@@ -44,6 +44,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          bash scripts/ci/disable-supabase-pgdelta.sh
           supabase db start 2>&1 | tee regression-fixture-db-start.log
 
       - name: Recreate fixtures through the packaged command

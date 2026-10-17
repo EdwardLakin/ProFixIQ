@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { openAIRealtimeCallIdFromLocation } from "@/features/shared/lib/openai-realtime-call-id";
 import { NextResponse } from "next/server";
 
 import { AI_RATE_CARD_VERSION, estimateOpenAIInspectionTranscriptionCostUsd } from "@/features/shared/lib/server/ai-cost";
@@ -25,7 +26,6 @@ const TRANSCRIPTION_FEATURE = "openai_realtime_token" as const;
 const OPERATION_KEY_HEADER = "x-profixiq-operation-key";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const CALL_LOCATION_PATTERN = /^\/v1\/realtime\/calls\/(rtc_[a-zA-Z0-9_-]+)$/;
 
 type SessionRequest = {
   sdp?: unknown;
@@ -81,6 +81,14 @@ export async function POST(request: Request) {
     requiredCapability: "canRunInspections",
   });
   if (!access.ok) return access.response;
+
+  const expectedActorId = request.headers.get("x-profixiq-actor-id");
+  if (expectedActorId && expectedActorId !== access.authUserId) {
+    return NextResponse.json(
+      { error: "Your sign-in changed. Start inspection voice again.", code: "inspection_voice_actor_changed" },
+      { status: 409 },
+    );
+  }
 
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
@@ -222,6 +230,7 @@ export async function POST(request: Request) {
     });
     return result.persisted;
   };
+  let issuanceClaimRefused = false;
   try {
     const { data, error } = await createAdminSupabase().rpc(
       "record_inspection_voice_issuance_rate",
@@ -232,10 +241,13 @@ export async function POST(request: Request) {
         p_rate_card_version: AI_RATE_CARD_VERSION,
       },
     );
+    issuanceClaimRefused = !error && data === false;
     if (error || data !== true) throw new Error("Inspection voice rate receipt unavailable");
   } catch {
     // The provider was never called. Keep durable proof of that fact if the
     // immediate budget release fails, so stale recovery can release at zero.
+    // A refused actor/key claim may belong to an older shop: its receipt and
+    // pending credential remain authoritative over this new hold's proof.
     const recorded = await recordTokenError(
       "inspection_voice_pre_provider_failure", "rate_receipt_unavailable",
     ) || await recordTokenError(
@@ -248,8 +260,10 @@ export async function POST(request: Request) {
       });
     }
     return NextResponse.json(
-      { error: "Inspection voice budget could not be verified", code: "inspection_voice_rate_receipt_unavailable" },
-      { status: 503 },
+      issuanceClaimRefused
+        ? { error: "The previous inspection voice call is still closing. Try again shortly.", code: "inspection_voice_operation_recovery_required" }
+        : { error: "Inspection voice budget could not be verified", code: "inspection_voice_rate_receipt_unavailable" },
+      { status: issuanceClaimRefused ? 409 : 503 },
     );
   }
   const controller = new AbortController();
@@ -303,7 +317,7 @@ export async function POST(request: Request) {
       );
     }
     const issuedAt = new Date().toISOString();
-    const callId = CALL_LOCATION_PATTERN.exec(response.headers.get("location") ?? "")?.[1] ?? null;
+    const callId = openAIRealtimeCallIdFromLocation(response.headers.get("location"));
     // A 2xx provider response can create a billable call even if its body fails.
     const answerSdp = await response.text().catch(() => "");
     const telemetryEvent = {
@@ -329,6 +343,26 @@ export async function POST(request: Request) {
       error_message: null,
       operation: "inspection_transcription_reservation",
     };
+    const recordClaimedCall = async () => {
+      if (!callId || !reservationId) return false;
+      let receiptTimeout: ReturnType<typeof setTimeout> | null = null;
+      try {
+        const result = await Promise.race([
+          Promise.resolve(createAdminSupabase().rpc("record_inspection_voice_issued_call", {
+            p_shop_id: access.profile.shop_id,
+            p_actor_id: access.profile.id,
+            p_reservation_id: reservationId,
+            p_call_id: callId,
+            p_model: model,
+            p_issued_at: issuedAt,
+            p_latency_ms: Math.max(0, Date.now() - startedAt),
+          })),
+          new Promise<null>((resolve) => { receiptTimeout = setTimeout(() => resolve(null), 1_000); }),
+        ]);
+        return !!result && !result.error && result.data === true;
+      } catch { return false; }
+      finally { if (receiptTimeout) clearTimeout(receiptTimeout); }
+    };
     const closeUndeliveredCall = async (receiptPersisted: boolean) => {
       if (!callId) return;
       try {
@@ -343,7 +377,7 @@ export async function POST(request: Request) {
         // A temporary ledger outage may resolve after the provider hangup.
         // Otherwise the hold remains for conservative stale reconciliation.
         const persisted = receiptPersisted ||
-          (await recordDurableAIUsage(telemetryEvent)).persisted;
+          (await recordDurableAIUsage(telemetryEvent)).persisted || await recordClaimedCall();
         if (!persisted) return;
         const admin = createAdminSupabase();
         const closure = await admin.rpc("confirm_inspection_voice_closure", {
@@ -371,7 +405,7 @@ export async function POST(request: Request) {
     };
     let telemetry = await recordDurableAIUsage(telemetryEvent);
     if (!telemetry.persisted) telemetry = await recordDurableAIUsage(telemetryEvent);
-    if (!telemetry.persisted) {
+    if (!telemetry.persisted && !(await recordClaimedCall())) {
       await closeUndeliveredCall(false);
       return NextResponse.json(
         { error: "Inspection voice usage could not be recorded", code: "inspection_voice_accounting_unavailable" },

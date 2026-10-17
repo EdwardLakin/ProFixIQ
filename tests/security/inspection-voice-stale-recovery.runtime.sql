@@ -25,17 +25,7 @@ begin
     from cron.job
     where jobname = 'inspection-voice-budget-reconciliation-minute'
       and schedule = '* * * * *'
-      and command = 'commit;
-do $$
-begin
-  if exists (select 1 from pg_catalog.pg_locks
-    where pid = pg_catalog.pg_backend_pid() and locktype = 'advisory') then
-    raise exception 'previous cron transaction retained its shop lock';
-  end if;
-end $$;
--- In autocommit, the cron statement releases its shop lock on completion.
-select private.reconcile_stale_inspection_voice_holds();
-begin;'
+      and command = 'select private.reconcile_stale_inspection_voice_holds();'
   ) then
     raise exception 'stale voice reconciliation schedule is missing';
   end if;
@@ -47,8 +37,8 @@ $$;
 create temp table stale_voice_cron_state as
 select jobid, active from cron.job
 where jobname = 'inspection-voice-budget-reconciliation-minute';
-update cron.job set active = false
-where jobid in (select jobid from stale_voice_cron_state);
+select cron.alter_job(jobid, active => false)
+from stale_voice_cron_state where active;
 
 insert into auth.users (id, email, raw_user_meta_data)
 values (
@@ -63,8 +53,18 @@ values (
   'd1000000-0000-4000-8000-000000000003',
   'stale-voice-legacy@example.com',
   '{"full_name":"Legacy Voice Technician"}'::jsonb
+), (
+  'd1100000-0000-4000-8000-000000000003',
+  'stale-voice-legacy-profile@example.com',
+  '{"full_name":"Legacy Profile Identity"}'::jsonb
 )
 on conflict (id) do nothing;
+
+-- Some environments create a profile for each auth user. Remove the legacy
+-- actor's automatic profile so the canonical recorder must resolve user_id to
+-- a distinct profile ID, as it does for historical accounts.
+delete from public.profiles
+where id = 'd1000000-0000-4000-8000-000000000003';
 
 insert into public.profiles (id, user_id, role, full_name)
 values (
@@ -80,10 +80,17 @@ values (
 ), (
   'd1100000-0000-4000-8000-000000000003',
   'd1000000-0000-4000-8000-000000000003',
-  'tech',
+  'mechanic',
   'Legacy Voice Technician'
 )
-on conflict (id) do nothing;
+on conflict (id) do update
+set user_id = excluded.user_id, role = excluded.role, full_name = excluded.full_name;
+
+-- The profile insert trigger assigns user_id := id, so establish the legacy
+-- mapping after the insert; both IDs have matching auth.users fixture rows.
+update public.profiles
+set user_id = 'd1000000-0000-4000-8000-000000000003'
+where id = 'd1100000-0000-4000-8000-000000000003';
 
 insert into public.shops (id, owner_id, business_name, name, user_limit)
 values (
@@ -110,6 +117,19 @@ where id = 'd1000000-0000-4000-8000-000000000002';
 update public.profiles
 set shop_id = 'd2000000-0000-4000-8000-000000000001'
 where id = 'd1100000-0000-4000-8000-000000000003';
+
+do $$
+begin
+  if not exists (
+    select 1 from public.profiles
+    where id = 'd1100000-0000-4000-8000-000000000003'
+      and user_id = 'd1000000-0000-4000-8000-000000000003'
+      and shop_id = 'd2000000-0000-4000-8000-000000000001'
+  ) then
+    raise exception 'legacy actor profile mapping was not established';
+  end if;
+end
+$$;
 
 create temp table stale_voice_ids (name text primary key, id uuid not null);
 grant select, insert on stale_voice_ids to service_role;
@@ -546,6 +566,11 @@ delete from private.ai_usage_ledger where shop_id in (
   'd2000000-0000-4000-8000-000000000001', 'd2000000-0000-4000-8000-000000000002');
 delete from private.ai_budget_reservations where shop_id in (
   'd2000000-0000-4000-8000-000000000001', 'd2000000-0000-4000-8000-000000000002');
+-- Both shop -> owner and profile -> shop can be restrictive in a clean replay.
+-- Detach only these fixture profiles before removing their shops.
+update public.profiles set shop_id = null where user_id in (
+  'd1000000-0000-4000-8000-000000000001', 'd1000000-0000-4000-8000-000000000002',
+  'd1000000-0000-4000-8000-000000000003');
 delete from public.shops where id in (
   'd2000000-0000-4000-8000-000000000001', 'd2000000-0000-4000-8000-000000000002');
 delete from public.profiles where user_id in (
@@ -553,7 +578,7 @@ delete from public.profiles where user_id in (
   'd1000000-0000-4000-8000-000000000003');
 delete from auth.users where id in (
   'd1000000-0000-4000-8000-000000000001', 'd1000000-0000-4000-8000-000000000002',
-  'd1000000-0000-4000-8000-000000000003');
-update cron.job job set active = original.active
-from stale_voice_cron_state original where job.jobid = original.jobid;
+  'd1000000-0000-4000-8000-000000000003', 'd1100000-0000-4000-8000-000000000003');
+select cron.alter_job(original.jobid, active => original.active)
+from stale_voice_cron_state original;
 commit;

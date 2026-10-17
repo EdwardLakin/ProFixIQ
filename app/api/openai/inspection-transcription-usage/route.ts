@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { isOpenAIRealtimeCallId } from "@/features/shared/lib/openai-realtime-call-id";
 
 import { requireShopScopedApiAccess } from "@/features/shared/lib/server/admin-access";
 import { createAdminSupabase } from "@/features/shared/lib/supabase/server";
@@ -113,7 +114,7 @@ export async function POST(request: NextRequest) {
   const transcriptionModel = typeof receipt.model === "string" ? receipt.model : "";
   const issuanceShopId = typeof receipt.shopId === "string" ? receipt.shopId : "";
   const callId = typeof receipt.callId === "string" ? receipt.callId : "";
-  if (!issuanceShopId || !transcriptionModel || !/^rtc_[a-zA-Z0-9_-]+$/.test(callId)) {
+  if (!issuanceShopId || !transcriptionModel || !isOpenAIRealtimeCallId(callId)) {
     return NextResponse.json(
       { error: "Inspection voice call receipt is unavailable", code: "inspection_voice_closure_unavailable" },
       { status: 503 },

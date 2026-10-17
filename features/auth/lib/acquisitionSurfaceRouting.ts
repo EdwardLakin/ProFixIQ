@@ -6,6 +6,8 @@ const ACQUISITION_HOME: Record<ProductAcquisitionSurface, string> = {
   // A new Fleet trial owner must create the first fleet relationship before
   // the explicit fleet-membership gate can release the Fleet portal.
   fleet: "/dashboard/owner/fleet-access",
+  // The standalone Equipment workspace is its own product home.
+  equipment: "/equipment/dashboard",
 };
 
 export function acquisitionHomeHref(

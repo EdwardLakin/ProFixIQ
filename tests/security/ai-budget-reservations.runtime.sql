@@ -13,7 +13,10 @@ values
   ('ab000000-0000-4000-8000-000000000002', 'ai-budget-owner-b@example.com', '{"full_name":"AI Budget Owner B"}'::jsonb),
   ('ab000000-0000-4000-8000-000000000003', 'ai-budget-owner-c@example.com', '{"full_name":"AI Budget Owner C"}'::jsonb),
   ('ab000000-0000-4000-8000-000000000004', 'ai-budget-owner-d@example.com', '{"full_name":"AI Budget Owner D"}'::jsonb),
-  ('ab000000-0000-4000-8000-000000000005', 'ai-budget-legacy-d@example.com', '{"full_name":"Legacy AI Budget User"}'::jsonb)
+  ('ab000000-0000-4000-8000-000000000005', 'ai-budget-legacy-d@example.com', '{"full_name":"Legacy AI Budget User"}'::jsonb),
+  -- profiles.id and profiles.user_id both reference auth.users. Keep them
+  -- distinct to exercise canonical actor normalization.
+  ('ac000000-0000-4000-8000-000000000005', 'ai-budget-profile-d@example.com', '{"full_name":"Legacy AI Budget Profile"}'::jsonb)
 on conflict (id) do nothing;
 
 insert into public.profiles (id, user_id, role, full_name)
@@ -22,11 +25,17 @@ values
   ('ab000000-0000-4000-8000-000000000002', 'ab000000-0000-4000-8000-000000000002', 'owner', 'AI Budget Owner B'),
   ('ab000000-0000-4000-8000-000000000003', 'ab000000-0000-4000-8000-000000000003', 'owner', 'AI Budget Owner C'),
   ('ab000000-0000-4000-8000-000000000004', 'ab000000-0000-4000-8000-000000000004', 'owner', 'AI Budget Owner D'),
-  ('ac000000-0000-4000-8000-000000000005', 'ab000000-0000-4000-8000-000000000005', 'tech', 'Legacy AI Budget User')
+  ('ac000000-0000-4000-8000-000000000005', 'ac000000-0000-4000-8000-000000000005', 'mechanic', 'Legacy AI Budget User')
 on conflict (id) do update
 set user_id = excluded.user_id,
     role = excluded.role,
     full_name = excluded.full_name;
+
+-- The BEFORE INSERT identity trigger sets user_id = id. Link the legacy auth
+-- subject afterward to test recorder normalization through profiles.user_id.
+update public.profiles
+set user_id = 'ab000000-0000-4000-8000-000000000005'
+where id = 'ac000000-0000-4000-8000-000000000005';
 
 insert into public.shops (id, owner_id, business_name, name, user_limit)
 values

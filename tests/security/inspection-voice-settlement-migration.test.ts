@@ -10,6 +10,18 @@ const staleGuard = readFileSync(
   "utf8",
 );
 
+const noCallRecovery = readFileSync(
+  "supabase/migrations/20261016213917_inspection_voice_pre_provider_recovery.sql", "utf8",
+);
+
+const errorReceiptIndex = readFileSync(
+  "supabase/migrations/20261016214607_inspection_voice_error_receipt_index.sql", "utf8",
+);
+
+const actorKeyGuard = readFileSync(
+  "supabase/migrations/20261016220550_inspection_voice_actor_operation_guard.sql", "utf8",
+);
+
 describe("inspection voice settlement migration", () => {
   it("adds only service-role RPCs with a locked-down execution context", () => {
     for (const signature of [
@@ -56,6 +68,32 @@ describe("inspection voice settlement migration", () => {
     expect(migration).toContain("public.commit_ai_budget(");
     expect(migration).toContain("operation = 'inspection_transcription_settled'");
     expect(migration).toMatch(/begin;[\s\S]*update private\.ai_usage_ledger[\s\S]*commit;\s*$/);
+  });
+
+  it("claims actor/key credentials in the inspection issuance receipt before provider creation", () => {
+    expect(actorKeyGuard).toContain("on private.inspection_voice_issuance_rates (actor_id, usage_key)");
+    expect(actorKeyGuard).toContain("create unique index inspection_voice_issuance_rates_actor_key_idx");
+    expect(actorKeyGuard).toContain("and reservation.actor_id = p_actor_id");
+    expect(actorKeyGuard).toContain("on conflict do nothing;");
+    expect(actorKeyGuard).toContain("and rate.actor_id = p_actor_id");
+    expect(actorKeyGuard).not.toContain("alter table private.ai_budget_reservations");
+  });
+
+  it("indexes actor-bound errors independently of the existing successful-call lookup", () => {
+    expect(errorReceiptIndex).toContain("create index if not exists idx_ai_usage_inspection_actor_error_event");
+    expect(errorReceiptIndex).toContain("on private.ai_usage_ledger (user_id, event_key)");
+    expect(errorReceiptIndex).toContain("and status = 'error'");
+    expect(errorReceiptIndex).not.toContain("drop index");
+  });
+
+  it("recognizes only durable rejected or pre-provider receipts in the forward recovery repair", () => {
+    expect(noCallRecovery).toContain("create or replace function public.get_inspection_voice_session_receipt_for_actor(");
+    expect(noCallRecovery).toContain("'inspection_voice_rejected', 'inspection_voice_pre_provider_failure'");
+    expect(noCallRecovery).toContain("reservation.actor_id = p_user_id");
+    expect(noCallRecovery).toContain("reservation.shop_id = rejected.shop_id");
+    expect(noCallRecovery).toContain("rejected.event_key = reservation.idempotency_key || ':error'");
+    expect(noCallRecovery).toContain("revoke all on function public.get_inspection_voice_session_receipt_for_actor(uuid, text)");
+    expect(noCallRecovery).not.toContain("'inspection_voice_timeout'");
   });
 
   it("conservatively adjudicates uncertain inspection holds in the preceding compatibility PR", () => {

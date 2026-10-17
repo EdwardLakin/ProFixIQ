@@ -82,6 +82,7 @@ describe("POST /api/openai/inspection-transcription-token", () => {
     mocks.requireAccess.mockResolvedValue({
       ok: true,
       profile: { id: "actor_1", role: "tech", shop_id: "shop_1" },
+      authUserId: "actor_1",
       supabase: {},
     });
     mocks.getModel.mockReturnValue("gpt-live-transcribe");
@@ -95,7 +96,7 @@ describe("POST /api/openai/inspection-transcription-token", () => {
     });
     mocks.release.mockResolvedValue(true);
     mocks.record.mockResolvedValue({ persisted: true });
-    mocks.issuanceRpc.mockResolvedValue({ data: true, error: null });
+    mocks.issuanceRpc.mockImplementation(async (name: string) => ({ data: name === "record_inspection_voice_issuance_rate", error: null }));
     mocks.admin.mockReturnValue({ rpc: mocks.issuanceRpc });
     vi.stubGlobal(
       "fetch",
@@ -155,6 +156,22 @@ describe("POST /api/openai/inspection-transcription-token", () => {
     );
   });
 
+  it.each([
+    ["/v1/realtime/calls/019eb97d-8e9a-7ff3-94b0-ea019babd5d7", "019eb97d-8e9a-7ff3-94b0-ea019babd5d7"],
+    ["https://api.openai.com/v1/realtime/calls/019eb97d-8e9a-7ff3-94b0-ea019babd5d7", "019eb97d-8e9a-7ff3-94b0-ea019babd5d7"],
+  ])("persists accepted provider IDs from %s", async (location, callId) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("v=0\r\no=answer", {
+      status: 201, headers: { Location: location },
+    })));
+    const { POST } = await import("../app/api/openai/inspection-transcription-token/route");
+    const response = await POST(sessionRequest());
+    expect(response.status).toBe(200);
+    expect((await response.json()).sdp).toBe("v=0\r\no=answer");
+    expect(mocks.record).toHaveBeenCalledWith(expect.objectContaining({
+      provider_request_id: callId, quota_receipt_id: "reservation_1",
+    }));
+  });
+
   it("denies an enforcing budget before contacting OpenAI", async () => {
     mocks.reserve.mockRejectedValueOnce(
       new mocks.AIBudgetDeniedError("denied"),
@@ -175,6 +192,19 @@ describe("POST /api/openai/inspection-transcription-token", () => {
     expect((await response.json()).code).toBe("inspection_voice_rate_receipt_unavailable");
     expect(mocks.release).toHaveBeenCalledWith(expect.objectContaining({ reservationId: "reservation_1" }));
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("preserves the original operation while recording proof only for the refused claim hold", async () => {
+    mocks.issuanceRpc.mockResolvedValueOnce({ data: false, error: null });
+    const { POST } = await import("../app/api/openai/inspection-transcription-token/route");
+    const response = await POST(sessionRequest());
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe("inspection_voice_operation_recovery_required");
+    expect(fetch).not.toHaveBeenCalled();
+    expect(mocks.record).toHaveBeenCalledWith(expect.objectContaining({
+      error_code: "inspection_voice_pre_provider_failure", quota_receipt_id: "reservation_1", estimated_cost_usd: 0,
+    }));
+    expect(mocks.release).toHaveBeenCalledWith(expect.objectContaining({ reservationId: "reservation_1" }));
   });
 
   it("records zero-cost proof before a failed pre-provider release", async () => {
@@ -284,6 +314,32 @@ describe("POST /api/openai/inspection-transcription-token", () => {
     expect(mocks.release).not.toHaveBeenCalled();
   });
 
+  it("recovers an accepted call through its original claim when current shop membership blocks generic telemetry", async () => {
+    mocks.record.mockResolvedValue({ persisted: false });
+    mocks.issuanceRpc.mockResolvedValue({ data: true, error: null });
+    const { POST } = await import("../app/api/openai/inspection-transcription-token/route");
+    const response = await POST(sessionRequest());
+    expect(response.status).toBe(200);
+    expect((await response.json()).usageKey).toBe(operationKey);
+    expect(mocks.issuanceRpc).toHaveBeenCalledWith("record_inspection_voice_issued_call", expect.objectContaining({
+      p_actor_id: "actor_1", p_shop_id: "shop_1", p_reservation_id: "reservation_1",
+      p_call_id: "rtc_test1", p_model: "gpt-live-transcribe", p_issued_at: expect.any(String),
+    }));
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(mocks.release).not.toHaveBeenCalled();
+  });
+
+  it("rejects a sign-in switch before reserving or creating a provider call", async () => {
+    const changedUserRequest = sessionRequest();
+    changedUserRequest.headers.set("x-profixiq-actor-id", "actor_2");
+    const { POST } = await import("../app/api/openai/inspection-transcription-token/route");
+    const response = await POST(changedUserRequest);
+    expect(response.status).toBe(409);
+    expect((await response.json()).code).toBe("inspection_voice_actor_changed");
+    expect(mocks.reserve).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("settles a call if ledger persistence recovers after authenticated hangup", async () => {
     mocks.record.mockResolvedValueOnce({ persisted: false })
       .mockResolvedValueOnce({ persisted: false })
@@ -291,7 +347,7 @@ describe("POST /api/openai/inspection-transcription-token", () => {
     mocks.issuanceRpc.mockImplementation(async (name: string) =>
       name === "confirm_inspection_voice_closure"
         ? { data: 30, error: null }
-        : { data: true, error: null });
+        : { data: name !== "record_inspection_voice_issued_call", error: null });
     const { POST } = await import("../app/api/openai/inspection-transcription-token/route");
     const response = await POST(sessionRequest());
     expect(response.status).toBe(503);

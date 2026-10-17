@@ -8,6 +8,7 @@ import {
   ADDITIONAL_USER_LOOKUP_KEY,
   LEGACY_ADDITIONAL_FLEET_ASSET_LOOKUP_KEY,
   LEGACY_ADDITIONAL_SERVICE_TRUCK_LOOKUP_KEY,
+  LEGACY_CATALOG_PACKAGE_KEYS,
   LEGACY_PRODUCT_PACKAGE_LOOKUP_KEYS,
   LIVE_ADDITIONAL_FLEET_ASSET_PRICE_ID,
   LIVE_ADDITIONAL_SERVICE_TRUCK_PRICE_ID,
@@ -121,7 +122,7 @@ function currentCatalogPrices(): Stripe.Price[] {
 
 function legacyCatalogPrices(): Stripe.Price[] {
   return [
-    ...PRODUCT_PACKAGE_KEYS.map((packageKey) =>
+    ...LEGACY_CATALOG_PACKAGE_KEYS.map((packageKey) =>
       packagePrice({
         id: `price_cad_${packageKey}`,
         lookupKey: LEGACY_PRODUCT_PACKAGE_LOOKUP_KEYS[packageKey],
@@ -182,6 +183,13 @@ describe("ProFixIQ product package billing contract", () => {
       field_service: "price_1UIgbuITYwJQigUI3Nfl8FqC",
       fleet_maintenance: "price_1UIgbvITYwJQigUIq0RhgFkL",
       complete_operations: "price_1UIgbxITYwJQigUIZvVBxp9Q",
+      equipment_operations: "price_1URBcwITYwJQigUIrWiO9kga",
+    });
+    expect(PRODUCT_PACKAGE_PRICING.equipment_operations).toEqual({
+      monthlyCents: 39_900,
+      includedUsers: 10,
+      includedServiceTrucks: 0,
+      includedFleetAssets: 0,
     });
     expect(LIVE_ADDITIONAL_USER_PRICE_ID).toBe(
       "price_1UIgbyITYwJQigUImzzsschG",

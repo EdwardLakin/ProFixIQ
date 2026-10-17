@@ -63,7 +63,11 @@ jobs:
           version: 2.114.0
           github-token: ${{ github.token }}
       - name: Start clean local database
-        run: supabase db start
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash scripts/ci/disable-supabase-pgdelta.sh
+          supabase db start
       - name: Run customer pricing runtime
         env:
           DB_URL: postgresql://postgres:postgres@127.0.0.1:54322/postgres

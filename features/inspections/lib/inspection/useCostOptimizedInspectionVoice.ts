@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 
 export type InspectionVoiceState =
   | "idle"
@@ -28,20 +29,20 @@ const CONNECTION_TIMEOUT_MS = 15_000;
 const PENDING_CALL_STORAGE_KEY = "profixiq:inspection-voice-pending-call";
 const PROVIDER_MAX_CALL_MS = 60 * 60_000;
 
-type PendingCall = { key: string; startedAt: number };
+type PendingCall = { actorId: string; key: string; startedAt: number };
 
-function readPendingCall(): PendingCall | null {
+function readPendingCall(actorId: string): PendingCall | null {
   try {
-    const value = JSON.parse(sessionStorage.getItem(PENDING_CALL_STORAGE_KEY) ?? "null") as PendingCall | null;
-    return value && /^[0-9a-f-]{36}$/i.test(value.key) && Number.isFinite(value.startedAt)
+    const value = JSON.parse(sessionStorage.getItem(`${PENDING_CALL_STORAGE_KEY}:${actorId}`) ?? "null") as PendingCall | null;
+    return value && value.actorId === actorId && /^[0-9a-f-]{36}$/i.test(value.key) && Number.isFinite(value.startedAt)
       ? value : null;
   } catch { return null; }
 }
 
-function writePendingCall(value: PendingCall | null): void {
+function writePendingCall(value: PendingCall | null, actorId: string): void {
   try {
-    if (value) sessionStorage.setItem(PENDING_CALL_STORAGE_KEY, JSON.stringify(value));
-    else sessionStorage.removeItem(PENDING_CALL_STORAGE_KEY);
+    if (value) sessionStorage.setItem(`${PENDING_CALL_STORAGE_KEY}:${actorId}`, JSON.stringify(value));
+    else sessionStorage.removeItem(`${PENDING_CALL_STORAGE_KEY}:${actorId}`);
   } catch {}
 }
 
@@ -218,8 +219,8 @@ export function useCostOptimizedInspectionVoice(
 
   const clearPendingCall = (key: string) => {
     if (pendingCallRef.current?.key !== key) return;
+    writePendingCall(null, pendingCallRef.current.actorId);
     pendingCallRef.current = null;
-    writePendingCall(null);
   };
 
   const finishReport = (session: Session) =>
@@ -253,7 +254,7 @@ export function useCostOptimizedInspectionVoice(
     if (reason) opts?.onAutoStop?.(reason);
   }
 
-  async function startSession(operationKey: string): Promise<void> {
+  async function startSession(operationKey: string, actorId: string): Promise<void> {
     if (activeRef.current) return;
     setState("connecting");
 
@@ -389,10 +390,7 @@ export function useCostOptimizedInspectionVoice(
     events.onerror = failConnection;
     events.onclose = () => {
       if (activeRef.current !== session) return;
-      void finishReport(session);
-      activeRef.current = null;
-      cleanup(session);
-      setState("idle");
+      stop();
     };
     peer.onconnectionstatechange = () => {
       if (peer?.connectionState === "failed") failConnection();
@@ -471,9 +469,9 @@ export function useCostOptimizedInspectionVoice(
         throw new Error("Inspection voice offer could not be created.");
 
       session.usageKey = operationKey;
-      const pendingCall = { key: operationKey, startedAt: Date.now() };
+      const pendingCall = { actorId, key: operationKey, startedAt: Date.now() };
       pendingCallRef.current = pendingCall;
-      writePendingCall(pendingCall);
+      writePendingCall(pendingCall, actorId);
       const response = await fetch(
         "/api/openai/inspection-transcription-token",
         {
@@ -483,6 +481,7 @@ export function useCostOptimizedInspectionVoice(
           headers: {
             "Content-Type": "application/json",
             "x-profixiq-operation-key": operationKey,
+            "x-profixiq-actor-id": actorId,
           },
           body: JSON.stringify({ sdp: offerSdp }),
           signal: session.abort.signal,
@@ -499,7 +498,6 @@ export function useCostOptimizedInspectionVoice(
       ensureActive();
       if (!response.ok || typeof sessionPayload?.sdp !== "string") {
         if (sessionPayload?.code === "inspection_voice_rejected" ||
-            sessionPayload?.code === "inspection_voice_rate_receipt_unavailable" ||
             sessionPayload?.code === "inspection_voice_reservation_released" ||
             sessionPayload?.code === "ai_budget_exceeded") {
           clearPendingCall(operationKey);
@@ -545,9 +543,16 @@ export function useCostOptimizedInspectionVoice(
     if (startPromiseRef.current) return startPromiseRef.current;
     const generation = ++startGenerationRef.current;
     const starting = (async () => {
-      const pending = pendingCallRef.current ?? readPendingCall();
+      const { data: { user }, error } = await createBrowserSupabase().auth.getUser();
+      if (generation !== startGenerationRef.current) return;
+      if (error || !user) throw new Error("Sign in to use inspection voice.");
+      const actorId = user.id;
+      // Each signed-in user retains their own closure key in this tab. A new
+      // account must never retry or overwrite another account's operation.
+      const pending = pendingCallRef.current?.actorId === actorId
+        ? pendingCallRef.current : readPendingCall(actorId);
+      pendingCallRef.current = pending;
       if (pending) {
-        pendingCallRef.current = pending;
         if (Date.now() - pending.startedAt >= PROVIDER_MAX_CALL_MS + 60_000) {
           clearPendingCall(pending.key);
         } else {
@@ -558,7 +563,7 @@ export function useCostOptimizedInspectionVoice(
             // The first POST may never have reached the server. Reuse its
             // idempotency key; an existing hold rejects replay before OpenAI.
             if (generation !== startGenerationRef.current) return;
-            await startSession(pending.key);
+            await startSession(pending.key, actorId);
             return;
           } else {
             throw new Error("The previous inspection voice call is still closing. Try again shortly.");
@@ -566,7 +571,7 @@ export function useCostOptimizedInspectionVoice(
         }
       }
       if (generation !== startGenerationRef.current) return;
-      await startSession(globalThis.crypto.randomUUID());
+      await startSession(globalThis.crypto.randomUUID(), actorId);
     })();
     startPromiseRef.current = starting;
     try {

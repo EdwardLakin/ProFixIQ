@@ -119,6 +119,7 @@ jobs:
           if [[ ! -f supabase/config.toml ]]; then
             supabase init
           fi
+          bash scripts/ci/disable-supabase-pgdelta.sh
           supabase db start
 
       - name: Ensure PostgreSQL client
