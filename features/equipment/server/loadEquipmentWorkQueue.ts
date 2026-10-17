@@ -30,13 +30,17 @@ const CHUNK = 100;
 const SCAN_LIMIT = 20_000;
 
 /** Equipment-only, non-financial read model. The page authenticates and checks entitlement first. */
-export async function loadEquipmentWorkQueue(input: {
+export async function loadEquipmentWorkQueueProjection(input: {
   supabase: SupabaseClient<Database>;
   admin: SupabaseClient<Database>;
   shopId: string;
   role: CanonicalRole;
   filters: EquipmentQueueFilters;
-}): Promise<EquipmentWorkQueue> {
+}): Promise<
+  Pick<EquipmentWorkQueue, "assets" | "statuses" | "partial"> & {
+    rows: EquipmentQueueRow[];
+  }
+> {
   if (!(EQUIPMENT_DIRECTORY_ROLES as readonly string[]).includes(input.role))
     throw new Error("Equipment queue access denied.");
   const index = await loadEquipmentAssetList(input);
@@ -115,9 +119,20 @@ export async function loadEquipmentWorkQueue(input: {
     ];
   });
   return {
-    ...filterEquipmentWorkQueue(rows, input.filters),
+    rows,
     assets,
     statuses: [...new Set(rows.map((row) => row.status))].sort(),
     partial,
+  };
+}
+
+/** Preserve the queue's existing filtering, counts and pagination contract. */
+export async function loadEquipmentWorkQueue(
+  input: Parameters<typeof loadEquipmentWorkQueueProjection>[0],
+): Promise<EquipmentWorkQueue> {
+  const projection = await loadEquipmentWorkQueueProjection(input);
+  return {
+    ...projection,
+    ...filterEquipmentWorkQueue(projection.rows, input.filters),
   };
 }

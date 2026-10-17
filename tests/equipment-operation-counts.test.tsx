@@ -129,6 +129,8 @@ it("matches the canonical Work drilldowns before pagination and excludes ordinar
     ),
   ]);
   const counts = await loadEquipmentOperationCounts(input(db));
+  expect(mocks.index).toHaveBeenCalledTimes(1);
+  expect(db.calls).toHaveLength(1);
   expect(estimateNextOwner("sent")).toBe("Customer");
   expect(counts.approvals.value).toBe(1);
   expect(counts.parts.value).toBe(1);
@@ -318,4 +320,13 @@ it("falls back to the bounded Dispatch window for malformed dates", () => {
   } finally {
     vi.useRealTimers();
   }
+});
+
+it("shares one bounded multi-window scan for both dashboard counts", async () => {
+  const db = client(Array.from({ length: 620 }, (_, i) => row(`work-${i}`)));
+  const result = await loadEquipmentOperationCounts(input(db));
+  expect(result.parts.value).toBe(620);
+  expect(result.approvals.value).toBe(0);
+  expect(mocks.index).toHaveBeenCalledTimes(1);
+  expect(db.calls).toHaveLength(2);
 });
