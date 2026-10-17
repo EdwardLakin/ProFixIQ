@@ -213,6 +213,12 @@ begin
      or not public.dispatch_can_manage(p_shop_id, p_actor_user_id) then
     raise exception using errcode = '42501', message = 'Close line denied.';
   end if;
+  -- The private core below skips the public punch guard, so keep its product
+  -- boundary: the shop must hold active Shop access.
+  if public.profixiq_shop_has_product_access(p_shop_id, 'shop') is not true then
+    raise exception using errcode = '42501',
+      message = 'WORK_ORDER_PRODUCT_ACCESS_FORBIDDEN: Shop entitlement is required.';
+  end if;
   if nullif(trim(coalesce(p_operation_key, '')), '') is null
      or length(trim(p_operation_key)) < 8 then
     raise exception using errcode = 'P0001', message = 'A stable operation key is required.';

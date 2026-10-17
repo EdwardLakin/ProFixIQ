@@ -48,6 +48,9 @@ describe("office close migration contract", () => {
     expect(sql).toContain("dispatch_can_manage(p_shop_id, p_actor_user_id)");
     expect(sql).toContain("'reason', v_reason");
   });
+  it("keeps the product boundary the private core skips", () => {
+    expect(sql).toContain("profixiq_shop_has_product_access(p_shop_id, 'shop')");
+  });
   it("shares the per-line lock with punch-off", () => {
     expect(sql.match(/equipment_punch_off_line:/g)?.length).toBe(2);
   });
