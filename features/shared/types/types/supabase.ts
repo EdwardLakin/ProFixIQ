@@ -32008,6 +32008,18 @@ export type Database = {
         Args: { p_actor_user_id: string; p_shop_id: string; p_visit_id: string }
         Returns: Json
       }
+      equipment_close_line_atomic: {
+        Args: {
+          p_actor_user_id: string
+          p_cause?: string
+          p_correction?: string
+          p_operation_key: string
+          p_reason: string
+          p_shop_id: string
+          p_work_order_line_id: string
+        }
+        Returns: Json
+      }
       equipment_component_claim_operation: {
         Args: {
           p_action: string

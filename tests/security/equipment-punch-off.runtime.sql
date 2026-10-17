@@ -41,7 +41,8 @@ values ('7e500000-0000-4000-8000-000000000001', '7e200000-0000-4000-8000-0000000
 insert into public.work_order_lines (id, shop_id, work_order_id, line_type, status, description, assigned_to, assigned_tech_id)
 values
   ('7e600000-0000-4000-8000-000000000001', '7e200000-0000-4000-8000-000000000001', '7e500000-0000-4000-8000-000000000001', 'job', 'in_progress', 'Three techs', null, '7e100000-0000-4000-8000-000000000002'),
-  ('7e600000-0000-4000-8000-000000000002', '7e200000-0000-4000-8000-000000000001', '7e500000-0000-4000-8000-000000000001', 'job', 'in_progress', 'Held tech blocks', null, '7e100000-0000-4000-8000-000000000002');
+  ('7e600000-0000-4000-8000-000000000002', '7e200000-0000-4000-8000-000000000001', '7e500000-0000-4000-8000-000000000001', 'job', 'in_progress', 'Held tech does not block', null, '7e100000-0000-4000-8000-000000000002'),
+  ('7e600000-0000-4000-8000-000000000003', '7e200000-0000-4000-8000-000000000001', '7e500000-0000-4000-8000-000000000001', 'job', 'in_progress', 'Forgotten timer', null, '7e100000-0000-4000-8000-000000000003');
 
 insert into public.work_order_line_technicians (work_order_line_id, technician_id, assigned_by)
 values
@@ -49,7 +50,8 @@ values
   ('7e600000-0000-4000-8000-000000000001', '7e100000-0000-4000-8000-000000000003', '7e100000-0000-4000-8000-000000000001'),
   ('7e600000-0000-4000-8000-000000000001', '7e100000-0000-4000-8000-000000000004', '7e100000-0000-4000-8000-000000000001'),
   ('7e600000-0000-4000-8000-000000000002', '7e100000-0000-4000-8000-000000000002', '7e100000-0000-4000-8000-000000000001'),
-  ('7e600000-0000-4000-8000-000000000002', '7e100000-0000-4000-8000-000000000003', '7e100000-0000-4000-8000-000000000001');
+  ('7e600000-0000-4000-8000-000000000002', '7e100000-0000-4000-8000-000000000003', '7e100000-0000-4000-8000-000000000001'),
+  ('7e600000-0000-4000-8000-000000000003', '7e100000-0000-4000-8000-000000000003', '7e100000-0000-4000-8000-000000000001');
 
 -- Tech 1 and 2 are running on line 1; tech 3 was assigned but never punched on.
 insert into public.work_order_line_labor_segments
@@ -72,6 +74,14 @@ values
    '7e600000-0000-4000-8000-000000000002', '7e100000-0000-4000-8000-000000000002',
    '7e100000-0000-4000-8000-000000000002', 'job_punch', now() - interval '2 hours');
 
+insert into public.work_order_line_labor_segments
+  (shop_id, work_order_id, work_order_line_id, technician_id, created_by, source, started_at)
+values
+  ('7e200000-0000-4000-8000-000000000001', '7e500000-0000-4000-8000-000000000001',
+   '7e600000-0000-4000-8000-000000000003', '7e100000-0000-4000-8000-000000000003',
+   '7e100000-0000-4000-8000-000000000003', 'job_punch', now() - interval '4 hours');
+
+-- The owner needs dispatch authority to use the office override.
 do $equipment_punch_off$
 declare
   shop constant uuid := '7e200000-0000-4000-8000-000000000001';
@@ -80,6 +90,8 @@ declare
   t3 constant uuid := '7e100000-0000-4000-8000-000000000004';
   line1 constant uuid := '7e600000-0000-4000-8000-000000000001';
   line2 constant uuid := '7e600000-0000-4000-8000-000000000002';
+  line3 constant uuid := '7e600000-0000-4000-8000-000000000003';
+  owner_id constant uuid := '7e100000-0000-4000-8000-000000000001';
   r jsonb;
   r2 jsonb;
   v_status text;
@@ -146,16 +158,59 @@ begin
   select status::text into v_status from public.work_order_lines where id = line1;
   if v_status <> 'completed' then raise exception 'line should be completed, got %', v_status; end if;
 
-  -- 5. A technician on hold still blocks closing: tech 1 punching off line 2 leaves it open.
+  -- 5. A technician on hold is not working, so does not block closing: tech 1
+  --    punching off line 2 (tech 2 is on hold) closes it.
   perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', t1), true);
-  r := public.equipment_punch_off_line_atomic(shop, line2, t1, t1, 'eqp-line2-t1-key');
-  if (r ->> 'lineClosed')::boolean then raise exception 'held technician must keep the line open: %', r; end if;
-  if (r -> 'remaining' -> 0 ->> 'state') <> 'on_hold' then raise exception 'remaining tech should be on hold: %', r; end if;
+  r := public.equipment_punch_off_line_atomic(shop, line2, t1, t1, 'eqp-line2-t1-key', 'Blown hose', 'Replaced hose');
+  if not (r ->> 'lineClosed')::boolean then raise exception 'held technician must not block closing: %', r; end if;
 
-  -- 6. Not callable by signed-in clients directly.
+  -- 6. Office override: close a line with a forgotten running timer.
+  perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', t1), true);
+  v_failed := false;
+  begin
+    perform public.equipment_close_line_atomic(shop, line3, t1, t1, 'eqp-close-tech-key', 'forgot');
+  exception when others then v_failed := sqlerrm like '%denied%';
+  end;
+  if not v_failed then raise exception 'a technician must not use the office override'; end if;
+
+  perform set_config('request.jwt.claims', format('{"sub":"%s","role":"authenticated"}', owner_id), true);
+  v_failed := false;
+  begin
+    perform public.equipment_close_line_atomic(shop, line3, owner_id, owner_id, 'eqp-close-noreason', '', 'Cause', 'Fix');
+  exception when others then v_failed := sqlerrm like '%reason is required%';
+  end;
+  if not v_failed then raise exception 'override without a reason must be refused'; end if;
+
+  v_failed := false;
+  begin
+    perform public.equipment_close_line_atomic(shop, line3, owner_id, 'eqp-close-nocause', 'Tech forgot to punch off');
+  exception when others then v_failed := true;
+  end;
+  if not v_failed then raise exception 'override without cause and correction must be refused'; end if;
+  if not exists (select 1 from public.work_order_line_labor_segments
+                 where work_order_line_id = line3 and ended_at is null) then
+    raise exception 'a refused override must leave timers running';
+  end if;
+
+  r := public.equipment_close_line_atomic(shop, line3, owner_id, 'eqp-close-ok-key', 'Tech forgot to punch off', 'Worn belt', 'Replaced belt');
+  if not (r ->> 'lineClosed')::boolean or (r ->> 'timersClosed')::int <> 1 then
+    raise exception 'override should close the line and one timer: %', r;
+  end if;
+  select status::text into v_status from public.work_order_lines where id = line3;
+  if v_status <> 'completed' then raise exception 'overridden line should be completed, got %', v_status; end if;
+  if exists (select 1 from public.work_order_line_labor_segments
+             where work_order_line_id = line3 and ended_at is null) then
+    raise exception 'no timer may stay running after the override';
+  end if;
+  r2 := public.equipment_close_line_atomic(shop, line3, owner_id, 'eqp-close-ok-key', 'Tech forgot to punch off', 'Worn belt', 'Replaced belt');
+  if not (r2 ->> 'idempotent')::boolean then raise exception 'override replay should be idempotent: %', r2; end if;
+
+  -- 7. Not callable by signed-in clients directly.
   if has_function_privilege('authenticated',
-       'public.equipment_punch_off_line_atomic(uuid,uuid,uuid,uuid,text,text,text,text)', 'execute') then
-    raise exception 'authenticated must not execute the punch-off command';
+       'public.equipment_punch_off_line_atomic(uuid,uuid,uuid,uuid,text,text,text,text)', 'execute')
+     or has_function_privilege('authenticated',
+       'public.equipment_close_line_atomic(uuid,uuid,uuid,text,text,text,text)', 'execute') then
+    raise exception 'authenticated must not execute the punch-off or office-close commands';
   end if;
 end;
 $equipment_punch_off$;

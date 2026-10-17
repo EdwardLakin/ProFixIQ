@@ -22,7 +22,27 @@ export type PunchOffResult = {
   ok: true;
   lineId: string;
   lineClosed: boolean;
-  remaining: Array<{ technicianId: string; state: "running" | "on_hold" }>;
+  remaining: Array<{ technicianId: string; state: "running" }>;
+  idempotent: boolean;
+};
+
+/** Office closes a line whose technician forgot to punch off. */
+export const CloseLineSchema = z
+  .object({
+    lineId: z.string().uuid(),
+    reason: z.string().trim().min(3).max(500),
+    cause: z.string().trim().max(2000).optional(),
+    correction: z.string().trim().max(2000).optional(),
+  })
+  .strict();
+
+export type CloseLineInput = z.infer<typeof CloseLineSchema>;
+
+export type CloseLineResult = {
+  ok: true;
+  lineId: string;
+  lineClosed: true;
+  timersClosed: number;
   idempotent: boolean;
 };
 

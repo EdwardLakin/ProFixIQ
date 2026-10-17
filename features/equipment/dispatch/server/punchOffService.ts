@@ -1,6 +1,11 @@
 import "server-only";
 
-import type { PunchOffInput, PunchOffResult } from "@/features/equipment/dispatch/lib/punchOff";
+import type {
+  CloseLineInput,
+  CloseLineResult,
+  PunchOffInput,
+  PunchOffResult,
+} from "@/features/equipment/dispatch/lib/punchOff";
 import {
   EquipmentDispatchError,
 } from "@/features/equipment/dispatch/server/equipmentDispatchService";
@@ -51,6 +56,40 @@ export async function punchOffLine(input: {
     lineId: String(row.lineId ?? input.request.lineId),
     lineClosed: Boolean(row.lineClosed),
     remaining: Array.isArray(row.remaining) ? (row.remaining as PunchOffResult["remaining"]) : [],
+    idempotent: Boolean(row.idempotent),
+  };
+}
+
+/** Office override: closes the line and any running timers, with a recorded reason. */
+export async function closeLineAsOffice(input: {
+  supabase: unknown;
+  shopId: string;
+  actorUserId: string;
+  operationKey: string;
+  request: CloseLineInput;
+}): Promise<CloseLineResult> {
+  const { data, error } = await (input.supabase as RpcClient).rpc("equipment_close_line_atomic", {
+    p_shop_id: input.shopId,
+    p_work_order_line_id: input.request.lineId,
+    p_actor_user_id: input.actorUserId,
+    p_operation_key: input.operationKey,
+    p_reason: input.request.reason,
+    p_cause: input.request.cause ?? null,
+    p_correction: input.request.correction ?? null,
+  });
+  if (error) {
+    throw new EquipmentDispatchError(
+      error.message || "Close line failed.",
+      error.code ?? null,
+      error.details ?? null,
+    );
+  }
+  const row = (data ?? {}) as Record<string, unknown>;
+  return {
+    ok: true,
+    lineId: String(row.lineId ?? input.request.lineId),
+    lineClosed: true,
+    timersClosed: Number(row.timersClosed ?? 0),
     idempotent: Boolean(row.idempotent),
   };
 }

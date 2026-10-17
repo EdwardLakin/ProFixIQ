@@ -11,10 +11,10 @@ calls `equipment_punch_off_line_atomic`, which wraps the canonical
 
 | Situation | Canonical action | Result |
 | --- | --- | --- |
-| Another technician is still running, or paused / on hold | `pause` (line status preserved, reason `punched_off`) | Only this technician's labor ends; `lineClosed: false`, `remaining` lists who is left |
+| Another technician still has a running timer | `pause` (line status preserved, reason `punched_off`) | Only this technician's labor ends; `lineClosed: false`, `remaining` lists who is left |
 | Nobody else is on the job | `finish` | Line completes; `lineClosed: true`. Cause, correction, labor time and a signed inspection are still required by the canonical command |
 
-Assigned technicians who never punched on do not block closing. Time is never
+Only running timers block closing. A technician who is paused or on hold is not working, and one who was assigned but never punched on is not either, so neither blocks. Time is never
 discarded: every segment is kept for payroll and costing.
 
 ## Safety
@@ -25,8 +25,20 @@ discarded: every segment is kept for payroll and costing.
 - Idempotent per `Idempotency-Key`; reusing a key with a different request is a conflict.
 - Service-role only. The shared punch path and its contract are unchanged.
 
+## Office override
+
+`POST /api/equipment/punch-off/close` (header `Idempotency-Key`, body `{ lineId, reason, cause?, correction? }`)
+calls `equipment_close_line_atomic` for a forgotten timer. It needs dispatch
+authority (`canManageScheduling`) and a written reason (3+ characters), which is
+recorded on the activity log. All running timers end at the close time with
+reason `office_closed` (time is kept), then the line completes through the
+canonical finish core, which still requires cause, correction, labor time and a
+signed inspection. If that refuses, nothing changes and timers keep running.
+
+The shared public punch guard binds the actor to the technician, so the
+override calls the private canonical core after its own office authorization.
+The shared punch contract is not edited.
+
 ## Not included yet
 
-- Office override to close a line when a technician forgot to punch off.
-- Held / paused technicians still block closing (confirm this is the intent).
-- The mobile punch-off UI; this PR is the command and route.
+- The mobile punch-off and office close UI; this PR is the commands and routes.
