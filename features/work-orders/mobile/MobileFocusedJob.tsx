@@ -37,14 +37,7 @@ import AIAssistantModal from "@/features/work-orders/components/workorders/AiAss
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@/features/work-orders/components/SuggestedQuickAdd";
 import { describePunchOff, type PunchOffResult } from "@/features/equipment/dispatch/lib/punchOff";
-import {
-  getEquipmentClassification,
-  getKnownEquipmentClassification,
-  getRememberedViewerProfileId,
-  rememberViewerProfileId,
-  type EquipmentClassification,
-} from "@/features/equipment/lib/equipmentClassification";
-import { resolveCanonicalStaffProfile } from "@/features/shared/lib/authenticated-profile";
+import { useEquipmentViewer } from "@/features/equipment/lib/useEquipmentViewer";
 import { JOB_FINISH_REPLAYED_EVENT } from "@/features/shared/lib/offline/jobFinishEvents";
 import {
   runJobPunchTransition,
@@ -185,8 +178,7 @@ export default function MobileFocusedJob(props: {
   const [activeTechnicianIds, setActiveTechnicianIds] = useState<string[]>([]);
   // Equipment shops decide Start/Finish from the viewer's own timer. Until both
   // are known the screen behaves exactly as it always has.
-  const [equipmentClass, setEquipmentClass] = useState<EquipmentClassification>("unknown");
-  const [viewerProfileId, setViewerProfileId] = useState<string | null>(null);
+  const { equipmentClass, viewerProfileId } = useEquipmentViewer(mode === "tech", supabase);
   const [workOrder, setWorkOrder] = useState<WorkOrder | null>(null);
   const [vehicle, setVehicle] = useState<Vehicle | null>(null);
   const [customer, setCustomer] = useState<Customer | null>(null);
@@ -660,47 +652,6 @@ export default function MobileFocusedJob(props: {
       window.removeEventListener("parts-request:submitted", handleSubmitted);
     };
   }, [refresh]);
-
-  // Equipment classification and the viewer's own profile id. Both come from
-  // authoritative sources and are remembered for offline use. If either is
-  // unavailable the screen keeps today's behavior and never guesses.
-  useEffect(() => {
-    if (mode !== "tech") return;
-    let active = true;
-    void (async () => {
-      try {
-        const scope = await getSessionMatchedOfflineScope();
-        if (!active) return;
-        setEquipmentClass(getKnownEquipmentClassification(scope));
-        setViewerProfileId(getRememberedViewerProfileId(scope));
-
-        const [classification, profileId] = await Promise.all([
-          getEquipmentClassification(scope),
-          (async () => {
-            // Offline: rely on the remembered profile id; no network lookup.
-            if (typeof navigator !== "undefined" && navigator.onLine === false) return null;
-            const {
-              data: { user },
-            } = await supabase.auth.getUser();
-            if (!user) return null;
-            const { profile } = await resolveCanonicalStaffProfile(supabase, user.id);
-            return profile?.id ?? null;
-          })().catch(() => null),
-        ]);
-        if (!active) return;
-        setEquipmentClass(classification);
-        if (profileId) {
-          rememberViewerProfileId(scope, profileId);
-          setViewerProfileId(profileId);
-        }
-      } catch {
-        // Keep the standard behavior.
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [mode, supabase]);
 
   // A queued Equipment Finish finally reached the server: now we know whether
   // it closed the line. Failed or conflicted replays never emit this event.

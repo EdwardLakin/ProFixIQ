@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import CauseCorrectionModal from "@/features/work-orders/components/workorders/CauseCorrectionModal";
@@ -183,44 +183,64 @@ export default function MobileJobPage() {
     [checkStoryConflict, line, loadStory],
   );
 
+  // Set once a non-final punch-off has happened but the technician's story has
+  // not been saved yet. A retry then only saves the story: it must not punch off
+  // again, and the typed text must not be replaced by a reload.
+  const storyOnlyRetry = useRef<{ remaining: PunchOffResult["remaining"] } | null>(null);
+
   const completeJob = useCallback(
     async (cause: string, correction: string) => {
-      const conflict = await checkStoryConflict("finish");
-      if (conflict) throw new Error(conflict);
+      if (!storyOnlyRetry.current) {
+        const conflict = await checkStoryConflict("finish");
+        if (conflict) throw new Error(conflict);
 
-      const outcome = await runJobPunchTransition(lineId, "finish", { cause, correction });
-      setStoryOpen(false);
-      // Queued Equipment finish: the server has not confirmed a completion.
-      if (outcome && outcome.awaitingServer === true) {
-        toast.warning("Finish saved. It will sync when you're back online.");
-        await loadStory();
-        router.refresh();
-        return;
-      }
+        const outcome = await runJobPunchTransition(lineId, "finish", { cause, correction });
 
-      // Equipment shops: others are still working, so this was a punch-off.
-      if (outcome && outcome.lineClosed === false) {
-        // A non-final punch-off does not save the story; keep it the same way
-        // Save draft does so it is not lost.
-        await saveStory(cause, correction).catch(() => undefined);
-        toast.success(
-          describePunchOff({
-            lineClosed: false,
+        // Queued Equipment finish: the server has not confirmed a completion.
+        if (outcome && outcome.awaitingServer === true) {
+          setStoryOpen(false);
+          toast.warning("Finish saved. It will sync when you're back online.");
+          await loadStory();
+          router.refresh();
+          return;
+        }
+
+        if (outcome && outcome.lineClosed === false) {
+          // Equipment shops: others are still working, so this was a punch-off,
+          // which does not save the story. Save it below.
+          storyOnlyRetry.current = {
             remaining: (outcome.remaining ?? []) as PunchOffResult["remaining"],
-          }),
-        );
-        await loadStory();
-        router.refresh();
-        return;
+          };
+        } else {
+          setStoryOpen(false);
+          toast.success("Job completed.");
+          await loadStory();
+          router.refresh();
+          window.dispatchEvent(
+            new CustomEvent("work-order-line:completed", {
+              detail: { workOrderLineId: lineId },
+            }),
+          );
+          return;
+        }
       }
-      toast.success("Job completed.");
+
+      // Punched off, story not yet saved. A failure keeps the modal open with
+      // the text intact (and no reload), so the technician can retry the save.
+      const pending = storyOnlyRetry.current;
+      try {
+        await saveStory(cause, correction);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "Save failed.";
+        throw new Error(
+          `You are punched off, but your story was not saved: ${reason} Your text is still here. Submit again to retry.`,
+        );
+      }
+      storyOnlyRetry.current = null;
+      setStoryOpen(false);
+      toast.success(describePunchOff({ lineClosed: false, remaining: pending?.remaining ?? [] }));
       await loadStory();
       router.refresh();
-      window.dispatchEvent(
-        new CustomEvent("work-order-line:completed", {
-          detail: { workOrderLineId: lineId },
-        }),
-      );
     },
     [checkStoryConflict, lineId, loadStory, router, saveStory],
   );
@@ -234,6 +254,7 @@ export default function MobileJobPage() {
       );
       return;
     }
+    storyOnlyRetry.current = null;
     setStoryOpen(true);
   };
 
@@ -270,7 +291,10 @@ export default function MobileJobPage() {
       {storyOpen && line ? (
         <CauseCorrectionModal
           isOpen={storyOpen}
-          onClose={() => setStoryOpen(false)}
+          onClose={() => {
+            storyOnlyRetry.current = null;
+            setStoryOpen(false);
+          }}
           jobId={line.id}
           lineLabel={lineLabel}
           initialCause={line.cause ?? ""}

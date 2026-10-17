@@ -93,7 +93,28 @@ always has, and a queued Finish is shown as pending, never completed.
   and goes through the existing retry/conflict handling, so the Finish stays pending.
 - **Ordinary Shops are unchanged**, including the optimistic "Job completed" for a queued Finish.
 
-Known limits: the desktop job modal (`FocusedJobModal`) has no per-technician timer data, so its
-Start/Finish button still reflects the line as a whole (it does show the pending-sync message and the
-punch-off message). A request queued before this change keeps the old behavior until it syncs. The
-classification is shop-level, matching the server rule, which applies to every line in an Equipment shop.
+Desktop job modal: it reads the active-technician list from the same scoped route it already loads
+(`workspace-detail`), never from the line's status. After A punches off while B continues, A is offered
+**Start job** (and cannot Complete) while B keeps **Finish job**.
+
+Story on a non-final punch-off: the punch-off itself does not save the story, so the mobile job page and
+the desktop modal save it to the line right after (the same write their Save draft button uses). If that
+save fails, the technician is told they are punched off but the story was not saved, the dialog stays
+open with their text, nothing is reloaded over it, and Submit retries **only the save** (it never
+punches off a second time). Closing the dialog abandons the retry. The mobile focused-job screen keeps
+the technician's local draft instead. Separate permanent per-technician stories are a later decision and
+are not part of this change.
+
+Known limits (be precise about what "unchanged" means):
+- **Unknown classification is not identical to today.** When Equipment status has never been learned, a
+  queued Finish is shown as pending sync instead of the old optimistic "Job completed". That is the safer
+  fallback, but it is a difference from the pre-change behavior. Button logic and online finishes are
+  unchanged in that case.
+- A request queued before this change keeps the old behavior until it syncs (nothing queued is cleared or
+  discarded; tests cover projection and replay of such a request).
+- The classification is shop-level, matching the server rule, which applies to every line in an
+  Equipment shop.
+- The first Finish after opening can wait up to 4 s on the entitlement check, and again after a lookup
+  failure, before falling back to the remembered answer. Worth improving separately.
+- Editing the story from the dialog's other entry points (for example "Edit story") still opens the
+  finish dialog; submitting it as a technician who is not timing is refused safely by the server.
