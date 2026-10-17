@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { CloseLineSchema, describePunchOff, PunchOffSchema } from "@/features/equipment/dispatch/lib/punchOff";
 
 const LINE = "00000000-0000-4000-8000-000000000001";
-const sql = readFileSync("supabase/migrations/20261017200000_equipment_punch_off_line.sql", "utf8");
+const sql = readFileSync("supabase/migrations/20261017035542_equipment_punch_off_line.sql", "utf8");
 
 describe("punch-off request", () => {
   it("needs only a line id; cause and correction are optional", () => {
