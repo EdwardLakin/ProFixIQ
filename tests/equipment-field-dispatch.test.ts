@@ -142,7 +142,7 @@ describe("route and migration boundaries", () => {
   });
 
   it("the migration is additive: wraps canonical commands and changes no existing object", () => {
-    const sql = read("supabase/migrations/20261017180000_equipment_field_dispatch.sql");
+    const sql = read("supabase/migrations/20261017015121_equipment_field_dispatch.sql");
     expect(sql).not.toMatch(/\bdrop\s+(table|policy|trigger|function)\b/i);
     expect(sql).not.toMatch(/create\s+trigger/i);
     for (const m of sql.matchAll(/alter\s+table\s+(?:only\s+)?public\.(\w+)/gi)) {
@@ -160,7 +160,7 @@ describe("route and migration boundaries", () => {
   });
 
   it("acknowledgement never changes status or touches labor", () => {
-    const sql = read("supabase/migrations/20261017180000_equipment_field_dispatch.sql");
+    const sql = read("supabase/migrations/20261017015121_equipment_field_dispatch.sql");
     const ack = sql.slice(sql.indexOf("equipment_acknowledge_visit_atomic("));
     expect(ack).not.toMatch(/update\s+public\.service_visits/i);
     expect(ack).not.toMatch(/labor_segments/i);
