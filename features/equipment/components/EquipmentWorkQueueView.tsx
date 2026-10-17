@@ -37,7 +37,7 @@ export default function EquipmentWorkQueueView({
           <div>
             <h1 className="text-2xl font-bold">Work queue</h1>
             <p className="mt-1 text-sm text-[color:var(--theme-text-muted)]">
-              Equipment work orders and estimates, newest first.
+              Equipment work orders and estimates.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -142,7 +142,9 @@ export default function EquipmentWorkQueueView({
           className="text-sm text-[color:var(--theme-text-muted)]"
         >
           Limited scan: results and counts cover up to 20,000 work records and
-          5,000 assets. Additional work or assets may be omitted. Filter by an asset to narrow history, or open its
+          5,000 assets, read in asset batches. This may omit newer work on
+          unscanned assets; these are not necessarily the newest records across
+          all Equipment. Filter by an asset to narrow history, or open its
           Equipment profile.
         </p>
       ) : null}
