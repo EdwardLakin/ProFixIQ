@@ -38,7 +38,7 @@ describe("one executing visit per work order", () => {
   });
 
   it("the migration only restricts executing statuses and never repairs data", () => {
-    const sql = read("supabase/migrations/20261017190000_service_visit_one_executing_per_work_order.sql");
+    const sql = read("supabase/migrations/20261017023929_service_visit_one_executing_per_work_order.sql");
     expect(sql).toContain(INDEX);
     expect(sql).toMatch(/status in \('dispatched', 'en_route', 'arrived', 'working', 'paused'\)/);
     // `scheduled` must stay unrestricted (multi-day jobs, return trips booked ahead).
