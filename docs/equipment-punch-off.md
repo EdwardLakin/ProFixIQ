@@ -49,3 +49,27 @@ The shared punch contract is not edited.
 ## Not included yet
 
 - The mobile punch-off and office close UI; this PR is the commands and routes.
+
+## The existing Finish applies the rule (Equipment shops only)
+
+Technicians keep using the shop's own punch pieces: the day shift tracker and the job screens' Start,
+Hold and Finish. There is no separate Equipment punch screen.
+
+`POST /api/work-orders/lines/<id>/finish` (the existing route) now calls
+`finishViaEquipmentLastOff` first. It takes over only when **all** of these hold:
+
+1. the caller's shop holds the Equipment add-on, and
+2. the technician has a running timer on that line.
+
+Then Finish is the punch-off above: it ends only the caller's time while others are still running (the
+line stays open and the response says `lineClosed: false`), and it completes the line when the caller
+is the last one. Every other case continues into the unchanged finish: shops without Equipment,
+technicians with no running timer (for example a lead completing a line they never timed), and any
+lookup that fails (the rule fails open to today's behavior, so a Finish that worked still works).
+
+The job screens read `lineClosed`: `false` shows "Punched off. N other technicians are still on this
+job." and leaves the line open; anything else shows the existing "Job completed". The rule applies to
+every line in an Equipment shop, not only lines on Equipment assets.
+
+Rollback: remove the `finishViaEquipmentLastOff` call from the finish route. No data migration is
+involved.

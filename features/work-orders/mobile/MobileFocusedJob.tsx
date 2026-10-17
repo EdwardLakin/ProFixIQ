@@ -36,7 +36,11 @@ import AIAssistantModal from "@/features/work-orders/components/workorders/AiAss
 
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@/features/work-orders/components/SuggestedQuickAdd";
-import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import { describePunchOff, type PunchOffResult } from "@/features/equipment/dispatch/lib/punchOff";
+import {
+  runJobPunchTransition,
+  type JobPunchTransitionResult,
+} from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import {
   getWorkOrderJobChatContext,
 } from "@/features/work-orders/workspace/workOrderWorkspace";
@@ -1527,6 +1531,7 @@ export default function MobileFocusedJob(props: {
             );
           }}
           onSubmit={async (cause: string, correction: string) => {
+            let outcome: JobPunchTransitionResult | void;
             try {
               const conflict = navigator.onLine
                 ? await getLineConflict(line.id, "finish")
@@ -1535,7 +1540,7 @@ export default function MobileFocusedJob(props: {
                 toast.error(conflict);
                 return;
               }
-              await runJobPunchTransition(line.id, "finish", {
+              outcome = await runJobPunchTransition(line.id, "finish", {
                 cause,
                 correction,
               });
@@ -1548,6 +1553,20 @@ export default function MobileFocusedJob(props: {
                 });
             } catch (error) {
               return showErr("Complete job failed", error as { message?: string });
+            }
+
+            // Equipment shops: other technicians are still on the job, so this
+            // was a punch-off and the line stays open.
+            if (outcome && outcome.lineClosed === false) {
+              toast.success(
+                describePunchOff({
+                  lineClosed: false,
+                  remaining: (outcome.remaining ?? []) as PunchOffResult["remaining"],
+                }),
+              );
+              setOpenComplete(false);
+              await refresh();
+              return;
             }
 
             toast.success("Job completed");

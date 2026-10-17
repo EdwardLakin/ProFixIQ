@@ -23,6 +23,17 @@ type JobPunchTransitionOptions = {
 
 type ApiError = { error?: string };
 
+/**
+ * What the server reported for a transition. Only Equipment shops set
+ * `lineClosed` on finish: false means the technician punched off while others
+ * are still working, so the line stays open. Absent for every other case
+ * (and when the request was queued offline), which callers treat as before.
+ */
+export type JobPunchTransitionResult = {
+  lineClosed?: boolean;
+  remaining?: Array<{ technicianId: string; state: string }>;
+};
+
 function buildTransitionPath(lineId: string, action: JobPunchAction): string {
   return `/api/work-orders/lines/${lineId}/${action}`;
 }
@@ -43,7 +54,7 @@ export async function runJobPunchTransition(
   action: JobPunchAction,
   body?: TransitionBody,
   options?: JobPunchTransitionOptions,
-): Promise<void> {
+): Promise<JobPunchTransitionResult | void> {
   const suppliedKey = options?.operationKey?.trim();
   const operationKey =
     suppliedKey || createJobPunchOperationKey(lineId, action);
@@ -60,7 +71,7 @@ export async function runJobPunchTransition(
     occurredAt,
   };
 
-  const post = async () => {
+  const post = async (): Promise<JobPunchTransitionResult | void> => {
     const res = await fetch(buildTransitionPath(lineId, action), {
       method: "POST",
       headers: {
@@ -69,7 +80,15 @@ export async function runJobPunchTransition(
       },
       body: JSON.stringify(payload),
     });
-    if (res.ok) return;
+    if (res.ok) {
+      // The body is optional: callers that ignore it behave exactly as before.
+      try {
+        const body = (await res.json()) as JobPunchTransitionResult | null;
+        return body && typeof body === "object" ? body : undefined;
+      } catch {
+        return undefined;
+      }
+    }
     const responsePayload = (await res
       .json()
       .catch(() => null)) as ApiError | null;
@@ -84,8 +103,7 @@ export async function runJobPunchTransition(
 
   const scope = await getSessionMatchedOfflineScope();
   if (!scope) {
-    await post();
-    return;
+    return post();
   }
   await runMutationWithOfflineQueue({
     clientMutationId,
@@ -93,6 +111,8 @@ export async function runJobPunchTransition(
     payload: { lineId, action, body: payload, operationKey, occurredAt },
     orderKey: `${lineId}:job-punch:${operationKey}`,
     scope,
-    runner: post,
+    runner: async () => {
+      await post();
+    },
   });
 }

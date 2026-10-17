@@ -10,6 +10,7 @@ import { createBrowserSupabase } from "@/features/shared/lib/supabase/client";
 import { runMutationWithOfflineQueue } from "@/features/shared/lib/offline/mutations";
 import { postOfflineServerMutation } from "@/features/shared/lib/offline/server-mutations";
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
+import { describePunchOff, type PunchOffResult } from "@/features/equipment/dispatch/lib/punchOff";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 
@@ -187,8 +188,20 @@ export default function MobileJobPage() {
       const conflict = await checkStoryConflict("finish");
       if (conflict) throw new Error(conflict);
 
-      await runJobPunchTransition(lineId, "finish", { cause, correction });
+      const outcome = await runJobPunchTransition(lineId, "finish", { cause, correction });
       setStoryOpen(false);
+      // Equipment shops: others are still working, so this was a punch-off.
+      if (outcome && outcome.lineClosed === false) {
+        toast.success(
+          describePunchOff({
+            lineClosed: false,
+            remaining: (outcome.remaining ?? []) as PunchOffResult["remaining"],
+          }),
+        );
+        await loadStory();
+        router.refresh();
+        return;
+      }
       toast.success("Job completed.");
       await loadStory();
       router.refresh();

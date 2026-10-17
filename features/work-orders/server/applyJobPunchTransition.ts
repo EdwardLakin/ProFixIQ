@@ -89,7 +89,7 @@ function withIdempotentFlag(result: Json): Json {
   return result;
 }
 
-function errorStatus(message: string): number {
+export function errorStatus(message: string): number {
   const normalized = message.toLowerCase();
   if (normalized.includes("not found")) return 404;
   if (

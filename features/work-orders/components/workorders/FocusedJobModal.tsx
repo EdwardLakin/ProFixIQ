@@ -30,7 +30,11 @@ import AIAssistantModal from "@/features/work-orders/components/workorders/AiAss
 import NewChatModal from "@/features/ai/components/chat/NewChatModal";
 import SuggestedQuickAdd from "@/features/work-orders/components/SuggestedQuickAdd";
 import JobPunchButton from "@/features/work-orders/components/JobPunchButton";
-import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import { describePunchOff, type PunchOffResult } from "@/features/equipment/dispatch/lib/punchOff";
+import {
+  runJobPunchTransition,
+  type JobPunchTransitionResult,
+} from "@/features/work-orders/lib/jobPunchTransitionsClient";
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
 import { hasActivePartsWaitingSignal } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 import {
@@ -1941,14 +1945,28 @@ export default function FocusedJobModal(props: {
           onSubmit={async (cause: string, correction: string) => {
             await ensureShopContext((workOrder?.shop_id as string | null) ?? null);
 
+            let outcome: JobPunchTransitionResult | void;
             try {
-              await runJobPunchTransition(line.id, "finish", {
+              outcome = await runJobPunchTransition(line.id, "finish", {
                 cause,
                 correction,
               });
             } catch (error) {
               showErr("Complete job failed", error as { message?: string });
               throw error;
+            }
+
+            // Equipment shops: others are still working, so this was a punch-off.
+            if (outcome && outcome.lineClosed === false) {
+              toast.success(
+                describePunchOff({
+                  lineClosed: false,
+                  remaining: (outcome.remaining ?? []) as PunchOffResult["remaining"],
+                }),
+              );
+              setOpenComplete(false);
+              await refresh();
+              return;
             }
 
             toast.success("Job completed");
