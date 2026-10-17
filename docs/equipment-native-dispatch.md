@@ -22,6 +22,14 @@ changing the canonical Shop/Field board or any command contract.
   time availability.
 - The actor may acknowledge only their own displayed participant assignment
   through the existing acknowledgement route; the command reauthorizes it.
+  The existing Equipment Field entry also mounts personal pending receipts after
+  its unchanged Field-access gate, so mechanics can acknowledge without gaining
+  scheduling, directory, work-order or execution access. The personal projection
+  returns only own visit ID, participant role and assignment timestamp, verifies
+  active same-shop Equipment visits, and discloses its 5,000-receipt scan cap.
+- Existing participant names come from scoped profile identity reads independent
+  of the eligibility-filtered choices for new dispatches. Revoking Field
+  eligibility does not hide who is still assigned or awaiting acknowledgement.
 - Requests are persisted in tab-session storage under shop + actor before send.
   Uncertain/503 outcomes and same-tab reloads reuse the exact key and payload.
   A rejected retry retains the original uncertain request. No background or

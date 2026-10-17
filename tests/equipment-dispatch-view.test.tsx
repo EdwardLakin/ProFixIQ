@@ -35,6 +35,7 @@ const data: EquipmentDispatchData = {
       acknowledged_at: null,
     },
   ],
+  participantNames: { actor: "Formerly eligible support" },
   technicians: [],
   serviceVehicles: [],
   generatedAt: "2026-10-17T12:00:00Z",
@@ -81,6 +82,7 @@ describe("Equipment native Dispatch view", () => {
     expect(
       screen.queryByRole("button", { name: "Acknowledge my assignment" }),
     ).not.toBeInTheDocument();
+    expect(screen.getByText(/Formerly eligible support/)).toBeInTheDocument();
   });
   it("distinguishes errors from a genuinely empty board", () => {
     render(

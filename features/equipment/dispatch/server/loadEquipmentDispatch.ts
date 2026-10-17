@@ -102,6 +102,23 @@ export async function loadEquipmentDispatch(input: {
       if ((result.data ?? []).length < 500) break;
     }
   }
+  // Existing participant identity is independent of current dispatch eligibility.
+  const participantNames: Record<string, string> = {};
+  const participantIds = [
+    ...new Set(participants.flatMap((p) => (p.user_id ? [p.user_id] : []))),
+  ];
+  for (let offset = 0; offset < participantIds.length; offset += 100) {
+    const result = await input.admin
+      .from("profiles")
+      .select("id,full_name")
+      .eq("shop_id", input.shopId)
+      .in("id", participantIds.slice(offset, offset + 100));
+    if (result.error) throw new Error("Unable to load participant names.");
+    for (const profile of result.data ?? []) {
+      participantNames[profile.id] =
+        profile.full_name?.trim() || `Technician ${profile.id.slice(0, 8)}`;
+    }
+  }
   return {
     ...page,
     assets: projection.assets,
@@ -111,6 +128,7 @@ export async function loadEquipmentDispatch(input: {
     addresses,
     addressesPartial,
     participants,
+    participantNames,
     technicians: board.technicians.filter(
       (tech) =>
         (tech as typeof tech & { fieldOperator?: boolean }).fieldOperator ===

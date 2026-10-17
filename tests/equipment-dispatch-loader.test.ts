@@ -109,13 +109,11 @@ const input = (db = client()) => ({
   now: new Date("2026-10-17T12:00:00Z"),
 });
 beforeEach(() => {
-  mocks.projection
-    .mockReset()
-    .mockResolvedValue({
-      assets: [["equipment", "Excavator"]],
-      rows: [],
-      partial: false,
-    });
+  mocks.projection.mockReset().mockResolvedValue({
+    assets: [["equipment", "Excavator"]],
+    rows: [],
+    partial: false,
+  });
   mocks.board.mockReset().mockResolvedValue(board([]));
 });
 describe("Equipment Dispatch read boundaries", () => {
@@ -199,6 +197,10 @@ describe("Equipment Dispatch read boundaries", () => {
           customer_id: "customer",
         },
       ],
+      profiles: [
+        { id: "actor", shop_id: "shop", full_name: "Ineligible support" },
+        { id: "foreign", shop_id: "other", full_name: "Foreign" },
+      ],
       service_addresses: [
         {
           id: "jobsite",
@@ -233,6 +235,8 @@ describe("Equipment Dispatch read boundaries", () => {
     expect(data.work.map((w) => w.id)).toEqual(["wo"]);
     expect(data.addresses.map((a) => a.id)).toEqual(["jobsite"]);
     expect(data.participants).toHaveLength(1);
+    expect(data.technicians).toEqual([]);
+    expect(data.participantNames).toEqual({ actor: "Ineligible support" });
     expect(
       db.calls.every((call) =>
         call.conditions.some(([k, v]) => k === "shop_id" && v === "shop"),
@@ -258,5 +262,101 @@ describe("Equipment Dispatch read boundaries", () => {
   it("propagates canonical read failure", async () => {
     mocks.board.mockRejectedValue(new Error("denied"));
     await expect(loadEquipmentDispatch(input())).rejects.toThrow("denied");
+  });
+});
+
+import { loadPersonalEquipmentAcknowledgements } from "@/features/equipment/dispatch/server/loadPersonalEquipmentAcknowledgements";
+describe("personal Equipment acknowledgement reads", () => {
+  it("returns only the actor's current Equipment assignments, without job details", async () => {
+    const participant = (id: string, patch: Record<string, unknown> = {}) => ({
+      service_visit_id: id,
+      user_id: "mechanic",
+      shop_id: "shop",
+      removed_at: null,
+      acknowledged_at: null,
+      role: "support",
+      added_at: "2026-10-17T12:00:00Z",
+      ...patch,
+    });
+    const db = client({
+      service_visit_participants: [
+        participant("mine"),
+        participant("ordinary"),
+        participant("closed"),
+        participant("other-user", { user_id: "other" }),
+        participant("other-shop", { shop_id: "other" }),
+        participant("removed", { removed_at: "2026-10-17" }),
+        participant("acknowledged", { acknowledged_at: "2026-10-17" }),
+      ],
+      service_visits: [
+        {
+          id: "mine",
+          shop_id: "shop",
+          mode: "mobile",
+          status: "working",
+          work_order_id: "equipment-work",
+        },
+        {
+          id: "ordinary",
+          shop_id: "shop",
+          mode: "mobile",
+          status: "working",
+          work_order_id: "ordinary-work",
+        },
+        {
+          id: "closed",
+          shop_id: "shop",
+          mode: "mobile",
+          status: "completed",
+          work_order_id: "equipment-work",
+        },
+        {
+          id: "other-user",
+          shop_id: "shop",
+          mode: "mobile",
+          status: "working",
+          work_order_id: "equipment-work",
+        },
+      ],
+      work_orders: [
+        {
+          id: "equipment-work",
+          shop_id: "shop",
+          vehicle_id: "equipment",
+          customer_name: "Private customer",
+        },
+        { id: "ordinary-work", shop_id: "shop", vehicle_id: "ordinary" },
+      ],
+      equipment_asset_profiles: [{ vehicle_id: "equipment", shop_id: "shop" }],
+    });
+    const result = await loadPersonalEquipmentAcknowledgements({
+      admin: db as never,
+      shopId: "shop",
+      actorId: "mechanic",
+    });
+    expect(result).toEqual({
+      rows: [
+        { visitId: "mine", role: "support", addedAt: "2026-10-17T12:00:00Z" },
+      ],
+      partial: false,
+    });
+    expect(
+      db.calls.every((c) =>
+        c.conditions.some(([k, v]) => k === "shop_id" && v === "shop"),
+      ),
+    ).toBe(true);
+    expect(db.calls[0].conditions).toContainEqual(["user_id", "mechanic"]);
+    expect(JSON.stringify(result)).not.toMatch(
+      /Private customer|work_order|vehicle|customer/,
+    );
+  });
+  it("fails closed on a personal-assignment read error", async () => {
+    await expect(
+      loadPersonalEquipmentAcknowledgements({
+        admin: client({}, true) as never,
+        shopId: "shop",
+        actorId: "mechanic",
+      }),
+    ).rejects.toThrow("Unable to load");
   });
 });

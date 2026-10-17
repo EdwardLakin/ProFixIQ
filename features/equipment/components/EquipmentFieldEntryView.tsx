@@ -36,9 +36,11 @@ const STATE_COPY: Record<
 export default function EquipmentFieldEntryView({
   state,
   canConfigure = false,
+  children,
 }: {
   state: EquipmentFieldEntryState;
   canConfigure?: boolean;
+  children?: React.ReactNode;
 }) {
   return (
     <WorkspaceShell>
@@ -49,6 +51,8 @@ export default function EquipmentFieldEntryView({
           Your jobs, service calls and truck stock for work on the jobsite.
         </p>
       </WorkspaceHeader>
+
+      {state === "ready" ? children : null}
 
       {state === "ready" ? (
         <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">

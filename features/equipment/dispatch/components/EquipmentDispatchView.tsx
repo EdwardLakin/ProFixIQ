@@ -224,9 +224,7 @@ export default function EquipmentDispatchView({
                             <li key={`${p.user_id}:${i}`}>
                               {p.user_id === actorId
                                 ? "You"
-                                : data.technicians.find(
-                                    (t) => t.id === p.user_id,
-                                  )?.name ||
+                                : data.participantNames[p.user_id ?? ""] ||
                                   (p.user_id === visit.assignedTechnician?.id
                                     ? visit.assignedTechnician.name
                                     : "Technician")}{" "}

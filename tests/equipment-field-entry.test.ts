@@ -22,7 +22,7 @@ describe("Equipment field entry", () => {
     }
   });
 
-  it("authenticates, checks entitlement, and reads no business data", () => {
+  it("keeps Field gates and delegates personal acknowledgement reads only after access passes", () => {
     const page = readFileSync("app/equipment/field/page.tsx", "utf8");
     expect(page).toContain("requireShopPageAccess");
     expect(page).toContain("EQUIPMENT_FIELD_ENTRY_ROLES");
@@ -30,6 +30,8 @@ describe("Equipment field entry", () => {
     // Links only appear once the canonical Field access check passes.
     expect(page).toContain("getMobileFieldServiceAccess");
     expect(page).toContain("equipmentFieldEntryState");
+    expect(page).toContain("EquipmentPersonalAcknowledgements");
+    expect(page).toContain('state === "ready"');
     expect(page).not.toContain("createAdminSupabase");
     expect(page).not.toMatch(/\.(from|rpc)\(/);
   });
