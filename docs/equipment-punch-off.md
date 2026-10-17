@@ -49,3 +49,24 @@ The shared punch contract is not edited.
 ## Not included yet
 
 - The mobile punch-off and office close UI; this PR is the commands and routes.
+
+## Screens
+
+`/equipment/line/<lineId>` shows who is on the job (working, on hold, punched off, finished) and:
+
+- **Punch off** for a technician with a running timer. It says whether their punch-off will complete
+  the line; cause and correction are only asked for when it will. Retries reuse one Idempotency-Key and
+  editing a field starts a new one.
+- **Close line for technician** for dispatch staff, with a reason, cause and correction and a
+  confirmation. It is hidden with a plain reason when the line is closed, approval-pending, held for a
+  parts quote, or has no logged time.
+
+Floor technicians only see lines they are assigned to; dispatch staff see any line in their shop. The
+page is a new Equipment route and does not change the existing mobile job screen.
+
+### Not linked yet
+
+Nothing links to this page. The existing mobile job screen (`MobileFocusedJob`) is shared by Shop, Fleet
+and Field, and its Finish button still lets the first finisher complete a line. Pointing Equipment
+shops at this page (or changing that Finish button) changes shared behavior and needs separate approval.
+Offline queuing for these two commands is also not included.
