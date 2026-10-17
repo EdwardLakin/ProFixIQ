@@ -54,6 +54,17 @@ values
   ('7e600000-0000-4000-8000-000000000002', '7e200000-0000-4000-8000-000000000001', '7e500000-0000-4000-8000-000000000001', 'job', 'in_progress', 'Held tech does not block', null, '7e100000-0000-4000-8000-000000000005'),
   ('7e600000-0000-4000-8000-000000000003', '7e200000-0000-4000-8000-000000000001', '7e500000-0000-4000-8000-000000000001', 'job', 'in_progress', 'Forgotten timer', null, '7e100000-0000-4000-8000-000000000007');
 
+insert into public.work_order_lines (id, shop_id, work_order_id, line_type, status, description, assigned_to, assigned_tech_id, approval_state, punchable)
+values
+  ('7e600000-0000-4000-8000-000000000004', '7e200000-0000-4000-8000-000000000001', '7e500000-0000-4000-8000-000000000001', 'job', 'in_progress', 'Approval pending', null, '7e100000-0000-4000-8000-000000000006', 'pending', false);
+
+insert into public.work_order_line_labor_segments
+  (shop_id, work_order_id, work_order_line_id, technician_id, created_by, source, started_at)
+values
+  ('7e200000-0000-4000-8000-000000000001', '7e500000-0000-4000-8000-000000000001',
+   '7e600000-0000-4000-8000-000000000004', '7e100000-0000-4000-8000-000000000006',
+   '7e100000-0000-4000-8000-000000000006', 'job_punch', now() - interval '1 hour');
+
 -- The canonical finish requires recorded labor time on the line.
 update public.work_order_lines set labor_time = 1
 where work_order_id = '7e500000-0000-4000-8000-000000000001';
@@ -107,6 +118,7 @@ declare
   t6 constant uuid := '7e100000-0000-4000-8000-000000000007';
   line2 constant uuid := '7e600000-0000-4000-8000-000000000002';
   line3 constant uuid := '7e600000-0000-4000-8000-000000000003';
+  line4 constant uuid := '7e600000-0000-4000-8000-000000000004';
   owner_id constant uuid := '7e100000-0000-4000-8000-000000000001';
   r jsonb;
   r2 jsonb;
@@ -119,7 +131,7 @@ begin
   select status::text into v_before from public.work_order_lines where id = line1;
 
   -- 1. First technician off: only their own labor ends, the line stays open.
-  r := public.equipment_punch_off_line_atomic(shop, line1, t1, t1, 'eqp-line1-t1-key');
+  r := public.equipment_punch_off_line_atomic(shop, line1, t1, t1, 'eqp-line1-t1-key', null, null, 'Seal looks worn');
   if (r ->> 'lineClosed')::boolean then raise exception 'first punch-off must not close the line: %', r; end if;
   if jsonb_array_length(r -> 'remaining') <> 1 then raise exception 'one technician should remain: %', r; end if;
   select status::text into v_status from public.work_order_lines where id = line1;
@@ -133,8 +145,14 @@ begin
     raise exception 'second technician timer must be untouched';
   end if;
 
+  if not exists (select 1 from public.activity_logs
+                 where action = 'equipment_punch_off_note' and target_id = line1
+                   and context ->> 'note' = 'Seal looks worn') then
+    raise exception 'the technician note must be persisted';
+  end if;
+
   -- 2. Same key replays without a second effect; a changed request is a conflict.
-  r2 := public.equipment_punch_off_line_atomic(shop, line1, t1, t1, 'eqp-line1-t1-key');
+  r2 := public.equipment_punch_off_line_atomic(shop, line1, t1, t1, 'eqp-line1-t1-key', null, null, 'Seal looks worn');
   if not (r2 ->> 'idempotent')::boolean then raise exception 'replay should be idempotent: %', r2; end if;
   v_failed := false;
   begin
@@ -209,6 +227,18 @@ begin
   if not exists (select 1 from public.work_order_line_labor_segments
                  where work_order_line_id = line3 and ended_at is null) then
     raise exception 'a refused override must leave timers running';
+  end if;
+
+  -- The override keeps the approval fence: approval-pending work cannot be closed.
+  v_failed := false;
+  begin
+    perform public.equipment_close_line_atomic(shop, line4, owner_id, 'eqp-close-pending', 'Tech forgot to punch off', 'Cause', 'Fix');
+  exception when others then v_failed := sqlerrm like '%LINE_APPROVAL_PENDING%';
+  end;
+  if not v_failed then raise exception 'approval-pending line must not be closable by the override'; end if;
+  if not exists (select 1 from public.work_order_line_labor_segments
+                 where work_order_line_id = line4 and ended_at is null) then
+    raise exception 'a refused override must leave the pending line timer running';
   end if;
 
   r := public.equipment_close_line_atomic(shop, line3, owner_id, 'eqp-close-ok-key', 'Tech forgot to punch off', 'Worn belt', 'Replaced belt');

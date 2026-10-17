@@ -78,3 +78,18 @@ describe("punch-off migration contract", () => {
     expect(sql).toMatch(/'pause'[\s\S]*'punched_off', p_notes, true/);
   });
 });
+
+describe("review-fix migration", () => {
+  const fix = readFileSync("supabase/migrations/20261017041800_equipment_punch_off_review_fixes.sql", "utf8");
+  it("persists the technician note", () => {
+    expect(fix).toContain("equipment_punch_off_note");
+  });
+  it("keeps the approval fences in the office override", () => {
+    expect(fix).toContain("LINE_APPROVAL_PENDING");
+    expect(fix).toContain("PARTS_QUOTE_HOLD_PENDING");
+  });
+  it("stays service-role only", () => {
+    expect(fix).toMatch(/revoke all on function public\.equipment_close_line_atomic[\s\S]*from public, anon, authenticated/);
+    expect(fix).toMatch(/grant execute on function public\.equipment_punch_off_line_atomic[\s\S]*to service_role/);
+  });
+});

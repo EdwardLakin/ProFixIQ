@@ -12,7 +12,7 @@ calls `equipment_punch_off_line_atomic`, which wraps the canonical
 | Situation | Canonical action | Result |
 | --- | --- | --- |
 | Another technician still has a running timer | `pause` (line status preserved, reason `punched_off`) | Only this technician's labor ends; `lineClosed: false`, `remaining` lists who is left |
-| Nobody else is on the job | `finish` | Line completes; `lineClosed: true`. Cause, correction, labor time and a signed inspection are still required by the canonical command |
+| Nobody else is on the job | `finish` | Line completes; `lineClosed: true`. Cause, correction and labor time are required by the canonical command, and if the line has a canonical inspection it must be completed and signed (a line with no inspection has no inspection gate, exactly as in the shared punch path) |
 
 Only running timers block closing. A technician who is paused or on hold is not working, and one who was assigned but never punched on is not either, so neither blocks. Time is never
 discarded: every segment is kept for payroll and costing.
@@ -32,12 +32,19 @@ calls `equipment_close_line_atomic` for a forgotten timer. It needs dispatch
 authority (`canManageScheduling`) and a written reason (3+ characters), which is
 recorded on the activity log. All running timers end at the close time with
 reason `office_closed` (time is kept), then the line completes through the
-canonical finish core, which still requires cause, correction, labor time and a
-signed inspection. If that refuses, nothing changes and timers keep running.
+canonical finish core, which still requires cause, correction and labor time (and a
+signed inspection when the line has one). If that refuses, nothing changes and timers keep running.
 
 The shared public punch guard binds the actor to the technician, so the
 override calls the private canonical core after its own office authorization.
 The shared punch contract is not edited.
+
+## Notes and approvals
+
+- A technician's `notes` are saved on the activity log (`equipment_punch_off_note`) for both
+  outcomes, because the canonical pause and finish paths do not keep them.
+- The office override keeps the approval fences of the public punch guard: approval-pending
+  work and the awaiting-parts-quote hold cannot be closed.
 
 ## Not included yet
 
