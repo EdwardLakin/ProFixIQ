@@ -54,6 +54,10 @@ values
   ('7e600000-0000-4000-8000-000000000002', '7e200000-0000-4000-8000-000000000001', '7e500000-0000-4000-8000-000000000001', 'job', 'in_progress', 'Held tech does not block', null, '7e100000-0000-4000-8000-000000000005'),
   ('7e600000-0000-4000-8000-000000000003', '7e200000-0000-4000-8000-000000000001', '7e500000-0000-4000-8000-000000000001', 'job', 'in_progress', 'Forgotten timer', null, '7e100000-0000-4000-8000-000000000007');
 
+-- The canonical finish requires recorded labor time on the line.
+update public.work_order_lines set labor_time = 1
+where work_order_id = '7e500000-0000-4000-8000-000000000001';
+
 insert into public.work_order_line_technicians (work_order_line_id, technician_id, assigned_by)
 values
   ('7e600000-0000-4000-8000-000000000001', '7e100000-0000-4000-8000-000000000002', '7e100000-0000-4000-8000-000000000001'),
