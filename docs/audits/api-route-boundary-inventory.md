@@ -1,15 +1,15 @@
 # API Route Boundary Inventory (Static Heuristic)
 
-Generated: 2026-10-16T20:20:58.977Z
+Generated: 2026-10-16T23:18:32.808Z
 
 ## Summary
-- Total route count: **576**
+- Total route count: **579**
 - Routes exporting GET: **219**
-- Routes exporting POST: **387**
+- Routes exporting POST: **390**
 - Routes exporting PUT: **15**
 - Routes exporting PATCH: **36**
 - Routes exporting DELETE: **16**
-- Routes with service-role pattern: **223**
+- Routes with service-role pattern: **225**
 - Routes using requireShopScopedApiAccess: **247**
 - Routes with auth.getUser references: **121**
 
@@ -38,6 +38,8 @@ Generated: 2026-10-16T20:20:58.977Z
 - `app/api/demo/shop-boost/share/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary
 - `app/api/demo/shop-boost/uploads/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary
 - `app/api/diag/log/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/equipment/dispatch/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, mutating_without_obvious_auth_marker, service_role_with_shop_identifier_input_or_reference
+- `app/api/equipment/dispatch/visits/[visitId]/acknowledge/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, mutating_without_obvious_auth_marker, service_role_with_shop_identifier_input_or_reference
 - `app/api/feedback/[id]/route.ts` | methods: PATCH | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_without_shop_reference_on_staff_route, mutating_without_obvious_auth_marker
 - `app/api/feedback/attachments/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_without_shop_reference_on_staff_route, mutating_without_obvious_auth_marker
 - `app/api/fleet/ai-summary/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_with_shop_identifier_input_or_reference
@@ -356,6 +358,8 @@ Generated: 2026-10-16T20:20:58.977Z
 - `app/api/equipment/components/[componentId]/actions/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/components/[componentId]/route.ts` | methods: GET, PATCH | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/components/[componentId]/wear-limits/route.ts` | methods: PUT | riskFlags: service_role_with_shop_identifier_input_or_reference
+- `app/api/equipment/dispatch/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, mutating_without_obvious_auth_marker, service_role_with_shop_identifier_input_or_reference
+- `app/api/equipment/dispatch/visits/[visitId]/acknowledge/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, mutating_without_obvious_auth_marker, service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/fluid-samples/[sampleId]/void/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/measurements/[measurementId]/correct/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
 - `app/api/equipment/meter-readings/[readingId]/void/route.ts` | methods: POST | riskFlags: service_role_with_shop_identifier_input_or_reference
@@ -545,6 +549,8 @@ Generated: 2026-10-16T20:20:58.977Z
 - `app/api/copilot/technician/speech/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/dashboard/layout/route.ts` | methods: GET, PUT | riskFlags: mutating_without_obvious_auth_marker
 - `app/api/diag/log/route.ts` | methods: POST | riskFlags: mutating_without_obvious_auth_marker
+- `app/api/equipment/dispatch/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, mutating_without_obvious_auth_marker, service_role_with_shop_identifier_input_or_reference
+- `app/api/equipment/dispatch/visits/[visitId]/acknowledge/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, mutating_without_obvious_auth_marker, service_role_with_shop_identifier_input_or_reference
 - `app/api/feedback/[id]/route.ts` | methods: PATCH | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_without_shop_reference_on_staff_route, mutating_without_obvious_auth_marker
 - `app/api/feedback/attachments/route.ts` | methods: POST | riskFlags: mutating_with_service_role_without_obvious_auth_or_boundary, service_role_without_shop_reference_on_staff_route, mutating_without_obvious_auth_marker
 - `app/api/fleet/calendar/route.ts` | methods: GET | riskFlags: service_role_with_shop_identifier_input_or_reference
