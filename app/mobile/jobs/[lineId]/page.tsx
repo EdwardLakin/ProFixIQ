@@ -138,7 +138,7 @@ export default function MobileJobPage() {
   );
 
   const saveStory = useCallback(
-    async (cause: string, correction: string) => {
+    async (cause: string, correction: string, freshUpdatedAt?: string | null) => {
       if (!line) throw new Error("Job story is still loading.");
 
       const clientMutationId = operationKey(line.id);
@@ -146,7 +146,7 @@ export default function MobileJobPage() {
         lineId: line.id,
         cause,
         correction,
-        baseUpdatedAt: line.updated_at,
+        baseUpdatedAt: freshUpdatedAt === undefined ? line.updated_at : freshUpdatedAt,
       };
       const result = await runMutationWithOfflineQueue({
         clientMutationId,
@@ -229,7 +229,22 @@ export default function MobileJobPage() {
       // the text intact (and no reload), so the technician can retry the save.
       const pending = storyOnlyRetry.current;
       try {
-        await saveStory(cause, correction);
+        // The punch-off itself may have advanced the line's version, so the
+        // story save must be based on the current one, not the pre-punch copy.
+        // Offline, the queued save keeps the version it was written against.
+        let freshUpdatedAt: string | null | undefined;
+        if (typeof navigator === "undefined" || navigator.onLine) {
+          const response = await fetch(
+            `/api/work-order-lines/operational?lineId=${encodeURIComponent(lineId)}&limit=1`,
+            { cache: "no-store" },
+          );
+          const body = (await response.json().catch(() => null)) as {
+            lines?: Array<{ updated_at: string | null }>;
+          } | null;
+          if (!response.ok) throw new Error("Job line could not be loaded.");
+          freshUpdatedAt = body?.lines?.[0]?.updated_at ?? null;
+        }
+        await saveStory(cause, correction, freshUpdatedAt);
       } catch (error) {
         const reason = error instanceof Error ? error.message : "Save failed.";
         throw new Error(

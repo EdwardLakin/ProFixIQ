@@ -118,3 +118,8 @@ Known limits (be precise about what "unchanged" means):
   failure, before falling back to the remembered answer. Worth improving separately.
 - Editing the story from the dialog's other entry points (for example "Edit story") still opens the
   finish dialog; submitting it as a technician who is not timing is refused safely by the server.
+
+## Queued Start/Finish and the story save (review follow-up)
+
+- On the technician mobile screen, while an Equipment Start or Finish for the job is still queued, the primary button reads "Sync pending" and is disabled, so the same timer change cannot be queued twice. It clears when the replay reports back.
+- The story save after a non-final punch-off is based on the line's version read right after the punch-off, because the punch-off can advance it. A retry reads it again. If the device is offline, the queued save keeps the version it was written against and uses the existing conflict handling.

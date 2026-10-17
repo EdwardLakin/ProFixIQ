@@ -74,6 +74,11 @@ import MobileJobPage from "../app/mobile/jobs/[lineId]/page";
 
 function storyResponse(): Response {
   mocks.storyFetches += 1;
+  // The punch-off advances the line's version, so reads after it see a newer one.
+  const updatedAt =
+    mocks.punch.mock.calls.length > 0
+      ? "2026-10-17T12:05:00.000Z"
+      : "2026-10-17T12:00:00.000Z";
   return new Response(
     JSON.stringify({
       lines: [
@@ -85,7 +90,7 @@ function storyResponse(): Response {
           cause: null,
           correction: null,
           status: "in_progress",
-          updated_at: "2026-10-17T12:00:00.000Z",
+          updated_at: updatedAt,
         },
       ],
     }),
@@ -143,6 +148,18 @@ describe("a non-final punch-off whose story cannot be saved", () => {
     expect(mocks.punch).toHaveBeenCalledTimes(1);
     expect(mocks.postOffline).toHaveBeenCalledTimes(2);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("bases the story save on the line version after the punch-off, on the first try and on retry", async () => {
+    mocks.postOffline.mockRejectedValueOnce(new Error("Network lost.")).mockResolvedValue(undefined);
+    await openAndSubmit();
+    await screen.findByRole("alert");
+    fireEvent.click(screen.getByRole("button", { name: "Submit story" }));
+    await waitFor(() => expect(mocks.postOffline).toHaveBeenCalledTimes(2));
+
+    for (const call of mocks.postOffline.mock.calls) {
+      expect(call[0].payload.baseUpdatedAt).toBe("2026-10-17T12:05:00.000Z");
+    }
   });
 
   it("saves the story straight away when nothing goes wrong", async () => {

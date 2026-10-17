@@ -1,5 +1,5 @@
 import React from "react";
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -168,6 +168,7 @@ vi.mock("@/features/shared/lib/authenticated-profile", () => ({
   resolveCanonicalStaffProfile: async () => ({ profile: { id: mocks.viewerProfileId }, error: null }),
 }));
 
+import * as offlineMutations from "@/features/shared/lib/offline/mutations";
 import { resetEquipmentClassificationForTests } from "@/features/equipment/lib/equipmentClassification";
 import { JOB_FINISH_REPLAYED_EVENT } from "@/features/shared/lib/offline/jobFinishEvents";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
@@ -311,6 +312,31 @@ describe("mobile focused-job Finish: Equipment last-one-off", () => {
       expect(mocks.clearDraft).toHaveBeenCalled();
       view.unmount();
     }
+  });
+
+  it("holds the primary action while this line has a queued punch, for Equipment only", async () => {
+    const queued = [
+      {
+        clientMutationId: "m1",
+        actionType: "job:punch-transition",
+        status: "queued",
+        payload: { lineId: LINE_ID, action: "finish" },
+      },
+    ];
+    vi.mocked(offlineMutations.listOfflineMutations).mockReturnValue(queued as never);
+
+    renderFocusedJob();
+    const held = await screen.findByRole("button", { name: "Sync pending" });
+    expect(held).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Finish Job" })).toBeNull();
+
+    // An ordinary Shop keeps today's behavior.
+    cleanup();
+    resetEquipmentClassificationForTests();
+    mocks.entitlement = { status: 200, body: { enabled: false } };
+    renderFocusedJob();
+    expect(await screen.findByRole("button", { name: "Finish Job" })).toBeEnabled();
+    vi.mocked(offlineMutations.listOfflineMutations).mockReturnValue([]);
   });
 
   it("reports a punch-off, not a completion, when other technicians are still working", async () => {

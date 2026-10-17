@@ -931,13 +931,25 @@ export default function MobileFocusedJob(props: {
     !activeTechnicianIds.includes(viewerProfileId);
   const showFinish = isActive && !viewerMustRejoin;
   const showStart = isAwaiting || viewerMustRejoin;
-  const canPrimaryAction = isOnHold || (canStartOrResume && (showFinish || showStart));
+  // Equipment: a queued Start/Finish has not changed this technician's timer
+  // yet, so the same action must not be offered again until replay answers.
+  const punchSyncPending =
+    equipmentClass === "equipment" &&
+    offlineMutations.some(
+      (item) =>
+        item.actionType === "job:punch-transition" &&
+        (item.payload as { lineId?: string } | null)?.lineId === workOrderLineId,
+    );
+  const canPrimaryAction =
+    !punchSyncPending && (isOnHold || (canStartOrResume && (showFinish || showStart)));
   const needsApprovalGate =
     line?.status === "awaiting_approval" ||
     (line?.approval_state != null && line.approval_state !== "approved") ||
     line?.status === "declined";
 
-  const primaryActionLabel = isOnHold
+  const primaryActionLabel = punchSyncPending
+    ? "Sync pending"
+    : isOnHold
     ? "Remove Hold"
     : showFinish
       ? "Finish Job"
