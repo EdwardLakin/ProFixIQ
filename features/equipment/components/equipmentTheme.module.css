@@ -191,3 +191,10 @@
   [class~="absolute"][class*="gradient"] {
   background-image: none;
 }
+
+/* Adapt the shared tracker only; retain Equipment's graphite/steel/amber palette. */
+.shiftTracker {
+  --brand-accent: var(--equipment-amber);
+  --theme-accent-text: var(--equipment-focus);
+  --theme-border-strong: var(--theme-border-soft);
+}
