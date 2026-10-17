@@ -14,12 +14,16 @@ const h = vi.hoisted(() => ({
   entitlement: { value: { enabled: true } as { enabled: boolean } | Error },
   rpc: vi.fn(),
   othersRunning: { value: [] as unknown[], error: null as unknown },
+  receipt: { value: [] as unknown[], error: null as unknown },
   admin: {
     marker: "admin",
-    from: () => {
+    from: (table: string) => {
       const builder: Record<string, unknown> = {};
       for (const method of ["select", "eq", "neq", "is"]) builder[method] = () => builder;
-      builder.limit = async () => ({ data: h.othersRunning.value, error: h.othersRunning.error });
+      builder.limit = async () =>
+        table === "scheduler_operation_keys"
+          ? { data: h.receipt.value, error: h.receipt.error }
+          : { data: h.othersRunning.value, error: h.othersRunning.error };
       return builder;
     },
   },
@@ -55,8 +59,56 @@ beforeEach(() => {
   h.profile.value = { id: "tech-1", shop_id: "shop-1", role: "mechanic", demo_access_expires_at: null };
   h.othersRunning.value = [];
   h.othersRunning.error = null;
+  h.receipt.value = [];
+  h.receipt.error = null;
   h.entitlement.value = { enabled: true };
   h.rpc.mockReset();
+});
+
+describe("finishViaEquipmentLastOff: a retry of a Finish this command already answered", () => {
+  const answered = { ok: true, lineId: "line-1", lineClosed: true, remaining: [], idempotent: true };
+
+  it("replays through the command even when the add-on now reads disabled", async () => {
+    h.receipt.value = [{ operation_key: "x" }];
+    h.entitlement.value = { enabled: false };
+    h.rpc.mockResolvedValue(answered);
+    const out = await finishViaEquipmentLastOff(input);
+    expect(h.rpc).toHaveBeenCalledTimes(1);
+    expect(out).toMatchObject({ handled: true, ok: true });
+  });
+
+  it("replays through the command even when the entitlement lookup now fails, with another technician running", async () => {
+    h.receipt.value = [{ operation_key: "x" }];
+    h.entitlement.value = new Error("outage");
+    h.othersRunning.value = [{ technician_id: "tech-2" }];
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    h.rpc.mockResolvedValue(answered);
+    const out = await finishViaEquipmentLastOff(input);
+    expect(h.rpc).toHaveBeenCalledTimes(1);
+    expect(out).toMatchObject({ handled: true, ok: true });
+  });
+
+  it("looks the receipt up by the same derived key the command stores", async () => {
+    h.receipt.value = [{ operation_key: "x" }];
+    h.rpc.mockResolvedValue(answered);
+    await finishViaEquipmentLastOff(input);
+    expect(h.rpc).toHaveBeenCalledWith(
+      expect.objectContaining({ operationKey: "finish:line-1:job-punch:line-1:finish:abc" }),
+    );
+  });
+
+  it("fails closed with a retryable 503 when the receipt cannot be read, instead of guessing", async () => {
+    h.receipt.error = { message: "down" };
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = await finishViaEquipmentLastOff(input);
+    expect(out).toMatchObject({ handled: true, ok: false, status: 503 });
+    expect(h.rpc).not.toHaveBeenCalled();
+  });
+
+  it("still falls back to the standard finish when there is no receipt and no add-on", async () => {
+    h.entitlement.value = { enabled: false };
+    expect(await finishViaEquipmentLastOff(input)).toEqual({ handled: false });
+  });
 });
 
 describe("finishViaEquipmentLastOff: falls back to the standard finish", () => {

@@ -27,11 +27,12 @@ vi.mock("@/features/shared/lib/supabase/client", () => ({
     channel: vi.fn(() => mocks.channel),
     removeChannel: vi.fn(),
     rpc: vi.fn(async () => ({ error: null })),
-    from: (table: string) =>
-      table === "work_order_lines"
-        ? { update: () => ({ eq: (...args: unknown[]) => mocks.storyUpdate(...args) }) }
-        : mocks.profileQuery,
+    from: () => mocks.profileQuery,
   }),
+}));
+// The post-punch-off story save goes through the version-checked mutation.
+vi.mock("@/features/shared/lib/offline/server-mutations", () => ({
+  postOfflineServerMutation: (...args: unknown[]) => mocks.storyUpdate(...args),
 }));
 vi.mock("@/features/equipment/lib/useEquipmentViewer", () => ({
   useEquipmentViewer: () => mocks.viewer,
@@ -127,7 +128,14 @@ beforeEach(() => {
   mocks.viewer.equipmentClass = "equipment";
   mocks.viewer.viewerProfileId = "tech-a";
   mocks.active = ["tech-b"];
-  vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify(snapshot(mocks.active)), { status: 200 })));
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (url: string) =>
+      String(url).startsWith("/api/work-order-lines/operational")
+        ? new Response(JSON.stringify({ lines: [{ updated_at: "2026-10-17T12:05:00.000Z" }] }), { status: 200 })
+        : new Response(JSON.stringify(snapshot(mocks.active)), { status: 200 }),
+    ),
+  );
 });
 afterEach(() => {
   cleanup();
@@ -188,7 +196,7 @@ describe("desktop job modal: a non-final punch-off whose story cannot be saved",
   }
 
   it("keeps the dialog open, says what happened, and retries only the save", async () => {
-    mocks.storyUpdate.mockResolvedValueOnce({ error: { message: "Network lost." } }).mockResolvedValue({ error: null });
+    mocks.storyUpdate.mockRejectedValueOnce(new Error("Network lost.")).mockResolvedValue(undefined);
     await openAndSubmit();
 
     const alert = await screen.findByRole("alert");
@@ -203,18 +211,36 @@ describe("desktop job modal: a non-final punch-off whose story cannot be saved",
     );
     expect(mocks.punch).toHaveBeenCalledTimes(1);
     expect(mocks.storyUpdate).toHaveBeenCalledTimes(2);
+    // Saved against the line's current version, on the first try and on retry.
+    for (const call of mocks.storyUpdate.mock.calls) {
+      expect(call[0]).toMatchObject({
+        actionType: "save_story_draft",
+        payload: { baseUpdatedAt: "2026-10-17T12:05:00.000Z", cause: expect.any(String) },
+      });
+    }
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "story" })).toBeNull());
   });
 
+  it("does not overwrite a story on a line another technician has since completed: the refusal is shown and the text is kept", async () => {
+    mocks.storyUpdate.mockRejectedValue(new Error("Job line is already completed."));
+    await openAndSubmit();
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent("You are punched off, but your story was not saved");
+    expect(alert).toHaveTextContent("already completed");
+    expect(screen.getByRole("dialog", { name: "story" })).toBeInTheDocument();
+    expect(mocks.toastSuccess).not.toHaveBeenCalled();
+  });
+
   it("closing the dialog abandons the retry state, so a later finish is a normal finish again", async () => {
-    mocks.storyUpdate.mockResolvedValue({ error: { message: "Network lost." } });
+    mocks.storyUpdate.mockRejectedValue(new Error("Network lost."));
     await openAndSubmit();
     await screen.findByRole("alert");
 
     // Reopen after the dialog is dismissed: a submit now runs the finish again.
     mocks.punch.mockClear();
     mocks.punch.mockResolvedValue({ lineClosed: true });
-    mocks.storyUpdate.mockResolvedValue({ error: null });
+    mocks.storyUpdate.mockResolvedValue(undefined);
     cleanup();
     renderModal();
     await punchLabel();

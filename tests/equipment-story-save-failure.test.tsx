@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
   toastSuccess: vi.fn(),
   toastWarning: vi.fn(),
   storyFetches: 0,
+  queued: [] as unknown[],
 }));
 
 vi.mock("next/navigation", () => ({
@@ -28,6 +29,8 @@ vi.mock("@/features/shared/lib/offline/mutations", () => ({
     await args.runner();
     return { queued: false, conflicted: false };
   },
+  listOfflineMutations: () => mocks.queued,
+  subscribeOfflineMutations: () => () => undefined,
 }));
 vi.mock("@/features/shared/lib/offline/server-mutations", () => ({
   postOfflineServerMutation: (...args: unknown[]) => mocks.postOffline(...args),
@@ -111,6 +114,7 @@ describe("a non-final punch-off whose story cannot be saved", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.storyFetches = 0;
+    mocks.queued = [];
     vi.stubGlobal("fetch", vi.fn(async () => storyResponse()));
     mocks.punch.mockResolvedValue({
       lineClosed: false,
@@ -175,5 +179,45 @@ describe("a non-final punch-off whose story cannot be saved", () => {
     await openAndSubmit();
     await waitFor(() => expect(mocks.toastSuccess).toHaveBeenCalledWith("Job completed."));
     expect(mocks.postOffline).not.toHaveBeenCalled();
+  });
+});
+
+describe("a queued Equipment Finish holds every completion entry point on the page", () => {
+  const queuedFinish = (equipmentClass?: string) => ({
+    clientMutationId: "m1",
+    actionType: "job:punch-transition",
+    status: "queued",
+    payload: { lineId: "line-1", action: "finish", ...(equipmentClass ? { equipmentClass } : {}) },
+  });
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mocks.storyFetches = 0;
+    vi.stubGlobal("fetch", vi.fn(async () => storyResponse()));
+  });
+
+  it.each(["equipment", "unknown"])("disables the story rail while a %s Finish is waiting to sync, so no duplicate can be queued", async (klass) => {
+    mocks.queued = [queuedFinish(klass)];
+    render(<MobileJobPage />);
+    const rail = await screen.findByRole("button", { name: "Open cause and correction editor" });
+    await waitFor(() => expect(rail).toBeDisabled());
+    expect(rail).toHaveTextContent("Finish waiting to sync");
+    fireEvent.click(rail);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(mocks.punch).not.toHaveBeenCalled();
+  });
+
+  it("does not hold an ordinary Shop finish, a requests queued before classification was recorded, or another line", async () => {
+    for (const queued of [
+      [queuedFinish("standard")],
+      [queuedFinish()],
+      [{ ...queuedFinish("equipment"), payload: { lineId: "other", action: "finish", equipmentClass: "equipment" } }],
+    ]) {
+      mocks.queued = queued;
+      const view = render(<MobileJobPage />);
+      const rail = await screen.findByRole("button", { name: "Open cause and correction editor" });
+      await waitFor(() => expect(rail).toBeEnabled());
+      view.unmount();
+    }
   });
 });

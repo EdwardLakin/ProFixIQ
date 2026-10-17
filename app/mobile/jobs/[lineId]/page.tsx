@@ -12,6 +12,7 @@ import { postOfflineServerMutation } from "@/features/shared/lib/offline/server-
 import { getActorCapabilities } from "@/features/shared/lib/rbac";
 import { describePunchOff, type PunchOffResult } from "@/features/equipment/dispatch/lib/punchOff";
 import { runJobPunchTransition } from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import { useQueuedEquipmentFinish } from "@/features/work-orders/lib/useQueuedEquipmentFinish";
 import MobileFocusedJob from "@/features/work-orders/mobile/MobileFocusedJob";
 
 type StoryLine = {
@@ -43,6 +44,7 @@ export default function MobileJobPage() {
   const [line, setLine] = useState<StoryLine | null>(null);
   const [loadingStory, setLoadingStory] = useState(true);
   const [canAddJob, setCanAddJob] = useState(false);
+  const finishQueued = useQueuedEquipmentFinish(lineId);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -190,6 +192,9 @@ export default function MobileJobPage() {
 
   const completeJob = useCallback(
     async (cause: string, correction: string) => {
+      if (finishQueued) {
+        throw new Error("A Finish for this job is already waiting to sync.");
+      }
       if (!storyOnlyRetry.current) {
         const conflict = await checkStoryConflict("finish");
         if (conflict) throw new Error(conflict);
@@ -257,7 +262,7 @@ export default function MobileJobPage() {
       await loadStory();
       router.refresh();
     },
-    [checkStoryConflict, lineId, loadStory, router, saveStory],
+    [checkStoryConflict, finishQueued, lineId, loadStory, router, saveStory],
   );
 
   const openStory = () => {
@@ -296,10 +301,14 @@ export default function MobileJobPage() {
           type="button"
           onClick={openStory}
           aria-label="Open cause and correction editor"
-          disabled={loadingStory}
+          disabled={loadingStory || finishQueued}
           className="mx-auto flex min-h-12 w-full max-w-4xl items-center justify-center rounded-2xl border border-[var(--accent-copper-soft)]/70 bg-[color:var(--theme-surface-panel-strong)] px-4 text-sm font-semibold text-[color:var(--theme-text-primary)] active:scale-[0.99] disabled:opacity-50"
         >
-          {loadingStory ? "Loading job story…" : "Cause & Correction"}
+          {loadingStory
+            ? "Loading job story…"
+            : finishQueued
+              ? "Finish waiting to sync"
+              : "Cause & Correction"}
         </button>
       </div>
 

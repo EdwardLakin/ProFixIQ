@@ -36,6 +36,7 @@ import {
   runJobPunchTransition,
   type JobPunchTransitionResult,
 } from "@/features/work-orders/lib/jobPunchTransitionsClient";
+import { postOfflineServerMutation } from "@/features/shared/lib/offline/server-mutations";
 import { normalizeWorkOrderLineStatus } from "@/features/work-orders/lib/line-status";
 import { hasActivePartsWaitingSignal } from "@/features/work-orders/lib/preLaborPartsQuoteHold";
 import {
@@ -767,14 +768,38 @@ export default function FocusedJobModal(props: {
 
   const saveStoryAfterPunchOff = async (cause: string, correction: string): Promise<void> => {
     if (!line) return;
-    const { error: storyError } = await supabase
-      .from("work_order_lines")
-      .update({ cause, correction } as DB["public"]["Tables"]["work_order_lines"]["Update"])
-      .eq("id", line.id);
-    if (storyError) {
+    try {
+      // Another technician may have closed the line since this punch-off, so
+      // save through the version-checked story mutation (which refuses a
+      // completed line) against the line's current version.
+      const response = await fetch(
+        `/api/work-order-lines/operational?lineId=${encodeURIComponent(line.id)}&limit=1`,
+        { cache: "no-store" },
+      );
+      const body = (await response.json().catch(() => null)) as {
+        lines?: Array<{ updated_at: string | null }>;
+      } | null;
+      if (!response.ok) throw new Error("Job line could not be loaded.");
+      const operationKey = `${line.id}:story:${
+        typeof globalThis.crypto?.randomUUID === "function"
+          ? globalThis.crypto.randomUUID()
+          : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      }`;
+      await postOfflineServerMutation({
+        actionType: "save_story_draft",
+        operationKey,
+        payload: {
+          lineId: line.id,
+          cause,
+          correction,
+          baseUpdatedAt: body?.lines?.[0]?.updated_at ?? null,
+        },
+      });
+    } catch (storyError) {
       // Keep the dialog open with the text intact (no reload) and say what happened.
+      const reason = storyError instanceof Error ? storyError.message : "Save failed.";
       throw new Error(
-        `You are punched off, but your story was not saved: ${storyError.message} Your text is still here. Submit again to retry.`,
+        `You are punched off, but your story was not saved: ${reason} Your text is still here. Submit again to retry.`,
       );
     }
     const remaining = storyOnlyRetry.current?.remaining ?? [];

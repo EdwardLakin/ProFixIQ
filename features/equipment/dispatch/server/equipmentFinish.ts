@@ -53,14 +53,29 @@ export async function finishViaEquipmentLastOff(input: {
   );
   if (!profile?.shop_id) return { handled: false };
 
-  let entitled: boolean;
-  try {
-    entitled = (await resolveEquipmentAddonEntitlementForShop(profile.shop_id)).enabled;
-  } catch (error) {
-    console.error("[equipment/finish] entitlement lookup failed", error);
-    return failClosedIfOthersRunning({ shopId: profile.shop_id, lineId: input.lineId, technicianId: profile.id });
+  // The route accepts any non-empty key; the command needs at least 8
+  // characters, so derive a longer one. It stays stable for a given
+  // (line, key), which keeps retries idempotent.
+  const operationKey = `finish:${input.lineId}:${input.operationKey}`;
+
+  // A retry of a Finish this command already answered must replay that answer,
+  // whatever the add-on looks like now. The standard finish keeps its receipts
+  // elsewhere, so reclassifying the retry would run the Finish a second time.
+  const receipt = await hasEquipmentFinishReceipt(profile.shop_id, operationKey);
+  if (receipt === "unknown") {
+    return { handled: true, ok: false, status: 503, error: RETRY_MESSAGE };
   }
-  if (!entitled) return { handled: false };
+
+  if (receipt === "none") {
+    let entitled: boolean;
+    try {
+      entitled = (await resolveEquipmentAddonEntitlementForShop(profile.shop_id)).enabled;
+    } catch (error) {
+      console.error("[equipment/finish] entitlement lookup failed", error);
+      return failClosedIfOthersRunning({ shopId: profile.shop_id, lineId: input.lineId, technicianId: profile.id });
+    }
+    if (!entitled) return { handled: false };
+  }
 
   // The same gates the standard finish applies before it reaches the database.
   if (isDemoAccessExpired(profile.demo_access_expires_at)) {
@@ -83,10 +98,7 @@ export async function finishViaEquipmentLastOff(input: {
       shopId: profile.shop_id,
       technicianId: profile.id,
       actorUserId: profile.id,
-      // The route accepts any non-empty key; the command needs at least 8
-      // characters, so derive a longer one. It stays stable for a given
-      // (line, key), which keeps retries idempotent.
-      operationKey: `finish:${input.lineId}:${input.operationKey}`,
+      operationKey,
       request: {
         lineId: input.lineId,
         cause: input.cause?.trim() || undefined,
@@ -116,6 +128,24 @@ export async function finishViaEquipmentLastOff(input: {
     }
     throw error;
   }
+}
+
+async function hasEquipmentFinishReceipt(
+  shopId: string,
+  operationKey: string,
+): Promise<"exists" | "none" | "unknown"> {
+  const { data, error } = await createAdminSupabase()
+    .from("scheduler_operation_keys")
+    .select("operation_key")
+    .eq("shop_id", shopId)
+    .eq("operation_name", "equipment_punch_off")
+    .eq("operation_key", operationKey)
+    .limit(1);
+  if (error) {
+    console.error("[equipment/finish] receipt lookup failed", error);
+    return "unknown";
+  }
+  return (data ?? []).length > 0 ? "exists" : "none";
 }
 
 const RETRY_MESSAGE = "Equipment status could not be verified. Try again in a moment.";

@@ -123,3 +123,9 @@ Known limits (be precise about what "unchanged" means):
 
 - On the technician mobile screen, while an Equipment Start or Finish for the job is still queued, the primary button reads "Sync pending" and is disabled, so the same timer change cannot be queued twice. It clears when the replay reports back.
 - The story save after a non-final punch-off is based on the line's version read right after the punch-off, because the punch-off can advance it. A retry reads it again. If the device is offline, the queued save keeps the version it was written against and uses the existing conflict handling.
+
+## Second review round
+
+- A retry of a Finish the Equipment command already answered replays through the command even if the add-on now reads disabled or the lookup fails, because the standard finish keeps its receipts elsewhere. If the receipt itself cannot be read the request fails with a retryable 503.
+- The desktop post-punch-off story save uses the version-checked `save_story_draft` mutation against the line's current version, so a line another technician has completed is refused instead of overwritten.
+- On the technician mobile job page, a queued Equipment (or unclassified) Finish disables the Cause & Correction rail and refuses a second submit until replay answers. Ordinary Shop finishes and requests queued before classification was recorded are not held.
