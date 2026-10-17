@@ -118,12 +118,8 @@ describe("Equipment Work creation entry", () => {
       render(await NewWorkPage({}));
       const link = screen.getByRole("link", { name: /Create work order for/ });
       const url = new URL(link.getAttribute("href")!, "https://example.test");
-      expect(url.pathname).toBe("/work-orders/create");
-      expect(Object.fromEntries(url.searchParams)).toEqual({
-        autostart: "1",
-        customerId: "customer-1",
-        vehicleId: "asset-1",
-      });
+      expect(url.pathname).toBe("/equipment/work-orders/create/asset-1");
+      expect(Object.fromEntries(url.searchParams)).toEqual({});
       expect(link.getAttribute("href")).not.toContain("SERIAL-NOT-A-VIN");
       expect(mocks.load).toHaveBeenCalledWith(
         expect.objectContaining({ shopId: "authorized-shop", role }),

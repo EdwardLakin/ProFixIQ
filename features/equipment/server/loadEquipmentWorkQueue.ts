@@ -1,4 +1,5 @@
 import "server-only";
+import { loadEquipmentWorkCustomerNames } from "./loadEquipmentWorkCustomerNames";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@shared/types/types/supabase";
 import type { CanonicalRole } from "@/features/shared/lib/rbac";
@@ -87,6 +88,7 @@ export async function loadEquipmentWorkQueueProjection(input: {
     const bt = Date.parse(b.created_at ?? "") || 0;
     return bt - at || b.id.localeCompare(a.id);
   });
+  const customerNames = await loadEquipmentWorkCustomerNames(input.admin, input.shopId, records);
   const permissions = vehicleWorkspacePermissionsForRole(input.role);
   const rows: EquipmentQueueRow[] = records.flatMap((row) => {
     const asset = row.vehicle_id ? byId.get(row.vehicle_id) : undefined;
@@ -105,12 +107,12 @@ export async function loadEquipmentWorkQueueProjection(input: {
             ? permissions.canViewEstimates
             : permissions.canOpenWorkOrders
         )
-          ? workOrderHref(row)
+          ? estimate ? workOrderHref(row) : `/equipment/work-orders/${row.id}`
           : null,
         assetId: asset.assetId,
         assetHref: `/equipment/${asset.assetId}`,
         assetLabel: equipmentAssetTitle(asset),
-        customerName: row.customer_name?.trim() || null,
+        customerName: row.customer_name?.trim() || (row.customer_id ? customerNames.get(row.customer_id) ?? null : null),
         createdAt: row.created_at,
         scheduledAt: row.scheduled_at,
         kind: estimate ? "estimate" : "work_order",

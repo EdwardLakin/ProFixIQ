@@ -91,7 +91,7 @@ function ActionLinks({ row }: { row: EquipmentDirectoryRow }) {
     <div className="flex flex-wrap gap-2">
       <Link href={row.href} className={link}>Open asset</Link>
       {row.actions.createWorkOrderHref ? (
-        <Link href={row.actions.createWorkOrderHref} className={link}>Create work order</Link>
+        <Link href={`/equipment/work-orders/create/${row.assetId}`} className={link}>Create work order</Link>
       ) : null}
       {row.actions.recordMeterHref ? (
         <Link href={row.actions.recordMeterHref} className={link}>Record meter</Link>

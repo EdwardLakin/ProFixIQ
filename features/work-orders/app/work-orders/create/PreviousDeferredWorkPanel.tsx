@@ -47,7 +47,7 @@ function dateLabel(value: string): string {
   });
 }
 
-export default function PreviousDeferredWorkPanel() {
+export default function PreviousDeferredWorkPanel({ vehicleId }: { vehicleId?: string } = {}) {
   const searchParams = useSearchParams();
   const vehicle = useCustomerVehicleDraft((state) => state.vehicle);
   const [selectedVehicleId] = useTabState<string | null>("vehicleId", null);
@@ -58,6 +58,7 @@ export default function PreviousDeferredWorkPanel() {
   const requestQuery = useMemo(() => {
     const params = new URLSearchParams();
     const canonicalVehicleId =
+      vehicleId ||
       selectedVehicleId ||
       searchParams.get("vehicleId")?.trim() ||
       searchParams.get("vehicle_id")?.trim() ||
@@ -79,6 +80,7 @@ export default function PreviousDeferredWorkPanel() {
 
     return params.toString();
   }, [
+    vehicleId,
     searchParams,
     selectedVehicleId,
     vehicle.license_plate,
